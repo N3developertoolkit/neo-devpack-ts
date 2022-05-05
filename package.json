@@ -1,0 +1,9 @@
+{
+  "name": "@neo-project/neo-devpack-ts",
+  "workspaces": [
+    "packages\\compiler",
+    "packages\\framework"
+  ],
+  "author": "neo-project",
+  "license": "MIT"
+}
