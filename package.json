@@ -7,7 +7,7 @@
     "packages\\framework"
   ],
   "scripts": {
-    "build": "tsc"
+    "build": "tsc -p packages/compiler/tsconfig.json"
   },
   "devDependencies": {
     "@tsconfig/node16": "^1.0.2",
