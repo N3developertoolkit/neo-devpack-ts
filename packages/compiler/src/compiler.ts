@@ -1,17 +1,75 @@
 import ts from "typescript";
 import { createCompilerHost } from "./createCompilerHost";
 
-const mockFileContents = /*javascript*/`
-import { SmartContract } from '@neo-project/neo-contract-framework';
+function convert(program: ts.Program) {
 
-export class TestContract extends SmartContract {
+    const symbolTable = new SymbolTable(program);
+    symbolTable.convert();
+}
 
+class SymbolTable {
+    private checker: ts.TypeChecker;
+    constructor(private program: ts.Program) 
+    {
+        var rootFileNames = program.getRootFileNames();
+        var sourceFiles = program.getSourceFiles();
+        this.checker = program.getTypeChecker();
+        const foo = this.checker.getAmbientModules();
+        console.log();
+
+    }
+
+    
+
+    private isSmartContract(node: ts.ClassLikeDeclaration) {
+        for (var clause of node.heritageClauses ?? []) {
+            if (clause.token != ts.SyntaxKind.ExtendsKeyword) continue;
+            if (clause.types.length != 1) continue;
+            
+            const foo = this.checker.getTypeAtLocation(clause.types[0])
+            const fqn = this.checker.getFullyQualifiedName(foo.symbol);
+            console.log();
+        }
+        return true;
+    }
+
+    convert() {
+
+
+        
+        for (var file of this.program.getSourceFiles()) {
+            var foo = file.moduleName;
+            if (file.isDeclarationFile) continue;
+
+            var s1 = file.statements[0];
+            if (ts.isImportDeclaration(s1)) {
+                
+            }
+
+
+            
+
+            ts.forEachChild(file, _n => {}, nodes => {
+                for (const node of nodes) {
+                    if (ts.isClassLike(node) && this.isSmartContract(node)) {
+                        console.log(node.name ?? "unknown");
+                    }
+                }
+            });
+        }
+    }
+}
+
+const contractSource = /*javascript*/`
+// import { SmartContract } from '@neo-project/neo-contract-framework';
+
+export class TestContract implements SmartContract {
     public helloWorld() { return "Hello, World!"; }
-
 }`;
 
-const mockSourceFile = ts.createSourceFile("contract.ts", mockFileContents, ts.ScriptTarget.Latest);
-const program = ts.createProgram([mockSourceFile.fileName], {}, createCompilerHost([mockSourceFile]));
+const contractFile = ts.createSourceFile("contract.ts", contractSource, ts.ScriptTarget.Latest);
+const host = createCompilerHost([contractFile]);
+const program = ts.createProgram([contractFile.fileName], {}, host);
 
 const diagnostics = ts.getPreEmitDiagnostics(program);
 if (diagnostics && diagnostics.length > 0) {
@@ -31,11 +89,5 @@ if (diagnostics && diagnostics.length > 0) {
         }
     }
 } else {
-    
-    for (var file of program.getSourceFiles()) {
-        if (file.isDeclarationFile) { continue; }
-        ts.forEachChild(file, n => {
-            console.log(ts.SyntaxKind[n.kind]);
-        })
-    }
+    convert(program);
 }
