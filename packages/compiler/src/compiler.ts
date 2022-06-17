@@ -2,74 +2,15 @@ import ts from "typescript";
 import { createCompilerHost } from "./createCompilerHost";
 
 function printProgram(program: ts.Program) {
-
-    // const symbolTable = new SymbolTable(program);
-    // symbolTable.convert();
     for (var file of program.getSourceFiles()) {
         if (file.isDeclarationFile) continue;
         printNode(file, 0);
     }
-
 }
 
 function printNode(node: ts.Node, indent: number) {
     console.log(`${new Array(indent + 1).join(' ')}${ts.SyntaxKind[node.kind]}`);
-    ts.forEachChild(node, n => printNode(n, indent + 1));
-}
-
-class SymbolTable {
-    private checker: ts.TypeChecker;
-    constructor(private program: ts.Program) 
-    {
-        var rootFileNames = program.getRootFileNames();
-        var sourceFiles = program.getSourceFiles();
-        this.checker = program.getTypeChecker();
-        const foo = this.checker.getAmbientModules();
-        console.log();
-
-    }
-
-    
-
-    private isSmartContract(node: ts.ClassLikeDeclaration) {
-        for (var clause of node.heritageClauses ?? []) {
-            if (clause.token != ts.SyntaxKind.ExtendsKeyword) continue;
-            if (clause.types.length != 1) continue;
-            
-            const foo = this.checker.getTypeAtLocation(clause.types[0])
-            const fqn = this.checker.getFullyQualifiedName(foo.symbol);
-            console.log();
-        }
-        return true;
-
-    }
-
-    convert() {
-
-
-        
-        for (var file of this.program.getSourceFiles()) {
-            var foo = file.moduleName;
-            if (file.isDeclarationFile) continue;
-
-            var s1 = file.statements[0];
-            if (ts.isImportDeclaration(s1)) {
-                
-            }
-
-
-            
-
-            ts.forEachChild(file, _n => {}, nodes => {
-                for (const node of nodes) {
-                    // if (ts.isClassLike(node) && this.isSmartContract(node)) {
-                        console.log(node);
-                    // }
-
-                }
-            });
-        }
-    }
+    ts.forEachChild(node, (n: ts.Node) => printNode(n, indent + 1));
 }
 
 const contractSource = /*javascript*/`
