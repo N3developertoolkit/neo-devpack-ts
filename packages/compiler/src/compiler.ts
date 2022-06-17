@@ -1,10 +1,20 @@
 import ts from "typescript";
 import { createCompilerHost } from "./createCompilerHost";
 
-function convert(program: ts.Program) {
+function printProgram(program: ts.Program) {
 
-    const symbolTable = new SymbolTable(program);
-    symbolTable.convert();
+    // const symbolTable = new SymbolTable(program);
+    // symbolTable.convert();
+    for (var file of program.getSourceFiles()) {
+        if (file.isDeclarationFile) continue;
+        printNode(file, 0);
+    }
+
+}
+
+function printNode(node: ts.Node, indent: number) {
+    console.log(`${new Array(indent + 1).join(' ')}${ts.SyntaxKind[node.kind]}`);
+    ts.forEachChild(node, n => printNode(n, indent + 1));
 }
 
 class SymbolTable {
@@ -31,6 +41,7 @@ class SymbolTable {
             console.log();
         }
         return true;
+
     }
 
     convert() {
@@ -51,9 +62,10 @@ class SymbolTable {
 
             ts.forEachChild(file, _n => {}, nodes => {
                 for (const node of nodes) {
-                    if (ts.isClassLike(node) && this.isSmartContract(node)) {
-                        console.log(node.name ?? "unknown");
-                    }
+                    // if (ts.isClassLike(node) && this.isSmartContract(node)) {
+                        console.log(node);
+                    // }
+
                 }
             });
         }
@@ -88,6 +100,6 @@ if (diagnostics && diagnostics.length > 0) {
             console.log(diagPosition);
         }
     }
-} else {
-    convert(program);
-}
+};
+
+printProgram(program);
