@@ -1,4 +1,6 @@
 import ts from "typescript";
+import { Project, InMemoryFileSystemHost } from "ts-morph";
+
 import { createCompilerHost } from "./createCompilerHost";
 
 function processProgram(program: ts.Program) {
@@ -6,22 +8,39 @@ function processProgram(program: ts.Program) {
 
     for (var file of program.getSourceFiles()) {
         if (file.isDeclarationFile) continue;
-        processFile(file, checker);
+        // printNode(file);
+        ts.forEachChild(file, node => {
+            if (ts.isFunctionDeclaration(node)) {
+                processFunction(node, checker);
+            }
+            else if (ts.isClassDeclaration(node)) {
+                processClass(node, checker);
+            }
+        });
     }
 }
 
-function processFile(file: ts.SourceFile, checker: ts.TypeChecker) {
-    ts.forEachChild(file, node => {
-        if (ts.isClassDeclaration(node)) {
-            processClass(node, checker);
-        }
-    });
+function processFunction(node: ts.FunctionDeclaration, checker: ts.TypeChecker) {
+    if (node.name) {
+        console.log(node.name.getText());
+    }
+}
+
+function processMethod(node: ts.MethodDeclaration, checker: ts.TypeChecker) {
+    if (node.name) {
+        console.log(node.name.getText());
+    }
 }
 
 function processClass(node: ts.ClassDeclaration, checker: ts.TypeChecker) {
     if (node.name) {
         console.log(node.name.getText());
     }
+    ts.forEachChild(node, node => {
+        if (ts.isMethodDeclaration(node)) {
+            processMethod(node, checker);
+        }
+    });
 }
 
 function printNode(node: ts.Node, indent: number = 0) {
@@ -30,11 +49,14 @@ function printNode(node: ts.Node, indent: number = 0) {
 }
 
 const contractSource = /*javascript*/`
-import { SmartContract } from '@neo-project/neo-contract-framework';
+import * as neo from '@neo-project/neo-contract-framework';
 
-export class TestContract implements SmartContract {
-    public helloWorld() { return "Hello, World!"; }
-}`;
+export class TestContract implements neo.SmartContract {
+    public helloWorldMethod() { return "Hello, World!"; }
+}
+
+export function helloWorldFunction() { return "Hello, World!"; }
+`;
 
 const contractFile = ts.createSourceFile("contract.ts", contractSource, ts.ScriptTarget.ES5);
 var host = createCompilerHost([contractFile]);
