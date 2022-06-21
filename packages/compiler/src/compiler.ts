@@ -1,84 +1,73 @@
-import ts from "typescript";
-import { Project, InMemoryFileSystemHost } from "ts-morph";
+import { ClassDeclaration, FunctionDeclaration, Node, Project, SyntaxKind, ts, VariableDeclaration } from "ts-morph";
+import * as c from "./common";
 
-import { createCompilerHost } from "./createCompilerHost";
-
-function processProgram(program: ts.Program) {
-    let checker = program.getTypeChecker();
-
-    for (var file of program.getSourceFiles()) {
-        if (file.isDeclarationFile) continue;
-        // printNode(file);
-        ts.forEachChild(file, node => {
-            if (ts.isFunctionDeclaration(node)) {
-                processFunction(node, checker);
+function processProject(project: Project) {
+    var globalScope = new c.GlobalScope();
+    for (const source of project.getSourceFiles()) {
+        if (source.isDeclarationFile()) continue;
+        source.forEachChild(n => {
+            if (Node.isImportDeclaration(n)) {
+                // skip import declarations for now
+            } else if (n.getKind() == SyntaxKind.EndOfFileToken) {
+                // ignore EndOfFileToken
+            } else if (Node.isClassDeclaration(n)) {
+                processClass(n, globalScope);
+            } else if (Node.isFunctionDeclaration(n)) {
+                processFunction(n, globalScope);
+            } else if (Node.isVariableDeclaration(n)) {
+                processVariable(n, globalScope);
+            } else {
+                throw new Error(`${n.getKindName()} not implemented.`);
             }
-            else if (ts.isClassDeclaration(node)) {
-                processClass(node, checker);
-            }
-        });
+        })
     }
+    return globalScope;
 }
 
-function processFunction(node: ts.FunctionDeclaration, checker: ts.TypeChecker) {
-    if (node.name) {
-        console.log(node.name.getText());
-    }
+function processFunction(decl: FunctionDeclaration, scope: c.Scope) {
+    const symbol = scope.define(s => new c.FunctionScope(decl, s));
 }
 
-function processMethod(node: ts.MethodDeclaration, checker: ts.TypeChecker) {
-    if (node.name) {
-        console.log(node.name.getText());
-    }
+function processVariable(decl: VariableDeclaration, scope: c.Scope) {
+    const symbol = scope.define(s => new c.VariableSymbol(decl, s));
 }
 
-function processClass(node: ts.ClassDeclaration, checker: ts.TypeChecker) {
-    if (node.name) {
-        console.log(node.name.getText());
-    }
-    ts.forEachChild(node, node => {
-        if (ts.isMethodDeclaration(node)) {
-            processMethod(node, checker);
-        }
-    });
-}
-
-function printNode(node: ts.Node, indent: number = 0) {
-    console.log(`${new Array(indent + 1).join(' ')}${ts.SyntaxKind[node.kind]}`);
-    ts.forEachChild(node, (n: ts.Node) => printNode(n, indent + 1));
+function processClass(decl: ClassDeclaration, scope: c.Scope) {
+    const symbol = scope.define(s => new c.ClassScope(decl, s));
 }
 
 const contractSource = /*javascript*/`
 import * as neo from '@neo-project/neo-contract-framework';
 
-export class TestContract implements neo.SmartContract {
-    public helloWorldMethod() { return "Hello, World!"; }
-}
+// test me
 
-export function helloWorldFunction() { return "Hello, World!"; }
+const result = 42;
+function nonExported() { return result; }
+
+export function helloWorld() { return "Hello, World!"; }
+
+export class TestContract extends SmartContract {}
 `;
 
-const contractFile = ts.createSourceFile("contract.ts", contractSource, ts.ScriptTarget.ES5);
-var host = createCompilerHost([contractFile]);
-const program = ts.createProgram([contractFile.fileName], {}, host);
+const project = new Project();
+project.createSourceFile("contract.ts", contractSource);
 
-const diagnostics = ts.getPreEmitDiagnostics(program);
-if (diagnostics && diagnostics.length > 0) {
+var diagnostics = project.getPreEmitDiagnostics();
+if (diagnostics.length > 0) {
     for (const diagnostic of diagnostics) {
-        const message = diagnostic.messageText;
+        const message = diagnostic.getMessageText();
         console.log(message);
 
-        const file = diagnostic.file;
-        if (file) {
-            let diagPosition = file.fileName;
-            const start = diagnostic.start;
-            if (start) {
-                const lineAndChar = file.getLineAndCharacterOfPosition(start);
-                diagPosition += `:${lineAndChar.line + 1}:${lineAndChar.character + 1}`
-            }
-            console.log(diagPosition);
-        }
+        const file = diagnostic.getSourceFile();
+        if (!file) continue;
+        let diagPosition = file.getBaseName();
+        const start = diagnostic.getStart()
+        if (!start) continue;
+        const lineAndChar = file.getLineAndColumnAtPos(start);
+        diagPosition += `:${lineAndChar.line + 1}:${lineAndChar.column + 1}`
+        console.log(diagPosition);
     }
 };
 
-processProgram(program);
+var gs = processProject(project);
+console.log();

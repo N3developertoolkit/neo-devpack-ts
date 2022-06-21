@@ -8,5 +8,8 @@
   },
   "keywords": [],
   "author": "neo-project",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "ts-morph": "^15.1.0"
+  }
 }
