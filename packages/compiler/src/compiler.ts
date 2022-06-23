@@ -1,6 +1,8 @@
-import { BinaryExpression, Block, Expression, FunctionDeclaration, Identifier, Node, ParameterDeclaration, Project, ReturnStatement, Statement, StringLiteral, SyntaxKind, ts, Type, TypeNode } from "ts-morph";
+import { BinaryExpression, Block, Expression, FunctionDeclaration, Identifier, Node, ParameterDeclaration, Project, ReturnStatement, Statement, StringLiteral, SyntaxKind, ts, Type } from "ts-morph";
 import { sc } from "@cityofzion/neon-core";
-import { FunctionScope, GlobalScope, ParameterSymbol, Scope } from "./common";
+import { GlobalScope, isSlotSymbol, ParameterSymbol, Scope, ScopeBase, SlotType } from "./common";
+import * as fs from 'fs';
+import * as path from 'path';
 
 function printNode(node: Node, indent: number = 0) {
     console.log(`${new Array(indent + 1).join(' ')}${node.getKindName()}`);
@@ -16,6 +18,7 @@ function printProject(project: Project) {
 
 class Instruction {
     readonly operand?: Uint8Array;
+    get opCodeName() { return sc.OpCode[this.opCode]; }
 
     constructor(
         readonly opCode: sc.OpCode,
@@ -39,13 +42,27 @@ class Instruction {
     }
 }
 
-class Operation {
+class ProjectContext {
+    readonly globalScope = new GlobalScope();
+    readonly functions = new Array<FunctionDeclarationContext>();
+}
+
+class FunctionDeclarationContext extends ScopeBase {
+    readonly instructions = new Array<Instruction>();
+
+    get parameterCount() { return this.node.getParameters().length; }
+    get scopeName() { return this.node.getNameOrThrow(); }
+
     constructor(
         readonly node: FunctionDeclaration, 
-        readonly instructions: Array<Instruction>
-    ) { }
+        readonly parentScope: Scope
+    ) {
+        super();
 
-    get isPublic() { return this.node.hasExportKeyword(); }
+        node.getParameters()
+            .map((p,i) => new ParameterSymbol(p, i, this))
+            .forEach(p => this.define(p));
+    }
 
     toScript(): Uint8Array {
         var buffer = Buffer.concat(this.instructions.map(i => i.toArray()));
@@ -53,46 +70,32 @@ class Operation {
     }
 
     toMethodDef(offset: number): sc.ContractMethodDefinition | undefined {
-        return this.isPublic
+
+        return this.node.hasExportKeyword()
             ? new sc.ContractMethodDefinition({
                     name: this.node.getNameOrThrow(),
                     offset,
                     parameters: this.node.getParameters().map(convertParam),
-                    returnType: convertType(this.node.getReturnTypeNode())
+                    returnType: convertType(this.node.getReturnType())
                 })
             : undefined;
 
         function convertParam(p: ParameterDeclaration): sc.ContractParameterDefinition {
             return {
                 name: p.getName(),
-                type: convertType(p.getTypeNodeOrThrow())
+                type: convertType(p.getType())
             };
         }
-    }
-}
 
-function buildSymbolTable(project: Project): Scope {
-    var globalScope = new GlobalScope();
-    for (const source of project.getSourceFiles()) {
-        if (source.isDeclarationFile()) continue;
-        source.forEachChild(child => processNode(child, globalScope));
-    }
-    return globalScope;
-
-    function processNode(node: Node, scope: Scope) {
-        if (Node.isFunctionDeclaration(node)) {
-            const funcScope = new FunctionScope(node, scope);
-            scope.define(funcScope);
-            funcScope.defineParameters(node.getParameters());
-            scope = funcScope;
+        function convertType(type: Type): sc.ContractParamType {
+            if (type.isString()) return sc.ContractParamType.String;
+            throw new Error(`convertType not implemented for ${type.getText()}`);
         }
-
-        node.forEachChild(child => processNode(child, scope));
     }
 }
 
-function convertProject(project: Project, scope: Scope) {
-    const operations = new Array<Operation>();
+function convertProject(project: Project) {
+    const context = new ProjectContext()
     for (const source of project.getSourceFiles()) {
         if (source.isDeclarationFile()) continue;
         source.forEachChild(node => {
@@ -102,11 +105,8 @@ function convertProject(project: Project, scope: Scope) {
                     throw new Error(`Unknown module ${module}`);
                 }
             } else if (Node.isFunctionDeclaration(node)) {
-                const newScope = scope.resolve(node.getNameOrThrow());
-                if (newScope instanceof FunctionScope) {
-                    const op = convertFunction(node, newScope);
-                    operations.push(op);
-                }
+                const opCtx = convertFunction(node, context.globalScope);
+                context.functions.push(opCtx);
             } else if (node.getKind() == SyntaxKind.EndOfFileToken) {
                 // ignore
             } else {
@@ -114,14 +114,17 @@ function convertProject(project: Project, scope: Scope) {
             }
         })
     }
-    return operations;
+    return context;
 }
 
-function convertFunction(node: FunctionDeclaration, scope: Scope) {
-    const params = node.getParameters() ?? [];
-    const instructions = convertBody(node.getBodyOrThrow(), scope);
-    instructions.unshift(new Instruction(sc.OpCode.INITSLOT, node, [0, params.length]));
-    return new Operation(node, instructions);
+function convertFunction(node: FunctionDeclaration, scope: Scope):FunctionDeclarationContext {
+    var ctx = new FunctionDeclarationContext(node, scope);
+    const instructions = convertBody(node.getBodyOrThrow(), ctx);
+    if (ctx.parameterCount > 0) {
+        instructions.unshift(new Instruction(sc.OpCode.INITSLOT, node, [0, ctx.parameterCount]));
+    }
+    ctx.instructions.push(...instructions);
+    return ctx;
 }
 
 function convertBody(node: Node, scope: Scope) {
@@ -134,21 +137,32 @@ function convertBody(node: Node, scope: Scope) {
 
 function convertStatement(node: Statement, scope: Scope): Instruction[] {
     switch (node.getKind()) {
-        case SyntaxKind.Block:
-            const ins1 = (node as Block).getStatements().flatMap(s => convertStatement(s, scope));
+        case SyntaxKind.Block: {
+            var ins = (node as Block).getStatements().flatMap(s => convertStatement(s, scope));
             const openBrace = node.getFirstChildByKind(SyntaxKind.OpenBraceToken);
-            if (openBrace) ins1.unshift(new Instruction(sc.OpCode.NOP, openBrace));
+            if (openBrace) { ins.unshift(new Instruction(sc.OpCode.NOP, openBrace)); }
             const closeBrace = node.getLastChildByKind(SyntaxKind.CloseBraceToken);
-            if (closeBrace) ins1.push(new Instruction(sc.OpCode.NOP, closeBrace));
-            return ins1;
-        case SyntaxKind.ReturnStatement:
+            if (closeBrace) ins.push(new Instruction(sc.OpCode.NOP, closeBrace));
+            return ins;
+        }
+        case SyntaxKind.ReturnStatement: {
             const exp = (node as ReturnStatement).getExpression();
-            const ins2 = convertExpression(exp, scope);
-            ins2.push(new Instruction(sc.OpCode.RET, node));
-            return ins2;
+            const ins = convertExpression(exp, scope);
+            ins.push(new Instruction(sc.OpCode.RET, node));
+            return ins;
+        }
     }
 
     throw new Error(`convertStatement ${node.getKindName()} not implemented`);
+}
+
+function getLoadOpcode(type: SlotType): sc.OpCode {
+    switch (type) {
+        case SlotType.Argument: return sc.OpCode.LDARG;
+        case SlotType.Local: return sc.OpCode.LDLOC;
+        case SlotType.Static: return sc.OpCode.LDSFLD;
+        default: throw new Error(`getLoadOpcode ${SlotType[type]} not implemented`);
+    }
 }
 
 function convertExpression(node: Expression | undefined, scope: Scope): Instruction[] {
@@ -163,27 +177,42 @@ function convertExpression(node: Expression | undefined, scope: Scope): Instruct
             const bin = node as BinaryExpression;
             const left = convertExpression(bin.getLeft(), scope);
             const right = convertExpression(bin.getRight(), scope);
-            const op = convertOperator(bin.getOperatorToken());
+            const op = convertBinaryOperator(bin);
             return [...left, ...right, op];
         case SyntaxKind.Identifier:
             const id = (node as Identifier).getText();
             const symbol = scope.resolve(id);
-            if (!symbol) throw new Error(`Failed to resolve ${id}`);
-            if (symbol instanceof ParameterSymbol) {
-                return [new Instruction(sc.OpCode.LDARG, node, [symbol.index])];
+            if (!symbol) throw new Error(`convertExpression.Identifier Failed to resolve ${id}`);
+            if (isSlotSymbol(symbol)) {
+                const opCode = getLoadOpcode(symbol.type);
+                return [new Instruction(opCode, node, [symbol.index])];
+            } else {
+                throw new Error(`convertExpression.Identifier non slot symbol not implemented`);
             }
-            break;
     }
 
     throw new Error(`convertExpression ${node.getKindName()} not implemented`);
 }
 
-function convertOperator(node: Node<ts.BinaryOperatorToken>) {
-    switch (node.getKind()) {
-        case SyntaxKind.PlusToken:
-            return new Instruction(sc.OpCode.ADD, node);
+function convertBinaryOperator(node: BinaryExpression) {
+    const op = node.getOperatorToken();
+    switch (op.getKind()) {
+        case SyntaxKind.PlusToken:{
+            const left = node.getLeft();
+            const right = node.getRight();
+            if (isStringType(left) && isStringType(right)) {
+                return new Instruction(sc.OpCode.CAT, node);
+            } else {
+                throw new Error(`convertBinaryOperator.PlusToken not implemented for ${left.getType().getText()} and ${right.getType().getText()}`);
+            }
+        }
         default:
             throw new Error(`convertOperator ${node.getKindName()} not implemented`);
+    }
+
+    function isStringType(exp: Expression) {
+        const flags = exp.getType().getFlags();
+        return (flags & ts.TypeFlags.String) || (flags & ts.TypeFlags.StringLiteral);
     }
 }
 
@@ -199,25 +228,10 @@ function convertBuffer(buffer: Buffer, node: Node) {
     throw new Error(`convertBuffer for length ${buffer.length} not implemented`);
 }
 
-function convertType(type?: TypeNode<ts.TypeNode>): sc.ContractParamType {
-    if (!type) return sc.ContractParamType.Void;
-
-    const prj = type.getProject();
-    const checker = prj.getTypeChecker();
-    const foo = checker.getApparentType(type.getType())
-    var ct = foo.compilerType;
-    var isStr = foo.isString();
-    if (type.getKind() === SyntaxKind.StringKeyword) {
-        return sc.ContractParamType.String;
-    }
-
-    throw new Error(`convertType for ${type.getText()} not implemented`);
-}
-
-function convertNEF(name: string, operations: Array<Operation>): [sc.NEF, sc.ContractManifest] {
+function convertNEF(name: string, context: ProjectContext): [sc.NEF, sc.ContractManifest] {
     let fullScript = new Uint8Array(0);
     const methods = new Array<sc.ContractMethodDefinition>();
-    for (const op of operations) {
+    for (const op of context.functions) {
         var method = op.toMethodDef(fullScript.length);
         if (method) { methods.push(method); }
         const buffer = Buffer.concat([fullScript, op.toScript()]);
@@ -231,11 +245,14 @@ function convertNEF(name: string, operations: Array<Operation>): [sc.NEF, sc.Con
 
     const nef = new sc.NEF({
         compiler: "neo-devpack-ts",
-        script: Buffer.from(fullScript).toString("base64"),
+        script: Buffer.from(fullScript).toString("hex"),
     })
 
     return [nef, manifest];
 }
+
+
+
 
 
 
@@ -268,8 +285,18 @@ if (diagnostics.length > 0) {
     process.exit(-1);
 } 
 
-const table = buildSymbolTable(project);
-const operations = convertProject(project, table);
-const [nef, manifest] = convertNEF("test-contract", operations);
-const json = { nef: nef.toJson(), manifest: manifest.toJson() }
+const context = convertProject(project);
+
+const [nef, manifest] = convertNEF("test-contract", context);
+const base64script = Buffer.from(nef.script, 'hex').toString('base64');
+const json = { nef: nef.toJson(), manifest: manifest.toJson(), base64script }
 console.log(JSON.stringify(json, null, 4));
+
+const rootPath = path.join(path.dirname(__dirname), "test");
+if (!fs.existsSync(rootPath)) { fs.mkdirSync(rootPath); }
+const nefPath = path.join(rootPath, "contract.nef");
+const manifestPath = path.join(rootPath, "contract.manifest.json");
+
+fs.writeFileSync(nefPath, Buffer.from(nef.serialize(), 'hex'));
+fs.writeFileSync(manifestPath, JSON.stringify(manifest.toJson(), null, 4));
+console.log(`Contract NEF and Manifest written to ${rootPath}`);
