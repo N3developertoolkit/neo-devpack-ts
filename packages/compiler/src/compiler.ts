@@ -199,6 +199,11 @@ function convertBuffer(buffer: Buffer, node: Node) {
 function convertType(type?: TypeNode<ts.TypeNode>): sc.ContractParamType {
     if (!type) return sc.ContractParamType.Void;
 
+    const prj = type.getProject();
+    const checker = prj.getTypeChecker();
+    const foo = checker.getApparentType(type.getType())
+    var ct = foo.compilerType;
+    var isStr = foo.isString();
     if (type.getKind() === SyntaxKind.StringKeyword) {
         return sc.ContractParamType.String;
     }
@@ -206,29 +211,12 @@ function convertType(type?: TypeNode<ts.TypeNode>): sc.ContractParamType {
     throw new Error(`convertType for ${type.getText()} not implemented`);
 }
 
-function convertParameter(param: ParameterDeclaration): sc.ContractParameterDefinition {
-    return {
-        name: param.getName(),
-        type: convertType(param.getTypeNodeOrThrow())
-    }
-}
-
-function convertManifestMethod(operation: Operation, offset: number): sc.ContractMethodDefinition {
-    return new sc.ContractMethodDefinition({
-        name: operation.node.getNameOrThrow(),
-        offset,
-        parameters: operation.node.getParameters().map(convertParameter),
-        returnType: convertType(operation.node.getReturnTypeNode())
-    });
-}
-
 function convertNEF(name: string, operations: Array<Operation>): [sc.NEF, sc.ContractManifest] {
-    const methods = new Array<sc.ContractMethodDefinition>();
     let fullScript = new Uint8Array(0);
+    const methods = new Array<sc.ContractMethodDefinition>();
     for (const op of operations) {
         var method = op.toMethodDef(fullScript.length);
         if (method) { methods.push(method); }
-
         const buffer = Buffer.concat([fullScript, op.toScript()]);
         fullScript = new Uint8Array(buffer);
     }
@@ -263,40 +251,13 @@ export function sayHello(name: string): string { return "Hello, " + name + "!"; 
 const project = new Project();
 project.createSourceFile("contract.ts", contractSource);
 
-// var diagnostics = project.getPreEmitDiagnostics();
-// if (diagnostics.length > 0) {
-//     for (const diagnostic of diagnostics) {
-//         const message = diagnostic.getMessageText();
-//         console.log(message);
-
-//         const file = diagnostic.getSourceFile();
-//         if (!file) continue;
-//         let diagPosition = file.getBaseName();
-//         const start = diagnostic.getStart()
-//         if (!start) continue;
-//         const lineAndChar = file.getLineAndColumnAtPos(start);
-//         diagPosition += `:${lineAndChar.line + 1}:${lineAndChar.column + 1}`
-//         console.log(diagPosition);
-//     }
-// };
-
-// printProject(project);
-
-const table = buildSymbolTable(project);
-const operations = convertProject(project, table);
-const [nef, manifest] = convertNEF("test-contract", operations);
-const json = { nef: nef.toJson(), manifest: manifest.toJson() }
-console.log(JSON.stringify(json, null, 4));
-
-
-
-// const functions = convertProject(project);
-// const operations = new Array<Operation>();
-// for (const f of functions) {
-//     convertFunctionDecl(f, operations);
-// }
-
-
-
-
-
+var diagnostics = project.getPreEmitDiagnostics();
+if (diagnostics.length > 0) {
+    diagnostics.forEach(d => console.log(d.getMessageText()));
+} else {
+    const table = buildSymbolTable(project);
+    const operations = convertProject(project, table);
+    const [nef, manifest] = convertNEF("test-contract", operations);
+    const json = { nef: nef.toJson(), manifest: manifest.toJson() }
+    console.log(JSON.stringify(json, null, 4));
+}
