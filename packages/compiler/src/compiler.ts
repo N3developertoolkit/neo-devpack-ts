@@ -15,20 +15,20 @@ function printProject(project: Project) {
 }
 
 class Instruction {
+    readonly operand?: Uint8Array;
+
     constructor(
         readonly opCode: sc.OpCode,
         readonly node: Node,
         operand?: Uint8Array | Iterable<number>
     ) {
-        /* TODO: ensure operand size matches expected size for opCode */
+        // TODO: ensure operand size matches expected size for opCode 
         this.operand = operand
             ? operand instanceof Uint8Array
                 ? operand
                 : Uint8Array.from(operand)
             : undefined;
     }
-
-    readonly operand?: Uint8Array;
 
     toArray(): Uint8Array {
         const length = this.operand ? this.operand.length + 1 : 1;
@@ -40,7 +40,10 @@ class Instruction {
 }
 
 class Operation {
-    constructor(readonly node: FunctionDeclaration, readonly instructions: Array<Instruction>) { }
+    constructor(
+        readonly node: FunctionDeclaration, 
+        readonly instructions: Array<Instruction>
+    ) { }
 
     get isPublic() { return this.node.hasExportKeyword(); }
 
@@ -50,7 +53,7 @@ class Operation {
     }
 
     toMethodDef(offset: number): sc.ContractMethodDefinition | undefined {
-        return this.node.hasExportKeyword()
+        return this.isPublic
             ? new sc.ContractMethodDefinition({
                     name: this.node.getNameOrThrow(),
                     offset,
@@ -241,6 +244,11 @@ function convertNEF(name: string, operations: Array<Operation>): [sc.NEF, sc.Con
 
 
 
+
+
+
+
+
 const contractSource = /*javascript*/`
 import * as neo from '@neo-project/neo-contract-framework';
 export function helloWorld(): string { return "Hello, World!"; }
@@ -251,13 +259,17 @@ export function sayHello(name: string): string { return "Hello, " + name + "!"; 
 const project = new Project();
 project.createSourceFile("contract.ts", contractSource);
 
+console.time('getPreEmitDiagnostics');
 var diagnostics = project.getPreEmitDiagnostics();
+console.timeEnd('getPreEmitDiagnostics')
+
 if (diagnostics.length > 0) {
     diagnostics.forEach(d => console.log(d.getMessageText()));
-} else {
-    const table = buildSymbolTable(project);
-    const operations = convertProject(project, table);
-    const [nef, manifest] = convertNEF("test-contract", operations);
-    const json = { nef: nef.toJson(), manifest: manifest.toJson() }
-    console.log(JSON.stringify(json, null, 4));
-}
+    process.exit(-1);
+} 
+
+const table = buildSymbolTable(project);
+const operations = convertProject(project, table);
+const [nef, manifest] = convertNEF("test-contract", operations);
+const json = { nef: nef.toJson(), manifest: manifest.toJson() }
+console.log(JSON.stringify(json, null, 4));
