@@ -4,7 +4,7 @@ export interface Scope {
     readonly scopeName: string;
     readonly enclosingScope: Scope | undefined;
     getSymbols(): IterableIterator<Symbol>;
-    define<T extends Symbol>(symbolFactory: (scope: Scope) => T): T;
+    define<T extends Symbol>(symbol: T):void;
     resolve(name:string): Symbol | undefined;
 }
 
@@ -22,15 +22,14 @@ export abstract class ScopeBase implements Scope {
 
     getSymbols() { return this._symbols.values(); }
 
+    define<T extends Symbol>(symbol: T): void {
+        if (symbol.scope !== this) throw new Error();
+        this._symbols.set(symbol.name, symbol);
+    }
+
     resolve(name: string) {
         const value = this._symbols.get(name);
         return value ? value : undefined;
-    }
-
-    define<T extends Symbol>(symbolFactory: (scope: Scope) => T): T {
-        var value = symbolFactory(this);
-        this._symbols.set(value.name, value);
-        return value;
     }
 }
 
@@ -53,14 +52,14 @@ export class ScopeSymbol extends ScopeBase implements Symbol {
     readonly enclosingScope: Scope;
 }
 
-export class VariableSymbol implements Symbol {
-    constructor(readonly decl: m.VariableDeclaration, readonly scope: Scope) 
-    { 
-        this.name = decl.getName();
-    }
+// export class VariableSymbol implements Symbol {
+//     constructor(readonly decl: m.VariableDeclaration, readonly scope: Scope) 
+//     { 
+//         this.name = decl.getName();
+//     }
 
-    readonly name:string;
-}
+//     readonly name:string;
+// }
 
 export class ParameterSymbol implements Symbol {
     constructor(readonly decl: m.ParameterDeclaration, readonly index: number, readonly scope: Scope)
@@ -75,11 +74,19 @@ export class FunctionScope extends ScopeSymbol {
     constructor(readonly decl: m.FunctionDeclaration, scope: Scope) {
         super(decl, scope);
     }
+
+    defineParameters(params: m.ParameterDeclaration[]) {
+        for (let index = 0; index < params.length; index++) {
+            const element = params[index];
+            var symbol = new ParameterSymbol(params[index], index, this);
+            this.define(symbol);
+        }
+    }
 }
 
-export class BlockScope extends ScopeBase {
-    constructor(readonly decl: m.Block, readonly enclosingScope: Scope) {
-        super();
-    }
-    scopeName = "<block>";
-}
+// export class BlockScope extends ScopeBase {
+//     constructor(readonly decl: m.Block, readonly enclosingScope: Scope) {
+//         super();
+//     }
+//     scopeName = "<block>";
+// }

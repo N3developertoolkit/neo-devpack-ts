@@ -1,17 +1,24 @@
 import { BinaryExpression, Block, Expression, FunctionDeclaration, Identifier, Node, ParameterDeclaration, Project, ReturnStatement, Statement, StringLiteral, SyntaxKind, ts, Type, TypeNode } from "ts-morph";
 import { sc } from "@cityofzion/neon-core";
-import { BlockScope, FunctionScope, GlobalScope, ParameterSymbol, Scope, VariableSymbol } from "./common";
+import { FunctionScope, GlobalScope, ParameterSymbol, Scope } from "./common";
 
 function printNode(node: Node, indent: number = 0) {
     console.log(`${new Array(indent + 1).join(' ')}${node.getKindName()}`);
     node.forEachChild(n => printNode(n, indent + 1));
 }
 
+function printProject(project: Project) {
+    for (const source of project.getSourceFiles()) {
+        if (source.isDeclarationFile()) continue;
+        source.forEachChild(child => printNode(child, 0));
+    }
+}
+
 class Instruction {
     constructor(
         readonly opCode: sc.OpCode,
         readonly node: Node,
-        operand?: Uint8Array | Array<number>
+        operand?: Uint8Array | Iterable<number>
     ) {
         /* TODO: ensure operand size matches expected size for opCode */
         this.operand = operand
@@ -24,13 +31,10 @@ class Instruction {
     readonly operand?: Uint8Array;
 
     toArray(): Uint8Array {
-        const array = this.operand
-            ? new Uint8Array(this.operand.length + 1)
-            : new Uint8Array(1);
+        const length = this.operand ? this.operand.length + 1 : 1;
+        const array = new Uint8Array(length);
         array[0] = this.opCode;
-        if (this.operand) {
-            array.set(this.operand, 1);
-        }
+        if (this.operand) { array.set(this.operand, 1); }
         return array;
     }
 }
@@ -38,13 +42,33 @@ class Instruction {
 class Operation {
     constructor(readonly node: FunctionDeclaration, readonly instructions: Array<Instruction>) { }
 
-    toArray(): Uint8Array {
+    get isPublic() { return this.node.hasExportKeyword(); }
+
+    toScript(): Uint8Array {
         var buffer = Buffer.concat(this.instructions.map(i => i.toArray()));
         return new Uint8Array(buffer);
     }
+
+    toMethodDef(offset: number): sc.ContractMethodDefinition | undefined {
+        return this.node.hasExportKeyword()
+            ? new sc.ContractMethodDefinition({
+                    name: this.node.getNameOrThrow(),
+                    offset,
+                    parameters: this.node.getParameters().map(convertParam),
+                    returnType: convertType(this.node.getReturnTypeNode())
+                })
+            : undefined;
+
+        function convertParam(p: ParameterDeclaration): sc.ContractParameterDefinition {
+            return {
+                name: p.getName(),
+                type: convertType(p.getTypeNodeOrThrow())
+            };
+        }
+    }
 }
 
-function buildSymbolTable(project: Project) {
+function buildSymbolTable(project: Project): Scope {
     var globalScope = new GlobalScope();
     for (const source of project.getSourceFiles()) {
         if (source.isDeclarationFile()) continue;
@@ -53,98 +77,108 @@ function buildSymbolTable(project: Project) {
     return globalScope;
 
     function processNode(node: Node, scope: Scope) {
-        const kind = node.getKindName();
-        const name = Node.isNameable(node) ? node.getName() : "<notNameable>";
         if (Node.isFunctionDeclaration(node)) {
-            const funcScope = scope.define(s => new FunctionScope(node, s));
-            const params = node.getParameters() ?? [];
-            for (let index = 0; index < params.length; index++) {
-                funcScope.define(s => new ParameterSymbol(params[index], index, s))
-            }
-            node.forEachChild(child => processNode(child, funcScope));
-        } else if (Node.isVariableDeclaration(node)) {
-            scope.define(s => new VariableSymbol(node, s));
-        } else if (Node.isBlock(node)) {
-            // scope.define(s => new BlockScope(node, s));
+            const funcScope = new FunctionScope(node, scope);
+            scope.define(funcScope);
+            funcScope.defineParameters(node.getParameters());
+            scope = funcScope;
         }
+
+        node.forEachChild(child => processNode(child, scope));
     }
 }
 
+function convertProject(project: Project, scope: Scope) {
+    const operations = new Array<Operation>();
+    for (const source of project.getSourceFiles()) {
+        if (source.isDeclarationFile()) continue;
+        source.forEachChild(node => {
+            if (Node.isImportDeclaration(node)) {
+                var module = node.getModuleSpecifierValue();
+                if (module !== "@neo-project/neo-contract-framework") {
+                    throw new Error(`Unknown module ${module}`);
+                }
+            } else if (Node.isFunctionDeclaration(node)) {
+                const newScope = scope.resolve(node.getNameOrThrow());
+                if (newScope instanceof FunctionScope) {
+                    const op = convertFunction(node, newScope);
+                    operations.push(op);
+                }
+            } else if (node.getKind() == SyntaxKind.EndOfFileToken) {
+                // ignore
+            } else {
+                throw new Error(`${node.getKindName()} not supported`);
+            }
+        })
+    }
+    return operations;
+}
 
-function convertFunctionDecl(node: FunctionDeclaration, operations: Array<Operation>) {
-    const instructions = new Array<Instruction>();
+function convertFunction(node: FunctionDeclaration, scope: Scope) {
     const params = node.getParameters() ?? [];
-    convertBody(node.getBodyOrThrow(), instructions);
+    const instructions = convertBody(node.getBodyOrThrow(), scope);
     instructions.unshift(new Instruction(sc.OpCode.INITSLOT, node, [0, params.length]));
-    operations.push(new Operation(node, instructions));
+    return new Operation(node, instructions);
 }
 
-function convertBody(node: Node, instructions: Array<Instruction>) {
+function convertBody(node: Node, scope: Scope) {
     if (Node.isStatement(node)) {
-        convertStatement(node, instructions);
-    } else {
-        throw new Error(`convertBody ${node.getKindName()} not implemented`);
+        return convertStatement(node, scope);
     }
+
+    throw new Error(`convertBody ${node.getKindName()} not implemented`);
 }
 
-function convertStatement(node: Statement, instructions: Array<Instruction>) {
+function convertStatement(node: Statement, scope: Scope): Instruction[] {
     switch (node.getKind()) {
         case SyntaxKind.Block:
+            const ins1 = (node as Block).getStatements().flatMap(s => convertStatement(s, scope));
             const openBrace = node.getFirstChildByKind(SyntaxKind.OpenBraceToken);
-            if (openBrace) instructions.push(new Instruction(sc.OpCode.NOP, openBrace));
-            for (const stmt of (node as Block).getStatements()) {
-                convertStatement(stmt, instructions);
-            }
+            if (openBrace) ins1.unshift(new Instruction(sc.OpCode.NOP, openBrace));
             const closeBrace = node.getLastChildByKind(SyntaxKind.CloseBraceToken);
-            if (closeBrace) instructions.push(new Instruction(sc.OpCode.NOP, closeBrace));
-            break;
+            if (closeBrace) ins1.push(new Instruction(sc.OpCode.NOP, closeBrace));
+            return ins1;
         case SyntaxKind.ReturnStatement:
             const exp = (node as ReturnStatement).getExpression();
-            convertExpression(exp, instructions);
-            instructions.push(new Instruction(sc.OpCode.RET, node));
-            break;
-        default:
-            throw new Error(`convertStatement ${node.getKindName()} not implemented`);
+            const ins2 = convertExpression(exp, scope);
+            ins2.push(new Instruction(sc.OpCode.RET, node));
+            return ins2;
     }
+
+    throw new Error(`convertStatement ${node.getKindName()} not implemented`);
 }
 
-function convertExpression(node: Expression | undefined, instructions: Array<Instruction>) {
-    if (!node) return;
+function convertExpression(node: Expression | undefined, scope: Scope): Instruction[] {
+    if (!node) return [];
 
     switch (node.getKind()) {
         case SyntaxKind.StringLiteral:
             const literal = (node as StringLiteral).getLiteralValue();
             var buffer = Buffer.from(literal, 'utf-8');
-            instructions.push(convertBuffer(buffer, node));
-            break;
+            return [convertBuffer(buffer, node)];
         case SyntaxKind.BinaryExpression:
-            const exp = node as BinaryExpression;
-            convertExpression(exp.getLeft(), instructions);
-            convertExpression(exp.getRight(), instructions);
-            convertOperator(exp.getOperatorToken(), instructions);
-            break;
+            const bin = node as BinaryExpression;
+            const left = convertExpression(bin.getLeft(), scope);
+            const right = convertExpression(bin.getRight(), scope);
+            const op = convertOperator(bin.getOperatorToken());
+            return [...left, ...right, op];
         case SyntaxKind.Identifier:
-            const exp2 = node as Identifier;
-            const text = exp2.getText();
-            const ancestors = exp2.getAncestors().filter(Node.isFunctionDeclaration);
-            const index = ancestors[0].getParameters().findIndex(p => p.getName() === text);
-            if (index >= 0) {
-                instructions.push(new Instruction(sc.OpCode.LDARG, exp2, [index]));
+            const id = (node as Identifier).getText();
+            const symbol = scope.resolve(id);
+            if (!symbol) throw new Error(`Failed to resolve ${id}`);
+            if (symbol instanceof ParameterSymbol) {
+                return [new Instruction(sc.OpCode.LDARG, node, [symbol.index])];
             }
-            
-            // const defs = exp2.getDefinitionNodes();
-            // const locals = exp2.getLocals();
             break;
-        default:
-            throw new Error(`convertExpression ${node.getKindName()} not implemented`);
     }
+
+    throw new Error(`convertExpression ${node.getKindName()} not implemented`);
 }
 
-function convertOperator(node: Node<ts.BinaryOperatorToken>, instructions: Array<Instruction>) {
+function convertOperator(node: Node<ts.BinaryOperatorToken>) {
     switch (node.getKind()) {
         case SyntaxKind.PlusToken:
-            instructions.push(new Instruction(sc.OpCode.ADD, node));
-            break;
+            return new Instruction(sc.OpCode.ADD, node);
         default:
             throw new Error(`convertOperator ${node.getKindName()} not implemented`);
     }
@@ -192,11 +226,10 @@ function convertNEF(name: string, operations: Array<Operation>): [sc.NEF, sc.Con
     const methods = new Array<sc.ContractMethodDefinition>();
     let fullScript = new Uint8Array(0);
     for (const op of operations) {
-        if (op.node.hasExportKeyword()) {
-            methods.push(convertManifestMethod(op, fullScript.length));
-        }
+        var method = op.toMethodDef(fullScript.length);
+        if (method) { methods.push(method); }
 
-        const buffer = Buffer.concat([fullScript, op.toArray()]);
+        const buffer = Buffer.concat([fullScript, op.toScript()]);
         fullScript = new Uint8Array(buffer);
     }
 
@@ -221,12 +254,9 @@ function convertNEF(name: string, operations: Array<Operation>): [sc.NEF, sc.Con
 
 
 const contractSource = /*javascript*/`
-// import * as neo from '@neo-project/neo-contract-framework';
-// export function helloWorld(): string { return "Hello, World!"; }
-export function sayHello(name: string): string { 
-    const foo = "bar";
-    return "Hello, " + name + "!";
-}
+import * as neo from '@neo-project/neo-contract-framework';
+export function helloWorld(): string { return "Hello, World!"; }
+export function sayHello(name: string): string { return "Hello, " + name + "!"; }
 `;
 
 
@@ -250,17 +280,22 @@ project.createSourceFile("contract.ts", contractSource);
 //     }
 // };
 
-var table = buildSymbolTable(project);
-console.log();
+// printProject(project);
+
+const table = buildSymbolTable(project);
+const operations = convertProject(project, table);
+const [nef, manifest] = convertNEF("test-contract", operations);
+const json = { nef: nef.toJson(), manifest: manifest.toJson() }
+console.log(JSON.stringify(json, null, 4));
+
+
+
 // const functions = convertProject(project);
 // const operations = new Array<Operation>();
 // for (const f of functions) {
 //     convertFunctionDecl(f, operations);
 // }
 
-// const [nef, manifest] = convertNEF("test-contract", operations);
-// const json = { nef: nef.toJson(), manifest: manifest.toJson() }
-// console.log(JSON.stringify(json, null, 4));
 
 
 
