@@ -10,6 +10,7 @@
   "author": "neo-project",
   "license": "MIT",
   "dependencies": {
+    "@cityofzion/neon-core": "^5.0.0",
     "ts-morph": "^15.1.0"
   }
 }
