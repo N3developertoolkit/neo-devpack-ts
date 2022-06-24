@@ -10,9 +10,9 @@ function Parse-Result($json) {
 }
 
 $r = neoxp contract run test-contract helloWorld --results --json
-echo "contract run test-contract helloWorld Result:   $(Parse-Result $r)"
+echo "`"contract run test-contract helloWorld`" Result:   $(Parse-Result $r)"
 if ($showJson) { echo $r }
 
 $r = neoxp contract run test-contract sayHello Neo --results --json
-echo "contract run test-contract sayHello Neo Result: $(Parse-Result $r)"
+echo "`"contract run test-contract sayHello`" Neo Result: $(Parse-Result $r)"
 if ($showJson) { echo $r }

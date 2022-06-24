@@ -1,8 +1,9 @@
 import { BinaryExpression, Block, Expression, FunctionDeclaration, Identifier, Node, ParameterDeclaration, Project, ReturnStatement, Statement, StringLiteral, SyntaxKind, ts, Type } from "ts-morph";
 import { sc } from "@cityofzion/neon-core";
-import { GlobalScope, isSlotSymbol, ParameterSymbol, Scope, ScopeBase, SlotType } from "./common";
+import { GlobalScope, isSlotSymbol, Scope, SlotSymbol, SlotType, Symbol, SymbolMap } from "./common";
 import * as fs from 'fs';
 import * as path from 'path';
+import { from } from "linq-to-typescript"
 
 function printNode(node: Node, indent: number = 0) {
     console.log(`${new Array(indent + 1).join(' ')}${node.getKindName()}`);
@@ -47,22 +48,25 @@ class ProjectContext {
     readonly functions = new Array<FunctionDeclarationContext>();
 }
 
-class FunctionDeclarationContext extends ScopeBase {
+class FunctionDeclarationContext implements Scope {
+
+    readonly symbols = new SymbolMap();
     readonly instructions = new Array<Instruction>();
 
     get parameterCount() { return this.node.getParameters().length; }
     get scopeName() { return this.node.getNameOrThrow(); }
 
     constructor(
-        readonly node: FunctionDeclaration, 
+        readonly node: FunctionDeclaration,
         readonly parentScope: Scope
     ) {
-        super();
-
         node.getParameters()
-            .map((p,i) => new ParameterSymbol(p, i, this))
+            .map((p, i) => new SlotSymbol(p, i, SlotType.Argument, this))
             .forEach(p => this.define(p));
     }
+    define<T extends Symbol>(symbol: T): void { this.symbols.set(symbol); }
+    getSymbols(): IterableIterator<Symbol> { return this.symbols.getSymbols(); }
+    resolve(name: string): Symbol | undefined {  return this.symbols.resolve(name, this.parentScope); }
 
     toScript(): Uint8Array {
         var buffer = Buffer.concat(this.instructions.map(i => i.toArray()));
@@ -73,11 +77,11 @@ class FunctionDeclarationContext extends ScopeBase {
 
         return this.node.hasExportKeyword()
             ? new sc.ContractMethodDefinition({
-                    name: this.node.getNameOrThrow(),
-                    offset,
-                    parameters: this.node.getParameters().map(convertParam),
-                    returnType: convertType(this.node.getReturnType())
-                })
+                name: this.node.getNameOrThrow(),
+                offset,
+                parameters: this.node.getParameters().map(convertParam),
+                returnType: convertType(this.node.getReturnType())
+            })
             : undefined;
 
         function convertParam(p: ParameterDeclaration): sc.ContractParameterDefinition {
@@ -117,11 +121,16 @@ function convertProject(project: Project) {
     return context;
 }
 
-function convertFunction(node: FunctionDeclaration, scope: Scope):FunctionDeclarationContext {
+function convertFunction(node: FunctionDeclaration, scope: Scope): FunctionDeclarationContext {
     var ctx = new FunctionDeclarationContext(node, scope);
     const instructions = convertBody(node.getBodyOrThrow(), ctx);
-    if (ctx.parameterCount > 0) {
-        instructions.unshift(new Instruction(sc.OpCode.INITSLOT, node, [0, ctx.parameterCount]));
+
+    const argCount = node.getParameters().length;
+    const localCount = from(ctx.getSymbols())
+        .where(s => isSlotSymbol(s) && s.type === SlotType.Local)
+        .count();
+    if (localCount > 0 || argCount > 0) {
+        instructions.unshift(new Instruction(sc.OpCode.INITSLOT, node, [localCount, argCount]));
     }
     ctx.instructions.push(...instructions);
     return ctx;
@@ -197,7 +206,7 @@ function convertExpression(node: Expression | undefined, scope: Scope): Instruct
 function convertBinaryOperator(node: BinaryExpression) {
     const op = node.getOperatorToken();
     switch (op.getKind()) {
-        case SyntaxKind.PlusToken:{
+        case SyntaxKind.PlusToken: {
             const left = node.getLeft();
             const right = node.getRight();
             if (isStringType(left) && isStringType(right)) {
@@ -272,24 +281,23 @@ export function helloWorld(): string { return "Hello, World!"; }
 export function sayHello(name: string): string { return "Hello, " + name + "!"; }
 `;
 
-
 const project = new Project();
 project.createSourceFile("contract.ts", contractSource);
 
-console.time('getPreEmitDiagnostics');
+// console.time('getPreEmitDiagnostics');
 var diagnostics = project.getPreEmitDiagnostics();
-console.timeEnd('getPreEmitDiagnostics')
+// console.timeEnd('getPreEmitDiagnostics')
 
 if (diagnostics.length > 0) {
     diagnostics.forEach(d => console.log(d.getMessageText()));
     process.exit(-1);
-} 
+}
 
 const context = convertProject(project);
 
 const [nef, manifest] = convertNEF("test-contract", context);
-const base64script = Buffer.from(nef.script, 'hex').toString('base64');
-const json = { nef: nef.toJson(), manifest: manifest.toJson(), base64script }
+const script = Buffer.from(nef.script, 'hex').toString('base64');
+const json = { nef: nef.toJson(), manifest: manifest.toJson(), script }
 console.log(JSON.stringify(json, null, 4));
 
 const rootPath = path.join(path.dirname(__dirname), "test");

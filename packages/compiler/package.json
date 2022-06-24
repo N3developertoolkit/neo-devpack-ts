@@ -11,6 +11,7 @@
   "license": "MIT",
   "dependencies": {
     "@cityofzion/neon-core": "^5.0.0",
+    "linq-to-typescript": "^10.0.0",
     "ts-morph": "^15.1.0"
   }
 }
