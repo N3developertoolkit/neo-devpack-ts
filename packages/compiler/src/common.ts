@@ -1,49 +1,62 @@
-import * as m from "ts-morph";
 
-export interface Scope {
-    readonly parentScope: Scope | undefined;
-    define<T extends Symbol>(symbol: T): void;
-    getSymbols(): IterableIterator<Symbol>;
-    resolve(name: string): Symbol | undefined;
+export enum PrimitiveType {
+    Boolean,
+    Integer,
+    ByteArray,
+    String,
+    Hash160,
+    Hash256,
+    PublicKey,
+    Signature,
+    Address,
 }
 
-export interface Symbol {
-    readonly name: string;
-    readonly scope: Scope;
+export enum ContractTypeKind {
+    Unspecified,
+    Primitive,
+    Struct,
+    Array,
+    Map,
+    Interop
 }
 
-export enum SlotType { Argument, Local, Static }
-
-export class SlotSymbol implements Symbol {
-    constructor(
-        readonly node: m.Node & { getName(): string; },
-        readonly index: number,
-        readonly type: SlotType,
-        readonly scope: Scope
-    ) { }
-
-    get name() { return this.node.getName(); }
+export interface ContractType {
+    readonly kind: ContractTypeKind
 }
 
-export function isSlotSymbol(symbol: Symbol): symbol is SlotSymbol {
-    return symbol instanceof SlotSymbol;
+export interface UnspecifiedContractType extends ContractType {
+    kind: ContractTypeKind.Unspecified,
 }
 
-export class SymbolMap {
-    private readonly _symbols = new Map<string, Symbol>();
-    getSymbols() { return this._symbols.values(); }
-    set(symbol: Symbol) { this._symbols.set(symbol.name, symbol) }
-    resolve(name: string, parentScope?: Scope) { 
-        var symbol = this._symbols.get(name);
-        return symbol ? symbol : parentScope?.resolve(name);
-    }
+export interface PrimitiveContractType extends ContractType {
+    kind: ContractTypeKind.Primitive,
+    readonly type: PrimitiveType
 }
 
-export class GlobalScope implements Scope {
-    private symbols = new SymbolMap();
+export function isPrimitive(type: ContractType): type is PrimitiveContractType {
+    return type.kind === ContractTypeKind.Primitive;
+}
 
-    get parentScope() { return undefined; }
-    define<T extends Symbol>(symbol: T): void { this.symbols.set(symbol); }
-    getSymbols(): IterableIterator<Symbol> { return this.symbols.getSymbols(); }
-    resolve(name: string): Symbol | undefined { return this.symbols.resolve(name); }
+export interface StructContractType extends ContractType {
+    kind: ContractTypeKind.Struct,
+    readonly name: string,
+    readonly fields: ReadonlyArray<{
+        readonly name: string, 
+        readonly type: ContractType}>,
+}
+
+export interface ArrayContractType extends ContractType {
+    kind: ContractTypeKind.Array,
+    readonly type: ContractType,
+}
+
+export interface MapContractType extends ContractType {
+    kind: ContractTypeKind.Map,
+    readonly keyType: PrimitiveType,
+    readonly valueType: ContractType,
+}
+
+export interface InteropContractType extends ContractType {
+    kind: ContractTypeKind.Interop,
+    readonly type: string
 }
