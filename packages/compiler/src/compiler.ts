@@ -31,12 +31,12 @@ class Instruction {
 
 class OperationContext {
     readonly instructions = new Array<Instruction>();
-    constructor(readonly node: FunctionDeclaration) {}
+    constructor(readonly node: FunctionDeclaration) { }
 }
 
 class ProjectContext {
     readonly operations = new Array<OperationContext>();
-    constructor(readonly project: Project) {}
+    constructor(readonly project: Project) { }
 }
 
 function convertProject(project: Project) {
@@ -178,58 +178,13 @@ function convertBuffer(buffer: Buffer) {
 }
 
 function convertType(type: Type): ContractType {
-    
+
     if (type.isString()) return {
         kind: ContractTypeKind.Primitive,
         type: PrimitiveType.String,
     } as PrimitiveContractType;
 
     throw new Error(`${type.getText()} not implemented`);
-}
-
-function toScript(instructions: Instruction[]): Uint8Array {
-    var buffer = Buffer.concat(instructions.map(i => i.toArray()));
-    return new Uint8Array(buffer);
-}
-
-function toMethodDef(node: FunctionDeclaration, offset: number): sc.ContractMethodDefinition | undefined {
-    
-    if (!node.hasExportKeyword()) return undefined;
-    return new sc.ContractMethodDefinition({
-            name: node.getNameOrThrow(),
-            offset,
-            parameters: node.getParameters().map(p => ({
-                name: p.getName(),
-                type: toContractParamType(convertType(p.getType()))
-            })),
-            returnType: toContractParamType(convertType(node.getReturnType()))
-        });
-
-    function toContractParamType(type: ContractType): sc.ContractParamType {
-        switch (type.kind) {
-            case ContractTypeKind.Array: return sc.ContractParamType.Array;
-            case ContractTypeKind.Interop: return sc.ContractParamType.InteropInterface;
-            case ContractTypeKind.Map: return sc.ContractParamType.Map;
-            case ContractTypeKind.Struct: return sc.ContractParamType.Array;
-            case ContractTypeKind.Unspecified: return sc.ContractParamType.Any;
-            case ContractTypeKind.Primitive: {
-                const primitive = type as PrimitiveContractType;
-                switch (primitive.type) {
-                    case PrimitiveType.Address: return sc.ContractParamType.Hash160;
-                    case PrimitiveType.Boolean: return sc.ContractParamType.Boolean;
-                    case PrimitiveType.ByteArray: return sc.ContractParamType.ByteArray;
-                    case PrimitiveType.Hash160: return sc.ContractParamType.Hash160;
-                    case PrimitiveType.Hash256: return sc.ContractParamType.Hash256;
-                    case PrimitiveType.Integer: return sc.ContractParamType.Integer;
-                    case PrimitiveType.PublicKey: return sc.ContractParamType.PublicKey;
-                    case PrimitiveType.Signature: return sc.ContractParamType.Signature;
-                    case PrimitiveType.String: return sc.ContractParamType.String;
-                    default: throw new Error(`Unrecognized PrimitiveType ${primitive.type}`);
-                }
-            }
-            default: throw new Error(`Unrecognized ContractTypeKind ${type.kind}`);
-        }
-    }
 }
 
 function convertNEF(name: string, context: ProjectContext): [sc.NEF, sc.ContractManifest] {
@@ -252,6 +207,51 @@ function convertNEF(name: string, context: ProjectContext): [sc.NEF, sc.Contract
     })
 
     return [nef, manifest];
+
+    function toScript(instructions: Instruction[]): Uint8Array {
+        var buffer = Buffer.concat(instructions.map(i => i.toArray()));
+        return new Uint8Array(buffer);
+    }
+
+    function toMethodDef(node: FunctionDeclaration, offset: number): sc.ContractMethodDefinition | undefined {
+
+        if (!node.hasExportKeyword()) return undefined;
+        return new sc.ContractMethodDefinition({
+            name: node.getNameOrThrow(),
+            offset,
+            parameters: node.getParameters().map(p => ({
+                name: p.getName(),
+                type: toContractParamType(convertType(p.getType()))
+            })),
+            returnType: toContractParamType(convertType(node.getReturnType()))
+        });
+
+        function toContractParamType(type: ContractType): sc.ContractParamType {
+            switch (type.kind) {
+                case ContractTypeKind.Array: return sc.ContractParamType.Array;
+                case ContractTypeKind.Interop: return sc.ContractParamType.InteropInterface;
+                case ContractTypeKind.Map: return sc.ContractParamType.Map;
+                case ContractTypeKind.Struct: return sc.ContractParamType.Array;
+                case ContractTypeKind.Unspecified: return sc.ContractParamType.Any;
+                case ContractTypeKind.Primitive: {
+                    const primitive = type as PrimitiveContractType;
+                    switch (primitive.type) {
+                        case PrimitiveType.Address: return sc.ContractParamType.Hash160;
+                        case PrimitiveType.Boolean: return sc.ContractParamType.Boolean;
+                        case PrimitiveType.ByteArray: return sc.ContractParamType.ByteArray;
+                        case PrimitiveType.Hash160: return sc.ContractParamType.Hash160;
+                        case PrimitiveType.Hash256: return sc.ContractParamType.Hash256;
+                        case PrimitiveType.Integer: return sc.ContractParamType.Integer;
+                        case PrimitiveType.PublicKey: return sc.ContractParamType.PublicKey;
+                        case PrimitiveType.Signature: return sc.ContractParamType.Signature;
+                        case PrimitiveType.String: return sc.ContractParamType.String;
+                        default: throw new Error(`Unrecognized PrimitiveType ${primitive.type}`);
+                    }
+                }
+                default: throw new Error(`Unrecognized ContractTypeKind ${type.kind}`);
+            }
+        }
+    }
 }
 
 
@@ -286,10 +286,10 @@ export function helloWorld(): string { return "Hello, World!"; }
 export function sayHello(name: string): string { return "Hello, " + name + "!"; }
 `;
 
-const project = new Project({ 
-    compilerOptions: { 
-        target: ts.ScriptTarget.ES5 
-    } 
+const project = new Project({
+    compilerOptions: {
+        target: ts.ScriptTarget.ES5
+    }
 });
 project.createSourceFile("contract.ts", contractSource);
 
@@ -305,16 +305,16 @@ if (diagnostics.length > 0) {
 const prj = convertProject(project);
 dumpProject(prj);
 
-const [nef, manifest] = convertNEF("test-contract", prj);
-const script = Buffer.from(nef.script, 'hex').toString('base64');
-const json = { nef: nef.toJson(), manifest: manifest.toJson(), script }
-console.log(JSON.stringify(json, null, 4));
+// const [nef, manifest] = convertNEF("test-contract", prj);
+// const script = Buffer.from(nef.script, 'hex').toString('base64');
+// const json = { nef: nef.toJson(), manifest: manifest.toJson(), script }
+// console.log(JSON.stringify(json, null, 4));
 
-const rootPath = path.join(path.dirname(__dirname), "test");
-if (!fs.existsSync(rootPath)) { fs.mkdirSync(rootPath); }
-const nefPath = path.join(rootPath, "contract.nef");
-const manifestPath = path.join(rootPath, "contract.manifest.json");
+// const rootPath = path.join(path.dirname(__dirname), "test");
+// if (!fs.existsSync(rootPath)) { fs.mkdirSync(rootPath); }
+// const nefPath = path.join(rootPath, "contract.nef");
+// const manifestPath = path.join(rootPath, "contract.manifest.json");
 
-fs.writeFileSync(nefPath, Buffer.from(nef.serialize(), 'hex'));
-fs.writeFileSync(manifestPath, JSON.stringify(manifest.toJson(), null, 4));
-console.log(`Contract NEF and Manifest written to ${rootPath}`);
+// fs.writeFileSync(nefPath, Buffer.from(nef.serialize(), 'hex'));
+// fs.writeFileSync(manifestPath, JSON.stringify(manifest.toJson(), null, 4));
+// console.log(`Contract NEF and Manifest written to ${rootPath}`);
