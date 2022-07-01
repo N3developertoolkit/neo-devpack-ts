@@ -1,4 +1,15 @@
 import { sc } from "@cityofzion/neon-core";
+import { FunctionDeclaration, Project } from "ts-morph";
+
+export class ProjectContext {
+    readonly operations = new Array<OperationContext>();
+    constructor(readonly project: Project) { }
+}
+
+export class OperationContext {
+    readonly instructions = new Array<Instruction>();
+    constructor(readonly node: FunctionDeclaration) { }
+}
 
 export class Instruction {
     readonly operand?: Uint8Array;
