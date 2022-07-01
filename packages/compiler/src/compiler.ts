@@ -1,33 +1,10 @@
 import { Node, FunctionDeclaration, Project, SyntaxKind, BodyableNode, Statement, Expression, Identifier, BinaryExpression, ts, ForEachDescendantTraversalControl, ParameterDeclaration, Type } from "ts-morph";
 import { sc } from "@cityofzion/neon-core";
-import { ContractType, ContractTypeKind, isPrimitive, PrimitiveContractType, PrimitiveType } from "./common";
+import { ContractType, ContractTypeKind, isPrimitive, PrimitiveContractType, PrimitiveType } from "./contractType";
 import path from "path";
 import fs from 'fs';
-
-class Instruction {
-    readonly operand?: Uint8Array;
-    get opCodeName() { return sc.OpCode[this.opCode]; }
-
-    constructor(
-        readonly opCode: sc.OpCode,
-        operand?: Uint8Array | Iterable<number>,
-    ) {
-        // TODO: ensure operand size matches expected size for opCode 
-        this.operand = operand
-            ? operand instanceof Uint8Array
-                ? operand
-                : Uint8Array.from(operand)
-            : undefined;
-    }
-
-    toArray(): Uint8Array {
-        const length = this.operand ? this.operand.length + 1 : 1;
-        const array = new Uint8Array(length);
-        array[0] = this.opCode;
-        if (this.operand) { array.set(this.operand, 1); }
-        return array;
-    }
-}
+import { Instruction } from "./Instruction";
+import { convertBinaryOperator, convertBuffer } from "./convert";
 
 class OperationContext {
     readonly instructions = new Array<Instruction>();
@@ -143,40 +120,6 @@ function convertIdentifier(node: Identifier, ctx: OperationContext): Instruction
     throw new Error(`no definition found for ${node.getText()}`);
 }
 
-function convertBinaryOperator(node: BinaryExpression) {
-    const op = node.getOperatorToken();
-    switch (op.getKind()) {
-        case SyntaxKind.PlusToken: {
-            const left = node.getLeft();
-            const right = node.getRight();
-            if (isStringType(left) && isStringType(right)) {
-                return [new Instruction(sc.OpCode.CAT)]
-            } else {
-                throw new Error(`convertBinaryOperator.PlusToken not implemented for ${left.getType().getText()} and ${right.getType().getText()}`);
-            }
-        }
-        default:
-            throw new Error(`convertOperator ${op.getKindName()} not implemented`);
-    }
-
-    function isStringType(exp: Expression) {
-        const flags = exp.getType().getFlags();
-        return (flags & ts.TypeFlags.String) || (flags & ts.TypeFlags.StringLiteral);
-    }
-}
-
-function convertBuffer(buffer: Buffer) {
-
-    if (buffer.length <= 255) {
-        const operand = new Uint8Array(buffer.length + 1);
-        operand[0] = buffer.length;
-        buffer.copy(operand, 1);
-        return [new Instruction(sc.OpCode.PUSHDATA1, operand)];
-    }
-
-    throw new Error(`convertBuffer for length ${buffer.length} not implemented`);
-}
-
 function convertType(type: Type): ContractType {
 
     if (type.isString()) return {
@@ -186,6 +129,7 @@ function convertType(type: Type): ContractType {
 
     throw new Error(`${type.getText()} not implemented`);
 }
+
 
 function convertNEF(name: string, context: ProjectContext): [sc.NEF, sc.ContractManifest] {
     let fullScript = new Uint8Array(0);

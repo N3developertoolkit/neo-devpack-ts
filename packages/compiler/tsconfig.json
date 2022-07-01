@@ -5,5 +5,10 @@
     },
     "include": [
         "./src"
+, "test/convertBuffer.spec.ts"    ],
+    "exclude": [
+        "./src/**/*.spec.ts",
+        "./test",
+        "./lib"
     ]
 }
