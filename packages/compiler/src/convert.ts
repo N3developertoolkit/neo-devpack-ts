@@ -120,17 +120,21 @@ function convertInt(i: BigInt): Instruction {
 
     throw new Error(`bigints with array length > 2 not implemented`);
 
+    // convert JS BigInt to C# BigInt byte array encoding
     function toByteArray(i: BigInt) {
         if (i < 0n) {
             throw new Error("convertInt.toByteArray negative values not implemented")
         }
-    
-        const buffer = Uint8Array.from(Buffer.from(i.toString(16), 'hex'));
-        buffer.reverse();
-        if (buffer[buffer.length - 1] & 0x80) {
-            return new Uint8Array([...buffer, 0]);
+
+        let str = i.toString(16);
+        if (str.length % 2 == 1) { str = '0' + str }
+        const buffer = Buffer.from(str, 'hex');
+        const array = new Uint8Array(buffer);
+        array.reverse();
+        if (array[array.length - 1] & 0x80) {
+            return new Uint8Array([...array, 0]);
         } else {
-            return buffer;
+            return array;
         }
     }
 }
