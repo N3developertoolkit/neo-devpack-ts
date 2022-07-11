@@ -23,6 +23,10 @@ function dumpProject(prj: ProjectContext) {
 
 const contractSource = /*javascript*/`
 import * as neo from '@neo-project/neo-contract-framework';
+
+export function decimals() { return 8; }
+export function symbol() { return "APOC"; }
+
 export function helloWorld(): string { return "Hello, World!"; }
 export function sayHello(name: string): string { return "Hello, " + name + "!"; }
 `;

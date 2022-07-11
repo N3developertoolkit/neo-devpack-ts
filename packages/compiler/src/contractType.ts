@@ -1,4 +1,7 @@
 
+// Typescript implementation of ContractType from Debug Info v2 (https://github.com/neo-project/proposals/pull/151)
+// Port of C# ContractType implementation from https://github.com/ngdenterprise/neo-blockchaintoolkit-library/blob/develop/src/bctklib/models/ContractTypes.cs
+
 export enum PrimitiveType {
     Boolean,
     Integer,

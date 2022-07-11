@@ -3,7 +3,7 @@ import * as m from "ts-morph";
 import { ContractType, ContractTypeKind, PrimitiveType, PrimitiveContractType } from "./contractType";
 import { ProjectContext, OperationContext, Instruction } from "./models";
 
-export function convertType(type: m.Type): ContractType {
+export function convertTypeScriptType(type: m.Type): ContractType {
 
     if (type.isString()) return {
         kind: ContractTypeKind.Primitive,
@@ -13,7 +13,7 @@ export function convertType(type: m.Type): ContractType {
     throw new Error(`${type.getText()} not implemented`);
 }
 
-export function toContractParamType(type: ContractType): sc.ContractParamType {
+export function convertContractType(type: ContractType): sc.ContractParamType {
     switch (type.kind) {
         case ContractTypeKind.Array: return sc.ContractParamType.Array;
         case ContractTypeKind.Interop: return sc.ContractParamType.InteropInterface;
@@ -107,14 +107,47 @@ function convertStatement(node: m.Statement, ctx: OperationContext): Instruction
     throw new Error(`convertStatement ${node.getKindName()} not implemented`);
 }
 
+function convertInt(i: BigInt): Instruction {
+    if (i === -1n) { return new Instruction(sc.OpCode.PUSHM1) }
+    if (i >= 0n && i <= 16n) {
+        const opCode: sc.OpCode = sc.OpCode.PUSH0 + Number(i);
+        return new Instruction(opCode);
+    }
+    var array = toByteArray(i);
+    if (array.length == 0) { throw new Error("Invalid BigInt byte array"); }
+    if (array.length == 1) { return new Instruction(sc.OpCode.PUSHINT8, array) }
+    if (array.length == 2) { return new Instruction(sc.OpCode.PUSHINT16, array) }
+
+    throw new Error(`bigints with array length > 2 not implemented`);
+
+    function toByteArray(i: BigInt) {
+        if (i < 0n) {
+            throw new Error("convertInt.toByteArray negative values not implemented")
+        }
+    
+        const buffer = Uint8Array.from(Buffer.from(i.toString(16), 'hex'));
+        buffer.reverse();
+        if (buffer[buffer.length - 1] & 0x80) {
+            return new Uint8Array([...buffer, 0]);
+        } else {
+            return buffer;
+        }
+    }
+}
+
 function convertExpression(node: m.Expression | undefined, ctx: OperationContext): Instruction[] {
     if (!node) return [];
 
     switch (node.getKind()) {
-        case m.SyntaxKind.StringLiteral:
+        case m.SyntaxKind.StringLiteral: {
             const literal = node.asKindOrThrow(m.SyntaxKind.StringLiteral).getLiteralValue();
             var buffer = Buffer.from(literal, 'utf-8');
             return convertBuffer(buffer);
+        }
+        case m.SyntaxKind.NumericLiteral: {
+            const literal = node.asKindOrThrow(m.SyntaxKind.NumericLiteral).getLiteralText();
+            return [convertInt(BigInt(literal))]
+        }
         case m.SyntaxKind.BinaryExpression:
             const bin = node.asKindOrThrow(m.SyntaxKind.BinaryExpression);
             const left = convertExpression(bin.getLeft(), ctx);
@@ -177,9 +210,9 @@ function convertNEF(name: string, context: ProjectContext): [sc.NEF, sc.Contract
             offset,
             parameters: node.getParameters().map(p => ({
                 name: p.getName(),
-                type: toContractParamType(convertType(p.getType()))
+                type: convertContractType(convertTypeScriptType(p.getType()))
             })),
-            returnType: toContractParamType(convertType(node.getReturnType()))
+            returnType: convertContractType(convertTypeScriptType(node.getReturnType()))
         });
     }
 }

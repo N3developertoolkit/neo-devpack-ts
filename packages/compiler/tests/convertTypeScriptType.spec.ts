@@ -3,13 +3,13 @@ import { expect } from 'chai';
 import 'mocha';
 import { SyntaxKind } from 'ts-morph';
 import { ContractTypeKind, PrimitiveContractType, PrimitiveType } from '../src/contractType';
-import { convertType } from '../src/convert';
-import { fakeCompileNode } from './fakeCompileNode';
+import { convertTypeScriptType } from '../src/convert';
+import { testCompileNode } from './testCompileNode';
 
-describe('convertType', () => {
+describe('convertTypeScriptType', () => {
     it('string to PrimitiveContractType.String', () => {
-        const decl = fakeCompileNode("const value: string = ''", SyntaxKind.VariableDeclaration);
-        const type = convertType(decl.getType());
+        const decl = testCompileNode("const value: string = ''", SyntaxKind.VariableDeclaration);
+        const type = convertTypeScriptType(decl.getType());
         expect(type.kind).to.eq(ContractTypeKind.Primitive)
         expect((type as PrimitiveContractType).type).eq(PrimitiveType.String)
     });
