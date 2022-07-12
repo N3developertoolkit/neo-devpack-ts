@@ -1,54 +1,39 @@
 import { sc } from "@cityofzion/neon-core";
 import * as m from "ts-morph";
-import { ContractType, ContractTypeKind, PrimitiveType, PrimitiveContractType } from "./contractType";
+import { ContractType, ContractTypeKind, PrimitiveType, PrimitiveContractType, isPrimitive } from "./contractType";
 import { ProjectContext, OperationContext, Instruction } from "./models";
 
-export function convertTypeScriptType(type: m.Type): ContractType {
+export function tsTypeToContractType(type: m.Type): ContractType {
 
-    if (type.isString()) return {
+    const flags = type.getFlags();
+    if (flags & m.ts.TypeFlags.StringLike) return {
         kind: ContractTypeKind.Primitive,
         type: PrimitiveType.String,
     } as PrimitiveContractType;
 
-    throw new Error(`${type.getText()} not implemented`);
-}
+    if (flags & m.ts.TypeFlags.BigIntLike) return {
+        kind: ContractTypeKind.Primitive,
+        type: PrimitiveType.Integer
+    } as PrimitiveContractType;
 
-export function convertContractType(type: ContractType): sc.ContractParamType {
-    switch (type.kind) {
-        case ContractTypeKind.Array: return sc.ContractParamType.Array;
-        case ContractTypeKind.Interop: return sc.ContractParamType.InteropInterface;
-        case ContractTypeKind.Map: return sc.ContractParamType.Map;
-        case ContractTypeKind.Struct: return sc.ContractParamType.Array;
-        case ContractTypeKind.Unspecified: return sc.ContractParamType.Any;
-        case ContractTypeKind.Primitive: {
-            const primitive = type as PrimitiveContractType;
-            switch (primitive.type) {
-                case PrimitiveType.Address: return sc.ContractParamType.Hash160;
-                case PrimitiveType.Boolean: return sc.ContractParamType.Boolean;
-                case PrimitiveType.ByteArray: return sc.ContractParamType.ByteArray;
-                case PrimitiveType.Hash160: return sc.ContractParamType.Hash160;
-                case PrimitiveType.Hash256: return sc.ContractParamType.Hash256;
-                case PrimitiveType.Integer: return sc.ContractParamType.Integer;
-                case PrimitiveType.PublicKey: return sc.ContractParamType.PublicKey;
-                case PrimitiveType.Signature: return sc.ContractParamType.Signature;
-                case PrimitiveType.String: return sc.ContractParamType.String;
-                default: throw new Error(`Unrecognized PrimitiveType ${primitive.type}`);
-            }
-        }
-        default: throw new Error(`Unrecognized ContractTypeKind ${type.kind}`);
-    }
+    if (flags & m.ts.TypeFlags.BooleanLike) return {
+        kind: ContractTypeKind.Primitive,
+        type: PrimitiveType.Boolean
+    } as PrimitiveContractType;
+
+    throw new Error(`convertTypeScriptType ${type.getText()} not implemented`);
 }
 
 export function convertProject(project: m.Project) {
     const ctx = new ProjectContext(project);
     for (const source of project.getSourceFiles()) {
         if (source.isDeclarationFile()) continue;
-        source.forEachChild(child => convertProjectNode(child, ctx));
+        source.forEachChild(child => convertNode(child, ctx));
     }
     return ctx;
 }
 
-export function convertProjectNode(node: m.Node, ctx: ProjectContext) {
+export function convertNode(node: m.Node, ctx: ProjectContext) {
 
     if (m.Node.isImportDeclaration(node)) {
         var module = node.getModuleSpecifierValue();
@@ -59,6 +44,7 @@ export function convertProjectNode(node: m.Node, ctx: ProjectContext) {
         const op = convertFunction(node);
         ctx.operations.push(op);
     } else if (node.getKind() == m.SyntaxKind.EndOfFileToken) {
+        // ignore EOF token
     } else {
         throw new Error(`${node.getKindName()} project node not implemented`)
     }
@@ -87,18 +73,16 @@ export function convertBody(node: m.BodyableNode, ctx: OperationContext): Instru
 function convertStatement(node: m.Statement, ctx: OperationContext): Instruction[] {
     switch (node.getKind()) {
         case m.SyntaxKind.Block: {
-            const ins = node.asKindOrThrow(m.SyntaxKind.Block)
+            const stmt = node.asKindOrThrow(m.SyntaxKind.Block);
+            const ins = stmt
                 .getStatements()
                 .flatMap(s => convertStatement(s, ctx));
-            // const openBrace = node.getFirstChildByKind(SyntaxKind.OpenBraceToken);
-            // if (openBrace) { ins.unshift(new SequencePoint(openBrace), new Instruction(sc.OpCode.NOP)); }
-            // const closeBrace = node.getLastChildByKind(SyntaxKind.CloseBraceToken);
-            // if (closeBrace) { ins.push(new SequencePoint(closeBrace), new Instruction(sc.OpCode.NOP)) ; }
             return ins;
         }
         case m.SyntaxKind.ReturnStatement: {
-            const exp = node.asKindOrThrow(m.SyntaxKind.ReturnStatement).getExpression();
-            const ins = convertExpression(exp, ctx);
+            const stmt = node.asKindOrThrow(m.SyntaxKind.ReturnStatement);
+            const expr = stmt.getExpression();
+            const ins = convertExpression(expr, ctx);
             ins.push(new Instruction(sc.OpCode.RET));
             return ins;
         }
@@ -107,72 +91,84 @@ function convertStatement(node: m.Statement, ctx: OperationContext): Instruction
     throw new Error(`convertStatement ${node.getKindName()} not implemented`);
 }
 
-function convertInt(i: BigInt): Instruction {
-    if (i === -1n) { return new Instruction(sc.OpCode.PUSHM1) }
-    if (i >= 0n && i <= 16n) {
-        const opCode: sc.OpCode = sc.OpCode.PUSH0 + Number(i);
-        return new Instruction(opCode);
-    }
-    var array = toByteArray(i);
-    if (array.length == 0) { throw new Error("Invalid BigInt byte array"); }
-    if (array.length == 1) { return new Instruction(sc.OpCode.PUSHINT8, array) }
-    if (array.length == 2) { return new Instruction(sc.OpCode.PUSHINT16, array) }
-
-    throw new Error(`bigints with array length > 2 not implemented`);
-
-    // convert JS BigInt to C# BigInt byte array encoding
-    function toByteArray(i: BigInt) {
-        if (i < 0n) {
-            throw new Error("convertInt.toByteArray negative values not implemented")
-        }
-
-        let str = i.toString(16);
-        if (str.length % 2 == 1) { str = '0' + str }
-        const buffer = Buffer.from(str, 'hex');
-        const array = new Uint8Array(buffer);
-        array.reverse();
-        if (array[array.length - 1] & 0x80) {
-            return new Uint8Array([...array, 0]);
-        } else {
-            return array;
-        }
-    }
-}
-
 function convertExpression(node: m.Expression | undefined, ctx: OperationContext): Instruction[] {
     if (!node) return [];
 
+    const nodePrint = m.printNode(node.compilerNode);
+
     switch (node.getKind()) {
+        case m.SyntaxKind.AsExpression: {
+            const expr = node.asKindOrThrow(m.SyntaxKind.AsExpression);
+            const ins = convertExpression(expr.getExpression(), ctx);
+            const type = tsTypeToContractType(expr.getType());
+            if (isPrimitive(type)) {
+                if (type.type === PrimitiveType.Integer) {
+                    ins.push(new Instruction(sc.OpCode.CONVERT, [sc.StackItemType.Integer]))
+                } else {
+                    throw new Error(`asExpression ${PrimitiveType[type.type]} primitive not implemented`)
+                }
+            } else {
+                throw new Error(`asExpression ${ContractTypeKind[type.kind]} kind not implemented`)
+            }
+            return ins;
+        }
+        case m.SyntaxKind.BinaryExpression: {
+            const expr = node.asKindOrThrow(m.SyntaxKind.BinaryExpression);
+            const left = convertExpression(expr.getLeft(), ctx);
+            const right = convertExpression(expr.getRight(), ctx);
+            const op = convertBinaryOperator(expr);
+            return [...left, ...right, ...op];
+        }
+        case m.SyntaxKind.CallExpression: {
+            const expr = node.asKindOrThrow(m.SyntaxKind.CallExpression);
+            const ins: Instruction[] = [];
+            for (const arg of expr.getArguments()) {
+                const t = m.printNode(arg.compilerNode);
+                console.log();
+            }
+            const e2 = expr.getExpression();
+            const t2 = m.printNode(e2.compilerNode);
+            convertExpression(e2, ctx);
+
+            return [];
+        }
+        case m.SyntaxKind.Identifier:
+            return convertIdentifier(node.asKindOrThrow(m.SyntaxKind.Identifier), ctx);
+        case m.SyntaxKind.NumericLiteral: {
+            const literal = node.asKindOrThrow(m.SyntaxKind.NumericLiteral).getLiteralText();
+            return [convertInt(BigInt(literal))]
+        }
+        case m.SyntaxKind.PropertyAccessExpression: {
+            const expr = node.asKindOrThrow(m.SyntaxKind.PropertyAccessExpression);
+            const e2 = expr.getExpression();
+            const t2 = m.printNode(e2.compilerNode);
+            convertExpression(e2, ctx);
+            return [];
+        }
         case m.SyntaxKind.StringLiteral: {
             const literal = node.asKindOrThrow(m.SyntaxKind.StringLiteral).getLiteralValue();
             var buffer = Buffer.from(literal, 'utf-8');
             return convertBuffer(buffer);
         }
-        case m.SyntaxKind.NumericLiteral: {
-            const literal = node.asKindOrThrow(m.SyntaxKind.NumericLiteral).getLiteralText();
-            return [convertInt(BigInt(literal))]
-        }
-        case m.SyntaxKind.BinaryExpression:
-            const bin = node.asKindOrThrow(m.SyntaxKind.BinaryExpression);
-            const left = convertExpression(bin.getLeft(), ctx);
-            const right = convertExpression(bin.getRight(), ctx);
-            const op = convertBinaryOperator(bin);
-            return [...left, ...right, ...op];
-        case m.SyntaxKind.Identifier:
-            return convertIdentifier(node.asKindOrThrow(m.SyntaxKind.Identifier), ctx);
     }
 
     throw new Error(`convertExpression ${node.getKindName()} not implemented`);
 }
 
 function convertIdentifier(node: m.Identifier, ctx: OperationContext): Instruction[] {
-    for (const def of node.getDefinitions()) {
+    const defs = node.getDefinitions();
+    for (const def of defs) {
         const defNode = def.getDeclarationNode();
         if (m.Node.isParameterDeclaration(defNode)) {
             const index = ctx.node.getParameters().findIndex(p => p === defNode);
             if (index === -1) throw new Error(`${defNode.getName()} param can't be found`);
             return [new Instruction(sc.OpCode.LDARG, [index])];
+        } else if (m.Node.isNamespaceImport(defNode)) {
+            const parent = defNode.getParent().asKindOrThrow(m.ts.SyntaxKind.ImportClause);
+            // parent.getn
+            console.log();
         }
+        
         const msg = defNode ? `${defNode.getKindName()} identifier kind not implemented` : `defNode undefined`;
         throw new Error(msg)
     }
@@ -180,47 +176,54 @@ function convertIdentifier(node: m.Identifier, ctx: OperationContext): Instructi
     throw new Error(`no definition found for ${node.getText()}`);
 }
 
-function convertNEF(name: string, context: ProjectContext): [sc.NEF, sc.ContractManifest] {
-    let fullScript = new Uint8Array(0);
-    const methods = new Array<sc.ContractMethodDefinition>();
-    for (const op of context.operations) {
-        var method = toMethodDef(op.node, fullScript.length);
-        if (method) { methods.push(method); }
-        fullScript = new Uint8Array(Buffer.concat([fullScript, toScript(op.instructions)]));
+export function convertInt(i: BigInt): Instruction {
+    if (i === -1n) { return new Instruction(sc.OpCode.PUSHM1) }
+    if (i >= 0n && i <= 16n) {
+        const opCode: sc.OpCode = sc.OpCode.PUSH0 + Number(i);
+        return new Instruction(opCode);
+    }
+    const array = toByteArray(i);
+    const opCode = getOpCode(array);
+    return new Instruction(opCode, array);
+
+    // convert JS BigInt to C# BigInt byte array encoding
+    function toByteArray(i: BigInt) {
+        if (i < 0n) { throw new Error("convertInt.toByteArray negative values not implemented") }
+
+        let str = i.toString(16);
+        if (str.length % 2 == 1) { str = '0' + str }
+        const buffer = Buffer.from(str, 'hex').reverse();
+        if (buffer.length == 0) throw new Error();
+
+        let padding = buffer[buffer.length - 1] & 0x80 ? 1 : 0;
+        const length = buffer.length + padding;
+        for (const factor of [1,2,4,8,16,32]) {
+            if (length <= factor) {
+                padding += factor - length;
+                return padding === 0
+                    ? Uint8Array.from(buffer)
+                    : Uint8Array.from([
+                        ...buffer,
+                        ...(new Array<number>(padding).fill(0))
+                    ]);
+            }
+        }
+
+        throw new Error(`${i} too big for NeoVM`);
     }
 
-    const manifest = new sc.ContractManifest({
-        name: name,
-        abi: new sc.ContractAbi({ methods })
-    });
-
-    const nef = new sc.NEF({
-        compiler: "neo-devpack-ts",
-        script: Buffer.from(fullScript).toString("hex"),
-    })
-
-    return [nef, manifest];
-
-    function toScript(instructions: Instruction[]): Uint8Array {
-        var buffer = Buffer.concat(instructions.map(i => i.toArray()));
-        return new Uint8Array(buffer);
-    }
-
-    function toMethodDef(node: m.FunctionDeclaration, offset: number): sc.ContractMethodDefinition | undefined {
-
-        if (!node.hasExportKeyword()) return undefined;
-        return new sc.ContractMethodDefinition({
-            name: node.getNameOrThrow(),
-            offset,
-            parameters: node.getParameters().map(p => ({
-                name: p.getName(),
-                type: convertContractType(convertTypeScriptType(p.getType()))
-            })),
-            returnType: convertContractType(convertTypeScriptType(node.getReturnType()))
-        });
+    function getOpCode(array: Uint8Array) {
+        switch (array.length) {
+            case 1: return sc.OpCode.PUSHINT8;
+            case 2: return sc.OpCode.PUSHINT16;
+            case 4: return sc.OpCode.PUSHINT32;
+            case 8: return sc.OpCode.PUSHINT64;
+            case 16: return sc.OpCode.PUSHINT128;
+            case 32: return sc.OpCode.PUSHINT256;
+            default: throw new Error(`Invalid integer buffer length ${array.length}`);
+        }
     }
 }
-
 
 export function convertBuffer(buffer: Buffer) {
 
@@ -256,5 +259,69 @@ export function convertBinaryOperator(node: m.BinaryExpression) {
     }
 }
 
+export function convertNEF(name: string, context: ProjectContext): [sc.NEF, sc.ContractManifest] {
+    let fullScript = new Uint8Array(0);
+    const methods = new Array<sc.ContractMethodDefinition>();
+    for (const op of context.operations) {
+        var method = toMethodDef(op.node, fullScript.length);
+        if (method) { methods.push(method); }
+        fullScript = new Uint8Array(Buffer.concat([fullScript, toScript(op.instructions)]));
+    }
 
+    const manifest = new sc.ContractManifest({
+        name: name,
+        abi: new sc.ContractAbi({ methods })
+    });
 
+    const nef = new sc.NEF({
+        compiler: "neo-devpack-ts",
+        script: Buffer.from(fullScript).toString("hex"),
+    })
+
+    return [nef, manifest];
+
+    function toScript(instructions: Instruction[]): Uint8Array {
+        var buffer = Buffer.concat(instructions.map(i => i.toArray()));
+        return new Uint8Array(buffer);
+    }
+
+    function toMethodDef(node: m.FunctionDeclaration, offset: number): sc.ContractMethodDefinition | undefined {
+
+        if (!node.hasExportKeyword()) return undefined;
+        return new sc.ContractMethodDefinition({
+            name: node.getNameOrThrow(),
+            offset,
+            parameters: node.getParameters().map(p => ({
+                name: p.getName(),
+                type: convertContractType(tsTypeToContractType(p.getType()))
+            })),
+            returnType: convertContractType(tsTypeToContractType(node.getReturnType()))
+        });
+    }
+}
+
+export function convertContractType(type: ContractType): sc.ContractParamType {
+    switch (type.kind) {
+        case ContractTypeKind.Array: return sc.ContractParamType.Array;
+        case ContractTypeKind.Interop: return sc.ContractParamType.InteropInterface;
+        case ContractTypeKind.Map: return sc.ContractParamType.Map;
+        case ContractTypeKind.Struct: return sc.ContractParamType.Array;
+        case ContractTypeKind.Unspecified: return sc.ContractParamType.Any;
+        case ContractTypeKind.Primitive: {
+            const primitive = type as PrimitiveContractType;
+            switch (primitive.type) {
+                case PrimitiveType.Address: return sc.ContractParamType.Hash160;
+                case PrimitiveType.Boolean: return sc.ContractParamType.Boolean;
+                case PrimitiveType.ByteArray: return sc.ContractParamType.ByteArray;
+                case PrimitiveType.Hash160: return sc.ContractParamType.Hash160;
+                case PrimitiveType.Hash256: return sc.ContractParamType.Hash256;
+                case PrimitiveType.Integer: return sc.ContractParamType.Integer;
+                case PrimitiveType.PublicKey: return sc.ContractParamType.PublicKey;
+                case PrimitiveType.Signature: return sc.ContractParamType.Signature;
+                case PrimitiveType.String: return sc.ContractParamType.String;
+                default: throw new Error(`Unrecognized PrimitiveType ${primitive.type}`);
+            }
+        }
+        default: throw new Error(`Unrecognized ContractTypeKind ${type.kind}`);
+    }
+}

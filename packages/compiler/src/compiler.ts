@@ -1,7 +1,7 @@
 import { Project, ts } from "ts-morph";
 import { sc } from "@cityofzion/neon-core";
 import { Instruction, OperationContext, ProjectContext } from "./models";
-import { convertProject } from "./convert";
+import { convertContractType, convertNEF, convertProject, tsTypeToContractType } from "./convert";
 
 function dumpInstruction(ins: Instruction) {
     const operand = ins.operand ? Buffer.from(ins.operand).toString('hex') : "";
@@ -10,7 +10,10 @@ function dumpInstruction(ins: Instruction) {
 
 
 function dumpOperation(op: OperationContext) {
-    console.log(op.node.getName() ?? "<unknown>");
+
+    const name = op.node.getNameOrThrow();
+    const returnType = convertContractType(tsTypeToContractType(op.node.getReturnType()))
+    console.log(`${name}(): ${sc.ContractParamType[returnType]}`);
     op.instructions.forEach(dumpInstruction);
 }
 
@@ -19,16 +22,30 @@ function dumpProject(prj: ProjectContext) {
 }
 
 
+// # Method Start DevHawk.Contracts.ApocToken.TotalSupply
+// # Code Apoc.cs line 35: "(BigInteger)Storage.Get(Storage.CurrentContext, new byte[] { Prefix_TotalSupply })"
+// 0009 PUSHDATA1 00 # as text: ""
+// 0012 CONVERT 30 # Buffer type
+// 0014 SYSCALL 9B-F6-67-CE # System.Storage.GetContext SysCall
+// 0019 SYSCALL 92-5D-E8-31 # System.Storage.Get SysCall
+// 0024 DUP
+// 0025 ISNULL
+// 0026 JMPIFNOT 04 # pos: 30 (offset: 4)
+// 0028 DROP
+// 0029 PUSH0
+// 0030 CONVERT 21 # Integer type
+// 0032 RET
+// # Method End DevHawk.Contracts.ApocToken.TotalSupply
 
 
 const contractSource = /*javascript*/`
 import * as neo from '@neo-project/neo-contract-framework';
 
-export function decimals() { return 8; }
-export function symbol() { return "APOC"; }
+// export function totalSupply() { return neo.Storage.get(neo.Storage.currentContext, [0x00]) as bigint; }
 
-export function helloWorld(): string { return "Hello, World!"; }
-export function sayHello(name: string): string { return "Hello, " + name + "!"; }
+
+// export function helloWorld(): string { return "Hello, World!"; }
+// export function sayHello(name: string): string { return "Hello, " + name + "!"; }
 `;
 
 const project = new Project({
