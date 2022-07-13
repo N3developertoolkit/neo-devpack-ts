@@ -148,7 +148,7 @@ function convertExpression(node: m.Expression | undefined, ctx: OperationContext
         case m.SyntaxKind.StringLiteral: {
             const literal = node.asKindOrThrow(m.SyntaxKind.StringLiteral).getLiteralValue();
             var buffer = Buffer.from(literal, 'utf-8');
-            return convertBuffer(buffer);
+            return [convertBuffer(buffer)];
         }
     }
 
@@ -227,14 +227,29 @@ export function convertInt(i: BigInt): Instruction {
 
 export function convertBuffer(buffer: Buffer) {
 
-    if (buffer.length <= 255) {
-        const operand = new Uint8Array(buffer.length + 1);
-        operand[0] = buffer.length;
-        buffer.copy(operand, 1);
-        return [new Instruction(sc.OpCode.PUSHDATA1, operand)];
-    }
+    const [opCode, length] = getOpCodeAndLength(buffer);
+    const operand = new Uint8Array([...length, ...buffer]);
+    return new Instruction(opCode, operand);
 
-    throw new Error(`convertBuffer for length ${buffer.length} not implemented`);
+    function getOpCodeAndLength(buffer: Buffer): [sc.OpCode, Buffer] {
+        if (buffer.length <= 255) /* byte.MaxValue */ { 
+            return [sc.OpCode.PUSHDATA1, Buffer.from([buffer.length])];
+        }
+
+        if (buffer.length <= 65535) /* ushort.MaxValue */ {
+            const length = Buffer.alloc(2);
+            length.writeUint16LE(buffer.length);
+            return [sc.OpCode.PUSHDATA2, length];
+        }
+
+        if (buffer.length <= 4294967295) /* uint.MaxValue */ {
+            const length = Buffer.alloc(4);
+            length.writeUint32LE(buffer.length);
+            return [sc.OpCode.PUSHDATA4, length];
+        }
+
+        throw new Error(`Buffer length ${buffer.length} too long`);
+    }
 }
 
 export function convertBinaryOperator(node: m.BinaryExpression) {
