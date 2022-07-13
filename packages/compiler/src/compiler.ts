@@ -21,30 +21,46 @@ function dumpProject(prj: ProjectContext) {
     prj.operations.forEach(dumpOperation);
 }
 
-
-// # Method Start DevHawk.Contracts.ApocToken.TotalSupply
-// # Code Apoc.cs line 35: "(BigInteger)Storage.Get(Storage.CurrentContext, new byte[] { Prefix_TotalSupply })"
-// 0009 PUSHDATA1 00 # as text: ""
-// 0012 CONVERT 30 # Buffer type
-// 0014 SYSCALL 9B-F6-67-CE # System.Storage.GetContext SysCall
-// 0019 SYSCALL 92-5D-E8-31 # System.Storage.Get SysCall
-// 0024 DUP
-// 0025 ISNULL
-// 0026 JMPIFNOT 04 # pos: 30 (offset: 4)
-// 0028 DROP
-// 0029 PUSH0
-// 0030 CONVERT 21 # Integer type
-// 0032 RET
-// # Method End DevHawk.Contracts.ApocToken.TotalSupply
-
+// # Method Start DevHawk.Contracts.ApocToken.GetValue
+// # Code Apoc.cs line 20: "{"
+// 00 NOP
+// # Code Apoc.cs line 21: "return (string)Storage.Get(Storage.CurrentContext, new byte[] { 0x00 });"
+// 01 PUSHDATA1 00 # as text: ""
+// 04 CONVERT 30 # Buffer type
+// 06 CALL_L 1D-00-00-00 # pos: 35 (offset: 29)
+// 11 CALL_L 12-00-00-00 # pos: 29 (offset: 18)
+// 16 CALL_L 0B-00-00-00 # pos: 27 (offset: 11)
+// 21 JMP_L 05-00-00-00 # pos: 26 (offset: 5)
+// # Code Apoc.cs line 22: "}"
+// 26 RET
+// # Method End DevHawk.Contracts.ApocToken.GetValue
+// 27 NOP
+// 28 RET
+// 29 SYSCALL 92-5D-E8-31 # System.Storage.Get SysCall
+// 34 RET
+// 35 SYSCALL 9B-F6-67-CE # System.Storage.GetContext SysCall
+// 40 RET
+// # Method Start DevHawk.Contracts.ApocToken.SetValue
+// 41 INITSLOT 00-01 # 0 local variables, 1 arguments
+// # Code Apoc.cs line 24: "{"
+// 44 NOP
+// # Code Apoc.cs line 25: "Storage.Put(Storage.CurrentContext, new byte[] { 0x00 }, value);"
+// 45 LDARG0
+// 46 PUSHDATA1 00 # as text: ""
+// 49 CONVERT 30 # Buffer type
+// 51 CALL_L F0-FF-FF-FF # pos: 35 (offset: -16)
+// 56 CALL_L 06-00-00-00 # pos: 62 (offset: 6)
+// # Code Apoc.cs line 26: "}"
+// 61 RET
+// # Method End DevHawk.Contracts.ApocToken.SetValue
+// 62 SYSCALL E6-3F-18-84 # System.Storage.Put SysCall
+// 67 RET
 
 const contractSource = /*javascript*/`
 import * as neo from '@neo-project/neo-contract-framework';
 
-export function totalSupply() { return neo.Storage.get(neo.Storage.currentContext, [0x0F]) as bigint; }
-
-// export function helloWorld(): string { return "Hello, World!"; }
-// export function sayHello(name: string): string { return "Hello, " + name + "!"; }
+export function getValue() { return neo.Storage.get(neo.Storage.currentContext, [0x00]) as string; }
+export function setValue(value: string) { neo.Storage.put(neo.Storage.currentContext, [0x00], value); }
 `;
 
 const project = new Project({
