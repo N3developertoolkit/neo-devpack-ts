@@ -41,8 +41,7 @@ function dumpProject(prj: ProjectContext) {
 const contractSource = /*javascript*/`
 import * as neo from '@neo-project/neo-contract-framework';
 
-// export function totalSupply() { return neo.Storage.get(neo.Storage.currentContext, [0x00]) as bigint; }
-
+export function totalSupply() { return neo.Storage.get(neo.Storage.currentContext, [0x0F]) as bigint; }
 
 // export function helloWorld(): string { return "Hello, World!"; }
 // export function sayHello(name: string): string { return "Hello, " + name + "!"; }

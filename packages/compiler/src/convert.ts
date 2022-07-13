@@ -1,22 +1,29 @@
 import { sc } from "@cityofzion/neon-core";
+import { num2VarInt } from "@cityofzion/neon-core/lib/u";
+import { type } from "os";
 import * as m from "ts-morph";
 import { ContractType, ContractTypeKind, PrimitiveType, PrimitiveContractType, isPrimitive } from "./contractType";
 import { ProjectContext, OperationContext, Instruction } from "./models";
 
+const checkFlags = (type: m.Type, flags: m.ts.TypeFlags) => type.getFlags() & flags;
+const isBigIntLike = (type: m.Type) => checkFlags(type, m.ts.TypeFlags.BigIntLike);
+const isBooleanLike = (type: m.Type) => checkFlags(type, m.ts.TypeFlags.BooleanLike);
+const isNumberLike = (type: m.Type) => checkFlags(type, m.ts.TypeFlags.NumberLike);
+const isStringLike = (type: m.Type) => checkFlags(type, m.ts.TypeFlags.StringLike);
+
 export function tsTypeToContractType(type: m.Type): ContractType {
 
-    const flags = type.getFlags();
-    if (flags & m.ts.TypeFlags.StringLike) return {
+    if (isStringLike(type)) return {
         kind: ContractTypeKind.Primitive,
         type: PrimitiveType.String,
     } as PrimitiveContractType;
 
-    if (flags & m.ts.TypeFlags.BigIntLike) return {
+    if (isBigIntLike(type) || isNumberLike(type)) return {
         kind: ContractTypeKind.Primitive,
         type: PrimitiveType.Integer
     } as PrimitiveContractType;
 
-    if (flags & m.ts.TypeFlags.BooleanLike) return {
+    if (isBooleanLike(type)) return {
         kind: ContractTypeKind.Primitive,
         type: PrimitiveType.Boolean
     } as PrimitiveContractType;
@@ -96,7 +103,27 @@ function convertExpression(node: m.Expression | undefined, ctx: OperationContext
 
     const nodePrint = m.printNode(node.compilerNode);
 
+    function isByteLiteral(n: m.Expression) {
+        if (m.Node.isNumericLiteral(n)) {
+            const value = n.getLiteralValue();
+            return Number.isInteger(value) && value >= 0 && value <= 255;
+        } else {
+            return false;
+        }
+    }
+
     switch (node.getKind()) {
+        case m.SyntaxKind.ArrayLiteralExpression: {
+            const expr = node.asKindOrThrow(m.SyntaxKind.ArrayLiteralExpression);
+            const elements = expr.getElements();
+            // only converting arrays of byte literals right now
+            if (elements.every(isByteLiteral)) {
+                const bytes = elements.map(e => e.asKindOrThrow(m.ts.SyntaxKind.NumericLiteral).getLiteralValue());
+                return [convertBuffer(Buffer.from(bytes)), new Instruction(sc.OpCode.CONVERT, [sc.StackItemType.Buffer])];
+
+            }
+            console.log();
+        }
         case m.SyntaxKind.AsExpression: {
             const expr = node.asKindOrThrow(m.SyntaxKind.AsExpression);
             const ins = convertExpression(expr.getExpression(), ctx);
@@ -122,15 +149,16 @@ function convertExpression(node: m.Expression | undefined, ctx: OperationContext
         case m.SyntaxKind.CallExpression: {
             const expr = node.asKindOrThrow(m.SyntaxKind.CallExpression);
             const ins: Instruction[] = [];
-            for (const arg of expr.getArguments()) {
+            for (const arg of expr.getArguments().reverse()) {
                 const t = m.printNode(arg.compilerNode);
-                console.log();
+                if (m.Node.isExpression(arg)) {
+                    ins.push(...convertExpression(arg, ctx));
+                }
             }
-            const e2 = expr.getExpression();
-            const t2 = m.printNode(e2.compilerNode);
-            convertExpression(e2, ctx);
 
-            return [];
+            const t2 = m.printNode(expr.getExpression().compilerNode);
+            ins.push(...convertExpression(expr.getExpression(), ctx));
+            return ins;
         }
         case m.SyntaxKind.Identifier:
             return convertIdentifier(node.asKindOrThrow(m.SyntaxKind.Identifier), ctx);
@@ -156,9 +184,11 @@ function convertExpression(node: m.Expression | undefined, ctx: OperationContext
 }
 
 function convertIdentifier(node: m.Identifier, ctx: OperationContext): Instruction[] {
+    const text1 = m.printNode(node.compilerNode);
     const defs = node.getDefinitions();
     for (const def of defs) {
         const defNode = def.getDeclarationNode();
+        const text = m.printNode(defNode!.compilerNode);
         if (m.Node.isParameterDeclaration(defNode)) {
             const index = ctx.node.getParameters().findIndex(p => p === defNode);
             if (index === -1) throw new Error(`${defNode.getName()} param can't be found`);
@@ -225,13 +255,13 @@ export function convertInt(i: BigInt): Instruction {
     }
 }
 
-export function convertBuffer(buffer: Buffer) {
+export function convertBuffer(buffer: ArrayLike<number> & Iterable<number>) {
 
     const [opCode, length] = getOpCodeAndLength(buffer);
     const operand = new Uint8Array([...length, ...buffer]);
     return new Instruction(opCode, operand);
 
-    function getOpCodeAndLength(buffer: Buffer): [sc.OpCode, Buffer] {
+    function getOpCodeAndLength(buffer: ArrayLike<number>): [sc.OpCode, Buffer] {
         if (buffer.length <= 255) /* byte.MaxValue */ { 
             return [sc.OpCode.PUSHDATA1, Buffer.from([buffer.length])];
         }
