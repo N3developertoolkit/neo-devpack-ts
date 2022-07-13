@@ -168,9 +168,13 @@ function convertExpression(node: m.Expression | undefined, ctx: OperationContext
         }
         case m.SyntaxKind.PropertyAccessExpression: {
             const expr = node.asKindOrThrow(m.SyntaxKind.PropertyAccessExpression);
-            const e2 = expr.getExpression();
-            const t2 = m.printNode(e2.compilerNode);
-            convertExpression(e2, ctx);
+            const exprType = expr.getType();
+            const exprTypeSymbol = exprType.getSymbol();
+            const name = expr.getName();
+            const lhs = expr.getExpression();
+            const lhsType = lhs.getType();
+            const lhsText = m.printNode(lhs.compilerNode);
+            convertExpression(lhs, ctx);
             return [];
         }
         case m.SyntaxKind.StringLiteral: {
@@ -187,19 +191,29 @@ function convertIdentifier(node: m.Identifier, ctx: OperationContext): Instructi
     const text1 = m.printNode(node.compilerNode);
     const defs = node.getDefinitions();
     for (const def of defs) {
-        const defNode = def.getDeclarationNode();
-        const text = m.printNode(defNode!.compilerNode);
-        if (m.Node.isParameterDeclaration(defNode)) {
-            const index = ctx.node.getParameters().findIndex(p => p === defNode);
-            if (index === -1) throw new Error(`${defNode.getName()} param can't be found`);
+        const containerKind = def.getContainerKind();
+        const containerName = def.getContainerName();
+        const declNode = def.getDeclarationNode();
+        const text = m.printNode(declNode!.compilerNode);
+
+        if (m.Node.isParameterDeclaration(declNode)) {
+            const index = ctx.node.getParameters().findIndex(p => p === declNode);
+            if (index === -1) throw new Error(`${declNode.getName()} param can't be found`);
             return [new Instruction(sc.OpCode.LDARG, [index])];
-        } else if (m.Node.isNamespaceImport(defNode)) {
-            const parent = defNode.getParent().asKindOrThrow(m.ts.SyntaxKind.ImportClause);
-            // parent.getn
+        } 
+        
+        if (m.Node.isNamespaceImport(declNode)) {
+            const name = declNode.getName();
+            const importClause = declNode.getParent();
+            const importDecl = importClause.getParent();
+            const t = m.printNode(importDecl.compilerNode);
+            
+
             console.log();
+            // return [];
         }
         
-        const msg = defNode ? `${defNode.getKindName()} identifier kind not implemented` : `defNode undefined`;
+        const msg = declNode ? `${declNode.getKindName()} identifier kind not implemented` : `defNode undefined`;
         throw new Error(msg)
     }
 
