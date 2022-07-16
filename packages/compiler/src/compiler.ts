@@ -14,10 +14,11 @@ export interface CompilationContext {
     project: tsm.Project,
     options: Required<Omit<CompileOptions, 'project'>>,
     operations: Array<OperationContext>,
+    staticFields: Array<StaticField>,
     diagnostics: Array<tsm.ts.Diagnostic>
 }
 
-export type CompilePass = (context: CompilationContext) => void;
+export interface StaticField { }
 
 export interface OperationContext {
     name: string,
@@ -38,9 +39,11 @@ function compile(options: CompileOptions): CompileResults {
             optimize: options.optimize ?? false,
         },
         operations: [],
+        staticFields: [],
         diagnostics: []
     };
 
+    type CompilePass = (context: CompilationContext) => void;
     const passes: Array<CompilePass> = [findFunctionsPass];
 
     for (const pass of passes) {

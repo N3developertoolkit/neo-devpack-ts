@@ -2,16 +2,6 @@ import { sc } from "@cityofzion/neon-core";
 import { Project } from "ts-morph";
 import { DebugInfo } from "./debugInfo";
 
-export interface CompilerContext {
-    project: Project;
-}
-
-export interface OperationContext {
-    parent: CompilerContext
-}
-
-
-
 export interface Instruction {
     opCode: sc.OpCode;
     operand?: Uint8Array;
