@@ -1,34 +1,125 @@
-import { Project, ts } from "ts-morph";
-import { CompileContext, CompileResults } from "./types";
+import * as tsm from "ts-morph";
 
-// function dumpInstruction(ins: Instruction) {
-//     const operand = ins.operand ? Buffer.from(ins.operand).toString('hex') : "";
-//     console.log(`  ${sc.OpCode[ins.opCode]} ${operand}`);
-// }
+// https://github.com/CityOfZion/neon-js/issues/858
+const DEFAULT_ADDRESS_VALUE = 53;
 
-// function dumpOperation(op: OperationContext) {
+export interface CompileOptions {
+    project: tsm.Project,
+    optimize?: boolean,
+    inline?: boolean,
+    addressVersion?: number
+};
 
-//     const name = op.node.getNameOrThrow();
-//     const returnType = convertContractType(tsTypeToContractType(op.node.getReturnType()))
-//     console.log(`${name}(): ${sc.ContractParamType[returnType]}`);
-//     op.instructions.forEach(dumpInstruction);
-// }
+export interface CompilationContext {
+    project: tsm.Project,
+    options: Required<Omit<CompileOptions, 'project'>>,
+    operations: Array<OperationContext>,
+    diagnostics: Array<tsm.ts.Diagnostic>
+}
 
-// function dumpProject(prj: ProjectContext) {
-//     prj.operations.forEach(dumpOperation);
-// }
+export type CompilePass = (context: CompilationContext) => void;
+
+export interface OperationContext {
+    name: string,
+    node: tsm.FunctionDeclaration
+}
+
+export interface CompileResults {
+    diagnostics: Array<tsm.ts.Diagnostic>
+}
+
+function compile(options: CompileOptions): CompileResults {
+
+    const context: CompilationContext = {
+        project: options.project,
+        options: {
+            addressVersion: options.addressVersion ?? DEFAULT_ADDRESS_VALUE,
+            inline: options.inline ?? false,
+            optimize: options.optimize ?? false,
+        },
+        operations: [],
+        diagnostics: []
+    };
+
+    const passes: Array<CompilePass> = [findFunctionsPass];
+
+    for (const pass of passes) {
+        try {
+            pass(context);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "unknown error";
+            context.diagnostics.push(makeDiagnostic(message, tsm.ts.DiagnosticCategory.Error));
+        }
+
+        if (context.diagnostics.some(d => d.category == tsm.ts.DiagnosticCategory.Error)) {
+            break;
+        }
+    }
+
+    return {
+        diagnostics: context.diagnostics,
+    };
+}
+
+function findFunctionsPass(context: CompilationContext): void {
+    for (const src of context.project.getSourceFiles()) {
+        if (src.isDeclarationFile()) continue;
+        src.forEachChild(node => {
+            if (tsm.Node.isFunctionDeclaration(node)) {
+                const name = node.getName();
+                if (name) {
+                    context.operations.push({ name, node });
+                }
+            }
+        })
+    }
+}
+
+function makeDiagnostic(
+    messageText: string,
+    category: tsm.ts.DiagnosticCategory = tsm.ts.DiagnosticCategory.Message
+): tsm.ts.Diagnostic {
+    return {
+        category,
+        code: 0,
+        file: undefined,
+        start: 0,
+        length: 0,
+        messageText,
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
 
 const contractSource = /*javascript*/`
 import * as neo from '@neo-project/neo-contract-framework';
 
-export function getValue() { return neo.getStorage(neo.getCurrentContext(), [0x00]) as string; }
-export function setValue(value: string) { neo.putStorage(neo.getCurrentContext(), [0x00], value); }
+export function getValue() { 
+    return neo.Storage.get(neo.Storage.currentContext, [0x00]); 
+}
+
+export function setValue(value: string) { 
+    neo.Storage.put(neo.Storage.currentContext, [0x00], value); 
+}
+
+function helloWorld() { return "Hello, World!"; }
+
+function sayHello(name: string) { return "Hello, " + name + "!"; }
 `;
 
-const project = new Project({
+const project = new tsm.Project({
     compilerOptions: {
         experimentalDecorators: true,
-        target: ts.ScriptTarget.ES5
+        target: tsm.ts.ScriptTarget.ES5
     }
 });
 project.createSourceFile("contract.ts", contractSource);
@@ -40,31 +131,6 @@ var diagnostics = project.getPreEmitDiagnostics();
 if (diagnostics.length > 0) {
     diagnostics.forEach(d => console.log(d.getMessageText()));
 } else {
-    compile({ project });
+    const results = compile({ project });
+    results.diagnostics?.forEach(d => console.log(d.messageText));
 }
-
-function compile(context: CompileContext): Partial<CompileResults> {
-
-
-    return {};
-}
-
-
-
-
-// const prj = convertProject(project);
-// dumpProject(prj);
-
-// const [nef, manifest] = convertNEF("test-contract", prj);
-// const script = Buffer.from(nef.script, 'hex').toString('base64');
-// const json = { nef: nef.toJson(), manifest: manifest.toJson(), script }
-// console.log(JSON.stringify(json, null, 4));
-
-// const rootPath = path.join(path.dirname(__dirname), "test");
-// if (!fs.existsSync(rootPath)) { fs.mkdirSync(rootPath); }
-// const nefPath = path.join(rootPath, "contract.nef");
-// const manifestPath = path.join(rootPath, "contract.manifest.json");
-
-// fs.writeFileSync(nefPath, Buffer.from(nef.serialize(), 'hex'));
-// fs.writeFileSync(manifestPath, JSON.stringify(manifest.toJson(), null, 4));
-// console.log(`Contract NEF and Manifest written to ${rootPath}`);

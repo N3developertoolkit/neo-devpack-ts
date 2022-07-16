@@ -2,15 +2,15 @@ import { sc } from "@cityofzion/neon-core";
 import { Project } from "ts-morph";
 import { DebugInfo } from "./debugInfo";
 
-export interface CompileContext {
+export interface CompilerContext {
     project: Project;
 }
 
-export interface CompileResults {
-    script: Uint8Array;
-    manifest: sc.ContractManifest,
-    debugInfo: DebugInfo,
+export interface OperationContext {
+    parent: CompilerContext
 }
+
+
 
 export interface Instruction {
     opCode: sc.OpCode;

@@ -1,6 +1,6 @@
 import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
-import { ContractType, ContractTypeKind, PrimitiveType, PrimitiveContractType, isPrimitive } from "./contractType";
+import { ContractType, ContractTypeKind, PrimitiveType, PrimitiveContractType, isPrimitiveType } from "./contractType";
 import { Instruction } from "./types";
 
 const checkFlags = (type: tsm.Type, flags: tsm.ts.TypeFlags) => type.getFlags() & flags;
@@ -154,7 +154,7 @@ function convertArrayLiteralExpression(node: tsm.ArrayLiteralExpression): Instru
 function convertAsExpression(node: tsm.AsExpression): Instruction[] {
     const ins = convertExpression(node.getExpression());
     const type = tsTypeToContractType(node.getType());
-    if (isPrimitive(type)) {
+    if (isPrimitiveType(type)) {
         if (type.type === PrimitiveType.Integer) {
             ins.push({ 
                 opCode: sc.OpCode.CONVERT, 
