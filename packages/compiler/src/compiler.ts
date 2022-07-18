@@ -1,4 +1,4 @@
-import path, { format } from "path";
+import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
 import { convertStatement } from "./convert";
 import { Instruction } from "./types";
@@ -38,7 +38,8 @@ export interface OperationContext {
 }
 
 export interface CompileResults {
-    diagnostics: Array<tsm.ts.Diagnostic>
+    diagnostics: Array<tsm.ts.Diagnostic>,
+    context: CompilationContext,
 }
 
 function compile(options: CompileOptions): CompileResults {
@@ -91,6 +92,7 @@ function compile(options: CompileOptions): CompileResults {
 
     return {
         diagnostics: context.diagnostics,
+        context
     };
 }
 
@@ -178,5 +180,17 @@ if (diagnostics.length > 0) {
 } else {
     const files = project.getSourceFiles();
     const results = compile({ project });
-    printDiagnostic(results.diagnostics);
+    if (results.diagnostics.length > 0) {
+        printDiagnostic(results.diagnostics);
+    } else {
+        for (const op of results.context.operations) {
+            console.log(op.name);
+            for (const ins of op.instructions) {
+                const operand = ins.operand
+                    ? Buffer.from(ins.operand).toString('hex')
+                    : "";
+                console.log(`  ${sc.OpCode[ins.opCode]} ${operand}`)
+            }
+        }
+    }
 }

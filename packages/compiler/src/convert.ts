@@ -102,26 +102,6 @@ export function convertStatement(node: tsm.Statement, context: OperationContext)
         [tsm.SyntaxKind.ReturnStatement, convertReturnStatement]
     ]);
     dispatchConvert(node, context, map);
-    //     switch (node.getKind()) {
-    //     case tsm.SyntaxKind.Block: {
-    //         const stmt = node.asKindOrThrow(tsm.SyntaxKind.Block);
-    //         const ins = stmt
-    //             .getStatements()
-    //             .flatMap(s => convertStatement(s, context));
-    //         return ins;
-    //     }
-    //     case tsm.SyntaxKind.ReturnStatement: {
-    //         const stmt = node.asKindOrThrow(tsm.SyntaxKind.ReturnStatement);
-    //         const expr = stmt.getExpression();
-    //         if (expr) {
-    //             convertExpression(expr, context);
-    //         }
-    //         context.instructions ??= [];
-    //         context.instructions.push({ opCode: sc.OpCode.RET });
-    //     }
-    // }
-
-    // throw new Error(`convertStatement ${node.getKindName()} not implemented`);
 }
 
 function convertBlock(node: tsm.Block, context: OperationContext) {
@@ -134,19 +114,18 @@ function convertReturnStatement(node: tsm.ReturnStatement, context: OperationCon
     context.instructions.push({opCode: sc.OpCode.RET});
 }
 
-
 function convertExpression(node: tsm.Expression, context: OperationContext) {
 
     let map = new Map<tsm.SyntaxKind, ConvertFunction>([
         // [tsm.SyntaxKind.ArrayLiteralExpression, convertArrayLiteralExpression],
         // [tsm.SyntaxKind.AsExpression, convertAsExpression],
         // [tsm.SyntaxKind.BigIntLiteral, convertBigIntLiteral],
-        // [tsm.SyntaxKind.BinaryExpression, convertBinaryExpression],
+        [tsm.SyntaxKind.BinaryExpression, convertBinaryExpression],
         // [tsm.SyntaxKind.CallExpression, convertCallExpression],
-        // [tsm.SyntaxKind.Identifier, convertIdentifier],
+        [tsm.SyntaxKind.Identifier, convertIdentifier],
         // [tsm.SyntaxKind.NumericLiteral, convertNumericLiteral],
         // [tsm.SyntaxKind.PropertyAccessExpression, convertPropertyAccessExpression],
-        // [tsm.SyntaxKind.StringLiteral, convertStringLiteral],
+        [tsm.SyntaxKind.StringLiteral, convertStringLiteral],
     ])
 
     dispatchConvert(node, context, map);
@@ -210,30 +189,37 @@ function convertBigIntLiteral(node: tsm.BigIntLiteral): Instruction[] {
 }
 
 // [SyntaxKind.BinaryExpression]: BinaryExpression;
-// function convertBinaryExpression(node: tsm.BinaryExpression, ctx: OperationContext): Instruction[] {
-//     const left = node.getLeft();
-//     const right = node.getRight();
+function convertBinaryExpression(node: tsm.BinaryExpression, ctx: OperationContext) {
+    const left = node.getLeft();
+    const right = node.getRight();
+    const ins = convertBinaryOperator(
+        node.getOperatorToken(),
+        left.getType(),
+        right.getType()
+    );
 
-//     return [
-//         ...convertExpression(left, ctx),
-//         ...convertExpression(right, ctx),
-//         convertBinaryOperator(node.getOperatorToken(), left.getType(), right.getType())
-//     ];
+    convertExpression(left, ctx);
+    convertExpression(right, ctx);
+    ctx.instructions.push(ins);
 
-//     function convertBinaryOperator(op: tsm.Node<tsm.ts.BinaryOperatorToken>, left: tsm.Type, right: tsm.Type) {
-//         switch (op.getKind()) {
-//             case tsm.SyntaxKind.PlusToken: {
-//                 if (isStringLike(left) && isStringLike(right)) {
-//                     return { opCode: sc.OpCode.CAT };
-//                 } else {
-//                     throw new Error(`convertBinaryOperator.PlusToken not implemented for ${left.getText()} and ${right.getText()}`);
-//                 }
-//             }
-//             default:
-//                 throw new Error(`convertOperator ${op.getKindName()} not implemented`);
-//         }
-//     }
-// }
+    function convertBinaryOperator(
+        op: tsm.Node<tsm.ts.BinaryOperatorToken>, 
+        left: tsm.Type, 
+        right: tsm.Type
+    ): Instruction {
+        switch (op.getKind()) {
+            case tsm.SyntaxKind.PlusToken: {
+                if (isStringLike(left) && isStringLike(right)) {
+                    return { opCode: sc.OpCode.CAT };
+                } else {
+                    throw new Error(`convertBinaryOperator.PlusToken not implemented for ${left.getText()} and ${right.getText()}`);
+                }
+            }
+            default:
+                throw new Error(`convertOperator ${op.getKindName()} not implemented`);
+        }
+    }
+}
 
 // [SyntaxKind.CallExpression]: CallExpression;
 // function convertCallExpression(node: tsm.CallExpression, ctx: OperationContext): Instruction[] {
@@ -267,39 +253,30 @@ function convertBigIntLiteral(node: tsm.BigIntLiteral): Instruction[] {
 // [SyntaxKind.ElementAccessExpression]: ElementAccessExpression;
 // [SyntaxKind.FunctionExpression]: FunctionExpression;
 // [SyntaxKind.Identifier]: Identifier;
-// function convertIdentifier(node: tsm.Identifier): Instruction[] {
-//     const text1 = tsm.printNode(node.compilerNode);
-//     const defs = node.getDefinitions();
-//     for (const def of defs) {
-//         const containerKind = def.getContainerKind();
-//         const containerName = def.getContainerName();
-//         const declNode = def.getDeclarationNode();
-//         const text = tsm.printNode(declNode!.compilerNode);
+function convertIdentifier(node: tsm.Identifier, ctx: OperationContext) {
 
-//         if (tsm.Node.isParameterDeclaration(declNode)) {
-//             const index = ctx.node.getParameters().findIndex(p => p === declNode);
-//             if (index === -1) throw new Error(`${declNode.getName()} param can't be found`);
-//             return [new Instruction(sc.OpCode.LDARG, [index])];
-//         }
+    // Not sure this is the best way to generally resolve identifiers,
+    // but it works for parameters
 
-//         if (tsm.Node.isNamespaceImport(declNode)) {
-//             const name = declNode.getName();
-//             const importClause = declNode.getParent();
-//             const t1 = tsm.printNode(importClause.compilerNode);
-//             const importDecl = importClause.getParent();
-//             const t2 = tsm.printNode(importDecl.compilerNode);
-
-
-//             console.log();
-//             // return [];
-//         }
-
-//         const msg = declNode ? `${declNode.getKindName()} identifier kind not implemented` : `defNode undefined`;
-//         throw new Error(msg)
-//     }
-
-//     throw new Error(`no definition found for ${node.getText()}`);
-// }
+    const defs = node.getDefinitions();
+    if (defs.length !== 1) { throw new CompileError("Unexpected definitions", node); }
+    const def = defs[0];
+    switch (def.getKind()) {
+        case tsm.ts.ScriptElementKind.parameterElement: {
+            const declNode = def.getDeclarationNode();
+            const index = ctx.node.getParameters().findIndex(p => p === declNode);
+            if (index === -1) throw new CompileError(`${node.getText} param can't be found`, node);
+            const ins: Instruction = {
+                opCode: sc.OpCode.LDARG,
+                operand: Uint8Array.from([index]),
+            }
+            ctx.instructions.push(ins);
+            break;
+        }
+        default: 
+            throw new CompileError("convertIdentifier not implemented", node);
+    }
+}
 
 // [SyntaxKind.JsxClosingFragment]: JsxClosingFragment;
 // [SyntaxKind.JsxElement]: JsxElement;
@@ -347,10 +324,11 @@ function convertNumericLiteral(node: tsm.NumericLiteral): Instruction[] {
 // [SyntaxKind.RegularExpressionLiteral]: RegularExpressionLiteral;
 // [SyntaxKind.SpreadElement]: SpreadElement;
 // [SyntaxKind.StringLiteral]: StringLiteral;
-function convertStringLiteral(node: tsm.StringLiteral): Instruction[] {
+function convertStringLiteral(node: tsm.StringLiteral, ctx: OperationContext) {
     const literal = node.getLiteralValue();
-    var buffer = Buffer.from(literal, 'utf-8');
-    return [convertBuffer(buffer)];
+    const buffer = Buffer.from(literal, 'utf-8');
+    const ins = convertBuffer(buffer);
+    ctx.instructions.push(ins); 
 }
 
 // [SyntaxKind.TaggedTemplateExpression]: TaggedTemplateExpression;
