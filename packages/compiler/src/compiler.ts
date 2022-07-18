@@ -6,9 +6,12 @@ import { Instruction } from "./types";
 // https://github.com/CityOfZion/neon-js/issues/858
 const DEFAULT_ADDRESS_VALUE = 53;
 
-export class CompileError extends Error { 
-    constructor(message: string, public readonly node: tsm.Node ) { 
-        super(message); 
+export class CompileError extends Error {
+    constructor(
+        message: string,
+        public readonly node: tsm.Node
+    ) {
+        super(message);
     }
 }
 
@@ -59,25 +62,25 @@ function compile(options: CompileOptions): CompileResults {
     type CompilePass = (context: CompilationContext) => void;
     const passes: Array<CompilePass> = [
         findFunctionsPass,
-        pass2
+        generateInstructionsPass
     ];
 
     for (const pass of passes) {
         try {
             pass(context);
         } catch (error) {
-            const messageText = error instanceof Error 
-                ? error.message 
+            const messageText = error instanceof Error
+                ? error.message
                 : "unknown error";
             const node = error instanceof CompileError
-                ? error.node 
+                ? error.node
                 : undefined;
             context.diagnostics.push({
                 category: tsm.ts.DiagnosticCategory.Error,
                 code: 0,
                 file: node?.getSourceFile().compilerNode,
-                length: node 
-                    ? node.getEnd() - node.getPos() 
+                length: node
+                    ? node.getEnd() - node.getPos()
                     : undefined,
                 messageText,
                 start: node?.getPos(),
@@ -103,8 +106,8 @@ function findFunctionsPass(context: CompilationContext): void {
             if (tsm.Node.isFunctionDeclaration(node)) {
                 const name = node.getName();
                 if (name) {
-                    context.operations.push({ 
-                        name, 
+                    context.operations.push({
+                        name,
                         node,
                         parent: context,
                         instructions: []
@@ -115,14 +118,14 @@ function findFunctionsPass(context: CompilationContext): void {
     }
 }
 
-function pass2(context: CompilationContext): void {
+function generateInstructionsPass(context: CompilationContext): void {
     for (const op of context.operations) {
-        op.instructions = [];
+        op.instructions.length = 0;
         const paramCount = op.node.getParameters().length;
         const localCount = 0;
         if (localCount > 0 || paramCount > 0) {
-            op.instructions.push({ 
-                opCode: sc.OpCode.INITSLOT, 
+            op.instructions.push({
+                opCode: sc.OpCode.INITSLOT,
                 operand: Uint8Array.from([localCount, paramCount])
             });
         }
