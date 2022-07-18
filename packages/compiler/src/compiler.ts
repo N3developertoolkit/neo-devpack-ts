@@ -117,6 +117,16 @@ function findFunctionsPass(context: CompilationContext): void {
 
 function pass2(context: CompilationContext): void {
     for (const op of context.operations) {
+        op.instructions = [];
+        const paramCount = op.node.getParameters().length;
+        const localCount = 0;
+        if (localCount > 0 || paramCount > 0) {
+            op.instructions.push({ 
+                opCode: sc.OpCode.INITSLOT, 
+                operand: Uint8Array.from([localCount, paramCount])
+            });
+        }
+
         const body = op.node.getBody()
         if (body) {
             if (tsm.Node.isStatement(body)) {
