@@ -1,5 +1,6 @@
 import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
+import { CompileError, OperationContext } from "./compiler";
 import { ContractType, ContractTypeKind, PrimitiveType, PrimitiveContractType, isPrimitiveType } from "./contractType";
 import { Instruction } from "./types";
 
@@ -39,70 +40,104 @@ export function tsTypeToContractType(type: tsm.Type): ContractType {
 //     return ctx;
 // }
 
-export function convertNode(node: tsm.Node) {
+// export function convertNode(node: tsm.Node) {
 
-    if (tsm.Node.isImportDeclaration(node)) {
-        var module = node.getModuleSpecifierValue();
-        if (module === "@neo-project/neo-contract-framework") {
-            // ignore SCFX module
-        } else {
-            throw new Error(`Unknown module ${module}`);
-        }
-    } else if (tsm.Node.isFunctionDeclaration(node)) {
-        const op = convertFunction(node);
-        // ctx.operations.push(op);
-    } else if (node.getKind() == tsm.SyntaxKind.EndOfFileToken) {
-        // ignore EOF token
-    } else {
-        throw new Error(`${node.getKindName()} project node not implemented`)
+//     if (tsm.Node.isImportDeclaration(node)) {
+//         var module = node.getModuleSpecifierValue();
+//         if (module === "@neo-project/neo-contract-framework") {
+//             // ignore SCFX module
+//         } else {
+//             throw new Error(`Unknown module ${module}`);
+//         }
+//     } else if (tsm.Node.isFunctionDeclaration(node)) {
+//         const op = convertFunction(node);
+//         // ctx.operations.push(op);
+//     } else if (node.getKind() == tsm.SyntaxKind.EndOfFileToken) {
+//         // ignore EOF token
+//     } else {
+//         throw new Error(`${node.getKindName()} project node not implemented`)
+//     }
+// }
+
+// export function convertFunction(node: tsm.FunctionDeclaration) {
+//     const instructions = new Array<Instruction>(); 
+//     instructions.push(...convertBody(node));
+//     const paramCount = node.getParameters().length;
+//     const localCount = 0;
+//     if (localCount > 0 || paramCount > 0) {
+//         // instructions.unshift({ opCode: sc.OpCode.INITSLOT, [localCount, paramCount]));
+//     }
+//     return instructions;
+// }
+
+// export function convertBody(node: tsm.BodyableNode): Instruction[] {
+//     const body = node.getBody();
+//     if (!body) return [];
+//     if (tsm.Node.isStatement(body)) {
+//         return convertStatement(body);
+//     }
+//     throw new Error(`${body.getKindName()} body node kind not implemented`)
+// }
+
+type ConvertFunction = (node: any, context: OperationContext) => void;
+
+function dispatchConvert(node: tsm.Node, context: OperationContext, converters: Map<tsm.SyntaxKind, ConvertFunction>) {
+    const nodePrint = tsm.printNode(node.compilerNode);
+    const kind = node.getKind();
+    const converter = converters.get(kind);
+    if (!converter) {
+        throw new CompileError(
+            `dispatchConvert ${tsm.SyntaxKind[kind]} not implemented`,
+            node);
     }
+    converter(node.asKindOrThrow(kind), context);
 }
 
-export function convertFunction(node: tsm.FunctionDeclaration) {
-    const instructions = new Array<Instruction>(); 
-    instructions.push(...convertBody(node));
-    const paramCount = node.getParameters().length;
-    const localCount = 0;
-    if (localCount > 0 || paramCount > 0) {
-        // instructions.unshift({ opCode: sc.OpCode.INITSLOT, [localCount, paramCount]));
-    }
-    return instructions;
+export function convertStatement(node: tsm.Statement, context: OperationContext): void {
+
+    tsm.ts.isIfStatement
+    node.asKindOrThrow
+    let map = new Map<tsm.SyntaxKind, ConvertFunction>([
+        [tsm.SyntaxKind.Block, convertBlock],
+        [tsm.SyntaxKind.ReturnStatement, convertReturnStatement]
+    ]);
+    dispatchConvert(node, context, map);
+    //     switch (node.getKind()) {
+    //     case tsm.SyntaxKind.Block: {
+    //         const stmt = node.asKindOrThrow(tsm.SyntaxKind.Block);
+    //         const ins = stmt
+    //             .getStatements()
+    //             .flatMap(s => convertStatement(s, context));
+    //         return ins;
+    //     }
+    //     case tsm.SyntaxKind.ReturnStatement: {
+    //         const stmt = node.asKindOrThrow(tsm.SyntaxKind.ReturnStatement);
+    //         const expr = stmt.getExpression();
+    //         if (expr) {
+    //             convertExpression(expr, context);
+    //         }
+    //         context.instructions ??= [];
+    //         context.instructions.push({ opCode: sc.OpCode.RET });
+    //     }
+    // }
+
+    // throw new Error(`convertStatement ${node.getKindName()} not implemented`);
 }
 
-export function convertBody(node: tsm.BodyableNode): Instruction[] {
-    const body = node.getBody();
-    if (!body) return [];
-    if (tsm.Node.isStatement(body)) {
-        return convertStatement(body);
-    }
-    throw new Error(`${body.getKindName()} body node kind not implemented`)
+function convertBlock(node: tsm.Block, context: OperationContext) {
+    node.getStatements().forEach(s => convertStatement(s, context));
 }
 
-function convertStatement(node: tsm.Statement): Instruction[] {
-    switch (node.getKind()) {
-        case tsm.SyntaxKind.Block: {
-            const stmt = node.asKindOrThrow(tsm.SyntaxKind.Block);
-            const ins = stmt
-                .getStatements()
-                .flatMap(s => convertStatement(s));
-            return ins;
-        }
-        case tsm.SyntaxKind.ReturnStatement: {
-            const stmt = node.asKindOrThrow(tsm.SyntaxKind.ReturnStatement);
-            const expr = stmt.getExpression();
-            const ins = convertExpression(expr);
-            ins.push({ opCode: sc.OpCode.RET });
-            return ins;
-        }
-    }
-
-    throw new Error(`convertStatement ${node.getKindName()} not implemented`);
+function convertReturnStatement(node: tsm.ReturnStatement, context: OperationContext) {
+    const expr = node.getExpression(); 
+    if (expr) { convertExpression(expr, context); }
+    context.instructions.push({opCode: sc.OpCode.RET});
 }
 
-function convertExpression(node: tsm.Expression | undefined): Instruction[] {
-    if (!node) return [];
 
-    let map = new Map<tsm.SyntaxKind, (node: any) => Instruction[]>([
+function convertExpression(node: tsm.Expression, context: OperationContext) {
+
+    let map = new Map<tsm.SyntaxKind, ConvertFunction>([
         // [tsm.SyntaxKind.ArrayLiteralExpression, convertArrayLiteralExpression],
         // [tsm.SyntaxKind.AsExpression, convertAsExpression],
         // [tsm.SyntaxKind.BigIntLiteral, convertBigIntLiteral],
@@ -114,11 +149,7 @@ function convertExpression(node: tsm.Expression | undefined): Instruction[] {
         // [tsm.SyntaxKind.StringLiteral, convertStringLiteral],
     ])
 
-    const nodePrint = tsm.printNode(node.compilerNode);
-    const kind = node.getKind();
-    const converter = map.get(kind);
-    if (!converter) { throw new Error(`convertExpression ${tsm.SyntaxKind[kind]} not implemented`); }
-    return converter(node.asKindOrThrow(kind));
+    dispatchConvert(node, context, map);
 }
 
 // [SyntaxKind.ArrayLiteralExpression]: ArrayLiteralExpression;
@@ -151,24 +182,24 @@ function convertArrayLiteralExpression(node: tsm.ArrayLiteralExpression): Instru
 // [SyntaxKind.ArrowFunction]: ArrowFunction;
 
 // [SyntaxKind.AsExpression]: AsExpression;
-function convertAsExpression(node: tsm.AsExpression): Instruction[] {
-    const ins = convertExpression(node.getExpression());
-    const type = tsTypeToContractType(node.getType());
-    if (isPrimitiveType(type)) {
-        if (type.type === PrimitiveType.Integer) {
-            ins.push({ 
-                opCode: sc.OpCode.CONVERT, 
-                operand: Uint8Array.from([sc.StackItemType.Integer])
-            });
-        } else {
-            throw new Error(`asExpression ${PrimitiveType[type.type]} primitive not implemented`)
-        }
-    } else {
-        throw new Error(`asExpression ${ContractTypeKind[type.kind]} kind not implemented`)
-    }
-    return ins;
+// function convertAsExpression(node: tsm.AsExpression, ctx: OperationContext): Instruction[] {
+//     const ins = convertExpression(node.getExpression(), ctx);
+//     const type = tsTypeToContractType(node.getType());
+//     if (isPrimitiveType(type)) {
+//         if (type.type === PrimitiveType.Integer) {
+//             ins.push({ 
+//                 opCode: sc.OpCode.CONVERT, 
+//                 operand: Uint8Array.from([sc.StackItemType.Integer])
+//             });
+//         } else {
+//             throw new Error(`asExpression ${PrimitiveType[type.type]} primitive not implemented`)
+//         }
+//     } else {
+//         throw new Error(`asExpression ${ContractTypeKind[type.kind]} kind not implemented`)
+//     }
+//     return ins;
 
-}
+// }
 
 // [SyntaxKind.AwaitExpression]: AwaitExpression;
 
@@ -179,30 +210,30 @@ function convertBigIntLiteral(node: tsm.BigIntLiteral): Instruction[] {
 }
 
 // [SyntaxKind.BinaryExpression]: BinaryExpression;
-function convertBinaryExpression(node: tsm.BinaryExpression): Instruction[] {
-    const left = node.getLeft();
-    const right = node.getRight();
+// function convertBinaryExpression(node: tsm.BinaryExpression, ctx: OperationContext): Instruction[] {
+//     const left = node.getLeft();
+//     const right = node.getRight();
 
-    return [
-        ...convertExpression(left),
-        ...convertExpression(right),
-        convertBinaryOperator(node.getOperatorToken(), left.getType(), right.getType())
-    ];
+//     return [
+//         ...convertExpression(left, ctx),
+//         ...convertExpression(right, ctx),
+//         convertBinaryOperator(node.getOperatorToken(), left.getType(), right.getType())
+//     ];
 
-    function convertBinaryOperator(op: tsm.Node<tsm.ts.BinaryOperatorToken>, left: tsm.Type, right: tsm.Type) {
-        switch (op.getKind()) {
-            case tsm.SyntaxKind.PlusToken: {
-                if (isStringLike(left) && isStringLike(right)) {
-                    return { opCode: sc.OpCode.CAT };
-                } else {
-                    throw new Error(`convertBinaryOperator.PlusToken not implemented for ${left.getText()} and ${right.getText()}`);
-                }
-            }
-            default:
-                throw new Error(`convertOperator ${op.getKindName()} not implemented`);
-        }
-    }
-}
+//     function convertBinaryOperator(op: tsm.Node<tsm.ts.BinaryOperatorToken>, left: tsm.Type, right: tsm.Type) {
+//         switch (op.getKind()) {
+//             case tsm.SyntaxKind.PlusToken: {
+//                 if (isStringLike(left) && isStringLike(right)) {
+//                     return { opCode: sc.OpCode.CAT };
+//                 } else {
+//                     throw new Error(`convertBinaryOperator.PlusToken not implemented for ${left.getText()} and ${right.getText()}`);
+//                 }
+//             }
+//             default:
+//                 throw new Error(`convertOperator ${op.getKindName()} not implemented`);
+//         }
+//     }
+// }
 
 // [SyntaxKind.CallExpression]: CallExpression;
 // function convertCallExpression(node: tsm.CallExpression, ctx: OperationContext): Instruction[] {

@@ -1,7 +1,16 @@
+import path, { format } from "path";
 import * as tsm from "ts-morph";
+import { convertStatement } from "./convert";
+import { Instruction } from "./types";
 
 // https://github.com/CityOfZion/neon-js/issues/858
 const DEFAULT_ADDRESS_VALUE = 53;
+
+export class CompileError extends Error { 
+    constructor(message: string, public readonly node: tsm.Node ) { 
+        super(message); 
+    }
+}
 
 export interface CompileOptions {
     project: tsm.Project,
@@ -13,6 +22,7 @@ export interface CompileOptions {
 export interface CompilationContext {
     project: tsm.Project,
     options: Required<Omit<CompileOptions, 'project'>>,
+    name?: string,
     operations: Array<OperationContext>,
     staticFields: Array<StaticField>,
     diagnostics: Array<tsm.ts.Diagnostic>
@@ -21,8 +31,10 @@ export interface CompilationContext {
 export interface StaticField { }
 
 export interface OperationContext {
+    parent: CompilationContext,
     name: string,
-    node: tsm.FunctionDeclaration
+    node: tsm.FunctionDeclaration,
+    instructions: Array<Instruction>
 }
 
 export interface CompileResults {
@@ -44,14 +56,32 @@ function compile(options: CompileOptions): CompileResults {
     };
 
     type CompilePass = (context: CompilationContext) => void;
-    const passes: Array<CompilePass> = [findFunctionsPass];
+    const passes: Array<CompilePass> = [
+        findFunctionsPass,
+        pass2
+    ];
 
     for (const pass of passes) {
         try {
             pass(context);
         } catch (error) {
-            const message = error instanceof Error ? error.message : "unknown error";
-            context.diagnostics.push(makeDiagnostic(message, tsm.ts.DiagnosticCategory.Error));
+            const messageText = error instanceof Error 
+                ? error.message 
+                : "unknown error";
+            const node = error instanceof CompileError
+                ? error.node 
+                : undefined;
+            context.diagnostics.push({
+                category: tsm.ts.DiagnosticCategory.Error,
+                code: 0,
+                file: node?.getSourceFile().compilerNode,
+                length: node 
+                    ? node.getEnd() - node.getPos() 
+                    : undefined,
+                messageText,
+                start: node?.getPos(),
+                source: node?.print()
+            });
         }
 
         if (context.diagnostics.some(d => d.category == tsm.ts.DiagnosticCategory.Error)) {
@@ -71,28 +101,28 @@ function findFunctionsPass(context: CompilationContext): void {
             if (tsm.Node.isFunctionDeclaration(node)) {
                 const name = node.getName();
                 if (name) {
-                    context.operations.push({ name, node });
+                    context.operations.push({ 
+                        name, 
+                        node,
+                        parent: context,
+                        instructions: []
+                    });
                 }
             }
         })
     }
 }
 
-function makeDiagnostic(
-    messageText: string,
-    category: tsm.ts.DiagnosticCategory = tsm.ts.DiagnosticCategory.Message
-): tsm.ts.Diagnostic {
-    return {
-        category,
-        code: 0,
-        file: undefined,
-        start: 0,
-        length: 0,
-        messageText,
+function pass2(context: CompilationContext): void {
+    for (const op of context.operations) {
+        const body = op.node.getBody()
+        if (body) {
+            if (tsm.Node.isStatement(body)) {
+                convertStatement(body, op);
+            }
+        }
     }
 }
-
-
 
 
 
@@ -106,17 +136,17 @@ function makeDiagnostic(
 const contractSource = /*javascript*/`
 import * as neo from '@neo-project/neo-contract-framework';
 
-export function getValue() { 
-    return neo.Storage.get(neo.Storage.currentContext, [0x00]); 
-}
+// export function getValue() { 
+//     return neo.Storage.get(neo.Storage.currentContext, [0x00]); 
+// }
 
-export function setValue(value: string) { 
-    neo.Storage.put(neo.Storage.currentContext, [0x00], value); 
-}
+// export function setValue(value: string) { 
+//     neo.Storage.put(neo.Storage.currentContext, [0x00], value); 
+// }
 
-function helloWorld() { return "Hello, World!"; }
+export function helloWorld() { return "Hello, World!"; }
 
-function sayHello(name: string) { return "Hello, " + name + "!"; }
+export function sayHello(name: string) { return "Hello, " + name + "!"; }
 `;
 
 const project = new tsm.Project({
@@ -131,9 +161,22 @@ project.createSourceFile("contract.ts", contractSource);
 var diagnostics = project.getPreEmitDiagnostics();
 // console.timeEnd('getPreEmitDiagnostics')
 
+const formatHost: tsm.ts.FormatDiagnosticsHost = {
+    getCurrentDirectory: () => tsm.ts.sys.getCurrentDirectory(),
+    getNewLine: () => tsm.ts.sys.newLine,
+    getCanonicalFileName: (fileName: string) => tsm.ts.sys.useCaseSensitiveFileNames
+        ? fileName : fileName.toLowerCase()
+}
+
+function printDiagnostic(diags: tsm.ts.Diagnostic[]) {
+    const msg = tsm.ts.formatDiagnosticsWithColorAndContext(diags, formatHost);
+    console.log(msg);
+}
+
 if (diagnostics.length > 0) {
-    diagnostics.forEach(d => console.log(d.getMessageText()));
+    printDiagnostic(diagnostics.map(d => d.compilerObject));
 } else {
+    const files = project.getSourceFiles();
     const results = compile({ project });
-    results.diagnostics?.forEach(d => console.log(d.messageText));
+    printDiagnostic(results.diagnostics);
 }
