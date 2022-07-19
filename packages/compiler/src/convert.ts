@@ -46,12 +46,10 @@ function dispatchConvert(node: tsm.Node, context: OperationContext, converters: 
 
 export function convertStatement(node: tsm.Statement, context: OperationContext): void {
 
-    tsm.ts.isIfStatement
-    node.asKindOrThrow
     let map = new Map<tsm.SyntaxKind, ConvertFunction>([
-        [tsm.SyntaxKind.Block, convertBlock],
-        [tsm.SyntaxKind.ExpressionStatement, convertExpressionStatement],
-        [tsm.SyntaxKind.ReturnStatement, convertReturnStatement]
+        // [tsm.SyntaxKind.Block, convertBlock],
+        // [tsm.SyntaxKind.ExpressionStatement, convertExpressionStatement],
+        // [tsm.SyntaxKind.ReturnStatement, convertReturnStatement]
     ]);
     dispatchConvert(node, context, map);
 }
@@ -456,28 +454,28 @@ export function convertBuffer(buffer: ArrayLike<number> & Iterable<number>): Ins
 //     }
 // }
 
-export function convertContractType(type: ContractType): sc.ContractParamType {
-    switch (type.kind) {
-        case ContractTypeKind.Array: return sc.ContractParamType.Array;
-        case ContractTypeKind.Interop: return sc.ContractParamType.InteropInterface;
-        case ContractTypeKind.Map: return sc.ContractParamType.Map;
-        case ContractTypeKind.Struct: return sc.ContractParamType.Array;
-        case ContractTypeKind.Unspecified: return sc.ContractParamType.Any;
-        case ContractTypeKind.Primitive: {
-            const primitive = type as PrimitiveContractType;
-            switch (primitive.type) {
-                case PrimitiveType.Address: return sc.ContractParamType.Hash160;
-                case PrimitiveType.Boolean: return sc.ContractParamType.Boolean;
-                case PrimitiveType.ByteArray: return sc.ContractParamType.ByteArray;
-                case PrimitiveType.Hash160: return sc.ContractParamType.Hash160;
-                case PrimitiveType.Hash256: return sc.ContractParamType.Hash256;
-                case PrimitiveType.Integer: return sc.ContractParamType.Integer;
-                case PrimitiveType.PublicKey: return sc.ContractParamType.PublicKey;
-                case PrimitiveType.Signature: return sc.ContractParamType.Signature;
-                case PrimitiveType.String: return sc.ContractParamType.String;
-                default: throw new Error(`Unrecognized PrimitiveType ${primitive.type}`);
-            }
-        }
-        default: throw new Error(`Unrecognized ContractTypeKind ${type.kind}`);
-    }
-}
+// export function convertContractType(type: ContractType): sc.ContractParamType {
+//     switch (type.kind) {
+//         case ContractTypeKind.Array: return sc.ContractParamType.Array;
+//         case ContractTypeKind.Interop: return sc.ContractParamType.InteropInterface;
+//         case ContractTypeKind.Map: return sc.ContractParamType.Map;
+//         case ContractTypeKind.Struct: return sc.ContractParamType.Array;
+//         case ContractTypeKind.Unspecified: return sc.ContractParamType.Any;
+//         case ContractTypeKind.Primitive: {
+//             const primitive = type as PrimitiveContractType;
+//             switch (primitive.type) {
+//                 case PrimitiveType.Address: return sc.ContractParamType.Hash160;
+//                 case PrimitiveType.Boolean: return sc.ContractParamType.Boolean;
+//                 case PrimitiveType.ByteArray: return sc.ContractParamType.ByteArray;
+//                 case PrimitiveType.Hash160: return sc.ContractParamType.Hash160;
+//                 case PrimitiveType.Hash256: return sc.ContractParamType.Hash256;
+//                 case PrimitiveType.Integer: return sc.ContractParamType.Integer;
+//                 case PrimitiveType.PublicKey: return sc.ContractParamType.PublicKey;
+//                 case PrimitiveType.Signature: return sc.ContractParamType.Signature;
+//                 case PrimitiveType.String: return sc.ContractParamType.String;
+//                 default: throw new Error(`Unrecognized PrimitiveType ${primitive.type}`);
+//             }
+//         }
+//         default: throw new Error(`Unrecognized ContractTypeKind ${type.kind}`);
+//     }
+// }

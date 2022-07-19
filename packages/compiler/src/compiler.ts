@@ -1,7 +1,8 @@
 import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
-import { convertStatement } from "./convert";
+// import { convertStatement } from "./convert";
 import { Instruction } from "./types";
+import * as path from 'path'
 
 // https://github.com/CityOfZion/neon-js/issues/858
 const DEFAULT_ADDRESS_VALUE = 53;
@@ -133,18 +134,19 @@ export interface SysCall {
 
 export type VmCall = SysCall;
 
-// TODO: move this to a JSON file at some point
-const storageBuiltin = new Map<string, VmCall[]>([
-    ["currentContext", [{ syscall: "System.Storage.GetContext" }]],
-    ["get", [{ syscall: "System.Storage.Get" }]],
-    ["put", [{ syscall: "System.Storage.Put" }]]
-]);
-
-const builtinInterfaces = new Map([
-    ["StorageConstructor", storageBuiltin]
-]);
 
 function resolveDeclarationsPass(context: CompilationContext): void {
+
+    // TODO: move this to a JSON file at some point
+    const storageBuiltin = new Map<string, VmCall[]>([
+        ["currentContext", [{ syscall: "System.Storage.GetContext" }]],
+        ["get", [{ syscall: "System.Storage.Get" }]],
+        ["put", [{ syscall: "System.Storage.Put" }]]
+    ]);
+
+    const builtinInterfaces = new Map([
+        ["StorageConstructor", storageBuiltin]
+    ]);
 
     const interfaces = new Map<tsm.Symbol, Map<tsm.Symbol, VmCall[]>>();
     const variables = new Map<tsm.Symbol, tsm.Symbol>();
@@ -199,23 +201,69 @@ function generateInstructionsPass(context: CompilationContext): void {
         const body = op.node.getBody()
         if (body) {
             if (tsm.Node.isStatement(body)) {
-                convertStatement(body, op);
+                // convertStatement(body, op);
                 op.instructions.push({ opCode: sc.OpCode.RET });
             }
         }
     }
 }
 
+function printDiagnostic(diags: tsm.ts.Diagnostic[]) {
+    const formatHost: tsm.ts.FormatDiagnosticsHost = {
+        getCurrentDirectory: () => tsm.ts.sys.getCurrentDirectory(),
+        getNewLine: () => tsm.ts.sys.newLine,
+        getCanonicalFileName: (fileName: string) => tsm.ts.sys.useCaseSensitiveFileNames
+            ? fileName : fileName.toLowerCase()
+    }
 
+    const msg = tsm.ts.formatDiagnosticsWithColorAndContext(diags, formatHost);
+    console.log(msg);
+}
 
+function dumpOperations(operations?: OperationContext[]) {
+    for (const op of operations ?? []) {
+        console.log(op.name);
+        for (const ins of op.instructions) {
+            const operand = ins.operand
+                ? Buffer.from(ins.operand).toString('hex')
+                : "";
+            console.log(`  ${sc.OpCode[ins.opCode]} ${operand}`)
+        }
+    }
+}
 
+function testCompile(source: string, filename: string = "contract.ts") {
 
+    const project = new tsm.Project({
+        compilerOptions: {
+            experimentalDecorators: true,
+            target: tsm.ts.ScriptTarget.ES5
+        }
+    });
+    project.createSourceFile(filename, source);
+    project.resolveSourceFileDependencies();
+    
+    // console.time('getPreEmitDiagnostics');
+    const diagnostics = project.getPreEmitDiagnostics();
+    // console.timeEnd('getPreEmitDiagnostics')
+    
+    if (diagnostics.length > 0) {
+        printDiagnostic(diagnostics.map(d => d.compilerObject));
+    } else {
+        const { diagnostics = [], context } = compile({ project });
+        if (diagnostics.length > 0) {
+            printDiagnostic(diagnostics);
+        } else {
+            dumpOperations(context.operations);
+        }
+    }
+}
 
+const file = path.basename(process.argv[1]);
+console.log(file);
+if (file === "compiler.js") {
 
-
-
-
-const contractSource = /*javascript*/`
+    const contractSource = /*javascript*/`
 import * as neo from '@neo-project/neo-contract-framework';
 
 export function getValue() { 
@@ -231,47 +279,7 @@ export function helloWorld() { return "Hello, World!"; }
 export function sayHello(name: string) { return "Hello, " + name + "!"; }
 `;
 
-const project = new tsm.Project({
-    compilerOptions: {
-        experimentalDecorators: true,
-        target: tsm.ts.ScriptTarget.ES5
-    }
-});
-project.createSourceFile("contract.ts", contractSource);
-project.resolveSourceFileDependencies();
-
-// console.time('getPreEmitDiagnostics');
-var diagnostics = project.getPreEmitDiagnostics();
-// console.timeEnd('getPreEmitDiagnostics')
-
-const formatHost: tsm.ts.FormatDiagnosticsHost = {
-    getCurrentDirectory: () => tsm.ts.sys.getCurrentDirectory(),
-    getNewLine: () => tsm.ts.sys.newLine,
-    getCanonicalFileName: (fileName: string) => tsm.ts.sys.useCaseSensitiveFileNames
-        ? fileName : fileName.toLowerCase()
+    testCompile(contractSource);
 }
 
-function printDiagnostic(diags: tsm.ts.Diagnostic[]) {
-    const msg = tsm.ts.formatDiagnosticsWithColorAndContext(diags, formatHost);
-    console.log(msg);
-}
 
-if (diagnostics.length > 0) {
-    printDiagnostic(diagnostics.map(d => d.compilerObject));
-} else {
-    const { diagnostics = [], context } = compile({ project });
-    if (diagnostics.length > 0) {
-        printDiagnostic(diagnostics);
-    } else {
-        const { operations = [] } = context;
-        for (const op of operations) {
-            console.log(op.name);
-            for (const ins of op.instructions) {
-                const operand = ins.operand
-                    ? Buffer.from(ins.operand).toString('hex')
-                    : "";
-                console.log(`  ${sc.OpCode[ins.opCode]} ${operand}`)
-            }
-        }
-    }
-}
