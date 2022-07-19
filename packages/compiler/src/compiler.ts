@@ -82,7 +82,7 @@ function compile(options: CompileOptions): CompileResults {
             const node = error instanceof CompileError
                 ? error.node
                 : undefined;
-                if (!context.diagnostics) { context.diagnostics = []; }
+            if (!context.diagnostics) { context.diagnostics = []; }
             context.diagnostics.push({
                 category: tsm.ts.DiagnosticCategory.Error,
                 code: 0,
@@ -153,26 +153,23 @@ function resolveDeclarationsPass(context: CompilationContext): void {
         if (!src.isDeclarationFile()) continue;
 
         src.forEachChild(node => {
-            if (tsm.Node.isInterfaceDeclaration(node)) {
+            if (node.isKind(tsm.ts.SyntaxKind.InterfaceDeclaration)) {
                 const symbol = node.getSymbol();
-                if (symbol) {
-                    const _interface = builtinInterfaces.get(symbol.getName());
-                    if (_interface) {
-                        const memberMap = new Map<tsm.Symbol, VmCall[]>();
-                        for (const member of node.getMembers()) {
-                            const memberSymbol = member.getSymbol();
-                            if (memberSymbol) {
-                                const calls = _interface.get(memberSymbol.getName());
-                                if (calls && calls.length > 0) {
-                                    memberMap.set(memberSymbol, calls);
-                                }
-                            }
-                        }
-                        interfaces.set(symbol, memberMap);
+                if (!symbol) return;
+                const iface = builtinInterfaces.get(symbol.getName());
+                if (!iface) return;
+                const members = new Map<tsm.Symbol, VmCall[]>();
+                for (const member of node.getMembers()) {
+                    const memberSymbol = member.getSymbol();
+                    if (!memberSymbol) return;
+                    const calls = iface.get(memberSymbol.getName());
+                    if (calls && calls.length > 0) {
+                        members.set(memberSymbol, calls);
                     }
-                } 
+                }
+                interfaces.set(symbol, members);
             }
-            if (tsm.Node.isVariableStatement(node)) {
+            if (node.isKind(tsm.ts.SyntaxKind.VariableStatement)) {
                 for (const decl of node.getDeclarations()) {
                     const symbol = decl.getSymbol()
                     const typeSymbol = decl.getType().getSymbol();
@@ -181,7 +178,7 @@ function resolveDeclarationsPass(context: CompilationContext): void {
                     }
                 }
             }
-        })
+        });
     }
 
     context.builtins = { interfaces, variables }
@@ -203,6 +200,7 @@ function generateInstructionsPass(context: CompilationContext): void {
         if (body) {
             if (tsm.Node.isStatement(body)) {
                 convertStatement(body, op);
+                op.instructions.push({ opCode: sc.OpCode.RET });
             }
         }
     }

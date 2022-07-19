@@ -1,7 +1,7 @@
-import { sc } from "@cityofzion/neon-core";
+import { sc, u } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
 import { CompileError, OperationContext } from "./compiler";
-import { ContractType, ContractTypeKind, PrimitiveType, PrimitiveContractType, isPrimitiveType } from "./contractType";
+import { ContractType, ContractTypeKind, PrimitiveType, PrimitiveContractType } from "./contractType";
 import { Instruction } from "./types";
 
 const checkFlags = (type: tsm.Type, flags: tsm.ts.TypeFlags) => type.getFlags() & flags;
@@ -67,9 +67,9 @@ function convertExpressionStatement(node: tsm.ExpressionStatement, context: Oper
 }
 
 function convertReturnStatement(node: tsm.ReturnStatement, context: OperationContext) {
-    const expr = node.getExpression(); 
+    const expr = node.getExpression();
     if (expr) { convertExpression(expr, context); }
-    context.instructions.push({opCode: sc.OpCode.RET});
+    context.instructions.push({ opCode: sc.OpCode.RET });
 }
 
 function convertExpression(node: tsm.Expression, context: OperationContext) {
@@ -90,7 +90,7 @@ function convertExpression(node: tsm.Expression, context: OperationContext) {
 }
 
 // [SyntaxKind.ArrayLiteralExpression]: ArrayLiteralExpression;
-function convertArrayLiteralExpression(node: tsm.ArrayLiteralExpression): Instruction[] {
+function convertArrayLiteralExpression(node: tsm.ArrayLiteralExpression, ctx: OperationContext) {
 
     const elements = node.getElements();
 
@@ -98,13 +98,14 @@ function convertArrayLiteralExpression(node: tsm.ArrayLiteralExpression): Instru
     if (elements.every(isByteLiteral)) {
         const bytes = elements
             .map(e => e.asKindOrThrow(tsm.ts.SyntaxKind.NumericLiteral).getLiteralValue());
-        return [convertBuffer(Buffer.from(bytes)), { 
-            opCode: sc.OpCode.CONVERT, 
+        ctx.instructions.push(convertBuffer(Buffer.from(bytes)), {
+            opCode: sc.OpCode.CONVERT,
             operand: Uint8Array.from([sc.StackItemType.Buffer])
-        }];
+        });
+        return;
     }
 
-    throw new Error(`convertArrayLiteral not implemented`);
+    throw new CompileError(`convertArrayLiteral not implemented`, node);
 
     function isByteLiteral(n: tsm.Expression) {
         if (tsm.Node.isNumericLiteral(n)) {
@@ -161,8 +162,8 @@ function convertBinaryExpression(node: tsm.BinaryExpression, ctx: OperationConte
     ctx.instructions.push(ins);
 
     function convertBinaryOperator(
-        op: tsm.Node<tsm.ts.BinaryOperatorToken>, 
-        left: tsm.Type, 
+        op: tsm.Node<tsm.ts.BinaryOperatorToken>,
+        left: tsm.Type,
         right: tsm.Type
     ): Instruction {
         switch (op.getKind()) {
@@ -193,26 +194,27 @@ function convertCallExpression(node: tsm.CallExpression, ctx: OperationContext) 
     }
 
     // TODO emit call
+    convertExpression(node.getExpression(), ctx);
 
-//     const expr = node.getExpression();
-//     const symbol = expr.getSymbolOrThrow();
-//     const symbolDecl = symbol.getValueDeclarationOrThrow() as tsm.FunctionDeclaration;
-//     const p = symbolDecl.getParent();
-//     const q = symbolDecl.getStructure();
+    //     const expr = node.getExpression();
+    //     const symbol = expr.getSymbolOrThrow();
+    //     const symbolDecl = symbol.getValueDeclarationOrThrow() as tsm.FunctionDeclaration;
+    //     const p = symbolDecl.getParent();
+    //     const q = symbolDecl.getStructure();
 
 
-//     const symbolDeclText = tsm.printNode(symbolDecl.compilerNode);
-//     const symbolFlags = symbol.getFlags();
-//     const args = node.getArguments();
+    //     const symbolDeclText = tsm.printNode(symbolDecl.compilerNode);
+    //     const symbolFlags = symbol.getFlags();
+    //     const args = node.getArguments();
 
-//     switch (symbolFlags) {
-//         // case m.SymbolFlags.Function: {
-//         //     break;
-//         // }
-//         default: throw new Error(`convertCallExpression ${tsm.SymbolFlags[symbolFlags]} not implemented`)
-//     }
+    //     switch (symbolFlags) {
+    //         // case m.SymbolFlags.Function: {
+    //         //     break;
+    //         // }
+    //         default: throw new Error(`convertCallExpression ${tsm.SymbolFlags[symbolFlags]} not implemented`)
+    //     }
 
-//     return [];
+    //     return [];
 
 }
 
@@ -236,14 +238,20 @@ function convertIdentifier(node: tsm.Identifier, ctx: OperationContext) {
             const declNode = def.getDeclarationNode();
             const index = ctx.node.getParameters().findIndex(p => p === declNode);
             if (index === -1) throw new CompileError(`${node.getText} param can't be found`, node);
-            const ins: Instruction = {
-                opCode: sc.OpCode.LDARG,
-                operand: Uint8Array.from([index]),
+
+            if (index <= 6) {
+
             }
+            const ins: Instruction = index <= 6
+                ? { opCode: sc.OpCode.LDARG0 + index }
+                : {
+                    opCode: sc.OpCode.LDARG,
+                    operand: Uint8Array.from([index]),
+                };
             ctx.instructions.push(ins);
             break;
         }
-        default: 
+        default:
             throw new CompileError("convertIdentifier not implemented", node);
     }
 }
@@ -277,32 +285,25 @@ function convertPropertyAccessExpression(node: tsm.PropertyAccessExpression, ctx
 
     const lhs = node.getExpression();
     const lhsSymbol = lhs.getSymbolOrThrow();
-    const lhsBuiltIn = builtins?.variables.get(lhsSymbol);
-    
+    const lhsTypeSymbol = builtins?.variables.get(lhsSymbol);
+    if (!lhsTypeSymbol) { throw new CompileError(`could not resolve ${lhsSymbol.getName()}`, lhs); }
+    const lhsInterface = builtins?.interfaces.get(lhsTypeSymbol);
+    if (!lhsInterface) { throw new CompileError(`could not resolve ${lhsTypeSymbol.getName()}`, lhs); }
+
     const propertyNode = node.getNameNode();
     const propertySymbol = propertyNode.getSymbolOrThrow();
+    const calls = lhsInterface.get(propertySymbol);
+    if (!calls) { throw new CompileError(`could not resolve ${propertySymbol.getName()}`, propertyNode); }
 
-    const lhsSymbolDecl = lhsSymbol.getValueDeclarationOrThrow();
-    const propertyName = node.getName();
-
-    console.log();
-    
-    
-//     const id = node.getSourceFile().getImportDeclaration(w => true);
-//     const nodeType = node.getType();
-//     const nodeTypeText = nodeType.getText();
-
-//     
-//     const lhsText = tsm.printNode(lhs.compilerNode);
-//     const lhsType = lhs.getType();
-//     
-//     const foo = tsm.printNode(lhsSymbol.getValueDeclarationOrThrow().compilerNode)
-//     const lhsSymbolDecl = lhsSymbol.getDeclarations()[0];
-
-//     
-
-//     convertExpression(lhs, ctx);
-//     return [];
+    for (const call of calls) {
+        const txt = Buffer.from(call.syscall, 'ascii').toString('hex');
+        const buffer = Buffer.from(u.sha256(txt), 'hex').slice(0, 4);
+        
+        ctx.instructions.push({
+            opCode: sc.OpCode.SYSCALL,
+            operand: Uint8Array.from(buffer),
+        });
+    }
 }
 
 // [SyntaxKind.RegularExpressionLiteral]: RegularExpressionLiteral;
@@ -312,7 +313,7 @@ function convertStringLiteral(node: tsm.StringLiteral, ctx: OperationContext) {
     const literal = node.getLiteralValue();
     const buffer = Buffer.from(literal, 'utf-8');
     const ins = convertBuffer(buffer);
-    ctx.instructions.push(ins); 
+    ctx.instructions.push(ins);
 }
 
 // [SyntaxKind.TaggedTemplateExpression]: TaggedTemplateExpression;
@@ -348,8 +349,8 @@ export function convertInt(i: BigInt): Instruction {
 
     // convert JS BigInt to C# BigInt byte array encoding
     function toByteArray(i: BigInt) {
-        if (i < 0n) { 
-            throw new Error("convertInt.toByteArray negative values not implemented") 
+        if (i < 0n) {
+            throw new Error("convertInt.toByteArray negative values not implemented")
         }
 
         let str = i.toString(16);
@@ -387,11 +388,11 @@ export function convertInt(i: BigInt): Instruction {
     }
 }
 
-export function convertBuffer(buffer: ArrayLike<number> & Iterable<number>):Instruction {
+export function convertBuffer(buffer: ArrayLike<number> & Iterable<number>): Instruction {
 
     const [opCode, length] = getOpCodeAndLength(buffer);
     const operand = new Uint8Array([...length, ...buffer]);
-    return {opCode, operand};
+    return { opCode, operand };
 
     function getOpCodeAndLength(buffer: ArrayLike<number>): [sc.OpCode, Buffer] {
         if (buffer.length <= 255) /* byte.MaxValue */ {
