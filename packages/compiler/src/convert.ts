@@ -30,55 +30,6 @@ export function tsTypeToContractType(type: tsm.Type): ContractType {
     throw new Error(`convertTypeScriptType ${type.getText()} not implemented`);
 }
 
-// export function convertProject(project: tsm.Project) {
-//     const ctx = new ProjectContext(project);
-//     for (const source of project.getSourceFiles()) {
-//         source.transform
-//         if (source.isDeclarationFile()) continue;
-//         source.forEachChild(child => convertNode(child, ctx));
-//     }
-//     return ctx;
-// }
-
-// export function convertNode(node: tsm.Node) {
-
-//     if (tsm.Node.isImportDeclaration(node)) {
-//         var module = node.getModuleSpecifierValue();
-//         if (module === "@neo-project/neo-contract-framework") {
-//             // ignore SCFX module
-//         } else {
-//             throw new Error(`Unknown module ${module}`);
-//         }
-//     } else if (tsm.Node.isFunctionDeclaration(node)) {
-//         const op = convertFunction(node);
-//         // ctx.operations.push(op);
-//     } else if (node.getKind() == tsm.SyntaxKind.EndOfFileToken) {
-//         // ignore EOF token
-//     } else {
-//         throw new Error(`${node.getKindName()} project node not implemented`)
-//     }
-// }
-
-// export function convertFunction(node: tsm.FunctionDeclaration) {
-//     const instructions = new Array<Instruction>(); 
-//     instructions.push(...convertBody(node));
-//     const paramCount = node.getParameters().length;
-//     const localCount = 0;
-//     if (localCount > 0 || paramCount > 0) {
-//         // instructions.unshift({ opCode: sc.OpCode.INITSLOT, [localCount, paramCount]));
-//     }
-//     return instructions;
-// }
-
-// export function convertBody(node: tsm.BodyableNode): Instruction[] {
-//     const body = node.getBody();
-//     if (!body) return [];
-//     if (tsm.Node.isStatement(body)) {
-//         return convertStatement(body);
-//     }
-//     throw new Error(`${body.getKindName()} body node kind not implemented`)
-// }
-
 type ConvertFunction = (node: any, context: OperationContext) => void;
 
 function dispatchConvert(node: tsm.Node, context: OperationContext, converters: Map<tsm.SyntaxKind, ConvertFunction>) {
@@ -99,6 +50,7 @@ export function convertStatement(node: tsm.Statement, context: OperationContext)
     node.asKindOrThrow
     let map = new Map<tsm.SyntaxKind, ConvertFunction>([
         [tsm.SyntaxKind.Block, convertBlock],
+        [tsm.SyntaxKind.ExpressionStatement, convertExpressionStatement],
         [tsm.SyntaxKind.ReturnStatement, convertReturnStatement]
     ]);
     dispatchConvert(node, context, map);
@@ -106,6 +58,12 @@ export function convertStatement(node: tsm.Statement, context: OperationContext)
 
 function convertBlock(node: tsm.Block, context: OperationContext) {
     node.getStatements().forEach(s => convertStatement(s, context));
+}
+
+function convertExpressionStatement(node: tsm.ExpressionStatement, context: OperationContext) {
+    const expr = node.getExpression();
+    if (!expr) { throw new CompileError(`falsy expression statement`, node); }
+    convertExpression(expr, context);
 }
 
 function convertReturnStatement(node: tsm.ReturnStatement, context: OperationContext) {
@@ -117,14 +75,14 @@ function convertReturnStatement(node: tsm.ReturnStatement, context: OperationCon
 function convertExpression(node: tsm.Expression, context: OperationContext) {
 
     let map = new Map<tsm.SyntaxKind, ConvertFunction>([
-        // [tsm.SyntaxKind.ArrayLiteralExpression, convertArrayLiteralExpression],
+        [tsm.SyntaxKind.ArrayLiteralExpression, convertArrayLiteralExpression],
         // [tsm.SyntaxKind.AsExpression, convertAsExpression],
         // [tsm.SyntaxKind.BigIntLiteral, convertBigIntLiteral],
         [tsm.SyntaxKind.BinaryExpression, convertBinaryExpression],
-        // [tsm.SyntaxKind.CallExpression, convertCallExpression],
+        [tsm.SyntaxKind.CallExpression, convertCallExpression],
         [tsm.SyntaxKind.Identifier, convertIdentifier],
         // [tsm.SyntaxKind.NumericLiteral, convertNumericLiteral],
-        // [tsm.SyntaxKind.PropertyAccessExpression, convertPropertyAccessExpression],
+        [tsm.SyntaxKind.PropertyAccessExpression, convertPropertyAccessExpression],
         [tsm.SyntaxKind.StringLiteral, convertStringLiteral],
     ])
 
@@ -222,7 +180,19 @@ function convertBinaryExpression(node: tsm.BinaryExpression, ctx: OperationConte
 }
 
 // [SyntaxKind.CallExpression]: CallExpression;
-// function convertCallExpression(node: tsm.CallExpression, ctx: OperationContext): Instruction[] {
+function convertCallExpression(node: tsm.CallExpression, ctx: OperationContext) {
+
+    const args = node.getArguments();
+    for (let i = args.length - 1; i >= 0; i--) {
+        const arg = args[i];
+        if (tsm.Node.isExpression(arg)) {
+            convertExpression(arg, ctx);
+        } else {
+            throw new CompileError(`Expected expression, got ${arg.getKindName()}`, arg);
+        }
+    }
+
+    // TODO emit call
 
 //     const expr = node.getExpression();
 //     const symbol = expr.getSymbolOrThrow();
@@ -244,7 +214,7 @@ function convertBinaryExpression(node: tsm.BinaryExpression, ctx: OperationConte
 
 //     return [];
 
-// }
+}
 
 // [SyntaxKind.ClassExpression]: ClassExpression;
 // [SyntaxKind.CommaListExpression]: CommaListExpression;
@@ -302,25 +272,39 @@ function convertNumericLiteral(node: tsm.NumericLiteral): Instruction[] {
 // [SyntaxKind.PostfixUnaryExpression]: PostfixUnaryExpression;
 // [SyntaxKind.PrefixUnaryExpression]: PrefixUnaryExpression;
 // [SyntaxKind.PropertyAccessExpression]: PropertyAccessExpression;
-// function convertPropertyAccessExpression(node: tsm.PropertyAccessExpression, ctx: OperationContext): Instruction[] {
-//     const nodeText = tsm.printNode(node.compilerNode);
+function convertPropertyAccessExpression(node: tsm.PropertyAccessExpression, ctx: OperationContext) {
+    const builtins = ctx.parent.builtins;
+
+    const lhs = node.getExpression();
+    const lhsSymbol = lhs.getSymbolOrThrow();
+    const lhsBuiltIn = builtins?.variables.get(lhsSymbol);
+    
+    const propertyNode = node.getNameNode();
+    const propertySymbol = propertyNode.getSymbolOrThrow();
+
+    const lhsSymbolDecl = lhsSymbol.getValueDeclarationOrThrow();
+    const propertyName = node.getName();
+
+    console.log();
+    
     
 //     const id = node.getSourceFile().getImportDeclaration(w => true);
 //     const nodeType = node.getType();
 //     const nodeTypeText = nodeType.getText();
 
-//     const lhs = node.getExpression();
+//     
 //     const lhsText = tsm.printNode(lhs.compilerNode);
 //     const lhsType = lhs.getType();
-//     const lhsSymbol = lhs.getSymbolOrThrow();
+//     
 //     const foo = tsm.printNode(lhsSymbol.getValueDeclarationOrThrow().compilerNode)
 //     const lhsSymbolDecl = lhsSymbol.getDeclarations()[0];
 
-//     const propertyName = node.getName();
+//     
 
 //     convertExpression(lhs, ctx);
 //     return [];
-// }
+}
+
 // [SyntaxKind.RegularExpressionLiteral]: RegularExpressionLiteral;
 // [SyntaxKind.SpreadElement]: SpreadElement;
 // [SyntaxKind.StringLiteral]: StringLiteral;

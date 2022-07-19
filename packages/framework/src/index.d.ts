@@ -1,29 +1,14 @@
-export class SmartContract {}
-
-export interface StorageContext { 
-    asReadonly(): StorageContext,
-}
+export interface StorageContext { }
 
 export type StorageKey = Uint8Array | ArrayLike<number> | string;
  
-// export function getCurrentContext(): StorageContext;
-// export function getStorage(context: StorageContext, key: StorageKey): string;
-// export function putStorage(context: StorageContext, key: StorageKey, value: string);
+export const Storage: StorageConstructor;
 
-// export interface StorageInterface {
-//     readonly currentContext: StorageContext;
-//     get(context: StorageContext, key: StorageKey): string;
-//     put(context: StorageContext, key: StorageKey, value: string);
-// }
-
-export const Storage: {
+export interface StorageConstructor {
+    // @syscall("System.Storage.GetContext")
     readonly currentContext: StorageContext;
+    // @syscall("System.Storage.Get")
     get(context: StorageContext, key: StorageKey): string;
-    put(context: StorageContext, key: StorageKey, value: string);
+    // @syscall("System.Storage.Put")
+    put(context: StorageContext, key: StorageKey, value: string): void;
 }
-
-// export class Storage {
-//     public static readonly currentContext: StorageContext;
-//     public static get(context: StorageContext, key: StorageKey): string;
-//     public static put(context: StorageContext, key: StorageKey, value: string): void;
-// }

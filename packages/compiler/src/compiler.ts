@@ -26,12 +26,16 @@ export interface CompilationContext {
     project: tsm.Project,
     options: Required<Omit<CompileOptions, 'project'>>,
     name?: string,
-    operations: Array<OperationContext>,
-    staticFields: Array<StaticField>,
-    diagnostics: Array<tsm.ts.Diagnostic>
+    builtins?: Builtins,
+    operations?: Array<OperationContext>,
+    staticFields?: Array<StaticField>,
+    diagnostics?: Array<tsm.ts.Diagnostic>
 }
 
-export interface StaticField { }
+export interface Builtins {
+    variables: ReadonlyMap<tsm.Symbol, tsm.Symbol>,
+    interfaces: ReadonlyMap<tsm.Symbol, Map<tsm.Symbol, VmCall[]>>,
+}
 
 export interface OperationContext {
     parent: CompilationContext,
@@ -40,8 +44,10 @@ export interface OperationContext {
     instructions: Array<Instruction>
 }
 
+export interface StaticField { }
+
 export interface CompileResults {
-    diagnostics: Array<tsm.ts.Diagnostic>,
+    diagnostics?: Array<tsm.ts.Diagnostic>,
     context: CompilationContext,
 }
 
@@ -61,6 +67,7 @@ function compile(options: CompileOptions): CompileResults {
 
     type CompilePass = (context: CompilationContext) => void;
     const passes: Array<CompilePass> = [
+        resolveDeclarationsPass,
         findFunctionsPass,
         generateInstructionsPass
     ];
@@ -75,6 +82,7 @@ function compile(options: CompileOptions): CompileResults {
             const node = error instanceof CompileError
                 ? error.node
                 : undefined;
+                if (!context.diagnostics) { context.diagnostics = []; }
             context.diagnostics.push({
                 category: tsm.ts.DiagnosticCategory.Error,
                 code: 0,
@@ -88,7 +96,7 @@ function compile(options: CompileOptions): CompileResults {
             });
         }
 
-        if (context.diagnostics.some(d => d.category == tsm.ts.DiagnosticCategory.Error)) {
+        if (context.diagnostics?.some(d => d.category == tsm.ts.DiagnosticCategory.Error)) {
             break;
         }
     }
@@ -106,6 +114,7 @@ function findFunctionsPass(context: CompilationContext): void {
             if (tsm.Node.isFunctionDeclaration(node)) {
                 const name = node.getName();
                 if (name) {
+                    if (!context.operations) { context.operations = []; }
                     context.operations.push({
                         name,
                         node,
@@ -118,8 +127,68 @@ function findFunctionsPass(context: CompilationContext): void {
     }
 }
 
+export interface SysCall {
+    syscall: string,
+}
+
+export type VmCall = SysCall;
+
+// TODO: move this to a JSON file at some point
+const storageBuiltin = new Map<string, VmCall[]>([
+    ["currentContext", [{ syscall: "System.Storage.GetContext" }]],
+    ["get", [{ syscall: "System.Storage.Get" }]],
+    ["put", [{ syscall: "System.Storage.Put" }]]
+]);
+
+const builtinInterfaces = new Map([
+    ["StorageConstructor", storageBuiltin]
+]);
+
+function resolveDeclarationsPass(context: CompilationContext): void {
+
+    const interfaces = new Map<tsm.Symbol, Map<tsm.Symbol, VmCall[]>>();
+    const variables = new Map<tsm.Symbol, tsm.Symbol>();
+
+    for (const src of context.project.getSourceFiles()) {
+        if (!src.isDeclarationFile()) continue;
+
+        src.forEachChild(node => {
+            if (tsm.Node.isInterfaceDeclaration(node)) {
+                const symbol = node.getSymbol();
+                if (symbol) {
+                    const _interface = builtinInterfaces.get(symbol.getName());
+                    if (_interface) {
+                        const memberMap = new Map<tsm.Symbol, VmCall[]>();
+                        for (const member of node.getMembers()) {
+                            const memberSymbol = member.getSymbol();
+                            if (memberSymbol) {
+                                const calls = _interface.get(memberSymbol.getName());
+                                if (calls && calls.length > 0) {
+                                    memberMap.set(memberSymbol, calls);
+                                }
+                            }
+                        }
+                        interfaces.set(symbol, memberMap);
+                    }
+                } 
+            }
+            if (tsm.Node.isVariableStatement(node)) {
+                for (const decl of node.getDeclarations()) {
+                    const symbol = decl.getSymbol()
+                    const typeSymbol = decl.getType().getSymbol();
+                    if (symbol && typeSymbol) {
+                        variables.set(symbol, typeSymbol);
+                    }
+                }
+            }
+        })
+    }
+
+    context.builtins = { interfaces, variables }
+}
+
 function generateInstructionsPass(context: CompilationContext): void {
-    for (const op of context.operations) {
+    for (const op of context.operations ?? []) {
         op.instructions.length = 0;
         const paramCount = op.node.getParameters().length;
         const localCount = 0;
@@ -151,13 +220,13 @@ function generateInstructionsPass(context: CompilationContext): void {
 const contractSource = /*javascript*/`
 import * as neo from '@neo-project/neo-contract-framework';
 
-// export function getValue() { 
-//     return neo.Storage.get(neo.Storage.currentContext, [0x00]); 
-// }
+export function getValue() { 
+    return neo.Storage.get(neo.Storage.currentContext, [0x00]); 
+}
 
-// export function setValue(value: string) { 
-//     neo.Storage.put(neo.Storage.currentContext, [0x00], value); 
-// }
+export function setValue(value: string) { 
+    neo.Storage.put(neo.Storage.currentContext, [0x00], value); 
+}
 
 export function helloWorld() { return "Hello, World!"; }
 
@@ -171,6 +240,7 @@ const project = new tsm.Project({
     }
 });
 project.createSourceFile("contract.ts", contractSource);
+project.resolveSourceFileDependencies();
 
 // console.time('getPreEmitDiagnostics');
 var diagnostics = project.getPreEmitDiagnostics();
@@ -191,12 +261,12 @@ function printDiagnostic(diags: tsm.ts.Diagnostic[]) {
 if (diagnostics.length > 0) {
     printDiagnostic(diagnostics.map(d => d.compilerObject));
 } else {
-    const files = project.getSourceFiles();
-    const results = compile({ project });
-    if (results.diagnostics.length > 0) {
-        printDiagnostic(results.diagnostics);
+    const { diagnostics = [], context } = compile({ project });
+    if (diagnostics.length > 0) {
+        printDiagnostic(diagnostics);
     } else {
-        for (const op of results.context.operations) {
+        const { operations = [] } = context;
+        for (const op of operations) {
             console.log(op.name);
             for (const ins of op.instructions) {
                 const operand = ins.operand
