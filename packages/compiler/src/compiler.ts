@@ -3,6 +3,8 @@ import * as tsm from "ts-morph";
 // import { convertStatement } from "./convert";
 import { Instruction } from "./types";
 import * as path from 'path'
+import { ScriptBuilder } from "./ScriptBuilder";
+import { convertStatement } from "./convert";
 
 // https://github.com/CityOfZion/neon-js/issues/858
 const DEFAULT_ADDRESS_VALUE = 53;
@@ -33,6 +35,13 @@ export interface CompilationContext {
     diagnostics?: Array<tsm.ts.Diagnostic>
 }
 
+export interface SysCall {
+    syscall: string,
+}
+
+// adding type alias so we can add other types of VM calls later
+export type VmCall = SysCall;
+
 export interface Builtins {
     variables: ReadonlyMap<tsm.Symbol, tsm.Symbol>,
     interfaces: ReadonlyMap<tsm.Symbol, Map<tsm.Symbol, VmCall[]>>,
@@ -42,7 +51,7 @@ export interface OperationContext {
     parent: CompilationContext,
     name: string,
     node: tsm.FunctionDeclaration,
-    instructions: Array<Instruction>
+    builder: ScriptBuilder
 }
 
 export interface StaticField { }
@@ -69,8 +78,7 @@ function compile(options: CompileOptions): CompileResults {
     type CompilePass = (context: CompilationContext) => void;
     const passes: Array<CompilePass> = [
         resolveDeclarationsPass,
-        findFunctionsPass,
-        generateInstructionsPass
+        processFunctionsPass,
     ];
 
     for (const pass of passes) {
@@ -107,33 +115,6 @@ function compile(options: CompileOptions): CompileResults {
         context
     };
 }
-
-function findFunctionsPass(context: CompilationContext): void {
-    for (const src of context.project.getSourceFiles()) {
-        if (src.isDeclarationFile()) continue;
-        src.forEachChild(node => {
-            if (tsm.Node.isFunctionDeclaration(node)) {
-                const name = node.getName();
-                if (name) {
-                    if (!context.operations) { context.operations = []; }
-                    context.operations.push({
-                        name,
-                        node,
-                        parent: context,
-                        instructions: []
-                    });
-                }
-            }
-        })
-    }
-}
-
-export interface SysCall {
-    syscall: string,
-}
-
-export type VmCall = SysCall;
-
 
 function resolveDeclarationsPass(context: CompilationContext): void {
 
@@ -186,25 +167,36 @@ function resolveDeclarationsPass(context: CompilationContext): void {
     context.builtins = { interfaces, variables }
 }
 
-function generateInstructionsPass(context: CompilationContext): void {
-    for (const op of context.operations ?? []) {
-        op.instructions.length = 0;
-        const paramCount = op.node.getParameters().length;
-        const localCount = 0;
-        if (localCount > 0 || paramCount > 0) {
-            op.instructions.push({
-                opCode: sc.OpCode.INITSLOT,
-                operand: Uint8Array.from([localCount, paramCount])
-            });
-        }
+function processFunctionsPass(context: CompilationContext): void {
+    for (const src of context.project.getSourceFiles()) {
+        if (src.isDeclarationFile()) continue;
+        src.forEachChild(node => {
+            if (tsm.Node.isFunctionDeclaration(node)) {
+                const name = node.getName();
+                if (!name) { return; }
+                const opCtx = {
+                    parent: context,
+                    name,
+                    node,
+                    builder: new ScriptBuilder(),
+                };
+                if (!context.operations) { context.operations = []; }
+                context.operations.push(opCtx);
 
-        const body = op.node.getBody()
-        if (body) {
-            if (tsm.Node.isStatement(body)) {
-                // convertStatement(body, op);
-                op.instructions.push({ opCode: sc.OpCode.RET });
+                const paramCount = node.getParameters().length;
+                const localCount = 0;
+                if (localCount > 0 || paramCount > 0) {
+                    opCtx.builder.push(sc.OpCode.INITSLOT, [localCount, paramCount]);
+                }
+
+                const body = node.getBodyOrThrow();
+                if (tsm.Node.isStatement(body)) {
+                    convertStatement(body, opCtx)
+                } else {
+                    throw new CompileError(`Unexpected body kind ${body.getKindName()}`, body);
+                }
             }
-        }
+        })
     }
 }
 
@@ -223,11 +215,11 @@ function printDiagnostic(diags: tsm.ts.Diagnostic[]) {
 function dumpOperations(operations?: OperationContext[]) {
     for (const op of operations ?? []) {
         console.log(op.name);
-        for (const ins of op.instructions) {
-            const operand = ins.operand
-                ? Buffer.from(ins.operand).toString('hex')
+        for (const { instruction, sequencePoint } of op.builder.instructions) {
+            const operand = instruction.operand
+                ? Buffer.from(instruction.operand).toString('hex')
                 : "";
-            console.log(`  ${sc.OpCode[ins.opCode]} ${operand}`)
+            console.log(`  ${sc.OpCode[instruction.opCode]} ${operand}`)
         }
     }
 }

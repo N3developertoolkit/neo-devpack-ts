@@ -1,6 +1,6 @@
 import { sc, u } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
-import { CompileError, OperationContext } from "./compiler";
+import { CompilationContext, CompileError, OperationContext } from "./compiler";
 import { ContractType, ContractTypeKind, PrimitiveType, PrimitiveContractType } from "./contractType";
 import { Instruction } from "./types";
 
@@ -47,9 +47,9 @@ function dispatchConvert(node: tsm.Node, context: OperationContext, converters: 
 export function convertStatement(node: tsm.Statement, context: OperationContext): void {
 
     let map = new Map<tsm.SyntaxKind, ConvertFunction>([
-        // [tsm.SyntaxKind.Block, convertBlock],
-        // [tsm.SyntaxKind.ExpressionStatement, convertExpressionStatement],
-        // [tsm.SyntaxKind.ReturnStatement, convertReturnStatement]
+        [tsm.SyntaxKind.Block, convertBlock],
+        [tsm.SyntaxKind.ExpressionStatement, convertExpressionStatement],
+        [tsm.SyntaxKind.ReturnStatement, convertReturnStatement]
     ]);
     dispatchConvert(node, context, map);
 }
@@ -67,7 +67,7 @@ function convertExpressionStatement(node: tsm.ExpressionStatement, context: Oper
 function convertReturnStatement(node: tsm.ReturnStatement, context: OperationContext) {
     const expr = node.getExpression();
     if (expr) { convertExpression(expr, context); }
-    context.instructions.push({ opCode: sc.OpCode.RET });
+    context.builder.push(sc.OpCode.RET);
 }
 
 function convertExpression(node: tsm.Expression, context: OperationContext) {
@@ -96,10 +96,8 @@ function convertArrayLiteralExpression(node: tsm.ArrayLiteralExpression, ctx: Op
     if (elements.every(isByteLiteral)) {
         const bytes = elements
             .map(e => e.asKindOrThrow(tsm.ts.SyntaxKind.NumericLiteral).getLiteralValue());
-        ctx.instructions.push(convertBuffer(Buffer.from(bytes)), {
-            opCode: sc.OpCode.CONVERT,
-            operand: Uint8Array.from([sc.StackItemType.Buffer])
-        });
+        ctx.builder.push(convertBuffer(Buffer.from(bytes)));
+        ctx.builder.push(sc.OpCode.CONVERT, [sc.StackItemType.Buffer])
         return;
     }
 
@@ -149,7 +147,7 @@ function convertBigIntLiteral(node: tsm.BigIntLiteral): Instruction[] {
 function convertBinaryExpression(node: tsm.BinaryExpression, ctx: OperationContext) {
     const left = node.getLeft();
     const right = node.getRight();
-    const ins = convertBinaryOperator(
+    const opCode = convertBinaryOperator(
         node.getOperatorToken(),
         left.getType(),
         right.getType()
@@ -157,17 +155,17 @@ function convertBinaryExpression(node: tsm.BinaryExpression, ctx: OperationConte
 
     convertExpression(left, ctx);
     convertExpression(right, ctx);
-    ctx.instructions.push(ins);
+    ctx.builder.push(opCode);
 
     function convertBinaryOperator(
         op: tsm.Node<tsm.ts.BinaryOperatorToken>,
         left: tsm.Type,
         right: tsm.Type
-    ): Instruction {
+    ): sc.OpCode {
         switch (op.getKind()) {
             case tsm.SyntaxKind.PlusToken: {
                 if (isStringLike(left) && isStringLike(right)) {
-                    return { opCode: sc.OpCode.CAT };
+                    return sc.OpCode.CAT;
                 } else {
                     throw new Error(`convertBinaryOperator.PlusToken not implemented for ${left.getText()} and ${right.getText()}`);
                 }
@@ -236,17 +234,7 @@ function convertIdentifier(node: tsm.Identifier, ctx: OperationContext) {
             const declNode = def.getDeclarationNode();
             const index = ctx.node.getParameters().findIndex(p => p === declNode);
             if (index === -1) throw new CompileError(`${node.getText} param can't be found`, node);
-
-            if (index <= 6) {
-
-            }
-            const ins: Instruction = index <= 6
-                ? { opCode: sc.OpCode.LDARG0 + index }
-                : {
-                    opCode: sc.OpCode.LDARG,
-                    operand: Uint8Array.from([index]),
-                };
-            ctx.instructions.push(ins);
+            ctx.builder.push(sc.OpCode.LDARG, [index]);
             break;
         }
         default:
@@ -296,11 +284,7 @@ function convertPropertyAccessExpression(node: tsm.PropertyAccessExpression, ctx
     for (const call of calls) {
         const txt = Buffer.from(call.syscall, 'ascii').toString('hex');
         const buffer = Buffer.from(u.sha256(txt), 'hex').slice(0, 4);
-        
-        ctx.instructions.push({
-            opCode: sc.OpCode.SYSCALL,
-            operand: Uint8Array.from(buffer),
-        });
+        ctx.builder.push(sc.OpCode.SYSCALL, buffer);
     }
 }
 
@@ -310,8 +294,7 @@ function convertPropertyAccessExpression(node: tsm.PropertyAccessExpression, ctx
 function convertStringLiteral(node: tsm.StringLiteral, ctx: OperationContext) {
     const literal = node.getLiteralValue();
     const buffer = Buffer.from(literal, 'utf-8');
-    const ins = convertBuffer(buffer);
-    ctx.instructions.push(ins);
+    ctx.builder.push(convertBuffer(buffer));
 }
 
 // [SyntaxKind.TaggedTemplateExpression]: TaggedTemplateExpression;

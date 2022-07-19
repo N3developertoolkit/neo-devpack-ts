@@ -3,8 +3,15 @@ import * as tsm from "ts-morph";
 import { Instruction } from "./types";
 
 export class ScriptBuilder {
-    private readonly instructions = new Array<Instruction>();
-    private readonly sequencePoints = new Map<number, tsm.Node>();
+    private readonly _instructions = new Array<Instruction>();
+    private readonly _sequencePoints = new Map<number, tsm.Node>();
+
+    get instructions() {
+        return this._instructions.map((instruction, i) => ({
+            instruction,
+            sequencePoint: this._sequencePoints.get(i)
+        }));
+    }
 
     push(instruction: Instruction, node?: tsm.Node): void;
     push(opCode: sc.OpCode, node?: tsm.Node): void;
@@ -36,9 +43,11 @@ export class ScriptBuilder {
     }
 
     private doPush(instruction: Instruction, node?: tsm.Node): void {
-        const index = this.instructions.push(instruction) - 1;
+        const index = this._instructions.push(instruction) - 1;
         if (node) {
-            this.sequencePoints.set(index, node);
+            this._sequencePoints.set(index, node);
         }
     }
+
+
 }
