@@ -26,6 +26,12 @@ export function isUnspecifiedType(type: ContractType): type is UnspecifiedContra
     return type.kind === ContractTypeKind.Unspecified;
 }
 
+const _unspecified: UnspecifiedContractType = {
+    kind: ContractTypeKind.Unspecified
+}
+
+export function unspecified() { return _unspecified; }
+
 export enum PrimitiveType {
     Boolean,
     Integer,
@@ -45,6 +51,22 @@ export interface PrimitiveContractType extends ContractType {
 
 export function isPrimitiveType(type: ContractType): type is PrimitiveContractType {
     return type.kind === ContractTypeKind.Primitive;
+}
+
+// https://bobbyhadz.com/blog/typescript-iterate-enum
+const primitiveMap = new Map<PrimitiveType, PrimitiveContractType>(
+    Object.keys(PrimitiveType)
+        .map(k => Number(k))
+        .filter(k => !isNaN(k))
+        .map(k => [k, { 
+            kind: ContractTypeKind.Primitive, 
+            type: k
+        }]))
+
+export function primitive(type: PrimitiveType): PrimitiveContractType {
+    const instance = primitiveMap.get(type);
+    if (!instance) { throw new Error(`Invalid PrimitiveType ${type}`); }
+    return instance;
 }
 
 export interface StructContractType extends ContractType {
@@ -69,7 +91,7 @@ export function isArrayType(type: ContractType): type is ArrayContractType {
 }
 
 export interface MapContractType extends ContractType {
-    kind: ContractTypeKind.Map,
+    readonly kind: ContractTypeKind.Map,
     readonly keyType: PrimitiveType,
     readonly valueType: ContractType,
 }
@@ -79,7 +101,7 @@ export function isMapType(type: ContractType): type is MapContractType {
 }
 
 export interface InteropContractType extends ContractType {
-    kind: ContractTypeKind.Interop,
+    readonly kind: ContractTypeKind.Interop,
     readonly type: string
 }
 
@@ -87,22 +109,21 @@ export function isInteropType(type: ContractType): type is InteropContractType {
     return type.kind === ContractTypeKind.Interop;
 }
 
-export function tsTypeToContractType(type: tsm.Type): ContractType {
+export function interop(type: string):InteropContractType {
+    return { kind: ContractTypeKind.Interop, type };
+}
 
-    if (isStringLike(type)) return {
-        kind: ContractTypeKind.Primitive,
-        type: PrimitiveType.String,
-    } as PrimitiveContractType;
+export function toContractType(type: tsm.Type): ContractType {
 
-    if (isBigIntLike(type) || isNumberLike(type)) return {
-        kind: ContractTypeKind.Primitive,
-        type: PrimitiveType.Integer
-    } as PrimitiveContractType;
-
-    if (isBooleanLike(type)) return {
-        kind: ContractTypeKind.Primitive,
-        type: PrimitiveType.Boolean
-    } as PrimitiveContractType;
+    if (isStringLike(type)) { 
+        return primitive(PrimitiveType.String); 
+    }
+    if (isBigIntLike(type) || isNumberLike(type)) {
+        return primitive(PrimitiveType.Integer);
+    }
+    if (isBooleanLike(type)) {
+        return primitive(PrimitiveType.Boolean);
+    }
 
     throw new Error(`convertTypeScriptType ${type.getText()} not implemented`);
 }

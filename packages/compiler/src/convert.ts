@@ -1,8 +1,7 @@
 import { sc, u } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
-import { CompilationContext, CompileError, OperationContext } from "./compiler";
-import { ContractType, ContractTypeKind, PrimitiveType, PrimitiveContractType } from "./contractType";
-import { Instruction } from "./types";
+import { CompileError, OperationContext } from "./compiler";
+import { Instruction } from "./ScriptBuilder";
 import { isStringLike } from "./utils";
 
 type ConvertFunction<TNode extends tsm.Node> = (node: TNode, context: OperationContext) => void;

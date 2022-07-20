@@ -1,8 +1,10 @@
 import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
-import { Instruction } from "./types";
-import { SequencePoint } from "./debugInfo";
 
+export interface Instruction {
+    opCode: sc.OpCode;
+    operand?: Uint8Array;
+}
 export interface SequencePointSetter {
     set(node?: tsm.Node): void;
 }
@@ -77,19 +79,5 @@ export class ScriptBuilder {
             script: Uint8Array.from(script),
             sequencePoints: points
         };
-
-        function convertSequencePoint(
-            address: number,
-            node?: tsm.Node
-        ): SequencePoint | undefined {
-            if (!node) { return undefined; }
-            const src = node.getSourceFile();
-            return {
-                address,
-                document: src.getFilePath(),
-                start: src.getLineAndColumnAtPos(node.getStart()),
-                end: src.getLineAndColumnAtPos(node.getEnd()),
-            };
-        }
     }
 }

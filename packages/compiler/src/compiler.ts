@@ -4,10 +4,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ScriptBuilder } from "./ScriptBuilder";
 import { convertStatement } from "./convert";
-import { DebugInfo, Method as DebugInfoMethod, SequencePoint, SlotVariable } from "./debugInfo";
-import { ContractType, ContractTypeKind, PrimitiveContractType, PrimitiveType, tsTypeToContractType } from "./contractType";
+import { ContractType, ContractTypeKind, PrimitiveContractType, PrimitiveType, toContractType } from "./contractType";
 import { isVoidLike } from "./utils";
-import { ContractMethodDefinition } from "@cityofzion/neon-core/lib/sc";
 
 // https://github.com/CityOfZion/neon-js/issues/858
 const DEFAULT_ADDRESS_VALUE = 53;
@@ -39,13 +37,18 @@ export interface CompilationContext {
     artifacts?: CompilationArtifacts
 }
 
+export interface DebugSlotVariable {
+    name: string;
+    type: ContractType;
+    index?: number;
+}
 
-export interface CompilationMethodInfo {
+export interface DebugMethodInfo {
     isPublic: boolean,
     name: string,
     range: { start: number, end: number }
-    parameters?: SlotVariable[],
-    variables?: SlotVariable[],
+    parameters?: DebugSlotVariable[],
+    variables?: DebugSlotVariable[],
     returnType?: ContractType,
     sequencePoints: Map<number, tsm.Node>,
 }
@@ -53,7 +56,7 @@ export interface CompilationMethodInfo {
 export interface CompilationArtifacts {
     nef: sc.NEF,
     manifest: sc.ContractManifest,
-    methods: CompilationMethodInfo[]
+    methods: DebugMethodInfo[]
 }
 
 export interface SysCall {
@@ -234,7 +237,7 @@ function isNotNullOrUndefined<T extends Object>(input: null | undefined | T): in
 
 function collectArtifactsPass(context: CompilationContext): void {
     const name = context.name ?? "TestContract";
-    const methods = new Array<CompilationMethodInfo>();
+    const methods = new Array<DebugMethodInfo>();
     let fullScript = Buffer.from([]);
 
     for (const op of context.operations ?? []) {
@@ -243,7 +246,7 @@ function collectArtifactsPass(context: CompilationContext): void {
         const parameters = op.node.getParameters().map((p, index) => ({
             name: p.getName(),
             index,
-            type: tsTypeToContractType(p.getType()),
+            type: toContractType(p.getType()),
         }));
         const returnType = op.node.getReturnType();
         methods.push({
@@ -256,7 +259,7 @@ function collectArtifactsPass(context: CompilationContext): void {
             parameters,
             returnType: isVoidLike(returnType)
                 ? undefined
-                : tsTypeToContractType(returnType),
+                : toContractType(returnType),
             sequencePoints
         })
 
@@ -285,7 +288,7 @@ function collectArtifactsPass(context: CompilationContext): void {
 export function convertContractType(type: tsm.Type): sc.ContractParamType;
 export function convertContractType(type: ContractType): sc.ContractParamType;
 export function convertContractType(type: ContractType | tsm.Type): sc.ContractParamType {
-    if (type instanceof tsm.Type) { type = tsTypeToContractType(type); }
+    if (type instanceof tsm.Type) { type = toContractType(type); }
     switch (type.kind) {
         case ContractTypeKind.Array: return sc.ContractParamType.Array;
         case ContractTypeKind.Interop: return sc.ContractParamType.InteropInterface;
@@ -312,7 +315,7 @@ export function convertContractType(type: ContractType | tsm.Type): sc.ContractP
 }
 
 function toMethodDef(
-    method: CompilationMethodInfo
+    method: DebugMethodInfo
 ): sc.ContractMethodDefinition | undefined {
     if (!method.isPublic) { return undefined; }
     return new sc.ContractMethodDefinition({
