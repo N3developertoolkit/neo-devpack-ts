@@ -1,54 +1,56 @@
 import { ContractType, PrimitiveType, StructContractType } from "./contractType";
 
 export interface DebugInfo {
-    version: number;
-    checksum: string;
-    scriptHash: string;
-    documents: string[];
-    methods: Method[];
-    events: Event[];
-    staticVariables: SlotVariable[];
-    structs: StructContractType[];
-    storageGroups: StorageGroupDef[];
+    contractHash: string,
+    checksum: number,
+    methods?: Method[];
+    events?: Event[];
+    staticVariables?: SlotVariable[];
+    structs?: StructContractType[];
+    storageGroups?: StorageGroupDef[];
 }
 
 export interface Method {
-    namespace: string;
     name: string;
     range: { start: number, end: number };
-    returnType: ContractType | undefined;
-    parameters: SlotVariable[];
-    variables: SlotVariable[];
-    sequencePoints: SequencePoints[];
+    parameters?: SlotVariable[];
+    variables?: SlotVariable[];
+    returnType?: ContractType;
+    sequencePoints?: SequencePoint[];
 }
 
 export interface Event {
-    namespace: string;
     name: string;
-    parameters: SlotVariable[];
+    parameters?: SlotVariable[];
 }
 
 export interface SlotVariable {
     name: string;
     type: ContractType;
-    index: number;
- }
-
-export interface KeySegment {
-    name: string;
-    type: PrimitiveType;
-} 
-
-export interface StorageGroupDef { 
-    name: string;
-    keyPrefix: Uint8Array;
-    keySegments: KeySegment;
-    valueType: ContractType;
+    index?: number;
 }
 
-export interface SequencePoints {
+export interface Struct {
+    name: string,
+    fields: {
+        name: string,
+        type: ContractType
+    }[]
+}
+
+export interface StorageGroupDef {
+    name: string;
+    type: ContractType;
+    keyPrefix: Uint8Array;
+    keySegments: {
+        name: string;
+        type: PrimitiveType;
+    }[];
+}
+
+export interface SequencePoint {
     address: number;
-    document: number;
+    document: string;
     start: { line: number, column: number };
     end: { line: number, column: number };
 }

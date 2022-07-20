@@ -1,10 +1,12 @@
-import { sc } from "@cityofzion/neon-core";
+import { sc, u } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
 // import { convertStatement } from "./convert";
-import { Instruction } from "./types";
 import * as path from 'path'
 import { ScriptBuilder } from "./ScriptBuilder";
 import { convertStatement } from "./convert";
+import { DebugInfo, Method as DebugInfoMethod, SequencePoint } from "./debugInfo";
+import { ContractType, ContractTypeKind, PrimitiveContractType, PrimitiveType, tsTypeToContractType } from "./contractType";
+import { isVoidLike } from "./utils";
 
 // https://github.com/CityOfZion/neon-js/issues/858
 const DEFAULT_ADDRESS_VALUE = 53;
@@ -32,7 +34,14 @@ export interface CompilationContext {
     builtins?: Builtins,
     operations?: Array<OperationContext>,
     staticFields?: Array<StaticField>,
-    diagnostics?: Array<tsm.ts.Diagnostic>
+    diagnostics: Array<tsm.ts.Diagnostic>,
+    artifacts?: CompilationArtifacts
+}
+
+export interface CompilationArtifacts {
+    nef: sc.NEF,
+    manifest: sc.ContractManifest,
+    debugInfo: DebugInfo
 }
 
 export interface SysCall {
@@ -48,17 +57,20 @@ export interface Builtins {
 }
 
 export interface OperationContext {
-    parent: CompilationContext,
-    name: string,
-    node: tsm.FunctionDeclaration,
-    builder: ScriptBuilder
+    readonly parent: CompilationContext,
+    readonly name: string,
+    readonly isPublic: boolean,
+    readonly node: tsm.FunctionDeclaration,
+    readonly builder: ScriptBuilder
 }
 
 export interface StaticField { }
 
 export interface CompileResults {
-    diagnostics?: Array<tsm.ts.Diagnostic>,
-    context: CompilationContext,
+    diagnostics: Array<tsm.ts.Diagnostic>,
+    artifacts?: CompilationArtifacts,
+    context: Omit<CompilationContext, 'diagnostics' | 'artifacts'>
+
 }
 
 function compile(options: CompileOptions): CompileResults {
@@ -70,8 +82,6 @@ function compile(options: CompileOptions): CompileResults {
             inline: options.inline ?? false,
             optimize: options.optimize ?? false,
         },
-        operations: [],
-        staticFields: [],
         diagnostics: []
     };
 
@@ -79,6 +89,7 @@ function compile(options: CompileOptions): CompileResults {
     const passes: Array<CompilePass> = [
         resolveDeclarationsPass,
         processFunctionsPass,
+        collectArtifactsPass,
     ];
 
     for (const pass of passes) {
@@ -112,6 +123,7 @@ function compile(options: CompileOptions): CompileResults {
 
     return {
         diagnostics: context.diagnostics,
+        artifacts: context.artifacts,
         context
     };
 }
@@ -173,10 +185,12 @@ function processFunctionsPass(context: CompilationContext): void {
         src.forEachChild(node => {
             if (tsm.Node.isFunctionDeclaration(node)) {
                 const name = node.getName();
+                const _export = node.getExportKeyword();
                 if (!name) { return; }
-                const opCtx = {
+                const opCtx: OperationContext = {
                     parent: context,
                     name,
+                    isPublic: !!_export,
                     node,
                     builder: new ScriptBuilder(),
                 };
@@ -200,6 +214,122 @@ function processFunctionsPass(context: CompilationContext): void {
     }
 }
 
+interface MethodInfo {
+    methodDef?: sc.ContractMethodDefinition,
+    debug: DebugInfoMethod,
+}
+
+function isNotNullOrUndefined<T extends Object>(input: null | undefined | T): input is T {
+    return input != null;
+}
+
+function collectArtifactsPass(context: CompilationContext): void {
+    let fullScript = Buffer.from([]);
+    const name = context.name ?? "Test Contract";
+    const methods = new Array<MethodInfo>();
+
+    for (const op of context.operations ?? []) {
+        const { script, sequencePoints } = op.builder.compile(fullScript.length);
+        const methodDef = toMethodDef(op.node, fullScript.length);
+        const debug = toDebugInfoMethod(op, fullScript.length, script.length, sequencePoints);
+        methods.push({ methodDef, debug });
+        fullScript = Buffer.concat([fullScript, script]);
+    }
+
+    const nef = new sc.NEF({
+        compiler: "neo-devpack-ts",
+        script: Buffer.from(fullScript).toString("hex"),
+    })
+
+    const manifest = new sc.ContractManifest({
+        name: name,
+        abi: new sc.ContractAbi({
+            methods: methods.map(m => m.methodDef).filter(isNotNullOrUndefined)
+        })
+    });
+
+    const debugInfo: DebugInfo = {
+        contractHash: u.hash160(nef.script),
+        checksum: nef.checksum,
+        methods: methods.map(m => m.debug),
+    }
+
+    context.artifacts = { nef, manifest, debugInfo }
+}
+
+function toDebugInfoMethod(
+    op: OperationContext,
+    offset: number,
+    length: number,
+    sequencePoints: SequencePoint[],
+): DebugInfoMethod {
+    const parameters = op.node.getParameters().map((p, index) => ({
+        name: p.getName(),
+        index,
+        type: tsTypeToContractType(p.getType()),
+    }));
+    const returnType = op.node.getReturnType();
+
+    return {
+        name: op.name,
+        range: {
+            start: offset,
+            end: offset + length - 1
+        },
+        parameters,
+        returnType: isVoidLike(returnType)
+            ? undefined
+            : tsTypeToContractType(returnType),
+        sequencePoints
+    }
+}
+
+export function convertContractType(type: tsm.Type): sc.ContractParamType;
+export function convertContractType(type: ContractType): sc.ContractParamType;
+export function convertContractType(type: ContractType | tsm.Type): sc.ContractParamType {
+    if (type instanceof tsm.Type) { type = tsTypeToContractType(type); }
+    switch (type.kind) {
+        case ContractTypeKind.Array: return sc.ContractParamType.Array;
+        case ContractTypeKind.Interop: return sc.ContractParamType.InteropInterface;
+        case ContractTypeKind.Map: return sc.ContractParamType.Map;
+        case ContractTypeKind.Struct: return sc.ContractParamType.Array;
+        case ContractTypeKind.Unspecified: return sc.ContractParamType.Any;
+        case ContractTypeKind.Primitive: {
+            const primitive = type as PrimitiveContractType;
+            switch (primitive.type) {
+                case PrimitiveType.Address: return sc.ContractParamType.Hash160;
+                case PrimitiveType.Boolean: return sc.ContractParamType.Boolean;
+                case PrimitiveType.ByteArray: return sc.ContractParamType.ByteArray;
+                case PrimitiveType.Hash160: return sc.ContractParamType.Hash160;
+                case PrimitiveType.Hash256: return sc.ContractParamType.Hash256;
+                case PrimitiveType.Integer: return sc.ContractParamType.Integer;
+                case PrimitiveType.PublicKey: return sc.ContractParamType.PublicKey;
+                case PrimitiveType.Signature: return sc.ContractParamType.Signature;
+                case PrimitiveType.String: return sc.ContractParamType.String;
+                default: throw new Error(`Unrecognized PrimitiveType ${primitive.type}`);
+            }
+        }
+        default: throw new Error(`Unrecognized ContractTypeKind ${type.kind}`);
+    }
+}
+
+function toMethodDef(node: tsm.FunctionDeclaration, offset: number): sc.ContractMethodDefinition | undefined {
+
+    if (!node.hasExportKeyword()) return undefined;
+    const returnType = node.getReturnType();
+    return new sc.ContractMethodDefinition({
+        name: node.getNameOrThrow(),
+        offset,
+        parameters: node.getParameters().map(p => ({
+            name: p.getName(),
+            type: convertContractType(p.getType())
+        })),
+        returnType: isVoidLike(returnType)
+            ? sc.ContractParamType.Void
+            : convertContractType(returnType)
+    });
+}
+
 function printDiagnostic(diags: tsm.ts.Diagnostic[]) {
     const formatHost: tsm.ts.FormatDiagnosticsHost = {
         getCurrentDirectory: () => tsm.ts.sys.getCurrentDirectory(),
@@ -214,7 +344,7 @@ function printDiagnostic(diags: tsm.ts.Diagnostic[]) {
 
 function dumpOperations(operations?: OperationContext[]) {
     for (const op of operations ?? []) {
-        console.log(op.name);
+        console.log(` ${op.isPublic ? 'public ' : ''}${op.name}`);
         for (const { instruction, sequencePoint } of op.builder.instructions) {
             const operand = instruction.operand ? Buffer.from(instruction.operand).toString('hex') : "";
             let msg = `  ${sc.OpCode[instruction.opCode]} ${operand}`
@@ -223,6 +353,29 @@ function dumpOperations(operations?: OperationContext[]) {
             }
             console.log(msg)
         }
+    }
+}
+
+function dumpNef(nef: sc.NEF, debugInfo?: DebugInfo) {
+
+    const starts = new Map(debugInfo?.methods?.map(m => [m.range.start, m]))
+    const ends = new Map(debugInfo?.methods?.map(m => [m.range.end, m]));
+    // const points = new Map(debugInfo?.methods
+    //     ?.flatMap(m => m.sequencePoints)
+    //     .filter(isNotNullOrUndefined)
+    //     .map(sp => [sp.address, sp]));
+
+    const opTokens = sc.OpToken.fromScript(nef.script); 
+    let address = 0;
+    for (const token of opTokens) {
+        const s = starts.get(address);
+        if (s) { console.log(`# Method Start ${s.name}`); }
+        console.log(`${address.toString().padStart(3)}: ${token.prettyPrint()}`);
+        const e = ends.get(address);
+        if (e) { console.log(`# Method End ${e.name}`); }
+
+        const size = token.toScript().length / 2
+        address += size;
     }
 }
 
@@ -236,26 +389,30 @@ function testCompile(source: string, filename: string = "contract.ts") {
     });
     project.createSourceFile(filename, source);
     project.resolveSourceFileDependencies();
-    
+
     // console.time('getPreEmitDiagnostics');
     const diagnostics = project.getPreEmitDiagnostics();
     // console.timeEnd('getPreEmitDiagnostics')
-    
+
     if (diagnostics.length > 0) {
         printDiagnostic(diagnostics.map(d => d.compilerObject));
     } else {
-        const { diagnostics = [], context } = compile({ project });
-        if (diagnostics.length > 0) {
-            printDiagnostic(diagnostics);
+        const results = compile({ project });
+        if (results.diagnostics.length > 0) {
+            printDiagnostic(results.diagnostics);
         } else {
-            dumpOperations(context.operations);
+            if (results.artifacts?.nef) {
+                dumpNef(results.artifacts.nef, results.artifacts.debugInfo);
+            } else {
+                dumpOperations(results.context.operations);
+            }
         }
     }
 }
 
 const file = path.basename(process.argv[1]);
-console.log(file);
 if (file === "compiler.js") {
+    console.log('test compile');
 
     const contractSource = /*javascript*/`
 import * as neo from '@neo-project/neo-contract-framework';

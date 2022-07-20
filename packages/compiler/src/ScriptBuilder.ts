@@ -1,9 +1,9 @@
 import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
 import { Instruction } from "./types";
-
+import { SequencePoint } from "./debugInfo";
 export interface SequencePointSetter {
-    set(node?: tsm.Node): void; 
+    set(node?: tsm.Node): void;
 }
 
 export class ScriptBuilder {
@@ -33,7 +33,7 @@ export class ScriptBuilder {
     push(opCode: sc.OpCode, operand: ArrayLike<number>): SequencePointSetter;
     push(arg1: Instruction | sc.OpCode, arg2?: ArrayLike<number>): SequencePointSetter {
         if (typeof arg1 === 'object') {
-            if (arg2) { throw new Error("Invalid second argument"); } 
+            if (arg2) { throw new Error("Invalid second argument"); }
             return this.pushHelper(arg1);
         } else {
             const operand = arg2
@@ -51,6 +51,40 @@ export class ScriptBuilder {
             set: (node?) => {
                 if (node) { this._sequencePoints.set(newLength - 1, node); }
             }
+        }
+    }
+
+    compile(offset: number) {
+        let script = new Array<number>();
+        let points = new Array<SequencePoint>();
+
+        const length = this._instructions.length;
+        for (let i = 0; i < length; i++) {
+            const sp = convertSequencePoint(
+                offset + script.length, 
+                this._sequencePoints.get(i));
+            if (sp) { points.push(sp); }
+            const ins = this._instructions[i];
+            const bytes = ins.operand ? [ins.opCode, ...ins.operand] : [ins.opCode];
+            script.push(...bytes);
+        }
+        return { 
+            script: Uint8Array.from(script), 
+            sequencePoints: points
+        };
+
+        function convertSequencePoint(
+            address: number,
+            node?: tsm.Node
+        ): SequencePoint | undefined {
+            if (!node) { return undefined; }
+            const src = node.getSourceFile();
+            return {
+                address,
+                document: src.getFilePath(),
+                start: src.getLineAndColumnAtPos(node.getStart()),
+                end: src.getLineAndColumnAtPos(node.getEnd()),
+            };
         }
     }
 }

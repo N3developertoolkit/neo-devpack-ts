@@ -3,32 +3,7 @@ import * as tsm from "ts-morph";
 import { CompilationContext, CompileError, OperationContext } from "./compiler";
 import { ContractType, ContractTypeKind, PrimitiveType, PrimitiveContractType } from "./contractType";
 import { Instruction } from "./types";
-
-const checkFlags = (type: tsm.Type, flags: tsm.ts.TypeFlags) => type.getFlags() & flags;
-const isBigIntLike = (type: tsm.Type) => checkFlags(type, tsm.ts.TypeFlags.BigIntLike);
-const isBooleanLike = (type: tsm.Type) => checkFlags(type, tsm.ts.TypeFlags.BooleanLike);
-const isNumberLike = (type: tsm.Type) => checkFlags(type, tsm.ts.TypeFlags.NumberLike);
-const isStringLike = (type: tsm.Type) => checkFlags(type, tsm.ts.TypeFlags.StringLike);
-
-export function tsTypeToContractType(type: tsm.Type): ContractType {
-
-    if (isStringLike(type)) return {
-        kind: ContractTypeKind.Primitive,
-        type: PrimitiveType.String,
-    } as PrimitiveContractType;
-
-    if (isBigIntLike(type) || isNumberLike(type)) return {
-        kind: ContractTypeKind.Primitive,
-        type: PrimitiveType.Integer
-    } as PrimitiveContractType;
-
-    if (isBooleanLike(type)) return {
-        kind: ContractTypeKind.Primitive,
-        type: PrimitiveType.Boolean
-    } as PrimitiveContractType;
-
-    throw new Error(`convertTypeScriptType ${type.getText()} not implemented`);
-}
+import { isStringLike } from "./utils";
 
 type ConvertFunction<TNode extends tsm.Node> = (node: TNode, context: OperationContext) => void;
 type ConvertFunctionAny = (node: any, context: OperationContext) => void;
@@ -452,28 +427,3 @@ export function convertBuffer(buffer: ArrayLike<number> & Iterable<number>): Ins
 //     }
 // }
 
-// export function convertContractType(type: ContractType): sc.ContractParamType {
-//     switch (type.kind) {
-//         case ContractTypeKind.Array: return sc.ContractParamType.Array;
-//         case ContractTypeKind.Interop: return sc.ContractParamType.InteropInterface;
-//         case ContractTypeKind.Map: return sc.ContractParamType.Map;
-//         case ContractTypeKind.Struct: return sc.ContractParamType.Array;
-//         case ContractTypeKind.Unspecified: return sc.ContractParamType.Any;
-//         case ContractTypeKind.Primitive: {
-//             const primitive = type as PrimitiveContractType;
-//             switch (primitive.type) {
-//                 case PrimitiveType.Address: return sc.ContractParamType.Hash160;
-//                 case PrimitiveType.Boolean: return sc.ContractParamType.Boolean;
-//                 case PrimitiveType.ByteArray: return sc.ContractParamType.ByteArray;
-//                 case PrimitiveType.Hash160: return sc.ContractParamType.Hash160;
-//                 case PrimitiveType.Hash256: return sc.ContractParamType.Hash256;
-//                 case PrimitiveType.Integer: return sc.ContractParamType.Integer;
-//                 case PrimitiveType.PublicKey: return sc.ContractParamType.PublicKey;
-//                 case PrimitiveType.Signature: return sc.ContractParamType.Signature;
-//                 case PrimitiveType.String: return sc.ContractParamType.String;
-//                 default: throw new Error(`Unrecognized PrimitiveType ${primitive.type}`);
-//             }
-//         }
-//         default: throw new Error(`Unrecognized ContractTypeKind ${type.kind}`);
-//     }
-// }

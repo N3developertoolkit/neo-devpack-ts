@@ -2,6 +2,9 @@
 // Typescript implementation of ContractType from Debug Info v2 (https://github.com/neo-project/proposals/pull/151)
 // Port of C# ContractType implementation from https://github.com/ngdenterprise/neo-blockchaintoolkit-library/blob/develop/src/bctklib/models/ContractTypes.cs
 
+import { isStringLike, isBigIntLike, isNumberLike, isBooleanLike } from "./utils";
+import * as tsm from "ts-morph";
+
 export enum ContractTypeKind {
     Unspecified,
     Primitive,
@@ -82,4 +85,24 @@ export interface InteropContractType extends ContractType {
 
 export function isInteropType(type: ContractType): type is InteropContractType {
     return type.kind === ContractTypeKind.Interop;
+}
+
+export function tsTypeToContractType(type: tsm.Type): ContractType {
+
+    if (isStringLike(type)) return {
+        kind: ContractTypeKind.Primitive,
+        type: PrimitiveType.String,
+    } as PrimitiveContractType;
+
+    if (isBigIntLike(type) || isNumberLike(type)) return {
+        kind: ContractTypeKind.Primitive,
+        type: PrimitiveType.Integer
+    } as PrimitiveContractType;
+
+    if (isBooleanLike(type)) return {
+        kind: ContractTypeKind.Primitive,
+        type: PrimitiveType.Boolean
+    } as PrimitiveContractType;
+
+    throw new Error(`convertTypeScriptType ${type.getText()} not implemented`);
 }
