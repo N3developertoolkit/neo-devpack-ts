@@ -5,14 +5,11 @@ export interface Instruction {
     opCode: sc.OpCode;
     operand?: Uint8Array;
 }
+
 export interface SequencePointSetter {
     set(node?: tsm.Node): void;
 }
 
-export interface SequencePointNode {
-    address: number,
-    node: tsm.Node,
-}
 export class ScriptBuilder {
     private readonly _instructions = new Array<Instruction>();
     private readonly _sequencePoints = new Map<number, tsm.Node>();
@@ -24,7 +21,7 @@ export class ScriptBuilder {
         }));
     }
 
-    spSetter(): SequencePointSetter {
+    nodeSetter(): SequencePointSetter {
         const length = this._instructions.length;
         return {
             set: (node?) => {

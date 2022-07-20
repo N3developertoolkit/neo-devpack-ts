@@ -46,7 +46,7 @@ function convertBlock(node: tsm.Block, context: OperationContext) {
 }
 
 function convertExpressionStatement(node: tsm.ExpressionStatement, context: OperationContext) {
-    const spSetter = context.builder.spSetter();
+    const spSetter = context.builder.nodeSetter();
     const expr = node.getExpression();
     if (!expr) { throw new CompileError(`falsy expression statement`, node); }
     convertExpression(expr, context);
@@ -54,7 +54,7 @@ function convertExpressionStatement(node: tsm.ExpressionStatement, context: Oper
 }
 
 function convertReturnStatement(node: tsm.ReturnStatement, context: OperationContext) {
-    const spSetter = context.builder.spSetter();
+    const spSetter = context.builder.nodeSetter();
     const expr = node.getExpression();
     if (expr) { convertExpression(expr, context); }
     context.builder.push(sc.OpCode.RET);
@@ -180,27 +180,6 @@ function convertCallExpression(node: tsm.CallExpression, ctx: OperationContext) 
 
     // TODO emit call
     convertExpression(node.getExpression(), ctx);
-
-    //     const expr = node.getExpression();
-    //     const symbol = expr.getSymbolOrThrow();
-    //     const symbolDecl = symbol.getValueDeclarationOrThrow() as tsm.FunctionDeclaration;
-    //     const p = symbolDecl.getParent();
-    //     const q = symbolDecl.getStructure();
-
-
-    //     const symbolDeclText = tsm.printNode(symbolDecl.compilerNode);
-    //     const symbolFlags = symbol.getFlags();
-    //     const args = node.getArguments();
-
-    //     switch (symbolFlags) {
-    //         // case m.SymbolFlags.Function: {
-    //         //     break;
-    //         // }
-    //         default: throw new Error(`convertCallExpression ${tsm.SymbolFlags[symbolFlags]} not implemented`)
-    //     }
-
-    //     return [];
-
 }
 
 // [SyntaxKind.ClassExpression]: ClassExpression;
@@ -384,45 +363,3 @@ export function convertBuffer(buffer: ArrayLike<number> & Iterable<number>): Ins
         throw new Error(`Buffer length ${buffer.length} too long`);
     }
 }
-
-// export function convertNEF(name: string, context: ProjectContext): [sc.NEF, sc.ContractManifest] {
-//     let fullScript = new Uint8Array(0);
-//     const methods = new Array<sc.ContractMethodDefinition>();
-//     for (const op of context.operations) {
-//         var method = toMethodDef(op.node, fullScript.length);
-//         if (method) { methods.push(method); }
-//         fullScript = new Uint8Array(Buffer.concat([fullScript, toScript(op.instructions)]));
-//     }
-
-//     const manifest = new sc.ContractManifest({
-//         name: name,
-//         abi: new sc.ContractAbi({ methods })
-//     });
-
-//     const nef = new sc.NEF({
-//         compiler: "neo-devpack-ts",
-//         script: Buffer.from(fullScript).toString("hex"),
-//     })
-
-//     return [nef, manifest];
-
-//     function toScript(instructions: Instruction[]): Uint8Array {
-//         var buffer = Buffer.concat(instructions.map(i => i.toArray()));
-//         return new Uint8Array(buffer);
-//     }
-
-//     function toMethodDef(node: tsm.FunctionDeclaration, offset: number): sc.ContractMethodDefinition | undefined {
-
-//         if (!node.hasExportKeyword()) return undefined;
-//         return new sc.ContractMethodDefinition({
-//             name: node.getNameOrThrow(),
-//             offset,
-//             parameters: node.getParameters().map(p => ({
-//                 name: p.getName(),
-//                 type: convertContractType(tsTypeToContractType(p.getType()))
-//             })),
-//             returnType: convertContractType(tsTypeToContractType(node.getReturnType()))
-//         });
-//     }
-// }
-

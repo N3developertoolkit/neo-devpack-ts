@@ -430,11 +430,6 @@ function testCompile(source: string, filename: string = "contract.ts") {
             if (results.artifacts) {
                 dumpArtifacts(results.artifacts);
                 saveArtifacts(artifactPath, filename, source, results.artifacts);
-
-
-                // dumpNef(results.artifacts.nef, results.artifacts.debugInfo);
-                // saveArtifacts(
-                //     artifactPath, results.artifacts);
             } else {
                 dumpOperations(results.context.operations);
             }
@@ -464,5 +459,3 @@ export function sayHello(name: string) { return "Hello, " + name + "!"; }
 
     testCompile(contractSource);
 }
-
-
