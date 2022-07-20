@@ -34,6 +34,7 @@ export function convertStatement(node: tsm.Statement, context: OperationContext)
     ]));
 }
 
+// case SyntaxKind.Block:
 function convertBlock(node: tsm.Block, context: OperationContext) {
     const builder = context.builder;
 
@@ -45,6 +46,16 @@ function convertBlock(node: tsm.Block, context: OperationContext) {
         .set(node.getLastChildByKind(tsm.ts.SyntaxKind.CloseBraceToken));
 }
 
+// case SyntaxKind.BreakStatement:
+// case SyntaxKind.ClassDeclaration:
+// case SyntaxKind.ContinueStatement:
+// case SyntaxKind.DebuggerStatement:
+// case SyntaxKind.DoStatement:
+// case SyntaxKind.EmptyStatement:
+// case SyntaxKind.EnumDeclaration:
+// case SyntaxKind.ExportAssignment:
+// case SyntaxKind.ExportDeclaration:
+// case SyntaxKind.ExpressionStatement:
 function convertExpressionStatement(node: tsm.ExpressionStatement, context: OperationContext) {
     const spSetter = context.builder.nodeSetter();
     const expr = node.getExpression();
@@ -53,6 +64,19 @@ function convertExpressionStatement(node: tsm.ExpressionStatement, context: Oper
     spSetter.set(node);
 }
 
+// case SyntaxKind.ForInStatement:
+// case SyntaxKind.ForOfStatement:
+// case SyntaxKind.ForStatement:
+// case SyntaxKind.FunctionDeclaration:
+// case SyntaxKind.IfStatement:
+// case SyntaxKind.ImportDeclaration:
+// case SyntaxKind.ImportEqualsDeclaration:
+// case SyntaxKind.InterfaceDeclaration:
+// case SyntaxKind.LabeledStatement:
+// case SyntaxKind.ModuleBlock:
+// case SyntaxKind.ModuleDeclaration:
+// case SyntaxKind.NotEmittedStatement:
+// case SyntaxKind.ReturnStatement:
 function convertReturnStatement(node: tsm.ReturnStatement, context: OperationContext) {
     const spSetter = context.builder.nodeSetter();
     const expr = node.getExpression();
@@ -60,6 +84,14 @@ function convertReturnStatement(node: tsm.ReturnStatement, context: OperationCon
     context.builder.push(sc.OpCode.RET);
     spSetter.set(node);
 }
+
+// case SyntaxKind.SwitchStatement:
+// case SyntaxKind.ThrowStatement:
+// case SyntaxKind.TryStatement:
+// case SyntaxKind.TypeAliasDeclaration:
+// case SyntaxKind.VariableStatement:
+// case SyntaxKind.WhileStatement:
+// case SyntaxKind.WithStatement:
 
 function convertExpression(node: tsm.Expression, context: OperationContext) {
 
@@ -70,7 +102,7 @@ function convertExpression(node: tsm.Expression, context: OperationContext) {
         mapConverter(tsm.SyntaxKind.BinaryExpression, convertBinaryExpression),
         mapConverter(tsm.SyntaxKind.CallExpression, convertCallExpression),
         mapConverter(tsm.SyntaxKind.Identifier, convertIdentifier),
-        // [tsm.SyntaxKind.NumericLiteral, convertNumericLiteral],
+        mapConverter(tsm.SyntaxKind.NumericLiteral, convertNumericLiteral),
         mapConverter(tsm.SyntaxKind.PropertyAccessExpression, convertPropertyAccessExpression),
         mapConverter(tsm.SyntaxKind.StringLiteral, convertStringLiteral),
     ]));
