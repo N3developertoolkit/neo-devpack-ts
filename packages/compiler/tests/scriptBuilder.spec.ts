@@ -17,14 +17,12 @@ describe ('scriptBuilder', () => {
             opCode: sc.OpCode.PUSHDATA1,
             operand: uintArray
         });
-        builder.push(sc.OpCode.RET, sourceFile);
-        builder.push(sc.OpCode.PUSHDATA1, array, sourceFile);
-        builder.push(sc.OpCode.PUSHDATA1, uintArray, sourceFile);
+        builder.push(sc.OpCode.RET).set(sourceFile);
+        builder.push(sc.OpCode.PUSHDATA1, array).set(sourceFile);
+        builder.push(sc.OpCode.PUSHDATA1, uintArray).set(sourceFile);
         builder.push({
             opCode: sc.OpCode.PUSHDATA1,
             operand: uintArray
-        }, sourceFile);
-
-
+        }).set(sourceFile);
     })
 });
