@@ -2,10 +2,15 @@ import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
 import { Instruction } from "./types";
 import { SequencePoint } from "./debugInfo";
+
 export interface SequencePointSetter {
     set(node?: tsm.Node): void;
 }
 
+export interface SequencePointNode {
+    address: number,
+    node: tsm.Node,
+}
 export class ScriptBuilder {
     private readonly _instructions = new Array<Instruction>();
     private readonly _sequencePoints = new Map<number, tsm.Node>();
@@ -56,20 +61,20 @@ export class ScriptBuilder {
 
     compile(offset: number) {
         let script = new Array<number>();
-        let points = new Array<SequencePoint>();
+        let points = new Map<number, tsm.Node>();
 
         const length = this._instructions.length;
         for (let i = 0; i < length; i++) {
-            const sp = convertSequencePoint(
-                offset + script.length, 
-                this._sequencePoints.get(i));
-            if (sp) { points.push(sp); }
+            const node = this._sequencePoints.get(i)
+            if (node) {
+                points.set(offset + script.length, node);
+            }
             const ins = this._instructions[i];
             const bytes = ins.operand ? [ins.opCode, ...ins.operand] : [ins.opCode];
             script.push(...bytes);
         }
-        return { 
-            script: Uint8Array.from(script), 
+        return {
+            script: Uint8Array.from(script),
             sequencePoints: points
         };
 

@@ -1,6 +1,7 @@
 {
     "extends": "@tsconfig/node16/tsconfig.json",
     "exclude": [
+        "express",
         "node_modules"
     ],
     "compilerOptions": {

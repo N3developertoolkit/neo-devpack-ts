@@ -1,12 +1,13 @@
 import { sc, u } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
-// import { convertStatement } from "./convert";
-import * as path from 'path'
+import * as fs from 'fs';
+import * as path from 'path';
 import { ScriptBuilder } from "./ScriptBuilder";
 import { convertStatement } from "./convert";
-import { DebugInfo, Method as DebugInfoMethod, SequencePoint } from "./debugInfo";
+import { DebugInfo, Method as DebugInfoMethod, SequencePoint, SlotVariable } from "./debugInfo";
 import { ContractType, ContractTypeKind, PrimitiveContractType, PrimitiveType, tsTypeToContractType } from "./contractType";
 import { isVoidLike } from "./utils";
+import { ContractMethodDefinition } from "@cityofzion/neon-core/lib/sc";
 
 // https://github.com/CityOfZion/neon-js/issues/858
 const DEFAULT_ADDRESS_VALUE = 53;
@@ -38,10 +39,21 @@ export interface CompilationContext {
     artifacts?: CompilationArtifacts
 }
 
+
+export interface CompilationMethodInfo {
+    isPublic: boolean,
+    name: string,
+    range: { start: number, end: number }
+    parameters?: SlotVariable[],
+    variables?: SlotVariable[],
+    returnType?: ContractType,
+    sequencePoints: Map<number, tsm.Node>,
+}
+
 export interface CompilationArtifacts {
     nef: sc.NEF,
     manifest: sc.ContractManifest,
-    debugInfo: DebugInfo
+    methods: CompilationMethodInfo[]
 }
 
 export interface SysCall {
@@ -205,18 +217,15 @@ function processFunctionsPass(context: CompilationContext): void {
 
                 const body = node.getBodyOrThrow();
                 if (tsm.Node.isStatement(body)) {
-                    convertStatement(body, opCtx)
+                    convertStatement(body, opCtx);
                 } else {
                     throw new CompileError(`Unexpected body kind ${body.getKindName()}`, body);
                 }
+
+                opCtx.builder.push(sc.OpCode.RET);
             }
         })
     }
-}
-
-interface MethodInfo {
-    methodDef?: sc.ContractMethodDefinition,
-    debug: DebugInfoMethod,
 }
 
 function isNotNullOrUndefined<T extends Object>(input: null | undefined | T): input is T {
@@ -224,15 +233,33 @@ function isNotNullOrUndefined<T extends Object>(input: null | undefined | T): in
 }
 
 function collectArtifactsPass(context: CompilationContext): void {
+    const name = context.name ?? "TestContract";
+    const methods = new Array<CompilationMethodInfo>();
     let fullScript = Buffer.from([]);
-    const name = context.name ?? "Test Contract";
-    const methods = new Array<MethodInfo>();
 
     for (const op of context.operations ?? []) {
+        const offset = fullScript.length;
         const { script, sequencePoints } = op.builder.compile(fullScript.length);
-        const methodDef = toMethodDef(op.node, fullScript.length);
-        const debug = toDebugInfoMethod(op, fullScript.length, script.length, sequencePoints);
-        methods.push({ methodDef, debug });
+        const parameters = op.node.getParameters().map((p, index) => ({
+            name: p.getName(),
+            index,
+            type: tsTypeToContractType(p.getType()),
+        }));
+        const returnType = op.node.getReturnType();
+        methods.push({
+            isPublic: op.isPublic,
+            name: op.name,
+            range: {
+                start: offset,
+                end: offset + script.length - 1
+            },
+            parameters,
+            returnType: isVoidLike(returnType)
+                ? undefined
+                : tsTypeToContractType(returnType),
+            sequencePoints
+        })
+
         fullScript = Buffer.concat([fullScript, script]);
     }
 
@@ -241,47 +268,18 @@ function collectArtifactsPass(context: CompilationContext): void {
         script: Buffer.from(fullScript).toString("hex"),
     })
 
+    const methodDefs = methods
+        .map(toMethodDef)
+        .filter(isNotNullOrUndefined);
+ 
     const manifest = new sc.ContractManifest({
         name: name,
         abi: new sc.ContractAbi({
-            methods: methods.map(m => m.methodDef).filter(isNotNullOrUndefined)
+            methods: methodDefs
         })
     });
 
-    const debugInfo: DebugInfo = {
-        contractHash: u.hash160(nef.script),
-        checksum: nef.checksum,
-        methods: methods.map(m => m.debug),
-    }
-
-    context.artifacts = { nef, manifest, debugInfo }
-}
-
-function toDebugInfoMethod(
-    op: OperationContext,
-    offset: number,
-    length: number,
-    sequencePoints: SequencePoint[],
-): DebugInfoMethod {
-    const parameters = op.node.getParameters().map((p, index) => ({
-        name: p.getName(),
-        index,
-        type: tsTypeToContractType(p.getType()),
-    }));
-    const returnType = op.node.getReturnType();
-
-    return {
-        name: op.name,
-        range: {
-            start: offset,
-            end: offset + length - 1
-        },
-        parameters,
-        returnType: isVoidLike(returnType)
-            ? undefined
-            : tsTypeToContractType(returnType),
-        sequencePoints
-    }
+    context.artifacts = { nef, manifest, methods }
 }
 
 export function convertContractType(type: tsm.Type): sc.ContractParamType;
@@ -313,20 +311,20 @@ export function convertContractType(type: ContractType | tsm.Type): sc.ContractP
     }
 }
 
-function toMethodDef(node: tsm.FunctionDeclaration, offset: number): sc.ContractMethodDefinition | undefined {
-
-    if (!node.hasExportKeyword()) return undefined;
-    const returnType = node.getReturnType();
+function toMethodDef(
+    method: CompilationMethodInfo
+): sc.ContractMethodDefinition | undefined {
+    if (!method.isPublic) { return undefined; }
     return new sc.ContractMethodDefinition({
-        name: node.getNameOrThrow(),
-        offset,
-        parameters: node.getParameters().map(p => ({
-            name: p.getName(),
-            type: convertContractType(p.getType())
+        name: method.name,
+        offset: method.range.start,
+        parameters: method.parameters?.map(p => ({
+            name: p.name,
+            type: convertContractType(p.type)
         })),
-        returnType: isVoidLike(returnType)
-            ? sc.ContractParamType.Void
-            : convertContractType(returnType)
+        returnType: method.returnType
+            ? convertContractType(method.returnType) 
+            : sc.ContractParamType.Void,
     });
 }
 
@@ -356,20 +354,24 @@ function dumpOperations(operations?: OperationContext[]) {
     }
 }
 
-function dumpNef(nef: sc.NEF, debugInfo?: DebugInfo) {
+function dumpArtifacts({nef, methods}: CompilationArtifacts) {
 
-    const starts = new Map(debugInfo?.methods?.map(m => [m.range.start, m]))
-    const ends = new Map(debugInfo?.methods?.map(m => [m.range.end, m]));
-    // const points = new Map(debugInfo?.methods
-    //     ?.flatMap(m => m.sequencePoints)
-    //     .filter(isNotNullOrUndefined)
-    //     .map(sp => [sp.address, sp]));
+    const starts = new Map(methods.map(m => [m.range.start, m]));
+    const ends = new Map(methods.map(m => [m.range.end, m]));
+    const points = new Map<number, tsm.Node>();
+    for (const m of methods) {
+        for (const [address, node] of m.sequencePoints) {
+            points.set(address, node)
+        }
+    }
 
     const opTokens = sc.OpToken.fromScript(nef.script); 
     let address = 0;
     for (const token of opTokens) {
         const s = starts.get(address);
         if (s) { console.log(`# Method Start ${s.name}`); }
+        const n = points.get(address);
+        if (n) { console.log(`# ${n.print()}`); }
         console.log(`${address.toString().padStart(3)}: ${token.prettyPrint()}`);
         const e = ends.get(address);
         if (e) { console.log(`# Method End ${e.name}`); }
@@ -378,6 +380,27 @@ function dumpNef(nef: sc.NEF, debugInfo?: DebugInfo) {
         address += size;
     }
 }
+
+function saveArtifacts(
+    rootPath: string, 
+    filename: string,
+    source: string,
+    artifacts: CompilationArtifacts
+) {
+    if (!fs.existsSync(rootPath)) { fs.mkdirSync(rootPath); }
+    const basename = path.parse(filename).name;
+    const nefPath = path.join(rootPath, basename + ".nef");
+    const manifestPath = path.join(rootPath, basename + ".manifest.json");
+    const tsPath = path.join(artifactPath, filename);
+
+    fs.writeFileSync(nefPath, Buffer.from(artifacts.nef.serialize(), 'hex'));
+    fs.writeFileSync(manifestPath, JSON.stringify(artifacts.manifest.toJson(), null, 4));
+    fs.writeFileSync(tsPath, source);
+}
+
+const artifactPath = path.join( 
+    path.dirname(path.dirname(path.dirname(__dirname))),
+    "express", "out");
 
 function testCompile(source: string, filename: string = "contract.ts") {
 
@@ -401,8 +424,14 @@ function testCompile(source: string, filename: string = "contract.ts") {
         if (results.diagnostics.length > 0) {
             printDiagnostic(results.diagnostics);
         } else {
-            if (results.artifacts?.nef) {
-                dumpNef(results.artifacts.nef, results.artifacts.debugInfo);
+            if (results.artifacts) {
+                dumpArtifacts(results.artifacts);
+                saveArtifacts(artifactPath, filename, source, results.artifacts);
+
+
+                // dumpNef(results.artifacts.nef, results.artifacts.debugInfo);
+                // saveArtifacts(
+                //     artifactPath, results.artifacts);
             } else {
                 dumpOperations(results.context.operations);
             }
