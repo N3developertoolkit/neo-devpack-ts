@@ -50,7 +50,7 @@ export interface DebugMethodInfo {
     parameters?: DebugSlotVariable[],
     variables?: DebugSlotVariable[],
     returnType?: ContractType,
-    sequencePoints: Map<number, tsm.Node>,
+    sourceReferences: Map<number, tsm.Node>,
 }
 
 export interface CompilationArtifacts {
@@ -242,7 +242,7 @@ function collectArtifactsPass(context: CompilationContext): void {
 
     for (const op of context.operations ?? []) {
         const offset = fullScript.length;
-        const { script, sequencePoints } = op.builder.compile(fullScript.length);
+        const { script, sourceReferences } = op.builder.compile(fullScript.length);
         const parameters = op.node.getParameters().map((p, index) => ({
             name: p.getName(),
             index,
@@ -260,7 +260,7 @@ function collectArtifactsPass(context: CompilationContext): void {
             returnType: isVoidLike(returnType)
                 ? undefined
                 : toContractType(returnType),
-            sequencePoints
+            sourceReferences
         })
 
         fullScript = Buffer.concat([fullScript, script]);
@@ -346,11 +346,11 @@ function printDiagnostic(diags: tsm.ts.Diagnostic[]) {
 function dumpOperations(operations?: OperationContext[]) {
     for (const op of operations ?? []) {
         console.log(` ${op.isPublic ? 'public ' : ''}${op.name}`);
-        for (const { instruction, sequencePoint } of op.builder.instructions) {
+        for (const { instruction, sourceReference } of op.builder.instructions) {
             const operand = instruction.operand ? Buffer.from(instruction.operand).toString('hex') : "";
             let msg = `  ${sc.OpCode[instruction.opCode]} ${operand}`
-            if (sequencePoint) {
-                msg += " # " + sequencePoint.print();
+            if (sourceReference) {
+                msg += " # " + sourceReference.print();
             }
             console.log(msg)
         }
@@ -363,7 +363,7 @@ function dumpArtifacts({nef, methods}: CompilationArtifacts) {
     const ends = new Map(methods.map(m => [m.range.end, m]));
     const points = new Map<number, tsm.Node>();
     for (const m of methods) {
-        for (const [address, node] of m.sequencePoints) {
+        for (const [address, node] of m.sourceReferences) {
             points.set(address, node)
         }
     }
