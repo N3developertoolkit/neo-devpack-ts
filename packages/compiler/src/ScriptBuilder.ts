@@ -2,6 +2,10 @@ import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
 import { Instruction } from "./types";
 
+export interface SequencePointSetter {
+    set(node?: tsm.Node): void; 
+}
+
 export class ScriptBuilder {
     private readonly _instructions = new Array<Instruction>();
     private readonly _sequencePoints = new Map<number, tsm.Node>();
@@ -13,41 +17,40 @@ export class ScriptBuilder {
         }));
     }
 
-    push(instruction: Instruction, node?: tsm.Node): void;
-    push(opCode: sc.OpCode, node?: tsm.Node): void;
-    push(opCode: sc.OpCode, operand: ArrayLike<number>, node?: tsm.Node): void;
-    push(arg1: Instruction | sc.OpCode, arg2?: ArrayLike<number> | tsm.Node, arg3?: tsm.Node) : void {
+    spSetter(): SequencePointSetter {
+        const length = this._instructions.length;
+        return {
+            set: (node?) => {
+                if (node && length < this._instructions.length) {
+                    this._sequencePoints.set(length, node)
+                }
+            }
+        }
+    }
+
+    push(instruction: Instruction): SequencePointSetter;
+    push(opCode: sc.OpCode): SequencePointSetter;
+    push(opCode: sc.OpCode, operand: ArrayLike<number>): SequencePointSetter;
+    push(arg1: Instruction | sc.OpCode, arg2?: ArrayLike<number>): SequencePointSetter {
         if (typeof arg1 === 'object') {
-            if (arg2) {
-                if (arg2 instanceof tsm.Node) {
-                    this.doPush(arg1, arg2);
-                } else {
-                    throw new Error("Invalid second argument");
-                }
-            } else {
-                this.doPush(arg1);
-            }
+            if (arg2) { throw new Error("Invalid second argument"); } 
+            return this.pushHelper(arg1);
         } else {
-            if (arg2) {
-                if (arg2 instanceof tsm.Node) {
-                    this.doPush({opCode: arg1}, arg2);
-                } else {
-                    const check = arg2 instanceof Uint8Array;
-                    const operand = arg2 instanceof Uint8Array ? arg2 : Uint8Array.from(arg2)
-                    this.doPush({opCode: arg1, operand }, arg3);
-                }
-            } else {
-                this.doPush({opCode: arg1});
+            const operand = arg2
+                ? arg2 instanceof Uint8Array
+                    ? arg2
+                    : Uint8Array.from(arg2)
+                : undefined;
+            return this.pushHelper({ opCode: arg1, operand });
+        }
+    }
+
+    private pushHelper(ins: Instruction): SequencePointSetter {
+        const newLength = this._instructions.push(ins);
+        return {
+            set: (node?) => {
+                if (node) { this._sequencePoints.set(newLength - 1, node); }
             }
         }
     }
-
-    private doPush(instruction: Instruction, node?: tsm.Node): void {
-        const index = this._instructions.push(instruction) - 1;
-        if (node) {
-            this._sequencePoints.set(index, node);
-        }
-    }
-
-
 }

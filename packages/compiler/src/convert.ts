@@ -30,10 +30,18 @@ export function tsTypeToContractType(type: tsm.Type): ContractType {
     throw new Error(`convertTypeScriptType ${type.getText()} not implemented`);
 }
 
-type ConvertFunction = (node: any, context: OperationContext) => void;
+type ConvertFunction<TNode extends tsm.Node> = (node: TNode, context: OperationContext) => void;
+type ConvertFunctionAny = (node: any, context: OperationContext) => void;
 
-function dispatchConvert(node: tsm.Node, context: OperationContext, converters: Map<tsm.SyntaxKind, ConvertFunction>) {
-    const nodePrint = tsm.printNode(node.compilerNode);
+function mapConverter<TKind extends tsm.ts.SyntaxKind>(
+    kind: TKind, 
+    converter: ConvertFunction<tsm.KindToNodeMappings[TKind]>
+): [tsm.ts.SyntaxKind, ConvertFunction<tsm.KindToNodeMappings[TKind]>] {
+    return [kind, converter];
+}
+
+function dispatchConverter(node: tsm.Node, context: OperationContext, converters: Map<tsm.SyntaxKind, ConvertFunctionAny>) {
+    // const nodePrint = tsm.printNode(node.compilerNode);
     const kind = node.getKind();
     const converter = converters.get(kind);
     if (!converter) {
@@ -45,46 +53,53 @@ function dispatchConvert(node: tsm.Node, context: OperationContext, converters: 
 }
 
 export function convertStatement(node: tsm.Statement, context: OperationContext): void {
-
-    let map = new Map<tsm.SyntaxKind, ConvertFunction>([
-        [tsm.SyntaxKind.Block, convertBlock],
-        [tsm.SyntaxKind.ExpressionStatement, convertExpressionStatement],
-        [tsm.SyntaxKind.ReturnStatement, convertReturnStatement]
-    ]);
-    dispatchConvert(node, context, map);
+    dispatchConverter(node, context, new Map<tsm.SyntaxKind, ConvertFunctionAny>([
+        mapConverter(tsm.SyntaxKind.Block, convertBlock),
+        mapConverter(tsm.SyntaxKind.ExpressionStatement, convertExpressionStatement),
+        mapConverter(tsm.SyntaxKind.ReturnStatement, convertReturnStatement)
+    ]));
 }
 
 function convertBlock(node: tsm.Block, context: OperationContext) {
-    node.getStatements().forEach(s => convertStatement(s, context));
+    const builder = context.builder;
+
+    builder.push(sc.OpCode.NOP)
+        .set(node.getFirstChildByKind(tsm.ts.SyntaxKind.OpenBraceToken));
+    node.getStatements()
+        .forEach(s => convertStatement(s, context));
+    builder.push(sc.OpCode.NOP)
+        .set(node.getLastChildByKind(tsm.ts.SyntaxKind.CloseBraceToken));
 }
 
 function convertExpressionStatement(node: tsm.ExpressionStatement, context: OperationContext) {
+    const spSetter = context.builder.spSetter();
     const expr = node.getExpression();
     if (!expr) { throw new CompileError(`falsy expression statement`, node); }
     convertExpression(expr, context);
+    spSetter.set(node);
 }
 
 function convertReturnStatement(node: tsm.ReturnStatement, context: OperationContext) {
+    const spSetter = context.builder.spSetter();
     const expr = node.getExpression();
     if (expr) { convertExpression(expr, context); }
     context.builder.push(sc.OpCode.RET);
+    spSetter.set(node);
 }
 
 function convertExpression(node: tsm.Expression, context: OperationContext) {
 
-    let map = new Map<tsm.SyntaxKind, ConvertFunction>([
-        [tsm.SyntaxKind.ArrayLiteralExpression, convertArrayLiteralExpression],
+    dispatchConverter(node, context, new Map<tsm.SyntaxKind, ConvertFunctionAny>([
+        mapConverter(tsm.SyntaxKind.ArrayLiteralExpression, convertArrayLiteralExpression),
         // [tsm.SyntaxKind.AsExpression, convertAsExpression],
         // [tsm.SyntaxKind.BigIntLiteral, convertBigIntLiteral],
-        [tsm.SyntaxKind.BinaryExpression, convertBinaryExpression],
-        [tsm.SyntaxKind.CallExpression, convertCallExpression],
-        [tsm.SyntaxKind.Identifier, convertIdentifier],
+        mapConverter(tsm.SyntaxKind.BinaryExpression, convertBinaryExpression),
+        mapConverter(tsm.SyntaxKind.CallExpression, convertCallExpression),
+        mapConverter(tsm.SyntaxKind.Identifier, convertIdentifier),
         // [tsm.SyntaxKind.NumericLiteral, convertNumericLiteral],
-        [tsm.SyntaxKind.PropertyAccessExpression, convertPropertyAccessExpression],
-        [tsm.SyntaxKind.StringLiteral, convertStringLiteral],
-    ])
-
-    dispatchConvert(node, context, map);
+        mapConverter(tsm.SyntaxKind.PropertyAccessExpression, convertPropertyAccessExpression),
+        mapConverter(tsm.SyntaxKind.StringLiteral, convertStringLiteral),
+    ]));
 }
 
 // [SyntaxKind.ArrayLiteralExpression]: ArrayLiteralExpression;

@@ -216,10 +216,12 @@ function dumpOperations(operations?: OperationContext[]) {
     for (const op of operations ?? []) {
         console.log(op.name);
         for (const { instruction, sequencePoint } of op.builder.instructions) {
-            const operand = instruction.operand
-                ? Buffer.from(instruction.operand).toString('hex')
-                : "";
-            console.log(`  ${sc.OpCode[instruction.opCode]} ${operand}`)
+            const operand = instruction.operand ? Buffer.from(instruction.operand).toString('hex') : "";
+            let msg = `  ${sc.OpCode[instruction.opCode]} ${operand}`
+            if (sequencePoint) {
+                msg += " # " + sequencePoint.print();
+            }
+            console.log(msg)
         }
     }
 }
