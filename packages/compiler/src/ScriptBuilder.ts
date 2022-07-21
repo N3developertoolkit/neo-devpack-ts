@@ -16,54 +16,6 @@ export interface SourceReferenceSetter {
     set(node?: tsm.Node): void;
 }
 
-/* spell-checker: disable */
-export function isOffsetOpCode(opCode: sc.OpCode) {
-    switch (opCode) {
-        case sc.OpCode.JMP:
-        case sc.OpCode.JMP_L:
-        case sc.OpCode.JMPIF:
-        case sc.OpCode.JMPIF_L:
-        case sc.OpCode.JMPIFNOT:
-        case sc.OpCode.JMPIFNOT_L:
-        case sc.OpCode.JMPEQ:
-        case sc.OpCode.JMPEQ_L:
-        case sc.OpCode.JMPNE:
-        case sc.OpCode.JMPNE_L:
-        case sc.OpCode.JMPGT:
-        case sc.OpCode.JMPGT_L:
-        case sc.OpCode.JMPGE:
-        case sc.OpCode.JMPGE_L:
-        case sc.OpCode.JMPLT:
-        case sc.OpCode.JMPLT_L:
-        case sc.OpCode.JMPLE:
-        case sc.OpCode.JMPLE_L:
-        case sc.OpCode.CALL:
-        case sc.OpCode.CALL_L:
-        case sc.OpCode.PUSHA:
-        case sc.OpCode.ENDTRY:
-        case sc.OpCode.ENDTRY_L:
-            return true;
-        default:
-            return false;
-    }
-}
-/* spell-checker: enable */
-
-export function isTryOpCode(opCode: sc.OpCode) {
-    return opCode === sc.OpCode.TRY
-        || opCode === sc.OpCode.TRY_L;
-}
-
-export function offset8(index: number, offset: number): number {
-    return offset - index;
-}
-
-export function offset32(index: number, offset: number): Uint8Array {
-    const buffer = Buffer.alloc(4);
-    buffer.writeInt32LE(offset8(index, offset));
-    return buffer;
-}
-
 export class ScriptBuilder {
     private readonly _instructions = new Array<Instruction>();
     private readonly _sourceReferences = new Map<number, tsm.Node>();

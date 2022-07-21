@@ -1,15 +1,54 @@
 import { sc } from "@cityofzion/neon-core";
 
+/* spell-checker: disable */
+export function isTargetOpCode(opCode: sc.OpCode) {
+    switch (opCode) {
+        case sc.OpCode.JMP:
+        case sc.OpCode.JMP_L:
+        case sc.OpCode.JMPIF:
+        case sc.OpCode.JMPIF_L:
+        case sc.OpCode.JMPIFNOT:
+        case sc.OpCode.JMPIFNOT_L:
+        case sc.OpCode.JMPEQ:
+        case sc.OpCode.JMPEQ_L:
+        case sc.OpCode.JMPNE:
+        case sc.OpCode.JMPNE_L:
+        case sc.OpCode.JMPGT:
+        case sc.OpCode.JMPGT_L:
+        case sc.OpCode.JMPGE:
+        case sc.OpCode.JMPGE_L:
+        case sc.OpCode.JMPLT:
+        case sc.OpCode.JMPLT_L:
+        case sc.OpCode.JMPLE:
+        case sc.OpCode.JMPLE_L:
+        case sc.OpCode.CALL:
+        case sc.OpCode.CALL_L:
+        case sc.OpCode.PUSHA:
+        case sc.OpCode.ENDTRY:
+        case sc.OpCode.ENDTRY_L:
+            return true;
+        default:
+            return false;
+    }
+}
+/* spell-checker: enable */
+
+export function isTryOpCode(opCode: sc.OpCode) {
+    return opCode === sc.OpCode.TRY
+        || opCode === sc.OpCode.TRY_L;
+}
+
 export interface OpCodeAnnotation {
     /** Number of bytes to read as params. */
     operandSize?: number;
     /** Number of bytes to read to get the number that is the bytes to read as params. */
     operandSizePrefix?: number;
-  }
-  
-  /** Annotation details for OpCode. Tracks neo-vm/OpCode.cs */
-  // eslint-disable-next-line @typescript-eslint/naming-convention
-  export const OpCodeAnnotations: Record<sc.OpCode, OpCodeAnnotation> = {
+}
+
+/** Annotation details for OpCode. Tracks neo-vm/OpCode.cs */
+// eslint-disable-next-line @typescript-eslint/naming-convention
+/* spell-checker: disable */
+export const OpCodeAnnotations: Record<sc.OpCode, OpCodeAnnotation> = {
     [sc.OpCode.PUSHINT8]: { operandSize: 1 },
     [sc.OpCode.PUSHINT16]: { operandSize: 2 },
     [sc.OpCode.PUSHINT32]: { operandSize: 4 },
@@ -200,5 +239,5 @@ export interface OpCodeAnnotation {
     [sc.OpCode.ISNULL]: {},
     [sc.OpCode.ISTYPE]: { operandSize: 1 },
     [sc.OpCode.CONVERT]: { operandSize: 1 },
-  };
-  
+};
+/* spell-checker: enable */

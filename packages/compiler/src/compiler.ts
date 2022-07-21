@@ -2,12 +2,12 @@ import { sc, u } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
 import * as fs from 'fs';
 import * as path from 'path';
-import { Instruction, isOffsetOpCode, isTryOpCode, offset32, offset8, OffsetTarget, ScriptBuilder } from "./ScriptBuilder";
+import { Instruction, OffsetTarget, ScriptBuilder } from "./ScriptBuilder";
 import { convertStatement } from "./convert";
-import { ContractType, ContractTypeKind, isPrimitiveType, PrimitiveContractType, PrimitiveType, toContractType } from "./contractType";
+import { ContractType, ContractTypeKind, PrimitiveContractType, PrimitiveType, toContractType } from "./contractType";
 import { isVoidLike } from "./utils";
 import { dumpArtifacts, dumpOperations } from "./testUtils";
-import { OpCodeAnnotations } from "./opCodeAnnotations";
+import { OpCodeAnnotations, isTargetOpCode as isOffsetTargetOpCode, isTryOpCode } from "./opCodeAnnotations";
 
 // https://github.com/CityOfZion/neon-js/issues/858
 const DEFAULT_ADDRESS_VALUE = 53;
@@ -119,7 +119,7 @@ function compile(options: CompileOptions): CompileResults {
         resolveDeclarationsPass,
         processFunctionsPass,
         collectArtifactsPass,
-        optimizePass,
+        // optimizePass,
     ];
 
     for (const pass of passes) {
@@ -259,39 +259,39 @@ function processFunctionsPass(context: CompileContext): void {
     }
 }
 
-function optimizePass(context: CompileContext): void {
-    for (const op of context.operations ?? []) {
-        optimizeJumpReturn(op);
-    }
-}
+// function optimizePass(context: CompileContext): void {
+//     for (const op of context.operations ?? []) {
+//         optimizeJumpReturn(op);
+//     }
+// }
 
-function optimizeJumpReturn(op: OperationInfo) {
-    const instructions = op.instructions;
-    const length = instructions.length;
-    for (let i = 0; i < length; i++) {
-        const ins = instructions[i];
-        if (ins.opCode === sc.OpCode.JMP_L) {
-            const target = ins.target?.instruction;
-            if (target) {
-                let i2 = i + 1;
-                while (i2 < length) {
-                    const ins2 = instructions[i2];
-                    if (ins2.opCode === sc.OpCode.NOP) { 
-                        i2++; 
-                        continue; 
-                    } else if (ins2.opCode === sc.OpCode.RET) {
-                        // detected jump to return
-                        // remove instructions i thru (i2 - 1)
+// function optimizeJumpReturn(op: OperationInfo) {
+//     const instructions = op.instructions;
+//     const length = instructions.length;
+//     for (let i = 0; i < length; i++) {
+//         const ins = instructions[i];
+//         if (ins.opCode === sc.OpCode.JMP_L) {
+//             const target = ins.target?.instruction;
+//             if (target) {
+//                 let i2 = i + 1;
+//                 while (i2 < length) {
+//                     const ins2 = instructions[i2];
+//                     if (ins2.opCode === sc.OpCode.NOP) { 
+//                         i2++; 
+//                         continue; 
+//                     } else if (ins2.opCode === sc.OpCode.RET) {
+//                         // detected jump to return
+//                         // remove instructions i thru (i2 - 1)
 
-                        break;
-                    } else {
-                        break;
-                    }
-                }
-            }
-        }
-    }
-}
+//                         break;
+//                     } else {
+//                         break;
+//                     }
+//                 }
+//             }
+//         }
+//     }
+// }
 
 function isNotNullOrUndefined<T extends Object>(input: null | undefined | T): input is T {
     return input != null;
@@ -358,7 +358,7 @@ function compileOperation({ instructions, sourceReferences }:OperationInfo, offs
         const annotation = OpCodeAnnotations[ins.opCode];
         if (annotation.operandSize) {
             // if operandSize is specified, use it instead of the instruction operand
-            // since offset target instructions will have invalid operand
+            // since offset target instructions will have invalid operands
             position += (annotation.operandSize);
         } else if (annotation.operandSizePrefix) {
             // if operandSizePrefix is specified, use the instruction operand length
@@ -389,7 +389,7 @@ function compileOperation({ instructions, sourceReferences }:OperationInfo, offs
             } else {
                 script.push(ins.opCode, ...offset32(script.length, catchOffset), ...offset32(script.length, fetchOffset));
             }
-        } else if (isOffsetOpCode(ins.opCode)) {
+        } else if (isOffsetTargetOpCode(ins.opCode)) {
             if (!ins.target || !ins.target.instruction) throw new Error("Missing target offset instruction");
             const offset = insMap.get(ins.target.instruction);
             if (!offset) throw new Error("Invalid target offset instruction");
@@ -408,6 +408,16 @@ function compileOperation({ instructions, sourceReferences }:OperationInfo, offs
         script: Uint8Array.from(script),
         sourceReferences: references
     };
+
+    function offset8(index: number, offset: number): number {
+        return offset - index;
+    }
+    
+    function offset32(index: number, offset: number): Uint8Array {
+        const buffer = Buffer.alloc(4);
+        buffer.writeInt32LE(offset8(index, offset));
+        return buffer;
+    }
 }
 
 export function convertContractType(type: tsm.Type): sc.ContractParamType;
