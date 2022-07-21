@@ -234,7 +234,12 @@ function convertIdentifier(node: tsm.Identifier, ctx: OperationContext) {
             const declNode = def.getDeclarationNode();
             const index = ctx.node.getParameters().findIndex(p => p === declNode);
             if (index === -1) throw new CompileError(`${node.getText} param can't be found`, node);
-            ctx.builder.push(sc.OpCode.LDARG, [index]);
+            if (index <= 6) {
+                ctx.builder.push(sc.OpCode.LDARG0 + index);
+            } else {
+                ctx.builder.push(sc.OpCode.LDARG, [index]);
+            }
+            
             break;
         }
         default:

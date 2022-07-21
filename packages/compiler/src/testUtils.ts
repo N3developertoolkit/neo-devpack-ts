@@ -30,26 +30,34 @@ export function dumpArtifacts({ nef, methods }: CompilationArtifacts) {
     const opTokens = sc.OpToken.fromScript(nef.script);
     let address = 0;
     for (const token of opTokens) {
+        const size = token.toScript().length / 2;
+        address += size;
+    }
+
+    const padding = `${address}`.length;
+    
+    address = 0;
+    for (const token of opTokens) {
         const s = starts.get(address);
-        if (s) { console.log(`\x1b[95m# Method Start ${s.name}`); }
+        if (s) { console.log(`\x1b[92m# Method Start ${s.name}\x1b[0m`); }
         const n = points.get(address);
         if (n) { console.log(`\x1b[96m# ${n.print()}\x1b[0m`); }
 
-        let msg = `${address.toString().padStart(3)}: ${token.prettyPrint()}`;
-        const comment = getComment(token);
+        let msg = `${address.toString().padStart(padding)}: ${token.prettyPrint()}`;
+        const comment = getComment(token, address);
         if (comment)
             msg += ` \x1b[96m# ${comment}\x1b[0m`;
         console.log(msg);
 
         const e = ends.get(address);
-        if (e) { console.log(`\x1b[95m# Method End ${e.name}\x1b[0m`); }
+        if (e) { console.log(`\x1b[92m# Method End ${e.name}\x1b[0m`); }
 
         const size = token.toScript().length / 2;
         address += size;
     }
 }
 
-export function getComment(token: sc.OpToken): string | undefined {
+export function getComment(token: sc.OpToken, address: number): string | undefined {
 
     const operand = token.params ? Buffer.from(token.params, 'hex') : undefined;
 
@@ -84,7 +92,7 @@ export function getComment(token: sc.OpToken): string | undefined {
         case sc.OpCode.ENDTRY:
         case sc.OpCode.CALL: {
             const offset = operand![0];
-            return `offset: ${offset}`;
+            return `offset: ${offset}, position: ${address + offset}`;
         }
         case sc.OpCode.JMP_L:
         case sc.OpCode.JMPIF_L:
@@ -98,7 +106,7 @@ export function getComment(token: sc.OpToken): string | undefined {
         case sc.OpCode.ENDTRY_L:
         case sc.OpCode.CALL_L: {
             const offset = Buffer.from(operand!).readInt32LE();
-            return `offset: ${offset}`;
+            return `offset: ${offset}, position: ${address + offset}`;
         }
         case sc.OpCode.LDSFLD:
         case sc.OpCode.STSFLD:
