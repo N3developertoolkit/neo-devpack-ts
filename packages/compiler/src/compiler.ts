@@ -227,7 +227,7 @@ function processFunctionsPass(context: CompilationContext): void {
                     throw new CompileError(`Unexpected body kind ${body.getKindName()}`, body);
                 }
 
-                opCtx.builder.push(sc.OpCode.RET);
+                opCtx.returnTarget.instruction = opCtx.builder.push(sc.OpCode.RET).instruction;
             }
         })
     }
@@ -276,7 +276,7 @@ function collectArtifactsPass(context: CompilationContext): void {
     const methodDefs = methods
         .map(toMethodDef)
         .filter(isNotNullOrUndefined);
- 
+
     const manifest = new sc.ContractManifest({
         name: name,
         abi: new sc.ContractAbi({
@@ -328,7 +328,7 @@ function toMethodDef(
             type: convertContractType(p.type)
         })),
         returnType: method.returnType
-            ? convertContractType(method.returnType) 
+            ? convertContractType(method.returnType)
             : sc.ContractParamType.Void,
     });
 }
@@ -359,7 +359,70 @@ function dumpOperations(operations?: OperationContext[]) {
     }
 }
 
-function dumpArtifacts({nef, methods}: CompilationArtifacts) {
+function getComment(token: sc.OpToken): string | undefined {
+
+    const operand = token.params ? Buffer.from(token.params, 'hex') : undefined;
+
+    switch (token.code) {
+        case sc.OpCode.PUSHINT8:
+        case sc.OpCode.PUSHINT16:
+        case sc.OpCode.PUSHINT32:
+        case sc.OpCode.PUSHINT64:
+        case sc.OpCode.PUSHINT128:
+        case sc.OpCode.PUSHINT256: {
+            let hex = Buffer.from(operand!).reverse().toString('hex');
+            return `${BigInt(hex)}`
+        }
+        case sc.OpCode.SYSCALL: {
+            const entries = Object.entries(sc.InteropServiceCode);
+            const entry = entries.find(t => t[1] === token.params!);
+            return entry ? entry[0] : undefined;
+        }
+        case sc.OpCode.CONVERT: {
+            return sc.StackItemType[operand![0]];
+        }
+
+        case sc.OpCode.JMP:
+        case sc.OpCode.JMPIF:
+        case sc.OpCode.JMPIFNOT:
+        case sc.OpCode.JMPEQ:
+        case sc.OpCode.JMPNE:
+        case sc.OpCode.JMPGT:
+        case sc.OpCode.JMPGE:
+        case sc.OpCode.JMPLT:
+        case sc.OpCode.JMPLE:
+        case sc.OpCode.ENDTRY:
+        case sc.OpCode.CALL: {
+            const offset = operand![0];
+            return `offset: ${offset}`;
+        }
+        case sc.OpCode.JMP_L:
+        case sc.OpCode.JMPIF_L:
+        case sc.OpCode.JMPIFNOT_L:
+        case sc.OpCode.JMPEQ_L:
+        case sc.OpCode.JMPNE_L:
+        case sc.OpCode.JMPGT_L:
+        case sc.OpCode.JMPGE_L:
+        case sc.OpCode.JMPLT_L:
+        case sc.OpCode.JMPLE_L:
+        case sc.OpCode.ENDTRY_L:
+        case sc.OpCode.CALL_L: {
+            const offset = Buffer.from(operand!).readInt32LE();
+            return `offset: ${offset}`;
+        }
+        case sc.OpCode.LDSFLD:
+        case sc.OpCode.STSFLD:
+        case sc.OpCode.LDLOC:
+        case sc.OpCode.STLOC:
+        case sc.OpCode.LDARG:
+        case sc.OpCode.STARG: 
+            return `Slot Index ${operand![0]}`;
+        default:
+            return undefined;
+    }
+}
+
+function dumpArtifacts({ nef, methods }: CompilationArtifacts) {
 
     const starts = new Map(methods.map(m => [m.range.start, m]));
     const ends = new Map(methods.map(m => [m.range.end, m]));
@@ -370,16 +433,21 @@ function dumpArtifacts({nef, methods}: CompilationArtifacts) {
         }
     }
 
-    const opTokens = sc.OpToken.fromScript(nef.script); 
+    const opTokens = sc.OpToken.fromScript(nef.script);
     let address = 0;
     for (const token of opTokens) {
         const s = starts.get(address);
-        if (s) { console.log('\x1b[95m%s\x1b[0m', `# Method Start ${s.name}`); }
+        if (s) { console.log(`\x1b[95m# Method Start ${s.name}`); }
         const n = points.get(address);
-        if (n) { console.log('\x1b[96m%s\x1b[0m', `# ${n.print()}`); }
-        console.log(`${address.toString().padStart(3)}: ${token.prettyPrint()}`);
+        if (n) { console.log(`\x1b[96m# ${n.print()}\x1b[0m`); }
+
+        let msg = `${address.toString().padStart(3)}: ${token.prettyPrint()}`;
+        const comment = getComment(token);
+        if (comment) msg += ` \x1b[96m# ${comment}\x1b[0m`;
+        console.log(msg);
+
         const e = ends.get(address);
-        if (e) { console.log('\x1b[95m%s\x1b[0m', `# Method End ${e.name}`); }
+        if (e) { console.log(`\x1b[95m# Method End ${e.name}\x1b[0m`); }
 
         const size = token.toScript().length / 2
         address += size;
@@ -387,7 +455,7 @@ function dumpArtifacts({nef, methods}: CompilationArtifacts) {
 }
 
 function saveArtifacts(
-    rootPath: string, 
+    rootPath: string,
     filename: string,
     source: string,
     artifacts: CompilationArtifacts
@@ -403,7 +471,7 @@ function saveArtifacts(
     fs.writeFileSync(tsPath, source);
 }
 
-const artifactPath = path.join( 
+const artifactPath = path.join(
     path.dirname(path.dirname(path.dirname(__dirname))),
     "express", "out");
 
@@ -442,6 +510,13 @@ function testCompile(source: string, filename: string = "contract.ts") {
 const file = path.basename(process.argv[1]);
 if (file === "compiler.js") {
     console.log('test compile');
+
+    // const foo = Object.keys(sc.OpCode)
+    //     .filter(k => isNaN(Number(k)))
+    //     .map(k => `case sc.OpCode.${k}:`);
+    // for (const x of foo) { console.log(x); }
+    // throw new Error();
+
 
     const contractSource = /*javascript*/`
 import * as neo from '@neo-project/neo-contract-framework';

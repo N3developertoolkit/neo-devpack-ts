@@ -81,7 +81,7 @@ function convertReturnStatement(node: tsm.ReturnStatement, context: OperationCon
     const spSetter = context.builder.nodeSetter();
     const expr = node.getExpression();
     if (expr) { convertExpression(expr, context); }
-    context.builder.push(sc.OpCode.RET);
+    context.builder.pushTarget(sc.OpCode.JMP_L, context.returnTarget);
     spSetter.set(node);
 }
 
@@ -254,9 +254,9 @@ function convertIdentifier(node: tsm.Identifier, ctx: OperationContext) {
 // [SyntaxKind.NonNullExpression]: NonNullExpression;
 // [SyntaxKind.NoSubstitutionTemplateLiteral]: NoSubstitutionTemplateLiteral;
 // [SyntaxKind.NumericLiteral]: NumericLiteral;
-function convertNumericLiteral(node: tsm.NumericLiteral): Instruction[] {
+function convertNumericLiteral(node: tsm.NumericLiteral, ctx: OperationContext) {
     const literal = node.getLiteralText();
-    return [convertInt(BigInt(literal))]
+    ctx.builder.push(convertInt(BigInt(literal)));
 }
 
 // [SyntaxKind.ObjectLiteralExpression]: ObjectLiteralExpression;
@@ -324,37 +324,9 @@ export function convertInt(i: BigInt): Instruction {
         const opCode: sc.OpCode = sc.OpCode.PUSH0 + Number(i);
         return { opCode };
     }
-    const operand = toByteArray(i);
+    const operand = bigIntToByteArray(i);
     const opCode = getOpCode(operand);
     return { opCode, operand };
-
-    // convert JS BigInt to C# BigInt byte array encoding
-    function toByteArray(i: BigInt) {
-        if (i < 0n) {
-            throw new Error("convertInt.toByteArray negative values not implemented")
-        }
-
-        let str = i.toString(16);
-        if (str.length % 2 == 1) { str = '0' + str }
-        const buffer = Buffer.from(str, 'hex').reverse();
-        if (buffer.length == 0) throw new Error();
-
-        let padding = buffer[buffer.length - 1] & 0x80 ? 1 : 0;
-        const length = buffer.length + padding;
-        for (const factor of [1, 2, 4, 8, 16, 32]) {
-            if (length <= factor) {
-                padding += factor - length;
-                return padding === 0
-                    ? Uint8Array.from(buffer)
-                    : Uint8Array.from([
-                        ...buffer,
-                        ...(new Array<number>(padding).fill(0))
-                    ]);
-            }
-        }
-
-        throw new Error(`${i} too big for NeoVM`);
-    }
 
     function getOpCode(array: Uint8Array) {
         switch (array.length) {
@@ -368,6 +340,39 @@ export function convertInt(i: BigInt): Instruction {
         }
     }
 }
+
+// convert JS BigInt to C# BigInt byte array encoding
+function bigIntToByteArray(i: BigInt) {
+    if (i < 0n) {
+        throw new Error("convertInt.toByteArray negative values not implemented")
+    }
+
+    // convert big int to hex string
+    let str = i.toString(16);
+    // if odd length, prepend an extra zero padding
+    if (str.length % 2 == 1) { str = '0' + str }
+    // parse the hex string and reverse
+    const buffer = Buffer.from(str, 'hex').reverse();
+    if (buffer.length == 0) throw new Error("Invalid BigInt");
+
+    // add padding
+    let padding = buffer[buffer.length - 1] & 0x80 ? 1 : 0;
+    const length = buffer.length + padding;
+    for (const factor of [1, 2, 4, 8, 16, 32]) {
+        if (length <= factor) {
+            padding += factor - length;
+            return padding === 0
+                ? Uint8Array.from(buffer)
+                : Uint8Array.from([
+                    ...buffer,
+                    ...(new Array<number>(padding).fill(0))
+                ]);
+        }
+    }
+
+    throw new Error(`${i} too big for NeoVM`);
+}
+
 
 export function convertBuffer(buffer: ArrayLike<number> & Iterable<number>): Instruction {
 

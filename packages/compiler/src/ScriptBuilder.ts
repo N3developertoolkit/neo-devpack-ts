@@ -13,6 +13,7 @@ export interface Instruction {
 }
 
 export interface SourceReferenceSetter {
+    readonly instruction: Instruction | undefined;
     set(node?: tsm.Node): void;
 }
 
@@ -54,9 +55,13 @@ function isTryOpCode(opCode: sc.OpCode) {
         || opCode === sc.OpCode.TRY_L;
 }
 
-function offset32(offset: number): Uint8Array {
+function offset8(index: number, offset: number): number {
+    return offset - index;
+}
+
+function offset32(index: number, offset: number): Uint8Array {
     const buffer = Buffer.alloc(4);
-    buffer.writeInt32LE(offset);
+    buffer.writeInt32LE(offset8(index, offset));
     return buffer;
 }
 
@@ -74,12 +79,17 @@ export class ScriptBuilder {
     nodeSetter(): SourceReferenceSetter {
         const length = this._instructions.length;
         return {
+            instruction: undefined,
             set: (node?) => {
                 if (node && length < this._instructions.length) {
                     this._sourceReferences.set(length, node)
                 }
             }
         }
+    }
+
+    pushTarget(opCode: sc.OpCode, target: OffsetTarget, finallyTarget?: OffsetTarget): SourceReferenceSetter {
+        return this.pushHelper({ opCode, target, finallyTarget });
     }
 
     push(instruction: Instruction): SourceReferenceSetter;
@@ -100,10 +110,11 @@ export class ScriptBuilder {
     }
 
     private pushHelper(ins: Instruction): SourceReferenceSetter {
-        const newLength = this._instructions.push(ins);
+        const index = this._instructions.push(ins) - 1;
         return {
+            instruction: ins,
             set: (node?) => {
-                if (node) { this._sourceReferences.set(newLength - 1, node); }
+                if (node) { this._sourceReferences.set(index, node); }
             }
         }
     }
@@ -127,7 +138,7 @@ export class ScriptBuilder {
             } else if (annotation.operandSizePrefix) {
                 // if operandSizePrefix is specified, use the instruction operand length
                 position += (ins.operand!.length);
-            } 
+            }
         }
 
         let script = new Array<number>();
@@ -142,29 +153,32 @@ export class ScriptBuilder {
             const ins = this._instructions[i];
             const annotation = OpCodeAnnotations[ins.opCode];
             if (isTryOpCode(ins.opCode)) {
-                const catchOffset = insMap.get(ins.target!.instruction!);
-                if (!catchOffset) throw new Error();
-                const fetchOffset = insMap.get(ins.finallyTarget!.instruction!);
-                if (!fetchOffset) throw new Error();
+                if (!ins.target || !ins.target.instruction) throw new Error("Missing catch offset instruction");
+                if (!ins.finallyTarget || !ins.finallyTarget.instruction) throw new Error("Missing finally offset instruction");
+                const catchOffset = insMap.get(ins.target.instruction);
+                if (!catchOffset) throw new Error("Invalid catch offset instruction");
+                const fetchOffset = insMap.get(ins.finallyTarget.instruction);
+                if (!fetchOffset) throw new Error("Invalid finally offset instruction");
                 if (annotation.operandSize === 2) {
-                    script.push(ins.opCode, catchOffset, fetchOffset);
+                    script.push(ins.opCode, offset8(script.length, catchOffset), offset8(script.length, fetchOffset));
                 } else {
-                    script.push(ins.opCode, ...offset32(catchOffset), ...offset32(fetchOffset));
+                    script.push(ins.opCode, ...offset32(script.length, catchOffset), ...offset32(script.length, fetchOffset));
                 }
             } else if (isOffsetOpCode(ins.opCode)) {
-                const offset = insMap.get(ins.target!.instruction!);
-                if (!offset) throw new Error();
+                if (!ins.target || !ins.target.instruction) throw new Error("Missing target offset instruction");
+                const offset = insMap.get(ins.target.instruction);
+                if (!offset) throw new Error("Invalid target offset instruction");
                 if (annotation.operandSize === 1) {
-                    script.push(ins.opCode, offset);
+                    script.push(ins.opCode, offset8(script.length, offset));
                 } else {
-                    script.push(ins.opCode, ...offset32(offset));
+                    script.push(ins.opCode, ...offset32(script.length, offset));
                 }
             } else {
                 const bytes = ins.operand ? [ins.opCode, ...ins.operand] : [ins.opCode];
                 script.push(...bytes);
             }
         }
-        
+
         return {
             script: Uint8Array.from(script),
             sourceReferences: references
