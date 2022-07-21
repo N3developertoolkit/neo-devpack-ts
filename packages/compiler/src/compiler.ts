@@ -2,7 +2,7 @@ import { sc, u } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
 import * as fs from 'fs';
 import * as path from 'path';
-import { ScriptBuilder } from "./ScriptBuilder";
+import { OffsetTarget, ScriptBuilder } from "./ScriptBuilder";
 import { convertStatement } from "./convert";
 import { ContractType, ContractTypeKind, PrimitiveContractType, PrimitiveType, toContractType } from "./contractType";
 import { isVoidLike } from "./utils";
@@ -76,7 +76,8 @@ export interface OperationContext {
     readonly name: string,
     readonly isPublic: boolean,
     readonly node: tsm.FunctionDeclaration,
-    readonly builder: ScriptBuilder
+    readonly builder: ScriptBuilder,
+    readonly returnTarget: OffsetTarget,
 }
 
 export interface StaticField { }
@@ -208,6 +209,7 @@ function processFunctionsPass(context: CompilationContext): void {
                     isPublic: !!_export,
                     node,
                     builder: new ScriptBuilder(),
+                    returnTarget: {}
                 };
                 if (!context.operations) { context.operations = []; }
                 context.operations.push(opCtx);
@@ -372,12 +374,12 @@ function dumpArtifacts({nef, methods}: CompilationArtifacts) {
     let address = 0;
     for (const token of opTokens) {
         const s = starts.get(address);
-        if (s) { console.log(`# Method Start ${s.name}`); }
+        if (s) { console.log('\x1b[95m%s\x1b[0m', `# Method Start ${s.name}`); }
         const n = points.get(address);
-        if (n) { console.log(`# ${n.print()}`); }
+        if (n) { console.log('\x1b[96m%s\x1b[0m', `# ${n.print()}`); }
         console.log(`${address.toString().padStart(3)}: ${token.prettyPrint()}`);
         const e = ends.get(address);
-        if (e) { console.log(`# Method End ${e.name}`); }
+        if (e) { console.log('\x1b[95m%s\x1b[0m', `# Method End ${e.name}`); }
 
         const size = token.toScript().length / 2
         address += size;
@@ -447,17 +449,17 @@ import * as neo from '@neo-project/neo-contract-framework';
 export function symbol() { return "TOKEN"; }
 export function decimals() { return 8; }
 
-// export function getValue() { 
-//     return neo.Storage.get(neo.Storage.currentContext, [0x00]); 
-// }
+export function getValue() { 
+    return neo.Storage.get(neo.Storage.currentContext, [0x00]); 
+}
 
-// export function setValue(value: string) { 
-//     neo.Storage.put(neo.Storage.currentContext, [0x00], value); 
-// }
+export function setValue(value: string) { 
+    neo.Storage.put(neo.Storage.currentContext, [0x00], value); 
+}
 
-// export function helloWorld() { return "Hello, World!"; }
+export function helloWorld() { return "Hello, World!"; }
 
-// export function sayHello(name: string) { return "Hello, " + name + "!"; }
+export function sayHello(name: string) { return "Hello, " + name + "!"; }
 `;
 
     testCompile(contractSource);

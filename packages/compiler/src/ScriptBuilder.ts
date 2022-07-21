@@ -1,13 +1,63 @@
 import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
+import { OpCodeAnnotations } from "./opCodeAnnotations";
 
+export interface OffsetTarget {
+    instruction?: Instruction
+}
 export interface Instruction {
     opCode: sc.OpCode;
     operand?: Uint8Array;
+    target?: OffsetTarget;
+    finallyTarget?: OffsetTarget;
 }
 
 export interface SourceReferenceSetter {
     set(node?: tsm.Node): void;
+}
+
+/* spell-checker: disable */
+function isOffsetOpCode(opCode: sc.OpCode) {
+    switch (opCode) {
+        case sc.OpCode.JMP:
+        case sc.OpCode.JMP_L:
+        case sc.OpCode.JMPIF:
+        case sc.OpCode.JMPIF_L:
+        case sc.OpCode.JMPIFNOT:
+        case sc.OpCode.JMPIFNOT_L:
+        case sc.OpCode.JMPEQ:
+        case sc.OpCode.JMPEQ_L:
+        case sc.OpCode.JMPNE:
+        case sc.OpCode.JMPNE_L:
+        case sc.OpCode.JMPGT:
+        case sc.OpCode.JMPGT_L:
+        case sc.OpCode.JMPGE:
+        case sc.OpCode.JMPGE_L:
+        case sc.OpCode.JMPLT:
+        case sc.OpCode.JMPLT_L:
+        case sc.OpCode.JMPLE:
+        case sc.OpCode.JMPLE_L:
+        case sc.OpCode.CALL:
+        case sc.OpCode.CALL_L:
+        case sc.OpCode.PUSHA:
+        case sc.OpCode.ENDTRY:
+        case sc.OpCode.ENDTRY_L:
+            return true;
+        default:
+            return false;
+    }
+}
+/* spell-checker: enable */
+
+function isTryOpCode(opCode: sc.OpCode) {
+    return opCode === sc.OpCode.TRY
+        || opCode === sc.OpCode.TRY_L;
+}
+
+function offset32(offset: number): Uint8Array {
+    const buffer = Buffer.alloc(4);
+    buffer.writeInt32LE(offset);
+    return buffer;
 }
 
 export class ScriptBuilder {
@@ -59,19 +109,62 @@ export class ScriptBuilder {
     }
 
     compile(offset: number) {
+
+        const length = this._instructions.length;
+        const insMap = new Map<Instruction, number>();
+        let position = 0;
+        for (let i = 0; i < length; i++) {
+            const ins = this._instructions[i];
+            insMap.set(ins, position);
+
+            // every instruction is at least one byte long for the opCode
+            position += 1;
+            const annotation = OpCodeAnnotations[ins.opCode];
+            if (annotation.operandSize) {
+                // if operandSize is specified, use it instead of the instruction operand
+                // since offset target instructions will have invalid operand
+                position += (annotation.operandSize);
+            } else if (annotation.operandSizePrefix) {
+                // if operandSizePrefix is specified, use the instruction operand length
+                position += (ins.operand!.length);
+            } 
+        }
+
         let script = new Array<number>();
         let references = new Map<number, tsm.Node>();
 
-        const length = this._instructions.length;
         for (let i = 0; i < length; i++) {
             const node = this._sourceReferences.get(i)
             if (node) {
                 references.set(offset + script.length, node);
             }
+
             const ins = this._instructions[i];
-            const bytes = ins.operand ? [ins.opCode, ...ins.operand] : [ins.opCode];
-            script.push(...bytes);
+            const annotation = OpCodeAnnotations[ins.opCode];
+            if (isTryOpCode(ins.opCode)) {
+                const catchOffset = insMap.get(ins.target!.instruction!);
+                if (!catchOffset) throw new Error();
+                const fetchOffset = insMap.get(ins.finallyTarget!.instruction!);
+                if (!fetchOffset) throw new Error();
+                if (annotation.operandSize === 2) {
+                    script.push(ins.opCode, catchOffset, fetchOffset);
+                } else {
+                    script.push(ins.opCode, ...offset32(catchOffset), ...offset32(fetchOffset));
+                }
+            } else if (isOffsetOpCode(ins.opCode)) {
+                const offset = insMap.get(ins.target!.instruction!);
+                if (!offset) throw new Error();
+                if (annotation.operandSize === 1) {
+                    script.push(ins.opCode, offset);
+                } else {
+                    script.push(ins.opCode, ...offset32(offset));
+                }
+            } else {
+                const bytes = ins.operand ? [ins.opCode, ...ins.operand] : [ins.opCode];
+                script.push(...bytes);
+            }
         }
+        
         return {
             script: Uint8Array.from(script),
             sourceReferences: references
