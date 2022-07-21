@@ -1,11 +1,15 @@
 import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
-import { CompilationArtifacts, OperationContext } from "./compiler";
+import { CompileArtifacts, OperationContext, OperationInfo } from "./compiler";
 
-export function dumpOperations(operations?: OperationContext[]) {
+export function dumpOperations(operations?: OperationInfo[]) {
     for (const op of operations ?? []) {
         console.log(` ${op.isPublic ? 'public ' : ''}${op.name}`);
-        for (const { instruction, sourceReference } of op.builder.instructions) {
+        const length = op.instructions.length;
+        for (let i = 0; i < length; i++) {
+            const instruction = op.instructions[i];
+            const sourceReference = op.sourceReferences.get(i);
+
             const operand = instruction.operand ? Buffer.from(instruction.operand).toString('hex') : "";
             let msg = `  ${sc.OpCode[instruction.opCode]} ${operand}`
             if (sourceReference) {
@@ -16,7 +20,7 @@ export function dumpOperations(operations?: OperationContext[]) {
     }
 }
 
-export function dumpArtifacts({ nef, methods }: CompilationArtifacts) {
+export function dumpArtifacts({ nef, methods }: CompileArtifacts) {
 
     const starts = new Map(methods.map(m => [m.range.start, m]));
     const ends = new Map(methods.map(m => [m.range.end, m]));

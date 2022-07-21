@@ -1,6 +1,5 @@
 import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
-import { OpCodeAnnotations } from "./opCodeAnnotations";
 
 export interface OffsetTarget {
     instruction?: Instruction
@@ -18,7 +17,7 @@ export interface SourceReferenceSetter {
 }
 
 /* spell-checker: disable */
-function isOffsetOpCode(opCode: sc.OpCode) {
+export function isOffsetOpCode(opCode: sc.OpCode) {
     switch (opCode) {
         case sc.OpCode.JMP:
         case sc.OpCode.JMP_L:
@@ -50,16 +49,16 @@ function isOffsetOpCode(opCode: sc.OpCode) {
 }
 /* spell-checker: enable */
 
-function isTryOpCode(opCode: sc.OpCode) {
+export function isTryOpCode(opCode: sc.OpCode) {
     return opCode === sc.OpCode.TRY
         || opCode === sc.OpCode.TRY_L;
 }
 
-function offset8(index: number, offset: number): number {
+export function offset8(index: number, offset: number): number {
     return offset - index;
 }
 
-function offset32(index: number, offset: number): Uint8Array {
+export function offset32(index: number, offset: number): Uint8Array {
     const buffer = Buffer.alloc(4);
     buffer.writeInt32LE(offset8(index, offset));
     return buffer;
@@ -69,6 +68,13 @@ export class ScriptBuilder {
     private readonly _instructions = new Array<Instruction>();
     private readonly _sourceReferences = new Map<number, tsm.Node>();
 
+    getScript() {
+        return {
+            instructions: this._instructions,
+            sourceReferences: this._sourceReferences
+        }
+    }
+
     get instructions() {
         return this._instructions.map((instruction, i) => ({
             instruction,
@@ -76,10 +82,9 @@ export class ScriptBuilder {
         }));
     }
 
-    nodeSetter(): SourceReferenceSetter {
+    nodeSetter(): { set(node?: tsm.Node): void } {
         const length = this._instructions.length;
         return {
-            instruction: undefined,
             set: (node?) => {
                 if (node && length < this._instructions.length) {
                     this._sourceReferences.set(length, node)
@@ -119,69 +124,5 @@ export class ScriptBuilder {
         }
     }
 
-    compile(offset: number) {
 
-        const length = this._instructions.length;
-        const insMap = new Map<Instruction, number>();
-        let position = 0;
-        for (let i = 0; i < length; i++) {
-            const ins = this._instructions[i];
-            insMap.set(ins, position);
-
-            // every instruction is at least one byte long for the opCode
-            position += 1;
-            const annotation = OpCodeAnnotations[ins.opCode];
-            if (annotation.operandSize) {
-                // if operandSize is specified, use it instead of the instruction operand
-                // since offset target instructions will have invalid operand
-                position += (annotation.operandSize);
-            } else if (annotation.operandSizePrefix) {
-                // if operandSizePrefix is specified, use the instruction operand length
-                position += (ins.operand!.length);
-            }
-        }
-
-        let script = new Array<number>();
-        let references = new Map<number, tsm.Node>();
-
-        for (let i = 0; i < length; i++) {
-            const node = this._sourceReferences.get(i)
-            if (node) {
-                references.set(offset + script.length, node);
-            }
-
-            const ins = this._instructions[i];
-            const annotation = OpCodeAnnotations[ins.opCode];
-            if (isTryOpCode(ins.opCode)) {
-                if (!ins.target || !ins.target.instruction) throw new Error("Missing catch offset instruction");
-                if (!ins.finallyTarget || !ins.finallyTarget.instruction) throw new Error("Missing finally offset instruction");
-                const catchOffset = insMap.get(ins.target.instruction);
-                if (!catchOffset) throw new Error("Invalid catch offset instruction");
-                const fetchOffset = insMap.get(ins.finallyTarget.instruction);
-                if (!fetchOffset) throw new Error("Invalid finally offset instruction");
-                if (annotation.operandSize === 2) {
-                    script.push(ins.opCode, offset8(script.length, catchOffset), offset8(script.length, fetchOffset));
-                } else {
-                    script.push(ins.opCode, ...offset32(script.length, catchOffset), ...offset32(script.length, fetchOffset));
-                }
-            } else if (isOffsetOpCode(ins.opCode)) {
-                if (!ins.target || !ins.target.instruction) throw new Error("Missing target offset instruction");
-                const offset = insMap.get(ins.target.instruction);
-                if (!offset) throw new Error("Invalid target offset instruction");
-                if (annotation.operandSize === 1) {
-                    script.push(ins.opCode, offset8(script.length, offset));
-                } else {
-                    script.push(ins.opCode, ...offset32(script.length, offset));
-                }
-            } else {
-                const bytes = ins.operand ? [ins.opCode, ...ins.operand] : [ins.opCode];
-                script.push(...bytes);
-            }
-        }
-
-        return {
-            script: Uint8Array.from(script),
-            sourceReferences: references
-        };
-    }
 }

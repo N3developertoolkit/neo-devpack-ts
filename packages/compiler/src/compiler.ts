@@ -2,11 +2,12 @@ import { sc, u } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
 import * as fs from 'fs';
 import * as path from 'path';
-import { OffsetTarget, ScriptBuilder } from "./ScriptBuilder";
+import { Instruction, isOffsetOpCode, isTryOpCode, offset32, offset8, OffsetTarget, ScriptBuilder } from "./ScriptBuilder";
 import { convertStatement } from "./convert";
-import { ContractType, ContractTypeKind, PrimitiveContractType, PrimitiveType, toContractType } from "./contractType";
+import { ContractType, ContractTypeKind, isPrimitiveType, PrimitiveContractType, PrimitiveType, toContractType } from "./contractType";
 import { isVoidLike } from "./utils";
 import { dumpArtifacts, dumpOperations } from "./testUtils";
+import { OpCodeAnnotations } from "./opCodeAnnotations";
 
 // https://github.com/CityOfZion/neon-js/issues/858
 const DEFAULT_ADDRESS_VALUE = 53;
@@ -27,22 +28,45 @@ export interface CompileOptions {
     addressVersion?: number
 };
 
-export interface CompilationContext {
+export interface CompileContext {
     project: tsm.Project,
     options: Required<Omit<CompileOptions, 'project'>>,
     name?: string,
     builtins?: Builtins,
-    operations?: Array<OperationContext>,
+    operations?: Array<OperationInfo>,
     staticFields?: Array<StaticField>,
     diagnostics: Array<tsm.ts.Diagnostic>,
-    artifacts?: CompilationArtifacts
+    artifacts?: CompileArtifacts
 }
 
-export interface DebugSlotVariable {
-    name: string;
-    type: ContractType;
-    index?: number;
+export interface CompileResults {
+    diagnostics: Array<tsm.ts.Diagnostic>,
+    artifacts?: CompileArtifacts,
+    context: Omit<CompileContext, 'diagnostics' | 'artifacts'>
 }
+
+export interface CompileArtifacts {
+    nef: sc.NEF,
+    manifest: sc.ContractManifest,
+    methods: DebugMethodInfo[]
+}
+
+export interface OperationInfo {
+    readonly name: string,
+    readonly isPublic: boolean,
+    readonly parameters: ReadonlyArray<ParameterInfo>,
+    readonly returnType: tsm.Type,
+    readonly instructions: ReadonlyArray<Instruction>;
+    readonly sourceReferences: ReadonlyMap<number, tsm.Node>;
+}
+
+export interface ParameterInfo {
+    name: string,
+    index: number,
+    type: tsm.Type,
+}
+
+export interface StaticField { }
 
 export interface DebugMethodInfo {
     isPublic: boolean,
@@ -54,45 +78,33 @@ export interface DebugMethodInfo {
     sourceReferences: Map<number, tsm.Node>,
 }
 
-export interface CompilationArtifacts {
-    nef: sc.NEF,
-    manifest: sc.ContractManifest,
-    methods: DebugMethodInfo[]
+export interface DebugSlotVariable {
+    name: string;
+    type: ContractType;
+    index?: number;
 }
-
-export interface SysCall {
-    syscall: string,
-}
-
-// adding type alias so we can add other types of VM calls later
-export type VmCall = SysCall;
 
 export interface Builtins {
     variables: ReadonlyMap<tsm.Symbol, tsm.Symbol>,
     interfaces: ReadonlyMap<tsm.Symbol, Map<tsm.Symbol, VmCall[]>>,
 }
 
-export interface OperationContext {
-    readonly parent: CompilationContext,
-    readonly name: string,
-    readonly isPublic: boolean,
-    readonly node: tsm.FunctionDeclaration,
-    readonly builder: ScriptBuilder,
-    readonly returnTarget: OffsetTarget,
+// adding type alias so we can add other types of VM calls later
+export type VmCall = SysCall;
+
+export interface SysCall {
+    syscall: string,
 }
 
-export interface StaticField { }
-
-export interface CompileResults {
-    diagnostics: Array<tsm.ts.Diagnostic>,
-    artifacts?: CompilationArtifacts,
-    context: Omit<CompilationContext, 'diagnostics' | 'artifacts'>
-
+export interface OperationContext extends Omit<OperationInfo, 'instructions'|'sourceReferences'> {
+    node: tsm.FunctionDeclaration,
+    builder: ScriptBuilder,
+    returnTarget: OffsetTarget,
 }
 
 function compile(options: CompileOptions): CompileResults {
 
-    const context: CompilationContext = {
+    const context: CompileContext = {
         project: options.project,
         options: {
             addressVersion: options.addressVersion ?? DEFAULT_ADDRESS_VALUE,
@@ -102,11 +114,12 @@ function compile(options: CompileOptions): CompileResults {
         diagnostics: []
     };
 
-    type CompilePass = (context: CompilationContext) => void;
+    type CompilePass = (context: CompileContext) => void;
     const passes: Array<CompilePass> = [
         resolveDeclarationsPass,
         processFunctionsPass,
         collectArtifactsPass,
+        optimizePass,
     ];
 
     for (const pass of passes) {
@@ -145,7 +158,7 @@ function compile(options: CompileOptions): CompileResults {
     };
 }
 
-function resolveDeclarationsPass(context: CompilationContext): void {
+function resolveDeclarationsPass(context: CompileContext): void {
 
     // TODO: move this to a JSON file at some point
     const storageBuiltin = new Map<string, VmCall[]>([
@@ -196,41 +209,87 @@ function resolveDeclarationsPass(context: CompilationContext): void {
     context.builtins = { interfaces, variables }
 }
 
-function processFunctionsPass(context: CompilationContext): void {
+function processFunctionsPass(context: CompileContext): void {
     for (const src of context.project.getSourceFiles()) {
         if (src.isDeclarationFile()) continue;
         src.forEachChild(node => {
             if (tsm.Node.isFunctionDeclaration(node)) {
                 const name = node.getName();
-                const _export = node.getExportKeyword();
                 if (!name) { return; }
-                const opCtx: OperationContext = {
-                    parent: context,
+                const op: OperationContext = {
                     name,
-                    isPublic: !!_export,
+                    isPublic: !!node.getExportKeyword(),
+                    parameters: node.getParameters().map((p, index) => ({
+                        name: p.getName(),
+                        type: p.getType(),
+                        index})),
+                    returnType: node.getReturnType(),
                     node,
                     builder: new ScriptBuilder(),
-                    returnTarget: {}
+                    returnTarget: {},
                 };
-                if (!context.operations) { context.operations = []; }
-                context.operations.push(opCtx);
 
-                const paramCount = node.getParameters().length;
+                const paramCount = op.parameters.length;
                 const localCount = 0;
                 if (localCount > 0 || paramCount > 0) {
-                    opCtx.builder.push(sc.OpCode.INITSLOT, [localCount, paramCount]);
+                    op.builder.push(sc.OpCode.INITSLOT, [localCount, paramCount]);
                 }
 
                 const body = node.getBodyOrThrow();
                 if (tsm.Node.isStatement(body)) {
-                    convertStatement(body, opCtx);
+                    convertStatement(body, { context, op });
                 } else {
                     throw new CompileError(`Unexpected body kind ${body.getKindName()}`, body);
                 }
 
-                opCtx.returnTarget.instruction = opCtx.builder.push(sc.OpCode.RET).instruction;
+                op.returnTarget.instruction = op.builder.push(sc.OpCode.RET).instruction;
+
+                const { instructions, sourceReferences } = op.builder.getScript();
+                if (!context.operations) { context.operations = []; }
+                context.operations.push({
+                    name: op.name,
+                    isPublic: op.isPublic,
+                    parameters: op.parameters,
+                    returnType: op.returnType,
+                    instructions,
+                    sourceReferences
+                })
             }
         })
+    }
+}
+
+function optimizePass(context: CompileContext): void {
+    for (const op of context.operations ?? []) {
+        optimizeJumpReturn(op);
+    }
+}
+
+function optimizeJumpReturn(op: OperationInfo) {
+    const instructions = op.instructions;
+    const length = instructions.length;
+    for (let i = 0; i < length; i++) {
+        const ins = instructions[i];
+        if (ins.opCode === sc.OpCode.JMP_L) {
+            const target = ins.target?.instruction;
+            if (target) {
+                let i2 = i + 1;
+                while (i2 < length) {
+                    const ins2 = instructions[i2];
+                    if (ins2.opCode === sc.OpCode.NOP) { 
+                        i2++; 
+                        continue; 
+                    } else if (ins2.opCode === sc.OpCode.RET) {
+                        // detected jump to return
+                        // remove instructions i thru (i2 - 1)
+
+                        break;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -238,20 +297,19 @@ function isNotNullOrUndefined<T extends Object>(input: null | undefined | T): in
     return input != null;
 }
 
-function collectArtifactsPass(context: CompilationContext): void {
+function collectArtifactsPass(context: CompileContext): void {
     const name = context.name ?? "TestContract";
     const methods = new Array<DebugMethodInfo>();
     let fullScript = Buffer.from([]);
 
     for (const op of context.operations ?? []) {
         const offset = fullScript.length;
-        const { script, sourceReferences } = op.builder.compile(fullScript.length);
-        const parameters = op.node.getParameters().map((p, index) => ({
-            name: p.getName(),
-            index,
-            type: toContractType(p.getType()),
+        const { script, sourceReferences } = compileOperation(op, fullScript.length);
+        const parameters = op.parameters.map(p => ({
+            name: p.name,
+            index: p.index,
+            type: toContractType(p.type),
         }));
-        const returnType = op.node.getReturnType();
         methods.push({
             isPublic: op.isPublic,
             name: op.name,
@@ -260,9 +318,9 @@ function collectArtifactsPass(context: CompilationContext): void {
                 end: offset + script.length - 1
             },
             parameters,
-            returnType: isVoidLike(returnType)
+            returnType: isVoidLike(op.returnType)
                 ? undefined
-                : toContractType(returnType),
+                : toContractType(op.returnType),
             sourceReferences
         })
 
@@ -284,6 +342,72 @@ function collectArtifactsPass(context: CompilationContext): void {
     });
 
     context.artifacts = { nef, manifest, methods }
+}
+
+function compileOperation({ instructions, sourceReferences }:OperationInfo, offset: number) {
+
+    const length = instructions.length;
+    const insMap = new Map<Instruction, number>();
+    let position = 0;
+    for (let i = 0; i < length; i++) {
+        const ins = instructions[i];
+        insMap.set(ins, position);
+
+        // every instruction is at least one byte long for the opCode
+        position += 1;
+        const annotation = OpCodeAnnotations[ins.opCode];
+        if (annotation.operandSize) {
+            // if operandSize is specified, use it instead of the instruction operand
+            // since offset target instructions will have invalid operand
+            position += (annotation.operandSize);
+        } else if (annotation.operandSizePrefix) {
+            // if operandSizePrefix is specified, use the instruction operand length
+            position += (ins.operand!.length);
+        }
+    }
+
+    let script = new Array<number>();
+    let references = new Map<number, tsm.Node>();
+
+    for (let i = 0; i < length; i++) {
+        const node = sourceReferences.get(i)
+        if (node) {
+            references.set(offset + script.length, node);
+        }
+
+        const ins = instructions[i];
+        const annotation = OpCodeAnnotations[ins.opCode];
+        if (isTryOpCode(ins.opCode)) {
+            if (!ins.target || !ins.target.instruction) throw new Error("Missing catch offset instruction");
+            if (!ins.finallyTarget || !ins.finallyTarget.instruction) throw new Error("Missing finally offset instruction");
+            const catchOffset = insMap.get(ins.target.instruction);
+            if (!catchOffset) throw new Error("Invalid catch offset instruction");
+            const fetchOffset = insMap.get(ins.finallyTarget.instruction);
+            if (!fetchOffset) throw new Error("Invalid finally offset instruction");
+            if (annotation.operandSize === 2) {
+                script.push(ins.opCode, offset8(script.length, catchOffset), offset8(script.length, fetchOffset));
+            } else {
+                script.push(ins.opCode, ...offset32(script.length, catchOffset), ...offset32(script.length, fetchOffset));
+            }
+        } else if (isOffsetOpCode(ins.opCode)) {
+            if (!ins.target || !ins.target.instruction) throw new Error("Missing target offset instruction");
+            const offset = insMap.get(ins.target.instruction);
+            if (!offset) throw new Error("Invalid target offset instruction");
+            if (annotation.operandSize === 1) {
+                script.push(ins.opCode, offset8(script.length, offset));
+            } else {
+                script.push(ins.opCode, ...offset32(script.length, offset));
+            }
+        } else {
+            const bytes = ins.operand ? [ins.opCode, ...ins.operand] : [ins.opCode];
+            script.push(...bytes);
+        }
+    }
+
+    return {
+        script: Uint8Array.from(script),
+        sourceReferences: references
+    };
 }
 
 export function convertContractType(type: tsm.Type): sc.ContractParamType;
@@ -315,9 +439,7 @@ export function convertContractType(type: ContractType | tsm.Type): sc.ContractP
     }
 }
 
-function toMethodDef(
-    method: DebugMethodInfo
-): sc.ContractMethodDefinition | undefined {
+function toMethodDef(method: DebugMethodInfo): sc.ContractMethodDefinition | undefined {
     if (!method.isPublic) { return undefined; }
     return new sc.ContractMethodDefinition({
         name: method.name,
@@ -348,7 +470,7 @@ function saveArtifacts(
     rootPath: string,
     filename: string,
     source: string,
-    artifacts: CompilationArtifacts
+    artifacts: CompileArtifacts
 ) {
     if (!fs.existsSync(rootPath)) { fs.mkdirSync(rootPath); }
     const basename = path.parse(filename).name;
