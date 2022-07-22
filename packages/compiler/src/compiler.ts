@@ -8,6 +8,7 @@ import { ContractType, ContractTypeKind, PrimitiveContractType, PrimitiveType, t
 import { isVoidLike } from "./utils";
 import { dumpArtifacts, dumpOperations } from "./testUtils";
 import { OpCodeAnnotations, isTargetOpCode as isOffsetTargetOpCode, isTryOpCode } from "./opCodeAnnotations";
+import { optimizeReturn } from "./optimizations";
 
 // https://github.com/CityOfZion/neon-js/issues/858
 const DEFAULT_ADDRESS_VALUE = 53;
@@ -96,7 +97,7 @@ export interface SysCall {
     syscall: string,
 }
 
-export interface OperationContext extends Omit<OperationInfo, 'instructions'|'sourceReferences'> {
+export interface OperationContext extends Omit<OperationInfo, 'instructions' | 'sourceReferences'> {
     node: tsm.FunctionDeclaration,
     builder: ScriptBuilder,
     returnTarget: OffsetTarget,
@@ -118,8 +119,8 @@ function compile(options: CompileOptions): CompileResults {
     const passes: Array<CompilePass> = [
         resolveDeclarationsPass,
         processFunctionsPass,
+        optimizePass,
         collectArtifactsPass,
-        // optimizePass,
     ];
 
     for (const pass of passes) {
@@ -222,7 +223,8 @@ function processFunctionsPass(context: CompileContext): void {
                     parameters: node.getParameters().map((p, index) => ({
                         name: p.getName(),
                         type: p.getType(),
-                        index})),
+                        index
+                    })),
                     returnType: node.getReturnType(),
                     node,
                     builder: new ScriptBuilder(),
@@ -259,39 +261,19 @@ function processFunctionsPass(context: CompileContext): void {
     }
 }
 
-// function optimizePass(context: CompileContext): void {
-//     for (const op of context.operations ?? []) {
-//         optimizeJumpReturn(op);
-//     }
-// }
-
-// function optimizeJumpReturn(op: OperationInfo) {
-//     const instructions = op.instructions;
-//     const length = instructions.length;
-//     for (let i = 0; i < length; i++) {
-//         const ins = instructions[i];
-//         if (ins.opCode === sc.OpCode.JMP_L) {
-//             const target = ins.target?.instruction;
-//             if (target) {
-//                 let i2 = i + 1;
-//                 while (i2 < length) {
-//                     const ins2 = instructions[i2];
-//                     if (ins2.opCode === sc.OpCode.NOP) { 
-//                         i2++; 
-//                         continue; 
-//                     } else if (ins2.opCode === sc.OpCode.RET) {
-//                         // detected jump to return
-//                         // remove instructions i thru (i2 - 1)
-
-//                         break;
-//                     } else {
-//                         break;
-//                     }
-//                 }
-//             }
-//         }
-//     }
-// }
+function optimizePass(context: CompileContext): void {
+    // if (!context.options.optimize) { return; }
+    if (!context.operations) { return; }
+    const operations = context.operations;
+    const length = operations.length;
+    for (let i = 0; i < length; i++) {
+        const op = operations[i];
+        const newOp = optimizeReturn(op);
+        if (newOp) {
+            operations[i] = newOp;
+        }
+    }
+}
 
 function isNotNullOrUndefined<T extends Object>(input: null | undefined | T): input is T {
     return input != null;
@@ -344,7 +326,7 @@ function collectArtifactsPass(context: CompileContext): void {
     context.artifacts = { nef, manifest, methods }
 }
 
-function compileOperation({ instructions, sourceReferences }:OperationInfo, offset: number) {
+function compileOperation({ instructions, sourceReferences }: OperationInfo, offset: number) {
 
     const length = instructions.length;
     const insMap = new Map<Instruction, number>();
@@ -412,7 +394,7 @@ function compileOperation({ instructions, sourceReferences }:OperationInfo, offs
     function offset8(index: number, offset: number): number {
         return offset - index;
     }
-    
+
     function offset32(index: number, offset: number): Uint8Array {
         const buffer = Buffer.alloc(4);
         buffer.writeInt32LE(offset8(index, offset));
