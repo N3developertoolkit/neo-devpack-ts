@@ -1,4 +1,5 @@
 import { sc, u } from "@cityofzion/neon-core";
+import { fromMethodName, InteropServiceCode } from "@cityofzion/neon-core/lib/sc";
 import * as tsm from "ts-morph";
 import { CompileContext, CompileError, OperationContext } from "./compiler";
 import { Instruction } from "./ScriptBuilder";
@@ -233,7 +234,7 @@ function convertCallExpression(node: tsm.CallExpression, options: ConverterOptio
 function convertIdentifier(node: tsm.Identifier, options: ConverterOptions) {
     const { op } = options;
 
-    
+
     // Not sure this is the best way to generally resolve identifiers,
     // but it works for parameters
 
@@ -284,32 +285,27 @@ function convertNumericLiteral(node: tsm.NumericLiteral, options: ConverterOptio
 // [SyntaxKind.PrefixUnaryExpression]: PrefixUnaryExpression;
 // [SyntaxKind.PropertyAccessExpression]: PropertyAccessExpression;
 function convertPropertyAccessExpression(node: tsm.PropertyAccessExpression, options: ConverterOptions) {
-    const { context: { builtins },  op: { builder }} = options;
+    const { context: { builtins }, op: { builder } } = options;
 
-    const lhs = node.getExpression();
-    const lhsSymbol = lhs.getSymbolOrThrow();
-    const lhsTypeSymbol = builtins?.variables.get(lhsSymbol);
-    if (!lhsTypeSymbol) { throw new CompileError(`could not resolve ${lhsSymbol.getName()}`, lhs); }
-    const lhsInterface = builtins?.interfaces.get(lhsTypeSymbol);
-    if (!lhsInterface) { throw new CompileError(`could not resolve ${lhsTypeSymbol.getName()}`, lhs); }
+    const propSymbol = node.getNameNode().getSymbolOrThrow();
+    const calls = builtins?.symbols.get(propSymbol);
+    if (calls) {
+        for (const call of calls) {
 
-    const propertyNode = node.getNameNode();
-    const propertySymbol = propertyNode.getSymbolOrThrow();
-    const calls = lhsInterface.get(propertySymbol);
-    if (!calls) { throw new CompileError(`could not resolve ${propertySymbol.getName()}`, propertyNode); }
-
-    for (const call of calls) {
-        const txt = Buffer.from(call.syscall, 'ascii').toString('hex');
-        const buffer = Buffer.from(u.sha256(txt), 'hex').slice(0, 4);
-        builder.push(sc.OpCode.SYSCALL, buffer);
+            const buffer = Buffer.from(sc.generateInteropServiceCode(call.syscall), 'hex');
+            builder.push(sc.OpCode.SYSCALL, buffer);
+        }
+        return;
     }
+
+    throw new CompileError(`${node.getName()} property not found`, node);
 }
 
 // [SyntaxKind.RegularExpressionLiteral]: RegularExpressionLiteral;
 // [SyntaxKind.SpreadElement]: SpreadElement;
 // [SyntaxKind.StringLiteral]: StringLiteral;
 function convertStringLiteral(node: tsm.StringLiteral, options: ConverterOptions) {
-    const { op: { builder }} = options;
+    const { op: { builder } } = options;
 
     const literal = node.getLiteralValue();
     const buffer = Buffer.from(literal, 'utf-8');
@@ -337,59 +333,58 @@ function convertStringLiteral(node: tsm.StringLiteral, options: ConverterOptions
 // [SyntaxKind.VoidExpression]: VoidExpression;
 
 
-export function convertInt(i: BigInt): Instruction {
+const pushIntSizes: ReadonlyArray<number> = [1, 2, 4, 8, 16, 32];
+
+export function convertInt(i: bigint): Instruction {
     if (i === -1n) { return { opCode: sc.OpCode.PUSHM1 }; }
     if (i >= 0n && i <= 16n) {
         const opCode: sc.OpCode = sc.OpCode.PUSH0 + Number(i);
         return { opCode };
     }
-    const operand = bigIntToByteArray(i);
-    const opCode = getOpCode(operand);
-    return { opCode, operand };
 
-    function getOpCode(array: Uint8Array) {
-        switch (array.length) {
-            case 1: return sc.OpCode.PUSHINT8;
-            case 2: return sc.OpCode.PUSHINT16;
-            case 4: return sc.OpCode.PUSHINT32;
-            case 8: return sc.OpCode.PUSHINT64;
-            case 16: return sc.OpCode.PUSHINT128;
-            case 32: return sc.OpCode.PUSHINT256;
-            default: throw new Error(`Invalid integer buffer length ${array.length}`);
+    const buffer = bigIntToByteArray(i);
+    const bufferLength = buffer.length;
+    const sizesLength = pushIntSizes.length;
+    for (let i = 0; i < sizesLength; i++) {
+        const pushIntSize = pushIntSizes[i];
+        if (bufferLength <= pushIntSize) {
+            const padding = pushIntSize - bufferLength;
+            const opCode = sc.OpCode.PUSHINT8 + i;
+            const operand = padding == 0 
+                ? buffer 
+                : Uint8Array.from([...buffer, ...(new Array<number>(padding).fill(0))])
+            return { opCode, operand };
         }
     }
+
+    throw new Error(`Invalid integer buffer length ${buffer.length}`)
 }
 
 // convert JS BigInt to C# BigInt byte array encoding
-function bigIntToByteArray(i: BigInt) {
-    if (i < 0n) {
-        throw new Error("convertInt.toByteArray negative values not implemented")
-    }
+export function bigIntToByteArray(i: bigint): Uint8Array {
 
     // convert big int to hex string
-    let str = i.toString(16);
+    let str = i < 0 ? (i * -1n).toString(16) : i.toString(16);
     // if odd length, prepend an extra zero padding
     if (str.length % 2 == 1) { str = '0' + str }
-    // parse the hex string and reverse
-    const buffer = Buffer.from(str, 'hex').reverse();
-    if (buffer.length == 0) throw new Error("Invalid BigInt");
+    let neonBigInt = u.BigInteger
+        .fromHex(str)
+        .mul(i < 0 ? -1 : 1);
+    return Buffer.from(neonBigInt.toReverseTwos(), 'hex');
+    // const length = buffer.length;
+    // for (const factor of [1, 2, 4, 8, 16, 32]) {
+    //     if (length <= factor) {
+    //         const padding = factor - length;
+    //         return padding === 0
+    //             ? Uint8Array.from(buffer)
+    //             : Uint8Array.from([
+    //                 ...buffer,
+    //                 ...(new Array<number>(padding).fill(0))
+    //             ]);
+    //     }
+    // }
 
-    // add padding
-    let padding = buffer[buffer.length - 1] & 0x80 ? 1 : 0;
-    const length = buffer.length + padding;
-    for (const factor of [1, 2, 4, 8, 16, 32]) {
-        if (length <= factor) {
-            padding += factor - length;
-            return padding === 0
-                ? Uint8Array.from(buffer)
-                : Uint8Array.from([
-                    ...buffer,
-                    ...(new Array<number>(padding).fill(0))
-                ]);
-        }
-    }
-
-    throw new Error(`${i} too big for NeoVM`);
+    // throw new Error(`${i} too big for NeoVM`);
 }
 
 

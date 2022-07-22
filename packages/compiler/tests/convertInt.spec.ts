@@ -1,5 +1,6 @@
-import { sc } from '@cityofzion/neon-core';
+import { sc, u } from '@cityofzion/neon-core';
 import { expect } from 'chai';
+import exp from 'constants';
 import 'mocha';
 import { convertInt } from '../src/convert';
 
@@ -440,7 +441,25 @@ describe('convertInt', () => {
     ]
 
     positiveValueTests.forEach(v => testConvertInt(v.value, v.expected));
+    negativeValueTests.forEach(v => testConvertInt(v.value, v.expected));
 
+    function testNeon(value: bigint, expected: string) {
+        it(`neon ${value}`, () => {
+
+            let str = value < 0
+                ? (value * -1n).toString(16)
+                : value.toString(16);
+            if (str.length % 2 == 1) { str = '0' + str }
+            let b = u.BigInteger.fromHex(str);
+            if (value < 0) { b = b.mul(-1); }
+
+            const h = b.toReverseTwos();
+            expect(h.toUpperCase()).to.be.equal(expected);
+        })
+    }
+
+    // positiveValueTests.forEach(({ value, expected }) => testNeon(value, expected));
+    // negativeValueTests.forEach(({ value, expected }) => testNeon(value, expected));
     // negative value ints not implemented
     // negativeValueTests.forEach(v => testConvertInt(v.value, v.expected));
 });

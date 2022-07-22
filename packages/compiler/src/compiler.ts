@@ -86,8 +86,9 @@ export interface DebugSlotVariable {
 }
 
 export interface Builtins {
-    variables: ReadonlyMap<tsm.Symbol, tsm.Symbol>,
-    interfaces: ReadonlyMap<tsm.Symbol, Map<tsm.Symbol, VmCall[]>>,
+    // variables: ReadonlyMap<tsm.Symbol, tsm.Symbol>,
+    // interfaces: ReadonlyMap<tsm.Symbol, Map<tsm.Symbol, VmCall[]>>,
+    symbols: ReadonlyMap<tsm.Symbol, VmCall[]>,
 }
 
 // adding type alias so we can add other types of VM calls later
@@ -162,18 +163,24 @@ function compile(options: CompileOptions): CompileResults {
 function resolveDeclarationsPass(context: CompileContext): void {
 
     // TODO: move this to a JSON file at some point
-    const storageBuiltin = new Map<string, VmCall[]>([
-        ["currentContext", [{ syscall: "System.Storage.GetContext" }]],
-        ["get", [{ syscall: "System.Storage.Get" }]],
-        ["put", [{ syscall: "System.Storage.Put" }]]
-    ]);
-
     const builtinInterfaces = new Map([
-        ["StorageConstructor", storageBuiltin]
+        ["StorageConstructor", new Map([
+            ["currentContext", [{ syscall: "System.Storage.GetContext" }]],
+            ["get", [{ syscall: "System.Storage.Get" }]],
+            ["put", [{ syscall: "System.Storage.Put" }]]
+        ])]
     ]);
 
-    const interfaces = new Map<tsm.Symbol, Map<tsm.Symbol, VmCall[]>>();
-    const variables = new Map<tsm.Symbol, tsm.Symbol>();
+    // StorageKey: {
+    //     kind: 'stackItem',
+    //     type: sc.StackItemType.ByteString
+    // },
+    // StorageValue: {
+    //     kind: 'stackItem',
+    //     type: sc.StackItemType.ByteString
+    // },
+
+    const symbols = new Map<tsm.Symbol, VmCall[]>();
 
     for (const src of context.project.getSourceFiles()) {
         if (!src.isDeclarationFile()) continue;
@@ -182,32 +189,32 @@ function resolveDeclarationsPass(context: CompileContext): void {
             if (node.isKind(tsm.ts.SyntaxKind.InterfaceDeclaration)) {
                 const symbol = node.getSymbol();
                 if (!symbol) return;
+
                 const iface = builtinInterfaces.get(symbol.getName());
-                if (!iface) return;
-                const members = new Map<tsm.Symbol, VmCall[]>();
-                for (const member of node.getMembers()) {
-                    const memberSymbol = member.getSymbol();
-                    if (!memberSymbol) return;
-                    const calls = iface.get(memberSymbol.getName());
-                    if (calls && calls.length > 0) {
-                        members.set(memberSymbol, calls);
-                    }
-                }
-                interfaces.set(symbol, members);
-            }
-            if (node.isKind(tsm.ts.SyntaxKind.VariableStatement)) {
-                for (const decl of node.getDeclarations()) {
-                    const symbol = decl.getSymbol()
-                    const typeSymbol = decl.getType().getSymbol();
-                    if (symbol && typeSymbol) {
-                        variables.set(symbol, typeSymbol);
+                if (iface) {
+                    for (const member of node.getMembers()) {
+                        const memberSymbol = member.getSymbol();
+                        if (!memberSymbol) return;
+                        const ifaceMember = iface.get(memberSymbol.getName());
+                        if (ifaceMember) {
+                            symbols.set(memberSymbol, ifaceMember);
+                        }
                     }
                 }
             }
+            // if (node.isKind(tsm.ts.SyntaxKind.VariableStatement)) {
+            //     for (const decl of node.getDeclarations()) {
+            //         const symbol = decl.getSymbol()
+            //         const typeSymbol = decl.getType().getSymbol();
+            //         if (symbol && typeSymbol) {
+            //             variables.set(symbol, typeSymbol);
+            //         }
+            //     }
+            // }
         });
     }
 
-    context.builtins = { interfaces, variables }
+    context.builtins = { symbols }
 }
 
 function processFunctionsPass(context: CompileContext): void {
