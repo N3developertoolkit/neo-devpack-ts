@@ -125,5 +125,5 @@ export function toContractType(type: tsm.Type): ContractType {
         return primitive(PrimitiveType.Boolean);
     }
 
-    throw new Error(`convertTypeScriptType ${type.getText()} not implemented`);
+    throw new Error(`toContractType ${type.getText()} not implemented`);
 }
