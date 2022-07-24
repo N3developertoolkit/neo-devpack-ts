@@ -237,8 +237,10 @@ function convertCallExpression(node: tsm.CallExpression, options: ConverterOptio
     const args = node.getArguments();
     const expr = node.getExpression();
     if (tsm.Node.isPropertyAccessExpression(expr)) {
-        const propSymbol = expr.getNameNode().getSymbol();
-        const calls = propSymbol ? builtins?.symbols.get(propSymbol) : undefined;
+        const symbol = expr.getNameNode().getSymbolOrThrow();
+        const decl = symbol.getValueDeclarationOrThrow();
+        if (!tsm.Node.isMethodSignature(decl)) throw new CompileError("unexpected value declaration", decl);
+        const calls = symbol ? builtins?.symbols.get(symbol) : undefined;
         if (calls) {
             emitCall(calls, args, options);
             return;
@@ -311,8 +313,10 @@ function convertNumericLiteral(node: tsm.NumericLiteral, options: ConverterOptio
 function convertPropertyAccessExpression(node: tsm.PropertyAccessExpression, options: ConverterOptions) {
     const { context: { builtins }, op: { builder } } = options;
 
-    const propSymbol = node.getNameNode().getSymbolOrThrow();
-    const calls = builtins?.symbols.get(propSymbol);
+    const symbol = node.getNameNode().getSymbolOrThrow();
+    const decl = symbol?.getValueDeclarationOrThrow();
+    if (!tsm.Node.isPropertySignature(decl)) { throw new CompileError("Unexpected property", decl)}
+    const calls = builtins?.symbols.get(symbol);
     if (calls) {
         emitCall(calls, [], options);
         return;
