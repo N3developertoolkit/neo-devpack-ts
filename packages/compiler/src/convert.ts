@@ -1,7 +1,7 @@
 import { sc, u } from "@cityofzion/neon-core";
 import { fromMethodName, InteropServiceCode } from "@cityofzion/neon-core/lib/sc";
 import * as tsm from "ts-morph";
-import { CompileContext, CompileError, OperationContext } from "./compiler";
+import { CallInfo, CallInfoKind, CompileContext, CompileError, isSysCallInfo, OperationContext } from "./compiler";
 import { Instruction } from "./ScriptBuilder";
 import { isStringLike } from "./utils";
 
@@ -207,11 +207,11 @@ function convertBinaryExpression(node: tsm.BinaryExpression, options: ConverterO
     }
 }
 
-// [SyntaxKind.CallExpression]: CallExpression;
-function convertCallExpression(node: tsm.CallExpression, options: ConverterOptions) {
+function emitCall(calls: CallInfo[], args: tsm.Node[], options: ConverterOptions) {
+    const { op: { builder } } = options;
 
-    const args = node.getArguments();
-    for (let i = args.length - 1; i >= 0; i--) {
+    const argsLength = args.length;
+    for (let i = argsLength - 1; i >= 0; i--) {
         const arg = args[i];
         if (tsm.Node.isExpression(arg)) {
             convertExpression(arg, options);
@@ -220,8 +220,32 @@ function convertCallExpression(node: tsm.CallExpression, options: ConverterOptio
         }
     }
 
-    // TODO emit call
-    convertExpression(node.getExpression(), options);
+    for (const call of calls) {
+        if (isSysCallInfo(call)) {
+            const buffer = Buffer.from(sc.generateInteropServiceCode(call.syscall), 'hex');
+            builder.push(sc.OpCode.SYSCALL, buffer);
+        } else {
+            throw new Error(`Unexpected call info kind ${call.kind}`);
+        }
+    }
+}
+
+// [SyntaxKind.CallExpression]: CallExpression;
+function convertCallExpression(node: tsm.CallExpression, options: ConverterOptions) {
+    const { context: { builtins } } = options;
+
+    const args = node.getArguments();
+    const expr = node.getExpression();
+    if (tsm.Node.isPropertyAccessExpression(expr)) {
+        const propSymbol = expr.getNameNode().getSymbol();
+        const calls = propSymbol ? builtins?.symbols.get(propSymbol) : undefined;
+        if (calls) {
+            emitCall(calls, args, options);
+            return;
+        } 
+    }
+    
+    throw new CompileError('convertCallExpression not implemented', expr);
 }
 
 // [SyntaxKind.ClassExpression]: ClassExpression;
@@ -290,15 +314,11 @@ function convertPropertyAccessExpression(node: tsm.PropertyAccessExpression, opt
     const propSymbol = node.getNameNode().getSymbolOrThrow();
     const calls = builtins?.symbols.get(propSymbol);
     if (calls) {
-        for (const call of calls) {
-
-            const buffer = Buffer.from(sc.generateInteropServiceCode(call.syscall), 'hex');
-            builder.push(sc.OpCode.SYSCALL, buffer);
-        }
+        emitCall(calls, [], options);
         return;
-    }
-
-    throw new CompileError(`${node.getName()} property not found`, node);
+    } 
+    
+    throw new CompileError(`convertPropertyAccessExpression not implemented`, node);
 }
 
 // [SyntaxKind.RegularExpressionLiteral]: RegularExpressionLiteral;

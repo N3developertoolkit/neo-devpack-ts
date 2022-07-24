@@ -88,14 +88,24 @@ export interface DebugSlotVariable {
 export interface Builtins {
     // variables: ReadonlyMap<tsm.Symbol, tsm.Symbol>,
     // interfaces: ReadonlyMap<tsm.Symbol, Map<tsm.Symbol, VmCall[]>>,
-    symbols: ReadonlyMap<tsm.Symbol, VmCall[]>,
+    symbols: ReadonlyMap<tsm.Symbol, CallInfo[]>,
 }
 
-// adding type alias so we can add other types of VM calls later
-export type VmCall = SysCall;
+export enum CallInfoKind {
+    SysCall
+}
 
-export interface SysCall {
-    syscall: string,
+export interface CallInfo {
+    kind: CallInfoKind
+}
+
+export interface SysCallInfo {
+    kind: CallInfoKind.SysCall,
+    syscall: string
+}
+
+export function isSysCallInfo(call: CallInfo): call is SysCallInfo {
+    return call.kind === CallInfoKind.SysCall;
 }
 
 export interface OperationContext extends Omit<OperationInfo, 'instructions' | 'sourceReferences'> {
@@ -165,9 +175,9 @@ function resolveDeclarationsPass(context: CompileContext): void {
     // TODO: move this to a JSON file at some point
     const builtinInterfaces = new Map([
         ["StorageConstructor", new Map([
-            ["currentContext", [{ syscall: "System.Storage.GetContext" }]],
-            ["get", [{ syscall: "System.Storage.Get" }]],
-            ["put", [{ syscall: "System.Storage.Put" }]]
+            ["currentContext", [{ kind: CallInfoKind.SysCall, syscall: "System.Storage.GetContext" }]],
+            ["get", [{ kind: CallInfoKind.SysCall, syscall: "System.Storage.Get" }]],
+            ["put", [{ kind: CallInfoKind.SysCall, syscall: "System.Storage.Put" }]]
         ])]
     ]);
 
@@ -180,7 +190,7 @@ function resolveDeclarationsPass(context: CompileContext): void {
     //     type: sc.StackItemType.ByteString
     // },
 
-    const symbols = new Map<tsm.Symbol, VmCall[]>();
+    const symbols = new Map<tsm.Symbol, CallInfo[]>();
 
     for (const src of context.project.getSourceFiles()) {
         if (!src.isDeclarationFile()) continue;
