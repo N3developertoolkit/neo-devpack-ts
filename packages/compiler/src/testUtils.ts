@@ -4,11 +4,12 @@ import { CompileArtifacts, OperationContext, OperationInfo } from "./compiler";
 
 export function dumpOperations(operations?: OperationInfo[]) {
     for (const op of operations ?? []) {
+        const { instructions = [], sourceReferences = new Map() } = op;
         console.log(` ${op.isPublic ? 'public ' : ''}${op.name}`);
-        const length = op.instructions.length;
+        const length = instructions.length;
         for (let i = 0; i < length; i++) {
-            const instruction = op.instructions[i];
-            const sourceReference = op.sourceReferences.get(i);
+            const instruction = instructions[i];
+            const sourceReference = sourceReferences.get(i);
 
             const operand = instruction.operand ? Buffer.from(instruction.operand).toString('hex') : "";
             let msg = `  ${sc.OpCode[instruction.opCode]} ${operand}`

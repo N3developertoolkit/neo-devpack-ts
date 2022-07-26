@@ -4,7 +4,8 @@ import { Instruction } from "./ScriptBuilder";
 import { OperationInfo } from "./compiler";
 
 export function optimizeReturn(op: OperationInfo): OperationInfo | undefined {
-    const { instructions, sourceReferences } = op;
+    if (!op.instructions) return undefined;
+    const { instructions, sourceReferences = new Map() } = op;
     const newIns = new Array<Instruction>();
     const newRef = new Map<number, tsm.Node>();
 
@@ -71,6 +72,7 @@ export function optimizeReturn(op: OperationInfo): OperationInfo | undefined {
     if (!dirty) { return undefined; }
 
     return {
+        node: op.node,
         name: op.name,
         isPublic: op.isPublic,
         parameters: op.parameters,

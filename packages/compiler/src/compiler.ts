@@ -9,6 +9,7 @@ import { isVoidLike } from "./utils";
 import { dumpArtifacts, dumpOperations } from "./testUtils";
 import { OpCodeAnnotations, isTargetOpCode as isOffsetTargetOpCode, isTryOpCode } from "./opCodeAnnotations";
 import { optimizeReturn } from "./optimizations";
+import { Immutable } from "./Immutable";
 
 // https://github.com/CityOfZion/neon-js/issues/858
 const DEFAULT_ADDRESS_VALUE = 53;
@@ -49,19 +50,21 @@ export interface CompileResults {
 export interface CompileArtifacts {
     nef: sc.NEF,
     manifest: sc.ContractManifest,
-    methods: DebugMethodInfo[]
+    methods: Array<DebugMethodInfo>
 }
 
 export interface OperationInfo {
-    readonly name: string,
-    readonly isPublic: boolean,
-    readonly parameters: ReadonlyArray<ParameterInfo>,
-    readonly returnType: tsm.Type,
-    readonly instructions: ReadonlyArray<Instruction>;
-    readonly sourceReferences: ReadonlyMap<number, tsm.Node>;
+    node: tsm.FunctionDeclaration,
+    name: string,
+    isPublic: boolean,
+    parameters: Array<ParameterInfo>,
+    returnType: tsm.Type,
+    instructions?: Array<Instruction>;
+    sourceReferences?: Map<number, tsm.Node>;
 }
 
 export interface ParameterInfo {
+    node: tsm.ParameterDeclaration,
     name: string,
     index: number,
     type: tsm.Type,
@@ -73,8 +76,8 @@ export interface DebugMethodInfo {
     isPublic: boolean,
     name: string,
     range: { start: number, end: number }
-    parameters?: DebugSlotVariable[],
-    variables?: DebugSlotVariable[],
+    parameters?: Array<DebugSlotVariable>,
+    variables?: Array<DebugSlotVariable>,
     returnType?: ContractType,
     sourceReferences: Map<number, tsm.Node>,
 }
@@ -88,7 +91,7 @@ export interface DebugSlotVariable {
 export interface Builtins {
     // variables: ReadonlyMap<tsm.Symbol, tsm.Symbol>,
     // interfaces: ReadonlyMap<tsm.Symbol, Map<tsm.Symbol, VmCall[]>>,
-    symbols: ReadonlyMap<tsm.Symbol, CallInfo[]>,
+    symbols: Map<tsm.Symbol, CallInfo[]>,
 }
 
 export enum CallInfoKind {
@@ -108,8 +111,8 @@ export function isSysCallInfo(call: CallInfo): call is SysCallInfo {
     return call.kind === CallInfoKind.SysCall;
 }
 
-export interface OperationContext extends Omit<OperationInfo, 'instructions' | 'sourceReferences'> {
-    node: tsm.FunctionDeclaration,
+export interface OperationContext {
+    info: Immutable<OperationInfo>,
     builder: ScriptBuilder,
     returnTarget: OffsetTarget,
 }
@@ -129,7 +132,8 @@ function compile(options: CompileOptions): CompileResults {
     type CompilePass = (context: CompileContext) => void;
     const passes: Array<CompilePass> = [
         resolveDeclarationsPass,
-        processFunctionsPass,
+        discoverOperationsPass,
+        processOperationsPass,
         optimizePass,
         collectArtifactsPass,
     ];
@@ -227,59 +231,65 @@ function resolveDeclarationsPass(context: CompileContext): void {
     context.builtins = { symbols }
 }
 
-function processFunctionsPass(context: CompileContext): void {
+function discoverOperationsPass(context: CompileContext): void {
+    if (!context.operations) { context.operations = []; }
+    const { operations } = context;
     for (const src of context.project.getSourceFiles()) {
         if (src.isDeclarationFile()) continue;
         src.forEachChild(node => {
             if (tsm.Node.isFunctionDeclaration(node)) {
                 const name = node.getName();
-                if (!name) { return; }
-                const op: OperationContext = {
-                    name,
-                    isPublic: !!node.getExportKeyword(),
-                    parameters: node.getParameters().map((p, index) => ({
-                        name: p.getName(),
-                        type: p.getType(),
-                        index
-                    })),
-                    returnType: node.getReturnType(),
-                    node,
-                    builder: new ScriptBuilder(),
-                    returnTarget: {},
-                };
-
-                const paramCount = op.parameters.length;
-                const localCount = 0;
-                if (localCount > 0 || paramCount > 0) {
-                    op.builder.push(sc.OpCode.INITSLOT, [localCount, paramCount]);
+                if (name) {
+                    operations.push({
+                        node, name,
+                        isPublic: !!node.getExportKeyword(),
+                        parameters: node.getParameters().map((p, index) => ({
+                            node: p,
+                            name: p.getName(),
+                            type: p.getType(),
+                            index
+                        })),
+                        returnType: node.getReturnType(),
+                    })
                 }
-
-                const body = node.getBodyOrThrow();
-                if (tsm.Node.isStatement(body)) {
-                    convertStatement(body, { context, op });
-                } else {
-                    throw new CompileError(`Unexpected body kind ${body.getKindName()}`, body);
-                }
-
-                op.returnTarget.instruction = op.builder.push(sc.OpCode.RET).instruction;
-
-                const { instructions, sourceReferences } = op.builder.getScript();
-                if (!context.operations) { context.operations = []; }
-                context.operations.push({
-                    name: op.name,
-                    isPublic: op.isPublic,
-                    parameters: op.parameters,
-                    returnType: op.returnType,
-                    instructions,
-                    sourceReferences
-                })
             }
-        })
+        });
+    }
+}
+
+function processOperationsPass(context: CompileContext): void {
+    if (!context.operations) { return; }
+    const { operations } = context;
+    for (const op of operations) {
+        const builder = new ScriptBuilder();
+        const opCtx: OperationContext = {
+            info: op,
+            builder,
+            returnTarget: {}
+        };
+
+        const paramCount = op.parameters.length;
+        const localCount = 0;
+        if (localCount > 0 || paramCount > 0) {
+            builder.push(sc.OpCode.INITSLOT, [localCount, paramCount]);
+        }
+
+        const body = op.node.getBodyOrThrow();
+        if (tsm.Node.isStatement(body)) {
+            convertStatement(body, { context, op: opCtx });
+        } else {
+            throw new CompileError(`Unexpected body kind ${body.getKindName()}`, body);
+        }
+
+        opCtx.returnTarget.instruction = builder.push(sc.OpCode.RET).instruction;
+        const { instructions, sourceReferences } = builder.getScript();
+        op.instructions = instructions;
+        op.sourceReferences = sourceReferences;
     }
 }
 
 function optimizePass(context: CompileContext): void {
-    // if (!context.options.optimize) { return; }
+    if (!context.options.optimize) { return; }
     if (!context.operations) { return; }
     const operations = context.operations;
     const length = operations.length;
@@ -343,7 +353,7 @@ function collectArtifactsPass(context: CompileContext): void {
     context.artifacts = { nef, manifest, methods }
 }
 
-function compileOperation({ instructions, sourceReferences }: OperationInfo, offset: number) {
+function compileOperation({ instructions = [], sourceReferences = new Map()}: OperationInfo, offset: number) {
 
     const length = instructions.length;
     const insMap = new Map<Instruction, number>();

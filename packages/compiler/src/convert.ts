@@ -270,7 +270,7 @@ function convertIdentifier(node: tsm.Identifier, options: ConverterOptions) {
     switch (def.getKind()) {
         case tsm.ts.ScriptElementKind.parameterElement: {
             const declNode = def.getDeclarationNode();
-            const index = op.node.getParameters().findIndex(p => p === declNode);
+            const index = op.info.node.getParameters().findIndex(p => p === declNode);
             if (index === -1) throw new CompileError(`${node.getText} param can't be found`, node);
             if (index <= 6) {
                 op.builder.push(sc.OpCode.LDARG0 + index);
