@@ -250,12 +250,6 @@ function processOperationsPass(context: CompileContext): void {
             returnTarget: {}
         };
 
-        const paramCount = op.parameters.length;
-        const localCount = 0;
-        if (localCount > 0 || paramCount > 0) {
-            builder.push(sc.OpCode.INITSLOT, [localCount, paramCount]);
-        }
-
         const body = op.node.getBodyOrThrow();
         if (tsm.Node.isStatement(body)) {
             convertStatement(body, { context, op: opCtx });
@@ -263,7 +257,10 @@ function processOperationsPass(context: CompileContext): void {
             throw new CompileError(`Unexpected body kind ${body.getKindName()}`, body);
         }
 
+        // TODO: collect the local count in convertStatement
+        builder.emitInitSlot(0, op.parameters.length);
         opCtx.returnTarget.instruction = builder.push(sc.OpCode.RET).instruction;
+
         const { instructions, sourceReferences } = builder.getScript();
         op.instructions = instructions;
         op.sourceReferences = sourceReferences;

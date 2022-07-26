@@ -17,32 +17,74 @@ export interface SourceReferenceSetter {
     set(node?: tsm.Node): void;
 }
 
-export class ScriptBuilder {
-    private readonly _instructions = new Array<Instruction>();
-    private readonly _sourceReferences = new Map<number, tsm.Node>();
+function isNode(input: Instruction | tsm.Node): input is tsm.Node {
+    return input instanceof tsm.Node;
+}
 
-    getScript() {
-        return {
-            instructions: this._instructions,
-            sourceReferences: this._sourceReferences
+function isInstruction(input: Instruction | tsm.Node): input is Instruction {
+    return !isNode(input);
+}
+
+export class ScriptBuilder {
+    private readonly _items = new Array<Instruction | tsm.Node>();
+
+    private *iterateRefs(): IterableIterator<[Instruction, tsm.Node]> {
+        const length = this._items.length;
+        for (let i = 0; i < length; i++) {
+            const item = this._items[i];
+            if (isNode(item)) {
+                const next = this._items[i + 1];
+                if (next && isInstruction(next)) {
+                    yield [ next, item ];
+                }
+            }
         }
     }
 
-    get instructions() {
-        return this._instructions.map((instruction, i) => ({
-            instruction,
-            sourceReference: this._sourceReferences.get(i)
-        }));
+    // script builder stores instructions and sources references in a single array
+    // to make it easy to insert operations at the head of the array (like INITSLOT)
+    // without having to modify reference indexes. getScript separates the instructions
+    // and source references into separate collections for later use in the compilation pipeline
+    
+    // TODO: would it make more sense to return a single collection and leave the separation step
+    //       for later in the pipeline?
+    getScript(): {
+        instructions: Array<Instruction>,
+        sourceReferences: Map<number, tsm.Node>
+    } {
+        const instructions = this._items.filter(isInstruction);
+        const references = new Map<number, tsm.Node>();
+
+        for (const [ins, ref] of this.iterateRefs()) {
+            const index = instructions.indexOf(ins);
+            if (index >= 0) {
+                references.set(index, ref);
+            }
+        }
+
+        return {
+            instructions: instructions,
+            sourceReferences: references
+        }
     }
 
     getRefSetter(): { set(node?: tsm.Node): void } {
-        const length = this._instructions.length;
+        const length = this._items.length;
         return {
             set: (node?) => {
-                if (node && length < this._instructions.length) {
-                    this._sourceReferences.set(length, node)
+                if (node && length < this._items.length) {
+                    this._items.splice(length, 0, node);
                 }
             }
+        }
+    }
+
+    emitInitSlot(localCount: number, paramCount: number) {
+        if (localCount > 0 || paramCount > 0) {
+            this._items.unshift({
+                opCode: sc.OpCode.INITSLOT, 
+                operand: Uint8Array.from([localCount, paramCount])
+            });
         }
     }
 
@@ -96,11 +138,11 @@ export class ScriptBuilder {
             }
         }
 
-        const index = this._instructions.push(ins) - 1;
+        const index = this._items.push(ins) - 1;
         return {
             instruction: ins,
             set: (node?) => {
-                if (node) { this._sourceReferences.set(index, node); }
+                if (node) { this._items.splice(index, 0, node); }
             }
         }
     }
