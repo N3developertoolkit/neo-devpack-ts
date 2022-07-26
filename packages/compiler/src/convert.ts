@@ -63,7 +63,7 @@ function convertBlock(node: tsm.Block, options: ConverterOptions) {
 // case SyntaxKind.ExpressionStatement:
 function convertExpressionStatement(node: tsm.ExpressionStatement, options: ConverterOptions) {
     const { op: { builder } } = options;
-    const spSetter = builder.nodeSetter();
+    const spSetter = builder.getRefSetter();
     const expr = node.getExpression();
     if (!expr) { throw new CompileError(`falsy expression statement`, node); }
     convertExpression(expr, options);
@@ -85,7 +85,7 @@ function convertExpressionStatement(node: tsm.ExpressionStatement, options: Conv
 // case SyntaxKind.ReturnStatement:
 function convertReturnStatement(node: tsm.ReturnStatement, options: ConverterOptions) {
     const { op: { builder, returnTarget } } = options;
-    const spSetter = builder.nodeSetter();
+    const spSetter = builder.getRefSetter();
     const expr = node.getExpression();
     if (expr) { convertExpression(expr, options); }
     builder.pushTarget(sc.OpCode.JMP_L, returnTarget);

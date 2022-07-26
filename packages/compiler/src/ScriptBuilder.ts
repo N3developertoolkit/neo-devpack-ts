@@ -1,5 +1,6 @@
 import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
+import { getPrefix, isPushDataOpCode, isTargetOpCode, isTryOpCode, OpCodeAnnotations } from "./opCodeAnnotations";
 
 export interface OffsetTarget {
     instruction?: Instruction
@@ -34,7 +35,7 @@ export class ScriptBuilder {
         }));
     }
 
-    nodeSetter(): { set(node?: tsm.Node): void } {
+    getRefSetter(): { set(node?: tsm.Node): void } {
         const length = this._instructions.length;
         return {
             set: (node?) => {
@@ -67,6 +68,34 @@ export class ScriptBuilder {
     }
 
     private pushHelper(ins: Instruction): SourceReferenceSetter {
+        // validate instruction 
+        const { opCode, operand, target, finallyTarget} = ins;
+        switch (true) {
+            case isTryOpCode(opCode): 
+                if (!target || !finallyTarget) throw new Error(`Invalid targets for ${sc.OpCode[opCode]}`);
+                break;
+            case isTargetOpCode(opCode):
+                if (!target) throw new Error(`Invalid target for ${sc.OpCode[opCode]}`);
+                break;
+            case isPushDataOpCode(opCode): {
+                if (!operand) throw new Error(`Invalid PUSHDATA operand`);
+                const { operandSizePrefix } = OpCodeAnnotations[opCode];
+                if (!operandSizePrefix) throw new Error(`Missing operandSizePrefix for ${sc.OpCode[opCode]}`)
+                const prefix = getPrefix(operandSizePrefix, operand);
+                if (operand.length !== operandSizePrefix + prefix) {
+                    throw new Error(`Invalid ${sc.OpCode[opCode]} operand. Expected ${prefix + operandSizePrefix}, received ${operand.length}`);
+                }
+                break;
+            }
+            default: {
+                const { operandSize } = OpCodeAnnotations[opCode];
+                if (operandSize) {
+                    if (!operand) throw new Error(`Missing ${sc.OpCode[opCode]} operand`);
+                    if (operand.length !== operandSize) throw new Error(`Invalid ${sc.OpCode[opCode]} operand. Expected ${operandSize}, received ${operand.length}`);
+                }
+            }
+        }
+
         const index = this._instructions.push(ins) - 1;
         return {
             instruction: ins,
@@ -75,6 +104,4 @@ export class ScriptBuilder {
             }
         }
     }
-
-
 }

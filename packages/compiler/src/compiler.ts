@@ -185,15 +185,6 @@ function resolveDeclarationsPass(context: CompileContext): void {
         ])]
     ]);
 
-    // StorageKey: {
-    //     kind: 'stackItem',
-    //     type: sc.StackItemType.ByteString
-    // },
-    // StorageValue: {
-    //     kind: 'stackItem',
-    //     type: sc.StackItemType.ByteString
-    // },
-
     const symbols = new Map<tsm.Symbol, CallInfo[]>();
 
     for (const src of context.project.getSourceFiles()) {
@@ -216,15 +207,6 @@ function resolveDeclarationsPass(context: CompileContext): void {
                     }
                 }
             }
-            // if (node.isKind(tsm.ts.SyntaxKind.VariableStatement)) {
-            //     for (const decl of node.getDeclarations()) {
-            //         const symbol = decl.getSymbol()
-            //         const typeSymbol = decl.getType().getSymbol();
-            //         if (symbol && typeSymbol) {
-            //             variables.set(symbol, typeSymbol);
-            //         }
-            //     }
-            // }
         });
     }
 

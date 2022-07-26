@@ -38,6 +38,22 @@ export function isTryOpCode(opCode: sc.OpCode) {
         || opCode === sc.OpCode.TRY_L;
 }
 
+export function isPushDataOpCode(opCode: sc.OpCode) {
+    return opCode === sc.OpCode.PUSHDATA1
+        || opCode === sc.OpCode.PUSHDATA2
+        || opCode === sc.OpCode.PUSHDATA4;
+}
+
+export function getPrefix(operandSizePrefix: number, operand: Uint8Array): number {
+    const buffer = Buffer.from(operand.slice(0, operandSizePrefix));
+    switch (operandSizePrefix) {
+        case 1: return buffer[0];
+        case 2: return buffer.readUInt16LE();
+        case 4: return buffer.readUInt32LE();
+        default: throw new Error(`Unexpected operandSizePrefix ${operandSizePrefix}`);
+    }
+}
+
 export interface OpCodeAnnotation {
     /** Number of bytes to read as params. */
     operandSize?: number;
