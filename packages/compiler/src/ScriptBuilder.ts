@@ -25,21 +25,51 @@ function isInstruction(input: Instruction | tsm.Node): input is Instruction {
     return !isNode(input);
 }
 
-export class ScriptBuilder {
-    private readonly _items = new Array<Instruction | tsm.Node>();
+export function separateInstructions(
+    items?: ReadonlyArray<Instruction | tsm.Node>
+) : [ReadonlyArray<Instruction>, ReadonlyMap<number, tsm.Node>] {
+    if (!items) return [[], new Map()];
 
-    private *iterateRefs(): IterableIterator<[Instruction, tsm.Node]> {
-        const length = this._items.length;
+    const instructions = items.filter(isInstruction);
+    const references = new Map(iterateRefs(instructions));
+
+    return [instructions, references];
+
+    function *iterateRefs(instructions: ReadonlyArray<Instruction | tsm.Node>): IterableIterator<[number, tsm.Node]> {
+        if (!items) throw new Error();
+
+        const length = items.length;
         for (let i = 0; i < length; i++) {
-            const item = this._items[i];
+            const item = items[i];
             if (isNode(item)) {
-                const next = this._items[i + 1];
+                const next = items[i + 1];
                 if (next && isInstruction(next)) {
-                    yield [ next, item ];
+                    const index = instructions.indexOf(next);
+                    if (index >= 0) {
+                        yield [ index, item ];
+                    }
                 }
             }
         }
     }
+}
+
+export function combineInstructions(
+    instructions: ReadonlyArray<Instruction>,
+    references: ReadonlyMap<number, tsm.Node>
+): Array<Instruction | tsm.Node> {
+    const items: Array<Instruction | tsm.Node> = [...instructions];
+    const entries = [...references.entries()].sort((a, b) => b[0] - a[0]);
+    for (const [index, node] of entries) {
+        items.splice(index, 0, node);
+    }
+    return items;
+}
+
+export class ScriptBuilder {
+    private readonly _items = new Array<Instruction | tsm.Node>();
+
+    get instructions() { return this._items; }
 
     // script builder stores instructions and sources references in a single array
     // to make it easy to insert operations at the head of the array (like INITSLOT)
@@ -49,21 +79,13 @@ export class ScriptBuilder {
     // TODO: would it make more sense to return a single collection and leave the separation step
     //       for later in the pipeline?
     getScript(): {
-        instructions: Array<Instruction>,
-        sourceReferences: Map<number, tsm.Node>
+        instructions: ReadonlyArray<Instruction>,
+        sourceReferences: ReadonlyMap<number, tsm.Node>
     } {
-        const instructions = this._items.filter(isInstruction);
-        const references = new Map<number, tsm.Node>();
-
-        for (const [ins, ref] of this.iterateRefs()) {
-            const index = instructions.indexOf(ins);
-            if (index >= 0) {
-                references.set(index, ref);
-            }
-        }
-
+        const [instructions,  references] = separateInstructions(this._items);
+        
         return {
-            instructions: instructions,
+            instructions,
             sourceReferences: references
         }
     }

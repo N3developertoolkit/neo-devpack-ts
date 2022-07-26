@@ -2,7 +2,7 @@ import { sc, u } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
 import * as fs from 'fs';
 import * as path from 'path';
-import { Instruction, OffsetTarget, ScriptBuilder } from "./ScriptBuilder";
+import { Instruction, OffsetTarget, ScriptBuilder, separateInstructions } from "./ScriptBuilder";
 import { convertStatement } from "./convert";
 import { ContractType, ContractTypeKind, PrimitiveContractType, PrimitiveType, toContractType } from "./contractType";
 import { isVoidLike } from "./utils";
@@ -59,8 +59,7 @@ export interface OperationInfo {
     isPublic: boolean,
     parameters: Array<ParameterInfo>,
     returnType: tsm.Type,
-    instructions?: Array<Instruction>;
-    sourceReferences?: Map<number, tsm.Node>;
+    instructions?: Array<Instruction | tsm.Node>,
 }
 
 export interface ParameterInfo {
@@ -261,9 +260,7 @@ function processOperationsPass(context: CompileContext): void {
         builder.emitInitSlot(0, op.parameters.length);
         opCtx.returnTarget.instruction = builder.push(sc.OpCode.RET).instruction;
 
-        const { instructions, sourceReferences } = builder.getScript();
-        op.instructions = instructions;
-        op.sourceReferences = sourceReferences;
+        op.instructions = builder.instructions;
     }
 }
 
@@ -332,7 +329,12 @@ function collectArtifactsPass(context: CompileContext): void {
     context.artifacts = { nef, manifest, methods }
 }
 
-function compileOperation({ instructions = [], sourceReferences = new Map()}: OperationInfo, offset: number) {
+function compileOperation(
+    op: OperationInfo, 
+    offset: number
+): { script: Uint8Array; sourceReferences: Map<number, tsm.Node> } {
+
+    const [instructions, sourceReferences] = separateInstructions(op.instructions);
 
     const length = instructions.length;
     const insMap = new Map<Instruction, number>();

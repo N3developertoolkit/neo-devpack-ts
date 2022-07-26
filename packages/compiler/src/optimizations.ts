@@ -1,11 +1,11 @@
 import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
-import { Instruction } from "./ScriptBuilder";
+import { combineInstructions, Instruction, separateInstructions } from "./ScriptBuilder";
 import { OperationInfo } from "./compiler";
 
 export function optimizeReturn(op: OperationInfo): OperationInfo | undefined {
     if (!op.instructions) return undefined;
-    const { instructions, sourceReferences = new Map() } = op;
+    const [instructions, sourceReferences] = separateInstructions(op.instructions);
     const newIns = new Array<Instruction>();
     const newRef = new Map<number, tsm.Node>();
 
@@ -77,7 +77,6 @@ export function optimizeReturn(op: OperationInfo): OperationInfo | undefined {
         isPublic: op.isPublic,
         parameters: op.parameters,
         returnType: op.returnType,
-        instructions: newIns,
-        sourceReferences: newRef,
+        instructions: combineInstructions(newIns, newRef),
     };
 }

@@ -2,10 +2,11 @@ import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
 import { CompileArtifacts, OperationContext, OperationInfo } from "./compiler";
 import { Immutable } from "./Immutable";
+import { separateInstructions } from "./ScriptBuilder";
 
 export function dumpOperations(operations?: ReadonlyArray<OperationInfo>) {
     for (const op of operations ?? []) {
-        const { instructions = [], sourceReferences = new Map() } = op;
+        const [instructions, sourceReferences] = separateInstructions(op.instructions);
         console.log(` ${op.isPublic ? 'public ' : ''}${op.name}`);
         const length = instructions.length;
         for (let i = 0; i < length; i++) {
