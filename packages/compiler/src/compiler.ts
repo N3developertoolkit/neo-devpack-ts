@@ -42,9 +42,9 @@ export interface CompileContext {
 }
 
 export interface CompileResults {
-    diagnostics: Array<tsm.ts.Diagnostic>,
-    artifacts?: CompileArtifacts,
-    context: Omit<CompileContext, 'diagnostics' | 'artifacts'>
+    diagnostics: ReadonlyArray<tsm.ts.Diagnostic>,
+    artifacts?: Immutable<CompileArtifacts>,
+    context: Immutable<Omit<CompileContext, 'diagnostics' | 'artifacts'>>
 }
 
 export interface CompileArtifacts {
@@ -473,7 +473,7 @@ function toMethodDef(method: DebugMethodInfo): sc.ContractMethodDefinition | und
     });
 }
 
-function printDiagnostic(diags: tsm.ts.Diagnostic[]) {
+function printDiagnostic(diags: ReadonlyArray<tsm.ts.Diagnostic>) {
     const formatHost: tsm.ts.FormatDiagnosticsHost = {
         getCurrentDirectory: () => tsm.ts.sys.getCurrentDirectory(),
         getNewLine: () => tsm.ts.sys.newLine,
@@ -489,7 +489,7 @@ function saveArtifacts(
     rootPath: string,
     filename: string,
     source: string,
-    artifacts: CompileArtifacts
+    artifacts: Immutable<CompileArtifacts>
 ) {
     if (!fs.existsSync(rootPath)) { fs.mkdirSync(rootPath); }
     const basename = path.parse(filename).name;

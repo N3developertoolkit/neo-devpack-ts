@@ -1,8 +1,9 @@
 import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
 import { CompileArtifacts, OperationContext, OperationInfo } from "./compiler";
+import { Immutable } from "./Immutable";
 
-export function dumpOperations(operations?: OperationInfo[]) {
+export function dumpOperations(operations?: ReadonlyArray<OperationInfo>) {
     for (const op of operations ?? []) {
         const { instructions = [], sourceReferences = new Map() } = op;
         console.log(` ${op.isPublic ? 'public ' : ''}${op.name}`);
@@ -21,7 +22,7 @@ export function dumpOperations(operations?: OperationInfo[]) {
     }
 }
 
-export function dumpArtifacts({ nef, methods }: CompileArtifacts) {
+export function dumpArtifacts({ nef, methods }: Immutable<CompileArtifacts>) {
 
     const starts = new Map(methods.map(m => [m.range.start, m]));
     const ends = new Map(methods.map(m => [m.range.end, m]));
