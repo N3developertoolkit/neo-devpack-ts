@@ -1,15 +1,17 @@
 import { sc, u } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
+import * as tsmc from "@ts-morph/common";
 import * as fs from 'fs';
 import * as path from 'path';
 import { Instruction, OffsetTarget, ScriptBuilder, separateInstructions } from "./ScriptBuilder";
-import { convertStatement } from "./convert";
+import { convertBuffer, ConverterOptions, convertExpression, ConvertFunction, convertStatement, parseArrayLiteral } from "./convert";
 import { ContractType, ContractTypeKind, PrimitiveContractType, PrimitiveType, toContractType } from "./contractType";
 import { isVoidLike } from "./utils";
 import { dumpArtifacts, dumpOperations } from "./testUtils";
 import { OpCodeAnnotations, isTargetOpCode as isOffsetTargetOpCode, isTryOpCode } from "./opCodeAnnotations";
 import { optimizeReturn } from "./optimizations";
 import { Immutable } from "./Immutable";
+import { BuiltinCall, builtins as builtinDefinitions, Builtins } from "./builtins";
 
 // https://github.com/CityOfZion/neon-js/issues/858
 const DEFAULT_ADDRESS_VALUE = 53;
@@ -25,14 +27,20 @@ export class CompileError extends Error {
 
 export interface CompileOptions {
     project: tsm.Project,
+    declarationFiles: Array<tsm.SourceFile>,
     optimize?: boolean,
     inline?: boolean,
-    addressVersion?: number
+    addressVersion?: number,
 };
 
 export interface CompileContext {
-    project: tsm.Project,
-    options: Required<Omit<CompileOptions, 'project'>>,
+    readonly project: tsm.Project,
+    readonly declarationFiles: ReadonlyArray<tsm.SourceFile>,
+    readonly options: {
+        readonly optimize: boolean,
+        readonly inline: boolean,
+        readonly addressVersion: number,
+    }
     name?: string,
     builtins?: Builtins,
     operations?: Array<OperationInfo>,
@@ -87,28 +95,6 @@ export interface DebugSlotVariable {
     index?: number;
 }
 
-export interface Builtins {
-    // variables: ReadonlyMap<tsm.Symbol, tsm.Symbol>,
-    // interfaces: ReadonlyMap<tsm.Symbol, Map<tsm.Symbol, VmCall[]>>,
-    symbols: Map<tsm.Symbol, CallInfo[]>,
-}
-
-export enum CallInfoKind {
-    SysCall
-}
-
-export interface CallInfo {
-    kind: CallInfoKind
-}
-
-export interface SysCallInfo {
-    kind: CallInfoKind.SysCall,
-    syscall: string
-}
-
-export function isSysCallInfo(call: CallInfo): call is SysCallInfo {
-    return call.kind === CallInfoKind.SysCall;
-}
 
 export interface OperationContext {
     info: Immutable<OperationInfo>,
@@ -120,6 +106,7 @@ function compile(options: CompileOptions): CompileResults {
 
     const context: CompileContext = {
         project: options.project,
+        declarationFiles: options.declarationFiles,
         options: {
             addressVersion: options.addressVersion ?? DEFAULT_ADDRESS_VALUE,
             inline: options.inline ?? false,
@@ -173,35 +160,28 @@ function compile(options: CompileOptions): CompileResults {
     };
 }
 
+
+
+
+
 function resolveDeclarationsPass(context: CompileContext): void {
 
-    // TODO: move this to a JSON file at some point
-    const builtinInterfaces = new Map([
-        ["StorageConstructor", new Map([
-            ["currentContext", [{ kind: CallInfoKind.SysCall, syscall: "System.Storage.GetContext" }]],
-            ["get", [{ kind: CallInfoKind.SysCall, syscall: "System.Storage.Get" }]],
-            ["put", [{ kind: CallInfoKind.SysCall, syscall: "System.Storage.Put" }]]
-        ])]
-    ]);
+    const symbols = new Map<tsm.Symbol, BuiltinCall>();
 
-    const symbols = new Map<tsm.Symbol, CallInfo[]>();
-
-    for (const src of context.project.getSourceFiles()) {
-        if (!src.isDeclarationFile()) continue;
-
-        src.forEachChild(node => {
-            if (node.isKind(tsm.ts.SyntaxKind.InterfaceDeclaration)) {
+    for (const declFile of context.declarationFiles) {
+        declFile.forEachChild(node => {
+            if (node.isKind(tsm.SyntaxKind.InterfaceDeclaration)) {
                 const symbol = node.getSymbol();
                 if (!symbol) return;
 
-                const iface = builtinInterfaces.get(symbol.getName());
+                const iface = builtinDefinitions[symbol.getName()];
                 if (iface) {
                     for (const member of node.getMembers()) {
                         const memberSymbol = member.getSymbol();
                         if (!memberSymbol) return;
-                        const ifaceMember = iface.get(memberSymbol.getName());
-                        if (ifaceMember) {
-                            symbols.set(memberSymbol, ifaceMember);
+                        const call = iface[memberSymbol.getName()];
+                        if (call) {
+                            symbols.set(memberSymbol, call);
                         }
                     }
                 }
@@ -330,7 +310,7 @@ function collectArtifactsPass(context: CompileContext): void {
 }
 
 function compileOperation(
-    op: OperationInfo, 
+    op: OperationInfo,
     offset: number
 ): { script: Uint8Array; sourceReferences: Map<number, tsm.Node> } {
 
@@ -483,18 +463,38 @@ function saveArtifacts(
     fs.writeFileSync(tsPath, source);
 }
 
+
 const artifactPath = path.join(
     path.dirname(path.dirname(path.dirname(__dirname))),
     "express", "out");
 
 function testCompile(source: string, filename: string = "contract.ts") {
 
+    const libFolderPath: string | undefined = undefined;
+    const skipLoadingLibFiles: boolean | undefined = true;
+
+    const defaultLibFileName = "lib.es5.d.ts";
+    const defaultLibSourceCode = tsmc.getLibFiles().find(value => value.fileName === defaultLibFileName)?.text;
+    if (!defaultLibSourceCode) throw new Error();
+    const defaultLibFolder = tsmc.getLibFolderPath({ libFolderPath, skipLoadingLibFiles });
+    const defaultLibPath = path.join(defaultLibFolder, defaultLibFileName);
+
+    const scfxPath = '/node_modules/@neo-project/neo-contract-framework/index.d.ts';
+    const scfxActualPath = path.join(__dirname, "../../framework/src/index.d.ts");
+    const scfxSourceCode = fs.readFileSync(scfxActualPath, 'utf8');
+
     const project = new tsm.Project({
         compilerOptions: {
             experimentalDecorators: true,
-            target: tsm.ts.ScriptTarget.ES5
-        }
+            lib: [defaultLibFileName],
+        },
+        useInMemoryFileSystem: true,
+        libFolderPath,
+        skipLoadingLibFiles
     });
+
+    project.getFileSystem().writeFileSync(defaultLibPath, defaultLibSourceCode);
+    project.getFileSystem().writeFileSync(scfxPath, scfxSourceCode);
     project.createSourceFile(filename, source);
     project.resolveSourceFileDependencies();
 
@@ -505,7 +505,14 @@ function testCompile(source: string, filename: string = "contract.ts") {
     if (diagnostics.length > 0) {
         printDiagnostic(diagnostics.map(d => d.compilerObject));
     } else {
-        const results = compile({ project });
+        const defaultLibSourceFile = project.getSourceFileOrThrow(defaultLibPath);
+        const scfxLibSourceFile = project.getSourceFileOrThrow(scfxPath);
+        const results = compile({
+            project,
+            declarationFiles: [
+                defaultLibSourceFile,
+                scfxLibSourceFile]
+        });
         if (results.diagnostics.length > 0) {
             printDiagnostic(results.diagnostics);
         } else {
@@ -529,7 +536,6 @@ if (file === "compiler.js") {
     // for (const x of foo) { console.log(x); }
     // throw new Error();
 
-
     const contractSource = /*javascript*/`
 import * as neo from '@neo-project/neo-contract-framework';
 
@@ -537,11 +543,11 @@ export function symbol() { return "TOKEN"; }
 export function decimals() { return 8; }
 
 export function getValue() { 
-    return neo.Storage.get(neo.Storage.currentContext, [0x00]); 
+    return neo.Storage.get(neo.Storage.currentContext, Uint8Array.from([0x00])); 
 }
 
 export function setValue(value: string) { 
-    neo.Storage.put(neo.Storage.currentContext, [0x00], value); 
+    neo.Storage.put(neo.Storage.currentContext, Uint8Array.from([0x00]), value); 
 }
 
 export function helloWorld() { return "Hello, World!"; }

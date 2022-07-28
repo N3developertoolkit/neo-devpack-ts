@@ -1,6 +1,6 @@
 export interface StorageContext { }
 
-export type StorageKey = Uint8Array | ArrayLike<number> | string;
+export type StorageKey = Uint8Array | string;
  
 export const Storage: StorageConstructor;
 

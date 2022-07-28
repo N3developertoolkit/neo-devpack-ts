@@ -1,7 +1,6 @@
 import { sc, u } from "@cityofzion/neon-core";
-import { fromMethodName, InteropServiceCode } from "@cityofzion/neon-core/lib/sc";
 import * as tsm from "ts-morph";
-import { CallInfo, CallInfoKind, CompileContext, CompileError, isSysCallInfo, OperationContext } from "./compiler";
+import { CompileContext, CompileError, OperationContext } from "./compiler";
 import { Instruction } from "./ScriptBuilder";
 import { isStringLike } from "./utils";
 
@@ -10,45 +9,37 @@ export interface ConverterOptions {
     op: OperationContext,
 };
 
-type ConvertFunction<TNode extends tsm.Node> = (node: TNode, options: ConverterOptions) => void;
-type ConvertFunctionAny = (node: any, options: ConverterOptions) => void;
+export type ConvertFunction<TNode extends tsm.Node> = (node: TNode, options: ConverterOptions) => void;
 
-function mapConverter<TKind extends tsm.ts.SyntaxKind>(
-    kind: TKind,
-    converter: ConvertFunction<tsm.KindToNodeMappings[TKind]>
-): [tsm.ts.SyntaxKind, ConvertFunction<tsm.KindToNodeMappings[TKind]>] {
-    return [kind, converter];
-}
-
-function dispatchConverter(node: tsm.Node, options: ConverterOptions, converters: Map<tsm.SyntaxKind, ConvertFunctionAny>) {
-    // const nodePrint = tsm.printNode(node.compilerNode);
-    const kind = node.getKind();
-    const converter = converters.get(kind);
-    if (!converter) {
-        throw new CompileError(
-            `dispatchConvert ${tsm.SyntaxKind[kind]} not implemented`,
-            node);
-    }
-    converter(node.asKindOrThrow(kind), options);
-}
+type NodeConvertMap = {
+    [TKind in tsm.SyntaxKind]?: ConvertFunction<tsm.KindToNodeMappings[TKind]>
+};
 
 export function convertStatement(node: tsm.Statement, options: ConverterOptions): void {
-    dispatchConverter(node, options, new Map<tsm.SyntaxKind, ConvertFunctionAny>([
-        mapConverter(tsm.SyntaxKind.Block, convertBlock),
-        mapConverter(tsm.SyntaxKind.ExpressionStatement, convertExpressionStatement),
-        mapConverter(tsm.SyntaxKind.ReturnStatement, convertReturnStatement)
-    ]));
+
+    return dispatch(node.getKind(), {
+        [tsm.SyntaxKind.Block]: convertBlock,
+        [tsm.SyntaxKind.ExpressionStatement]: convertExpressionStatement,
+        [tsm.SyntaxKind.ReturnStatement]: convertReturnStatement,
+    })
+
+    function dispatch<TKind extends tsm.SyntaxKind>(kind: TKind, convertMap: NodeConvertMap) {
+        const converter = convertMap[kind];
+        if (converter) {
+            converter(node.asKindOrThrow(kind), options);
+        }
+    }
 }
 
 // case SyntaxKind.Block:
 function convertBlock(node: tsm.Block, options: ConverterOptions) {
     const { op: { builder } } = options;
     builder.push(sc.OpCode.NOP)
-        .set(node.getFirstChildByKind(tsm.ts.SyntaxKind.OpenBraceToken));
+        .set(node.getFirstChildByKind(tsm.SyntaxKind.OpenBraceToken));
     node.getStatements()
         .forEach(s => convertStatement(s, options));
     builder.push(sc.OpCode.NOP)
-        .set(node.getLastChildByKind(tsm.ts.SyntaxKind.CloseBraceToken));
+        .set(node.getLastChildByKind(tsm.SyntaxKind.CloseBraceToken));
 }
 
 // case SyntaxKind.BreakStatement:
@@ -100,46 +91,61 @@ function convertReturnStatement(node: tsm.ReturnStatement, options: ConverterOpt
 // case SyntaxKind.WhileStatement:
 // case SyntaxKind.WithStatement:
 
-function convertExpression(node: tsm.Expression, options: ConverterOptions) {
+export function convertExpression(node: tsm.Expression, options: ConverterOptions) {
 
-    dispatchConverter(node, options, new Map<tsm.SyntaxKind, ConvertFunctionAny>([
-        mapConverter(tsm.SyntaxKind.ArrayLiteralExpression, convertArrayLiteralExpression),
-        // [tsm.SyntaxKind.AsExpression, convertAsExpression],
-        // [tsm.SyntaxKind.BigIntLiteral, convertBigIntLiteral],
-        mapConverter(tsm.SyntaxKind.BinaryExpression, convertBinaryExpression),
-        mapConverter(tsm.SyntaxKind.CallExpression, convertCallExpression),
-        mapConverter(tsm.SyntaxKind.Identifier, convertIdentifier),
-        mapConverter(tsm.SyntaxKind.NumericLiteral, convertNumericLiteral),
-        mapConverter(tsm.SyntaxKind.PropertyAccessExpression, convertPropertyAccessExpression),
-        mapConverter(tsm.SyntaxKind.StringLiteral, convertStringLiteral),
-    ]));
+    return dispatch(node.getKind(), {
+        [tsm.SyntaxKind.ArrayLiteralExpression]: convertArrayLiteralExpression,
+        [tsm.SyntaxKind.BinaryExpression]: convertBinaryExpression,
+        [tsm.SyntaxKind.CallExpression]: convertCallExpression,
+        [tsm.SyntaxKind.Identifier]: convertIdentifier,
+        [tsm.SyntaxKind.NumericLiteral]: convertNumericLiteral,
+        [tsm.SyntaxKind.PropertyAccessExpression]: convertPropertyAccessExpression,
+        [tsm.SyntaxKind.StringLiteral]: convertStringLiteral,
+    })
+
+    function dispatch<TKind extends tsm.SyntaxKind>(kind: TKind, convertMap: NodeConvertMap) {
+        const converter = convertMap[kind];
+        if (converter) {
+            converter(node.asKindOrThrow(kind), options);
+        }
+    }
+}
+
+export function parseArrayLiteral(node: tsm.ArrayLiteralExpression) {
+    const bytes = new Array<number>();
+    for (const element of node.getElements()) {
+        const value = helper(element);
+        if (value === undefined) { return undefined; }
+        bytes.push(value);
+    }
+    return Buffer.from(bytes);
+
+    function helper(element: tsm.Expression) {
+        if (tsm.Node.isNumericLiteral(element)) {
+            const value = element.getLiteralValue();
+            if (Number.isInteger(value) && value >= 0 && value <= 255) {
+                return value;
+            } else {
+                return undefined;
+            }
+        } else {
+            return undefined;
+        }
+    }
 }
 
 // [SyntaxKind.ArrayLiteralExpression]: ArrayLiteralExpression;
 function convertArrayLiteralExpression(node: tsm.ArrayLiteralExpression, options: ConverterOptions) {
     const { op: { builder } } = options;
 
-    const elements = node.getElements();
-
-    // only converting arrays of byte literals right now
-    if (elements.every(isByteLiteral)) {
-        const bytes = elements
-            .map(e => e.asKindOrThrow(tsm.ts.SyntaxKind.NumericLiteral).getLiteralValue());
-        builder.push(convertBuffer(Buffer.from(bytes)));
+    const buffer = parseArrayLiteral(node);
+    if (buffer) {
+        builder.push(convertBuffer(buffer));
         builder.push(sc.OpCode.CONVERT, [sc.StackItemType.Buffer])
         return;
-    }
+    } 
 
     throw new CompileError(`convertArrayLiteral not implemented`, node);
-
-    function isByteLiteral(n: tsm.Expression) {
-        if (tsm.Node.isNumericLiteral(n)) {
-            const value = n.getLiteralValue();
-            return Number.isInteger(value) && value >= 0 && value <= 255;
-        } else {
-            return false;
-        }
-    }
 }
 
 // [SyntaxKind.ArrowFunction]: ArrowFunction;
@@ -207,46 +213,20 @@ function convertBinaryExpression(node: tsm.BinaryExpression, options: ConverterO
     }
 }
 
-function emitCall(calls: CallInfo[], args: tsm.Node[], options: ConverterOptions) {
-    const { op: { builder } } = options;
-
-    const argsLength = args.length;
-    for (let i = argsLength - 1; i >= 0; i--) {
-        const arg = args[i];
-        if (tsm.Node.isExpression(arg)) {
-            convertExpression(arg, options);
-        } else {
-            throw new CompileError(`Expected expression, got ${arg.getKindName()}`, arg);
-        }
-    }
-
-    for (const call of calls) {
-        if (isSysCallInfo(call)) {
-            const buffer = Buffer.from(sc.generateInteropServiceCode(call.syscall), 'hex');
-            builder.push(sc.OpCode.SYSCALL, buffer);
-        } else {
-            throw new Error(`Unexpected call info kind ${call.kind}`);
-        }
-    }
-}
-
 // [SyntaxKind.CallExpression]: CallExpression;
 function convertCallExpression(node: tsm.CallExpression, options: ConverterOptions) {
     const { context: { builtins } } = options;
 
-    const args = node.getArguments();
     const expr = node.getExpression();
     if (tsm.Node.isPropertyAccessExpression(expr)) {
         const symbol = expr.getNameNode().getSymbolOrThrow();
-        const decl = symbol.getValueDeclarationOrThrow();
-        if (!tsm.Node.isMethodSignature(decl)) throw new CompileError("unexpected value declaration", decl);
-        const calls = symbol ? builtins?.symbols.get(symbol) : undefined;
-        if (calls) {
-            emitCall(calls, args, options);
+        const call = builtins?.symbols.get(symbol);
+        if (call) {
+            call.call(node, options);
             return;
-        } 
+        }
     }
-    
+
     throw new CompileError('convertCallExpression not implemented', expr);
 }
 
@@ -314,14 +294,12 @@ function convertPropertyAccessExpression(node: tsm.PropertyAccessExpression, opt
     const { context: { builtins }, op: { builder } } = options;
 
     const symbol = node.getNameNode().getSymbolOrThrow();
-    const decl = symbol?.getValueDeclarationOrThrow();
-    if (!tsm.Node.isPropertySignature(decl)) { throw new CompileError("Unexpected property", decl)}
-    const calls = builtins?.symbols.get(symbol);
-    if (calls) {
-        emitCall(calls, [], options);
+    const call = builtins?.symbols.get(symbol);
+    if (call) {
+        call.call(node, options);
         return;
-    } 
-    
+    }
+
     throw new CompileError(`convertPropertyAccessExpression not implemented`, node);
 }
 
@@ -374,8 +352,8 @@ export function convertInt(i: bigint): Instruction {
         if (bufferLength <= pushIntSize) {
             const padding = pushIntSize - bufferLength;
             const opCode = sc.OpCode.PUSHINT8 + i;
-            const operand = padding == 0 
-                ? buffer 
+            const operand = padding == 0
+                ? buffer
                 : Uint8Array.from([...buffer, ...(new Array<number>(padding).fill(0))])
             return { opCode, operand };
         }
