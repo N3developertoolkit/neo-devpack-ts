@@ -1,5 +1,6 @@
 // import { sc, u } from "@cityofzion/neon-core";
 import { sc, u } from "@cityofzion/neon-core";
+import { nodeModuleNameResolver } from "@ts-morph/common/lib/typescript";
 import * as tsm from "ts-morph";
 import { CompileError } from "./compiler";
 import { CompileContext, OperationInfo } from "./types/CompileContext";
@@ -21,6 +22,32 @@ export type ConvertFunction<TNode extends tsm.Node> = (node: TNode, options: Con
 type NodeConvertMap = {
     [TKind in tsm.SyntaxKind]?: ConvertFunction<tsm.KindToNodeMappings[TKind]>
 };
+
+function resolveSymbol(symbol: tsm.Symbol | undefined, options: ConverterOptions): ConvertFunction<tsm.Node> | undefined {
+    if (!symbol) return undefined;
+    const { context: { builtins } } = options;
+    const builtIn = builtins?.symbols.get(symbol);
+    if (builtIn) return builtIn;
+
+    const decl = symbol.getValueDeclaration();
+    if (decl) {
+        if (tsm.Node.isParameterDeclaration(decl)) {
+            const parent = decl.getParent();
+            if (tsm.Node.isFunctionLikeDeclaration(parent)) {
+                const index = parent.getParameters()
+                    .findIndex(p => p.getSymbol() === symbol);
+                if (index >= 0) {
+                    return (node, options) => {
+                        const { builder } = options;
+                        builder.pushLoad(SlotType.Parameter, index);
+                    }
+                }
+            }
+        }
+    }
+
+    return undefined;
+}
 
 export function convertStatement(node: tsm.Statement, options: ConverterOptions): void {
 
@@ -226,17 +253,14 @@ function convertBinaryExpression(node: tsm.BinaryExpression, options: ConverterO
 
 // [SyntaxKind.CallExpression]: CallExpression;
 function convertCallExpression(node: tsm.CallExpression, options: ConverterOptions) {
-    const { context: { builtins}, builder } = options;
+    const { context: { builtins } } = options;
 
     const expr = node.getExpression();
     if (tsm.Node.isPropertyAccessExpression(expr)) {
-        const propSymbol = expr.getNameNode().getSymbol();
-        if (propSymbol) {
-            const propBuiltIn = builtins?.symbols.get(propSymbol);
-            if (propBuiltIn) {
-                propBuiltIn(node, options);
-                return;
-            }
+        const func = resolveSymbol(expr.getNameNode().getSymbol(), options);
+        if (func) {
+            func(node, options);
+            return;
         }
     }
 
@@ -256,20 +280,26 @@ function convertIdentifier(node: tsm.Identifier, options: ConverterOptions) {
     // Not sure this is the best way to generally resolve identifiers,
     // but it works for parameters
 
-    const symbol = node.getSymbol();
-    if (symbol) {
-        const decl = symbol.getValueDeclaration();
-        if (decl) {
-            if (tsm.Node.isParameterDeclaration(decl)) {
-                const index = info.node.getParameters()
-                    .findIndex(p => p.getSymbol() === symbol);
-                if (index >= 0) {
-                    builder.pushLoad(SlotType.Parameter, index);
-                    return;
-                }
-            }
-        }
+    const func = resolveSymbol(node.getSymbol(), options);
+    if (func) {
+        func(node, options);
+        return;
     }
+
+    // const symbol = node.getSymbol();
+    // if (symbol) {
+    //     const decl = symbol.getValueDeclaration();
+    //     if (decl) {
+    //         if (tsm.Node.isParameterDeclaration(decl)) {
+    //             const index = info.node.getParameters()
+    //                 .findIndex(p => p.getSymbol() === symbol);
+    //             if (index >= 0) {
+    //                 builder.pushLoad(SlotType.Parameter, index);
+    //                 return;
+    //             }
+    //         }
+    //     }
+    // }
 
     throw new CompileError('convertIdentifier not implemented', node);
 }
@@ -301,17 +331,11 @@ function convertNumericLiteral(node: tsm.NumericLiteral, options: ConverterOptio
 // [SyntaxKind.PrefixUnaryExpression]: PrefixUnaryExpression;
 // [SyntaxKind.PropertyAccessExpression]: PropertyAccessExpression;
 function convertPropertyAccessExpression(node: tsm.PropertyAccessExpression, options: ConverterOptions) {
-    const { context: { builtins } } = options;
-
-    const symbol = node.getNameNode().getSymbol();
-    if (symbol) {
-        const builtin = builtins?.symbols.get(symbol);
-        if (builtin) {
-            builtin(node, options);
-            return;
-        }
+    const func = resolveSymbol(node.getNameNode().getSymbol(), options);
+    if (func) {
+        func(node, options);
+        return;
     }
-
     throw new CompileError(`convertPropertyAccessExpression not implemented`, node);
 }
 
