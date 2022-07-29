@@ -1,20 +1,24 @@
-import { sc, u } from "@cityofzion/neon-core";
+import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
 import * as tsmc from "@ts-morph/common";
 import * as fs from 'fs';
 import * as path from 'path';
-import { Instruction, OffsetTarget, ScriptBuilder, separateInstructions } from "./ScriptBuilder";
-import { convertBuffer, ConverterOptions, convertExpression, ConvertFunction, convertStatement, parseArrayLiteral } from "./convert";
-import { ContractType, ContractTypeKind, PrimitiveContractType, PrimitiveType, toContractType } from "./contractType";
-import { isVoidLike } from "./utils";
+import { ContractType, } from "./types/ContractType";
 import { dumpArtifacts, dumpOperations } from "./testUtils";
-import { OpCodeAnnotations, isTargetOpCode as isOffsetTargetOpCode, isTryOpCode } from "./opCodeAnnotations";
 import { optimizeReturn } from "./optimizations";
-import { Immutable } from "./Immutable";
-import { BuiltinCall, builtins as builtinDefinitions, Builtins } from "./builtins";
+import { Immutable } from "./utility/Immutable";
+import { resolveDeclarationsPass } from "./passes/resolveDeclarations";
+import { discoverOperationsPass } from "./passes/discoverOperations";
+import { processOperationsPass } from "./passes/processOperations";
+import { CompileArtifacts, CompileContext, CompileOptions, CompileResults, OperationInfo } from "./types/CompileContext";
+import { DebugMethodInfo } from "./types/DebugInfo";
 
 // https://github.com/CityOfZion/neon-js/issues/858
 const DEFAULT_ADDRESS_VALUE = 53;
+
+
+
+;
 
 export class CompileError extends Error {
     constructor(
@@ -23,83 +27,6 @@ export class CompileError extends Error {
     ) {
         super(message);
     }
-}
-
-export interface CompileOptions {
-    project: tsm.Project,
-    declarationFiles: Array<tsm.SourceFile>,
-    optimize?: boolean,
-    inline?: boolean,
-    addressVersion?: number,
-};
-
-export interface CompileContext {
-    readonly project: tsm.Project,
-    readonly declarationFiles: ReadonlyArray<tsm.SourceFile>,
-    readonly options: {
-        readonly optimize: boolean,
-        readonly inline: boolean,
-        readonly addressVersion: number,
-    }
-    name?: string,
-    builtins?: Builtins,
-    operations?: Array<OperationInfo>,
-    staticFields?: Array<StaticField>,
-    diagnostics: Array<tsm.ts.Diagnostic>,
-    artifacts?: CompileArtifacts
-}
-
-export interface CompileResults {
-    diagnostics: ReadonlyArray<tsm.ts.Diagnostic>,
-    artifacts?: Immutable<CompileArtifacts>,
-    context: Immutable<Omit<CompileContext, 'diagnostics' | 'artifacts'>>
-}
-
-export interface CompileArtifacts {
-    nef: sc.NEF,
-    manifest: sc.ContractManifest,
-    methods: Array<DebugMethodInfo>
-}
-
-export interface OperationInfo {
-    node: tsm.FunctionDeclaration,
-    name: string,
-    isPublic: boolean,
-    parameters: Array<ParameterInfo>,
-    returnType: tsm.Type,
-    instructions?: Array<Instruction | tsm.Node>,
-}
-
-export interface ParameterInfo {
-    node: tsm.ParameterDeclaration,
-    name: string,
-    index: number,
-    type: tsm.Type,
-}
-
-export interface StaticField { }
-
-export interface DebugMethodInfo {
-    isPublic: boolean,
-    name: string,
-    range: { start: number, end: number }
-    parameters?: Array<DebugSlotVariable>,
-    variables?: Array<DebugSlotVariable>,
-    returnType?: ContractType,
-    sourceReferences: Map<number, tsm.Node>,
-}
-
-export interface DebugSlotVariable {
-    name: string;
-    type: ContractType;
-    index?: number;
-}
-
-
-export interface OperationContext {
-    info: Immutable<OperationInfo>,
-    builder: ScriptBuilder,
-    returnTarget: OffsetTarget,
 }
 
 function compile(options: CompileOptions): CompileResults {
@@ -116,13 +43,13 @@ function compile(options: CompileOptions): CompileResults {
     };
 
     type CompilePass = (context: CompileContext) => void;
-    const passes: Array<CompilePass> = [
+    const passes: ReadonlyArray<CompilePass> = [
         resolveDeclarationsPass,
         discoverOperationsPass,
         processOperationsPass,
         optimizePass,
         collectArtifactsPass,
-    ];
+    ] as const;
 
     for (const pass of passes) {
         try {
@@ -164,86 +91,6 @@ function compile(options: CompileOptions): CompileResults {
 
 
 
-function resolveDeclarationsPass(context: CompileContext): void {
-
-    const symbols = new Map<tsm.Symbol, BuiltinCall>();
-
-    for (const declFile of context.declarationFiles) {
-        declFile.forEachChild(node => {
-            if (node.isKind(tsm.SyntaxKind.InterfaceDeclaration)) {
-                const symbol = node.getSymbol();
-                if (!symbol) return;
-
-                const iface = builtinDefinitions[symbol.getName()];
-                if (iface) {
-                    for (const member of node.getMembers()) {
-                        const memberSymbol = member.getSymbol();
-                        if (!memberSymbol) return;
-                        const call = iface[memberSymbol.getName()];
-                        if (call) {
-                            symbols.set(memberSymbol, call);
-                        }
-                    }
-                }
-            }
-        });
-    }
-
-    context.builtins = { symbols }
-}
-
-function discoverOperationsPass(context: CompileContext): void {
-    if (!context.operations) { context.operations = []; }
-    const { operations } = context;
-    for (const src of context.project.getSourceFiles()) {
-        if (src.isDeclarationFile()) continue;
-        src.forEachChild(node => {
-            if (tsm.Node.isFunctionDeclaration(node)) {
-                const name = node.getName();
-                if (name) {
-                    operations.push({
-                        node, name,
-                        isPublic: !!node.getExportKeyword(),
-                        parameters: node.getParameters().map((p, index) => ({
-                            node: p,
-                            name: p.getName(),
-                            type: p.getType(),
-                            index
-                        })),
-                        returnType: node.getReturnType(),
-                    })
-                }
-            }
-        });
-    }
-}
-
-function processOperationsPass(context: CompileContext): void {
-    if (!context.operations) { return; }
-    const { operations } = context;
-    for (const op of operations) {
-        const builder = new ScriptBuilder();
-        const opCtx: OperationContext = {
-            info: op,
-            builder,
-            returnTarget: {}
-        };
-
-        const body = op.node.getBodyOrThrow();
-        if (tsm.Node.isStatement(body)) {
-            convertStatement(body, { context, op: opCtx });
-        } else {
-            throw new CompileError(`Unexpected body kind ${body.getKindName()}`, body);
-        }
-
-        // TODO: collect the local count in convertStatement
-        builder.emitInitSlot(0, op.parameters.length);
-        opCtx.returnTarget.instruction = builder.push(sc.OpCode.RET).instruction;
-
-        op.instructions = builder.instructions;
-    }
-}
-
 function optimizePass(context: CompileContext): void {
     if (!context.options.optimize) { return; }
     if (!context.operations) { return; }
@@ -263,50 +110,50 @@ function isNotNullOrUndefined<T extends Object>(input: null | undefined | T): in
 }
 
 function collectArtifactsPass(context: CompileContext): void {
-    const name = context.name ?? "TestContract";
-    const methods = new Array<DebugMethodInfo>();
-    let fullScript = Buffer.from([]);
+    // const name = context.name ?? "TestContract";
+    // const methods = new Array<DebugMethodInfo>();
+    // let fullScript = Buffer.from([]);
 
-    for (const op of context.operations ?? []) {
-        const offset = fullScript.length;
-        const { script, sourceReferences } = compileOperation(op, fullScript.length);
-        const parameters = op.parameters.map(p => ({
-            name: p.name,
-            index: p.index,
-            type: toContractType(p.type),
-        }));
-        methods.push({
-            isPublic: op.isPublic,
-            name: op.name,
-            range: {
-                start: offset,
-                end: offset + script.length - 1
-            },
-            parameters,
-            returnType: isVoidLike(op.returnType)
-                ? undefined
-                : toContractType(op.returnType),
-            sourceReferences
-        })
+    // for (const op of context.operations ?? []) {
+    //     const offset = fullScript.length;
+    //     const { script, sourceReferences } = compileOperation(op, fullScript.length);
+    //     const parameters = op.parameters.map(p => ({
+    //         name: p.name,
+    //         index: p.index,
+    //         type: toContractType(p.type),
+    //     }));
+    //     methods.push({
+    //         isPublic: op.isPublic,
+    //         name: op.name,
+    //         range: {
+    //             start: offset,
+    //             end: offset + script.length - 1
+    //         },
+    //         parameters,
+    //         returnType: isVoidLike(op.returnType)
+    //             ? undefined
+    //             : toContractType(op.returnType),
+    //         sourceReferences
+    //     })
 
-        fullScript = Buffer.concat([fullScript, script]);
-    }
+    //     fullScript = Buffer.concat([fullScript, script]);
+    // }
 
-    const nef = new sc.NEF({
-        compiler: "neo-devpack-ts",
-        script: Buffer.from(fullScript).toString("hex"),
-    })
+    // const nef = new sc.NEF({
+    //     compiler: "neo-devpack-ts",
+    //     script: Buffer.from(fullScript).toString("hex"),
+    // })
 
-    const manifest = new sc.ContractManifest({
-        name: name,
-        abi: new sc.ContractAbi({
-            methods: methods
-                .map(toMethodDef)
-                .filter(isNotNullOrUndefined)
-        })
-    });
+    // const manifest = new sc.ContractManifest({
+    //     name: name,
+    //     abi: new sc.ContractAbi({
+    //         methods: methods
+    //             .map(toMethodDef)
+    //             .filter(isNotNullOrUndefined)
+    //     })
+    // });
 
-    context.artifacts = { nef, manifest, methods }
+    // context.artifacts = { nef, manifest, methods }
 }
 
 function compileOperation(
@@ -314,109 +161,111 @@ function compileOperation(
     offset: number
 ): { script: Uint8Array; sourceReferences: Map<number, tsm.Node> } {
 
-    const [instructions, sourceReferences] = separateInstructions(op.instructions);
+    throw new Error();
+    // const [instructions, sourceReferences] = separateInstructions(op.instructions);
 
-    const length = instructions.length;
-    const insMap = new Map<Instruction, number>();
-    let position = 0;
-    for (let i = 0; i < length; i++) {
-        const ins = instructions[i];
-        insMap.set(ins, position);
+    // const length = instructions.length;
+    // const insMap = new Map<Instruction, number>();
+    // let position = 0;
+    // for (let i = 0; i < length; i++) {
+    //     const ins = instructions[i];
+    //     insMap.set(ins, position);
 
-        // every instruction is at least one byte long for the opCode
-        position += 1;
-        const annotation = OpCodeAnnotations[ins.opCode];
-        if (annotation.operandSize) {
-            // if operandSize is specified, use it instead of the instruction operand
-            // since offset target instructions will have invalid operands
-            position += (annotation.operandSize);
-        } else if (annotation.operandSizePrefix) {
-            // if operandSizePrefix is specified, use the instruction operand length
-            position += (ins.operand!.length);
-        }
-    }
+    //     // every instruction is at least one byte long for the opCode
+    //     position += 1;
+    //     const annotation = OpCodeAnnotations[ins.opCode];
+    //     if (annotation.operandSize) {
+    //         // if operandSize is specified, use it instead of the instruction operand
+    //         // since offset target instructions will have invalid operands
+    //         position += (annotation.operandSize);
+    //     } else if (annotation.operandSizePrefix) {
+    //         // if operandSizePrefix is specified, use the instruction operand length
+    //         position += (ins.operand!.length);
+    //     }
+    // }
 
-    let script = new Array<number>();
-    let references = new Map<number, tsm.Node>();
+    // let script = new Array<number>();
+    // let references = new Map<number, tsm.Node>();
 
-    for (let i = 0; i < length; i++) {
-        const node = sourceReferences.get(i)
-        if (node) {
-            references.set(offset + script.length, node);
-        }
+    // for (let i = 0; i < length; i++) {
+    //     const node = sourceReferences.get(i)
+    //     if (node) {
+    //         references.set(offset + script.length, node);
+    //     }
 
-        const ins = instructions[i];
-        const annotation = OpCodeAnnotations[ins.opCode];
-        if (isTryOpCode(ins.opCode)) {
-            if (!ins.target || !ins.target.instruction) throw new Error("Missing catch offset instruction");
-            if (!ins.finallyTarget || !ins.finallyTarget.instruction) throw new Error("Missing finally offset instruction");
-            const catchOffset = insMap.get(ins.target.instruction);
-            if (!catchOffset) throw new Error("Invalid catch offset instruction");
-            const fetchOffset = insMap.get(ins.finallyTarget.instruction);
-            if (!fetchOffset) throw new Error("Invalid finally offset instruction");
-            if (annotation.operandSize === 2) {
-                script.push(ins.opCode, offset8(script.length, catchOffset), offset8(script.length, fetchOffset));
-            } else {
-                script.push(ins.opCode, ...offset32(script.length, catchOffset), ...offset32(script.length, fetchOffset));
-            }
-        } else if (isOffsetTargetOpCode(ins.opCode)) {
-            if (!ins.target || !ins.target.instruction) throw new Error("Missing target offset instruction");
-            const offset = insMap.get(ins.target.instruction);
-            if (!offset) throw new Error("Invalid target offset instruction");
-            if (annotation.operandSize === 1) {
-                script.push(ins.opCode, offset8(script.length, offset));
-            } else {
-                script.push(ins.opCode, ...offset32(script.length, offset));
-            }
-        } else {
-            const bytes = ins.operand ? [ins.opCode, ...ins.operand] : [ins.opCode];
-            script.push(...bytes);
-        }
-    }
+    //     const ins = instructions[i];
+    //     const annotation = OpCodeAnnotations[ins.opCode];
+    //     if (isTryOpCode(ins.opCode)) {
+    //         if (!ins.target || !ins.target.instruction) throw new Error("Missing catch offset instruction");
+    //         if (!ins.finallyTarget || !ins.finallyTarget.instruction) throw new Error("Missing finally offset instruction");
+    //         const catchOffset = insMap.get(ins.target.instruction);
+    //         if (!catchOffset) throw new Error("Invalid catch offset instruction");
+    //         const fetchOffset = insMap.get(ins.finallyTarget.instruction);
+    //         if (!fetchOffset) throw new Error("Invalid finally offset instruction");
+    //         if (annotation.operandSize === 2) {
+    //             script.push(ins.opCode, offset8(script.length, catchOffset), offset8(script.length, fetchOffset));
+    //         } else {
+    //             script.push(ins.opCode, ...offset32(script.length, catchOffset), ...offset32(script.length, fetchOffset));
+    //         }
+    //     } else if (isOffsetTargetOpCode(ins.opCode)) {
+    //         if (!ins.target || !ins.target.instruction) throw new Error("Missing target offset instruction");
+    //         const offset = insMap.get(ins.target.instruction);
+    //         if (!offset) throw new Error("Invalid target offset instruction");
+    //         if (annotation.operandSize === 1) {
+    //             script.push(ins.opCode, offset8(script.length, offset));
+    //         } else {
+    //             script.push(ins.opCode, ...offset32(script.length, offset));
+    //         }
+    //     } else {
+    //         const bytes = ins.operand ? [ins.opCode, ...ins.operand] : [ins.opCode];
+    //         script.push(...bytes);
+    //     }
+    // }
 
-    return {
-        script: Uint8Array.from(script),
-        sourceReferences: references
-    };
+    // return {
+    //     script: Uint8Array.from(script),
+    //     sourceReferences: references
+    // };
 
-    function offset8(index: number, offset: number): number {
-        return offset - index;
-    }
+    // function offset8(index: number, offset: number): number {
+    //     return offset - index;
+    // }
 
-    function offset32(index: number, offset: number): Uint8Array {
-        const buffer = Buffer.alloc(4);
-        buffer.writeInt32LE(offset8(index, offset));
-        return buffer;
-    }
+    // function offset32(index: number, offset: number): Uint8Array {
+    //     const buffer = Buffer.alloc(4);
+    //     buffer.writeInt32LE(offset8(index, offset));
+    //     return buffer;
+    // }
 }
 
 export function convertContractType(type: tsm.Type): sc.ContractParamType;
 export function convertContractType(type: ContractType): sc.ContractParamType;
 export function convertContractType(type: ContractType | tsm.Type): sc.ContractParamType {
-    if (type instanceof tsm.Type) { type = toContractType(type); }
-    switch (type.kind) {
-        case ContractTypeKind.Array: return sc.ContractParamType.Array;
-        case ContractTypeKind.Interop: return sc.ContractParamType.InteropInterface;
-        case ContractTypeKind.Map: return sc.ContractParamType.Map;
-        case ContractTypeKind.Struct: return sc.ContractParamType.Array;
-        case ContractTypeKind.Unspecified: return sc.ContractParamType.Any;
-        case ContractTypeKind.Primitive: {
-            const primitive = type as PrimitiveContractType;
-            switch (primitive.type) {
-                case PrimitiveType.Address: return sc.ContractParamType.Hash160;
-                case PrimitiveType.Boolean: return sc.ContractParamType.Boolean;
-                case PrimitiveType.ByteArray: return sc.ContractParamType.ByteArray;
-                case PrimitiveType.Hash160: return sc.ContractParamType.Hash160;
-                case PrimitiveType.Hash256: return sc.ContractParamType.Hash256;
-                case PrimitiveType.Integer: return sc.ContractParamType.Integer;
-                case PrimitiveType.PublicKey: return sc.ContractParamType.PublicKey;
-                case PrimitiveType.Signature: return sc.ContractParamType.Signature;
-                case PrimitiveType.String: return sc.ContractParamType.String;
-                default: throw new Error(`Unrecognized PrimitiveType ${primitive.type}`);
-            }
-        }
-        default: throw new Error(`Unrecognized ContractTypeKind ${type.kind}`);
-    }
+    throw new Error();
+    // if (type instanceof tsm.Type) { type = toContractType(type); }
+    // switch (type.kind) {
+    //     case ContractTypeKind.Array: return sc.ContractParamType.Array;
+    //     case ContractTypeKind.Interop: return sc.ContractParamType.InteropInterface;
+    //     case ContractTypeKind.Map: return sc.ContractParamType.Map;
+    //     case ContractTypeKind.Struct: return sc.ContractParamType.Array;
+    //     case ContractTypeKind.Unspecified: return sc.ContractParamType.Any;
+    //     case ContractTypeKind.Primitive: {
+    //         const primitive = type as PrimitiveContractType;
+    //         switch (primitive.type) {
+    //             case PrimitiveType.Address: return sc.ContractParamType.Hash160;
+    //             case PrimitiveType.Boolean: return sc.ContractParamType.Boolean;
+    //             case PrimitiveType.ByteArray: return sc.ContractParamType.ByteArray;
+    //             case PrimitiveType.Hash160: return sc.ContractParamType.Hash160;
+    //             case PrimitiveType.Hash256: return sc.ContractParamType.Hash256;
+    //             case PrimitiveType.Integer: return sc.ContractParamType.Integer;
+    //             case PrimitiveType.PublicKey: return sc.ContractParamType.PublicKey;
+    //             case PrimitiveType.Signature: return sc.ContractParamType.Signature;
+    //             case PrimitiveType.String: return sc.ContractParamType.String;
+    //             default: throw new Error(`Unrecognized PrimitiveType ${primitive.type}`);
+    //         }
+    //     }
+    //     default: throw new Error(`Unrecognized ContractTypeKind ${type.kind}`);
+    // }
 }
 
 function toMethodDef(method: DebugMethodInfo): sc.ContractMethodDefinition | undefined {
@@ -498,9 +347,9 @@ function testCompile(source: string, filename: string = "contract.ts") {
     project.createSourceFile(filename, source);
     project.resolveSourceFileDependencies();
 
-    // console.time('getPreEmitDiagnostics');
+    console.time('getPreEmitDiagnostics');
     const diagnostics = project.getPreEmitDiagnostics();
-    // console.timeEnd('getPreEmitDiagnostics')
+    console.timeEnd('getPreEmitDiagnostics')
 
     if (diagnostics.length > 0) {
         printDiagnostic(diagnostics.map(d => d.compilerObject));
@@ -530,11 +379,11 @@ const file = path.basename(process.argv[1]);
 if (file === "compiler.js") {
     console.log('test compile');
 
-    // const foo = Object.keys(sc.OpCode)
-    //     .filter(k => isNaN(Number(k)))
-    //     .map(k => `case sc.OpCode.${k}:`);
-    // for (const x of foo) { console.log(x); }
-    // throw new Error();
+    const foo = Object.keys(sc.OpCode)
+        .filter(k => isNaN(Number(k)))
+        .map(k => `case sc.OpCode.${k}:`);
+    for (const x of foo) { console.log(x); }
+    throw new Error();
 
     const contractSource = /*javascript*/`
 import * as neo from '@neo-project/neo-contract-framework';

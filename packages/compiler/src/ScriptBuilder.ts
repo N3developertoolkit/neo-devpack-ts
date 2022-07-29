@@ -2,6 +2,9 @@ import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
 import { getPrefix, isPushDataOpCode, isTargetOpCode, isTryOpCode, OpCodeAnnotations } from "./opCodeAnnotations";
 
+
+
+
 export interface OffsetTarget {
     instruction?: Instruction
 }

@@ -1,26 +1,26 @@
-import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
-import { CompileArtifacts, OperationContext, OperationInfo } from "./compiler";
-import { Immutable } from "./Immutable";
+import { Immutable } from "./utility/Immutable";
 import { separateInstructions } from "./ScriptBuilder";
+import { CompileArtifacts, OperationInfo } from "./types/CompileContext";
+import { sc } from "@cityofzion/neon-core";
 
 export function dumpOperations(operations?: ReadonlyArray<OperationInfo>) {
-    for (const op of operations ?? []) {
-        const [instructions, sourceReferences] = separateInstructions(op.instructions);
-        console.log(` ${op.isPublic ? 'public ' : ''}${op.name}`);
-        const length = instructions.length;
-        for (let i = 0; i < length; i++) {
-            const instruction = instructions[i];
-            const sourceReference = sourceReferences.get(i);
+    // for (const op of operations ?? []) {
+    //     const [instructions, sourceReferences] = separateInstructions(op.instructions);
+    //     console.log(` ${op.isPublic ? 'public ' : ''}${op.name}`);
+    //     const length = instructions.length;
+    //     for (let i = 0; i < length; i++) {
+    //         const instruction = instructions[i];
+    //         const sourceReference = sourceReferences.get(i);
 
-            const operand = instruction.operand ? Buffer.from(instruction.operand).toString('hex') : "";
-            let msg = `  ${sc.OpCode[instruction.opCode]} ${operand}`
-            if (sourceReference) {
-                msg += " # " + sourceReference.print();
-            }
-            console.log(msg)
-        }
-    }
+    //         const operand = instruction.operand ? Buffer.from(instruction.operand).toString('hex') : "";
+    //         let msg = `  ${sc.OpCode[instruction.opCode]} ${operand}`
+    //         if (sourceReference) {
+    //             msg += " # " + sourceReference.print();
+    //         }
+    //         console.log(msg)
+    //     }
+    // }
 }
 
 export function dumpArtifacts({ nef, methods }: Immutable<CompileArtifacts>) {
@@ -29,7 +29,7 @@ export function dumpArtifacts({ nef, methods }: Immutable<CompileArtifacts>) {
     const ends = new Map(methods.map(m => [m.range.end, m]));
     const points = new Map<number, tsm.Node>();
     for (const m of methods) {
-        for (const [address, node] of m.sourceReferences) {
+        for (const [address, node] of m.sequencePoints) {
             points.set(address, node);
         }
     }
