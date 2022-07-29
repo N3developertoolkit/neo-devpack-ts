@@ -2,11 +2,10 @@
 import { sc, u } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
 import { CompileError } from "./compiler";
-import { Instruction } from "./ScriptBuilder";
 import { CompileContext, OperationInfo } from "./types/CompileContext";
-import { InstructionCode, JumpTarget } from "./types/Instruction";
+import { JumpTarget } from "./types/Instruction";
 import { OpCode } from "./types/OpCode";
-import { OperationBuilder } from "./types/OperationBuilder";
+import { OperationBuilder, SlotType } from "./types/OperationBuilder";
 import { Immutable } from "./utility/Immutable";
 import { bigIntToByteArray, isStringLike } from "./utils";
 
@@ -35,6 +34,8 @@ export function convertStatement(node: tsm.Statement, options: ConverterOptions)
         const converter = convertMap[kind];
         if (converter) {
             converter(node.asKindOrThrow(kind), options);
+        } else {
+            throw new CompileError(`${tsm.SyntaxKind[kind]} not supported`, node)
         }
     }
 }
@@ -42,11 +43,11 @@ export function convertStatement(node: tsm.Statement, options: ConverterOptions)
 // case SyntaxKind.Block:
 function convertBlock(node: tsm.Block, options: ConverterOptions) {
     const { builder } = options;
-    builder.push(InstructionCode.NO_OP)
+    builder.push(OpCode.NOP)
         .set(node.getFirstChildByKind(tsm.SyntaxKind.OpenBraceToken));
     node.getStatements()
         .forEach(s => convertStatement(s, options));
-    builder.push(InstructionCode.NO_OP)
+    builder.push(OpCode.NOP)
         .set(node.getLastChildByKind(tsm.SyntaxKind.CloseBraceToken));
 }
 
@@ -64,7 +65,6 @@ function convertExpressionStatement(node: tsm.ExpressionStatement, options: Conv
     const { builder } = options;
     const spSetter = builder.getNodeSetter();
     const expr = node.getExpression();
-    if (!expr) { throw new CompileError(`falsy expression statement`, node); }
     convertExpression(expr, options);
     spSetter.set(node);
 }
@@ -115,6 +115,8 @@ export function convertExpression(node: tsm.Expression, options: ConverterOption
         const converter = convertMap[kind];
         if (converter) {
             converter(node.asKindOrThrow(kind), options);
+        } else {
+            throw new CompileError(`${tsm.SyntaxKind[kind]} not supported`, node)
         }
     }
 }
@@ -181,59 +183,62 @@ export function parseArrayLiteral(node: tsm.ArrayLiteralExpression) {
 // [SyntaxKind.AwaitExpression]: AwaitExpression;
 
 // [SyntaxKind.BigIntLiteral]: BigIntLiteral;
-function convertBigIntLiteral(node: tsm.BigIntLiteral, options: ConverterOptions): Instruction[] {
-    const literal = node.getLiteralText();
-    return [convertInt(BigInt(literal))]
+function convertBigIntLiteral(node: tsm.BigIntLiteral, options: ConverterOptions) {
+    const { builder } = options;
+    const literal = BigInt(node.getLiteralText());
+    builder.pushInt(literal);
 }
 
 // [SyntaxKind.BinaryExpression]: BinaryExpression;
 function convertBinaryExpression(node: tsm.BinaryExpression, options: ConverterOptions) {
-    // const { builder } = options;
+    const { builder } = options;
 
-    // const left = node.getLeft();
-    // const right = node.getRight();
-    // const opCode = convertBinaryOperator(
-    //     node.getOperatorToken(),
-    //     left.getType(),
-    //     right.getType()
-    // );
+    const left = node.getLeft();
+    const right = node.getRight();
+    const opCode = convertBinaryOperator(
+        node.getOperatorToken(),
+        left.getType(),
+        right.getType()
+    );
 
-    // convertExpression(left, options);
-    // convertExpression(right, options);
-    // builder.push(opCode);
+    convertExpression(left, options);
+    convertExpression(right, options);
+    builder.push(opCode);
 
-    // function convertBinaryOperator(
-    //     op: tsm.Node<tsm.ts.BinaryOperatorToken>,
-    //     left: tsm.Type,
-    //     right: tsm.Type
-    // ): sc.OpCode {
-    //     switch (op.getKind()) {
-    //         case tsm.SyntaxKind.PlusToken: {
-    //             if (isStringLike(left) && isStringLike(right)) {
-    //                 return sc.OpCode.CAT;
-    //             } else {
-    //                 throw new Error(`convertBinaryOperator.PlusToken not implemented for ${left.getText()} and ${right.getText()}`);
-    //             }
-    //         }
-    //         default:
-    //             throw new Error(`convertOperator ${op.getKindName()} not implemented`);
-    //     }
-    // }
+    function convertBinaryOperator(
+        op: tsm.Node<tsm.ts.BinaryOperatorToken>,
+        left: tsm.Type,
+        right: tsm.Type
+    ): OpCode {
+        switch (op.getKind()) {
+            case tsm.SyntaxKind.PlusToken: {
+                if (isStringLike(left) && isStringLike(right)) {
+                    return OpCode.CAT;
+                } else {
+                    throw new Error(`convertBinaryOperator.PlusToken not implemented for ${left.getText()} and ${right.getText()}`);
+                }
+            }
+            default:
+                throw new Error(`convertOperator ${op.getKindName()} not implemented`);
+        }
+    }
 }
 
 // [SyntaxKind.CallExpression]: CallExpression;
 function convertCallExpression(node: tsm.CallExpression, options: ConverterOptions) {
-    const { context: { builtins } } = options;
+    const { context: { builtins}, builder } = options;
 
-    // const expr = node.getExpression();
-    // if (tsm.Node.isPropertyAccessExpression(expr)) {
-    //     const symbol = expr.getNameNode().getSymbolOrThrow();
-    //     const call = builtins?.symbols.get(symbol);
-    //     if (call) {
-    //         call.call(node, options);
-    //         return;
-    //     }
-    // }
+    const expr = node.getExpression();
+    if (tsm.Node.isPropertyAccessExpression(expr)) {
+        const propSymbol = expr.getNameNode().getSymbol();
+        if (propSymbol) {
+            const propBuiltIn = builtins?.symbols.get(propSymbol);
+            if (propBuiltIn) {
+                propBuiltIn(node, options);
+                return;
+            }
+        }
+    }
 
     throw new CompileError('convertCallExpression not implemented', node);
 }
@@ -246,30 +251,27 @@ function convertCallExpression(node: tsm.CallExpression, options: ConverterOptio
 // [SyntaxKind.FunctionExpression]: FunctionExpression;
 // [SyntaxKind.Identifier]: Identifier;
 function convertIdentifier(node: tsm.Identifier, options: ConverterOptions) {
-    // const { op } = options;
+    const { builder, info } = options;
 
+    // Not sure this is the best way to generally resolve identifiers,
+    // but it works for parameters
 
-    // // Not sure this is the best way to generally resolve identifiers,
-    // // but it works for parameters
+    const symbol = node.getSymbol();
+    if (symbol) {
+        const decl = symbol.getValueDeclaration();
+        if (decl) {
+            if (tsm.Node.isParameterDeclaration(decl)) {
+                const index = info.node.getParameters()
+                    .findIndex(p => p.getSymbol() === symbol);
+                if (index >= 0) {
+                    builder.pushLoad(SlotType.Parameter, index);
+                    return;
+                }
+            }
+        }
+    }
 
-    // const defs = node.getDefinitions();
-    // if (defs.length !== 1) { throw new CompileError("Unexpected definitions", node); }
-    // const def = defs[0];
-    // switch (def.getKind()) {
-    //     case tsm.ts.ScriptElementKind.parameterElement: {
-    //         const declNode = def.getDeclarationNode();
-    //         const index = op.info.node.getParameters().findIndex(p => p === declNode);
-    //         if (index === -1) throw new CompileError(`${node.getText} param can't be found`, node);
-    //         if (index <= 6) {
-    //             op.builder.push(sc.OpCode.LDARG0 + index);
-    //         } else {
-    //             op.builder.push(sc.OpCode.LDARG, [index]);
-    //         }
-    //         break;
-    //     }
-    //     default:
-    //         throw new CompileError("convertIdentifier not implemented", node);
-    // }
+    throw new CompileError('convertIdentifier not implemented', node);
 }
 
 // [SyntaxKind.JsxClosingFragment]: JsxClosingFragment;
@@ -286,9 +288,9 @@ function convertIdentifier(node: tsm.Identifier, options: ConverterOptions) {
 // [SyntaxKind.NumericLiteral]: NumericLiteral;
 function convertNumericLiteral(node: tsm.NumericLiteral, options: ConverterOptions) {
     const { builder } = options;
-
-    const literal = node.getLiteralText();
-    // builder.push(convertInt(BigInt(literal)));
+    const literal = node.getLiteralValue();
+    if (!Number.isInteger(literal)) throw new CompileError(`invalid non-integere numeric literal`, node);
+    builder.pushInt(literal);
 }
 
 // [SyntaxKind.ObjectLiteralExpression]: ObjectLiteralExpression;
@@ -299,14 +301,16 @@ function convertNumericLiteral(node: tsm.NumericLiteral, options: ConverterOptio
 // [SyntaxKind.PrefixUnaryExpression]: PrefixUnaryExpression;
 // [SyntaxKind.PropertyAccessExpression]: PropertyAccessExpression;
 function convertPropertyAccessExpression(node: tsm.PropertyAccessExpression, options: ConverterOptions) {
-    const { context: { builtins }, builder } = options;
+    const { context: { builtins } } = options;
 
-    // const symbol = node.getNameNode().getSymbolOrThrow();
-    // const call = builtins?.symbols.get(symbol);
-    // if (call) {
-    //     call.call(node, options);
-    //     return;
-    // }
+    const symbol = node.getNameNode().getSymbol();
+    if (symbol) {
+        const builtin = builtins?.symbols.get(symbol);
+        if (builtin) {
+            builtin(node, options);
+            return;
+        }
+    }
 
     throw new CompileError(`convertPropertyAccessExpression not implemented`, node);
 }
@@ -318,8 +322,7 @@ function convertStringLiteral(node: tsm.StringLiteral, options: ConverterOptions
     const { builder } = options;
 
     const literal = node.getLiteralValue();
-    const buffer = Buffer.from(literal, 'utf-8');
-    // builder.push(convertBuffer(buffer));
+    builder.pushData(literal);
 }
 
 // [SyntaxKind.TaggedTemplateExpression]: TaggedTemplateExpression;
@@ -343,58 +346,3 @@ function convertStringLiteral(node: tsm.StringLiteral, options: ConverterOptions
 // [SyntaxKind.VoidExpression]: VoidExpression;
 
 
-const pushIntSizes: ReadonlyArray<number> = [1, 2, 4, 8, 16, 32];
-
-export function convertInt(i: bigint): Instruction {
-    // if (i === -1n) { return { opCode: sc.OpCode.PUSHM1 }; }
-    // if (i >= 0n && i <= 16n) {
-    //     const opCode: sc.OpCode = sc.OpCode.PUSH0 + Number(i);
-    //     return { opCode };
-    // }
-
-    const buffer = bigIntToByteArray(i);
-    // const bufferLength = buffer.length;
-    // const sizesLength = pushIntSizes.length;
-    // for (let i = 0; i < sizesLength; i++) {
-    //     const pushIntSize = pushIntSizes[i];
-    //     if (bufferLength <= pushIntSize) {
-    //         const padding = pushIntSize - bufferLength;
-    //         const opCode = sc.OpCode.PUSHINT8 + i;
-    //         const operand = padding == 0
-    //             ? buffer
-    //             : Uint8Array.from([...buffer, ...(new Array<number>(padding).fill(0))])
-    //         return { opCode, operand };
-    //     }
-    // }
-
-    throw new Error(`Invalid integer buffer length ${buffer.length}`)
-}
-
-
-
-export function convertBuffer(buffer: ArrayLike<number> & Iterable<number>): Uint8Array {
-
-    // const [opCode, length] = getOpCodeAndLength(buffer);
-    // const operand = new Uint8Array([...length, ...buffer]);
-    // return { opCode, operand };
-
-    // function getOpCodeAndLength(buffer: ArrayLike<number>): [sc.OpCode, Buffer] {
-    //     if (buffer.length <= 255) /* byte.MaxValue */ {
-    //         return [sc.OpCode.PUSHDATA1, Buffer.from([buffer.length])];
-    //     }
-
-    //     if (buffer.length <= 65535) /* ushort.MaxValue */ {
-    //         const length = Buffer.alloc(2);
-    //         length.writeUint16LE(buffer.length);
-    //         return [sc.OpCode.PUSHDATA2, length];
-    //     }
-
-    //     if (buffer.length <= 4294967295) /* uint.MaxValue */ {
-    //         const length = Buffer.alloc(4);
-    //         length.writeUint32LE(buffer.length);
-    //         return [sc.OpCode.PUSHDATA4, length];
-    //     }
-
-        throw new Error(`Buffer length ${buffer.length} too long`);
-    // }
-}

@@ -3,6 +3,7 @@ import * as tsm from "ts-morph";
 import { DebugMethodInfo } from "./DebugInfo";
 import { Immutable } from "../utility/Immutable";
 import { Builtins } from "../passes/resolveBuiltins";
+import { Instruction } from "./Instruction";
 
 export interface CompileContext {
     readonly project: tsm.Project,
@@ -42,7 +43,7 @@ export interface OperationInfo {
     isPublic: boolean,
     parameters: Array<ParameterInfo>,
     returnType: tsm.Type,
-    // instructions?: Array<Instruction | tsm.Node>,
+    instructions?: Array<Instruction | tsm.Node>,
 }
 
 export interface ParameterInfo {

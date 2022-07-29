@@ -9,16 +9,18 @@ export function discoverOperationsPass(context: CompileContext): void {
         src.forEachChild(node => {
             if (tsm.Node.isFunctionDeclaration(node)) {
                 const name = node.getName();
+                const parameters = node.getParameters()
+                    .map((p, index) => ({
+                        node: p,
+                        name: p.getName(),
+                        type: p.getType(),
+                        index
+                    }));
                 if (name) {
                     operations.push({
                         node, name,
                         isPublic: !!node.getExportKeyword(),
-                        parameters: node.getParameters().map((p, index) => ({
-                            node: p,
-                            name: p.getName(),
-                            type: p.getType(),
-                            index
-                        })),
+                        parameters,
                         returnType: node.getReturnType(),
                     });
                 }

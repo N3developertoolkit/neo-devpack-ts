@@ -343,9 +343,9 @@ function testCompile(source: string, filename: string = "contract.ts") {
     project.createSourceFile(filename, source);
     project.resolveSourceFileDependencies();
 
-    console.time('getPreEmitDiagnostics');
+    // console.time('getPreEmitDiagnostics');
     const diagnostics = project.getPreEmitDiagnostics();
-    console.timeEnd('getPreEmitDiagnostics')
+    // console.timeEnd('getPreEmitDiagnostics')
 
     if (diagnostics.length > 0) {
         printDiagnostic(diagnostics.map(d => d.compilerObject));
@@ -374,12 +374,6 @@ function testCompile(source: string, filename: string = "contract.ts") {
 const file = path.basename(process.argv[1]);
 if (file === "compiler.js") {
     console.log('test compile');
-
-    const foo = Object.keys(sc.OpCode)
-        .filter(k => isNaN(Number(k)))
-        .map(k => `case sc.OpCode.${k}:`);
-    for (const x of foo) { console.log(x); }
-    throw new Error();
 
     const contractSource = /*javascript*/`
 import * as neo from '@neo-project/neo-contract-framework';

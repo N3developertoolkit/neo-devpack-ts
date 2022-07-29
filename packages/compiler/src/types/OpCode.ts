@@ -198,6 +198,27 @@ export const enum OpCode {
     CONVERT = 0xdb,
 }
 
+export type JumpOpCode = OpCode.JMP |
+    OpCode.JMP_L |
+    OpCode.JMPIF |
+    OpCode.JMPIF_L |
+    OpCode.JMPIFNOT |
+    OpCode.JMPIFNOT_L |
+    OpCode.JMPEQ |
+    OpCode.JMPEQ_L |
+    OpCode.JMPNE |
+    OpCode.JMPNE_L |
+    OpCode.JMPGT |
+    OpCode.JMPGT_L |
+    OpCode.JMPGE |
+    OpCode.JMPGE_L |
+    OpCode.JMPLT |
+    OpCode.JMPLT_L |
+    OpCode.JMPLE |
+    OpCode.JMPLE_L;
+
+export type TryOpCode = OpCode.TRY | OpCode.TRY_L;
+
 export function print(opCode: OpCode): string {
     switch (opCode) {
         case OpCode.PUSHINT8: return "PUSHINT8";

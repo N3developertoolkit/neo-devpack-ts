@@ -21,7 +21,6 @@ export function bigIntToByteArray(value: bigint): Uint8Array {
         }
         // reverse endianess
         return buffer.reverse();
-
     } else {
         // convert negative number to positive and create buffer 
         let buffer = toBuffer(value * -1n);

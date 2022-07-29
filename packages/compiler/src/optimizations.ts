@@ -1,6 +1,6 @@
 import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
-import { combineInstructions, Instruction, separateInstructions } from "./ScriptBuilder";
+// import { combineInstructions, Instruction, separateInstructions } from "./ScriptBuilder";
 import { OperationInfo } from "./types/CompileContext";
 
 export function optimizeReturn(op: OperationInfo): OperationInfo | undefined {

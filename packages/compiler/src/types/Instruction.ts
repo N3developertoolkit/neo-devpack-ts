@@ -1,18 +1,8 @@
-// Note, this list of instruction codes is incomplete
-export const enum InstructionCode {
-    CONCAT,
-    JUMP,
-    LOAD,
-    NO_OP,
-    PUSHDATA,
-    PUSHINT,
-    RETURN,
-    STORE,
-    SYSCALL,
-}
+import { JumpOpCode, OpCode, TryOpCode, } from "./OpCode";
 
 export interface Instruction {
-    readonly opCode: InstructionCode,
+    readonly opCode: OpCode,
+    readonly operand?: Uint8Array,
 }
 
 export interface JumpTarget {
@@ -20,39 +10,32 @@ export interface JumpTarget {
 }
 
 export interface JumpInstruction extends Instruction {
-    readonly opCode: InstructionCode.JUMP,
+    readonly opCode: JumpOpCode,
     readonly target: JumpTarget,
 }
 
-export const enum SlotType {
-    Local,
-    Parameter,
-    Static
+export function isJumpInstruction(ins: Instruction): ins is JumpInstruction {
+    return OpCode.JMP <= ins.opCode && ins.opCode <= OpCode.JMPLE_L;
 }
 
-export interface LoadStoreInstruction extends Instruction {
-    readonly opCode: InstructionCode.LOAD | InstructionCode.STORE,
-    readonly slotType: SlotType,
-    readonly index: number,
+export interface TryInstruction extends Instruction {
+    readonly opCode: TryOpCode,
+    readonly catchTarget: JumpTarget,
+    readonly finallyTarget: JumpTarget,
 }
 
-export interface PushDataInstruction extends Instruction {
-    readonly opCode: InstructionCode.PUSHDATA,
-    readonly data: Uint8Array,
-}
-
-export interface PushIntInstruction extends Instruction {
-    readonly opCode: InstructionCode.PUSHINT,
-    readonly value: bigint,
+export function isTryInstruction(ins: Instruction): ins is TryInstruction {
+    return ins.opCode === OpCode.TRY || ins.opCode === OpCode.TRY_L
 }
 
 // https://melvingeorge.me/blog/convert-array-into-string-literal-union-type-typescript
 export type NeoService = typeof neoServices[number];
 
-export interface SysCallInstruction extends Instruction {
-    opCode: InstructionCode.SYSCALL,
-    value: NeoService,
-}
+// export interface SysCallInstruction extends Instruction {
+//     opCode: OpCode.SYSCALL,
+//     value: NeoService,
+// }
+
 
 // List of services generated via this C# code:
 //      var services = ApplicationEngine.Services.Values.OrderBy(d => d.Name);

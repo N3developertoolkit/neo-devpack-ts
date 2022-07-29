@@ -1,11 +1,9 @@
-import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
-import { ScriptBuilder } from "../ScriptBuilder";
 import { CompileContext } from "../types/CompileContext";
 import { CompileError } from "../compiler";
 import { OperationBuilder } from "../types/OperationBuilder";
 import { ConverterOptions, convertStatement } from "../convert";
-import { InstructionCode } from "../types/Instruction";
+import { OpCode } from "../types/OpCode";
 
 export function processOperationsPass(context: CompileContext): void {
     if (!context.operations) { return; }
@@ -28,8 +26,7 @@ export function processOperationsPass(context: CompileContext): void {
             throw new CompileError(`Unexpected body kind ${body.getKindName()}`, body);
         }
 
-        options.returnTarget.instruction = builder.push(InstructionCode.RETURN).instruction;
-
-        // op.instructions = builder.instructions;
+        options.returnTarget.instruction = builder.push(OpCode.RET).instruction;
+        op.instructions = builder.compile();
     }
 }
