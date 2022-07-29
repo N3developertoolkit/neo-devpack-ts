@@ -8,17 +8,19 @@ export function discoverOperationsPass(context: CompileContext): void {
 
         src.forEachChild(node => {
             if (tsm.Node.isFunctionDeclaration(node)) {
+                const tags = node.getJsDocs().flatMap(d => d.getTags());
                 const name = node.getName();
-                const parameters = node.getParameters()
-                    .map((p, index) => ({
-                        node: p,
-                        name: p.getName(),
-                        type: p.getType(),
-                        index
-                    }));
                 if (name) {
+                    const safe = tags.findIndex(t => t.getTagName() === 'safe') >= 0;
+                    const parameters = node.getParameters()
+                        .map((p, index) => ({
+                            node: p,
+                            name: p.getName(),
+                            type: p.getType(),
+                            index
+                        }));
                     operations.push({
-                        node, name,
+                        node, name, safe,
                         isPublic: !!node.getExportKeyword(),
                         parameters,
                         returnType: node.getReturnType(),
@@ -27,5 +29,5 @@ export function discoverOperationsPass(context: CompileContext): void {
             }
         });
     }
-    context.operations = operations;   
+    context.operations = operations;
 }

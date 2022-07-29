@@ -4,8 +4,8 @@ import { CompileArtifacts, OperationInfo } from "./types/CompileContext";
 import { sc } from "@cityofzion/neon-core";
 import * as util from 'util';
 import { OpCode, print as printOpCode } from "./types/OpCode";
-import { isNode, separateInstructions, sysCallHash } from "./types/OperationBuilder";
-import { Instruction, isJumpInstruction } from "./types/Instruction";
+import { isInstruction, isNode, sysCallHash } from "./types/OperationBuilder";
+import { Instruction, isJumpInstruction, isTryInstruction, JumpInstruction, JumpTarget } from "./types/Instruction";
 
 export enum AnsiEscapeSequences {
     Black = "\u001b[30m",
@@ -35,53 +35,29 @@ const magenta = `${AnsiEscapeSequences.BrightMagenta}%s${AnsiEscapeSequences.Res
 export function dumpOperations(operations?: ReadonlyArray<OperationInfo>) {
     for (const op of operations ?? []) {
         const params = op.parameters.map(p => `${p.name}: ${p.type.getText()}`).join(', ');
-        console.log(magenta, `${op.isPublic ? 'public ' : ''}${op.name}(${params})`);
-        const [ins2, ref2] = separateInstructions(op.instructions);
+        const publicStr = op.isPublic ? 'public ' : '';
+        const safeStr = op.safe ? ' [safe]' : '';
+        console.log(magenta, `${publicStr}${op.name}(${params})${safeStr}`);
 
-        ins2.forEach((v, i) => {
-            const ref = ref2.get(i);
-            if (ref) {
-                console.log(cyan, `# ${ref.print()}`);
+        const instructions = op.instructions ?? [];
+        const insOnly = instructions.filter(isInstruction);
+        const instructionsLength = instructions.length;
+        for (let i = 0; i < instructionsLength; i++) {
+            const item = instructions[i];
+            if (isNode(item)) {
+                console.log(cyan, `# ${item.print()}`);
+            } else {
+                let msg = printOpCode(item.opCode);
+                if (item.operand) {
+                    msg += ` ${Buffer.from(item.operand).toString('hex')}`;
+                }
+                const comment = getComment(item, insOnly);
+                if (comment) {
+                    msg += util.format(cyan, ` # ${comment}`);
+                }
+                console.log(`${i}: ${msg}`);
             }
-            let msg = printOpCode(v.opCode);
-            if (v.operand) {
-                msg += ` ${Buffer.from(v.operand).toString('hex')}`;
-            }
-            const comment = getComment(v, ins2);
-            if (comment) {
-                msg += util.format(cyan, ` # ${comment}`);
-            }
-            console.log(`${i}: ${msg}`);
-        })
-
-        // const foo = instructions.filter(isNode);
-        // for (const ins of instructions) {
-        //     if (ins instanceof tsm.Node) {
-        //         
-        //     } else {
-        //         console.log(`${printOpCode(ins.opCode)}`);
-        //     }
-        // }
-
-
-
-
-
-
-        // const [instructions, sourceReferences] = separateInstructions(op.instructions);
-        // console.log();
-        // const length = instructions.length;
-        // for (let i = 0; i < length; i++) {
-        //     const instruction = instructions[i];
-        //     const sourceReference = sourceReferences.get(i);
-
-        //     const operand = instruction.operand ? Buffer.from(instruction.operand).toString('hex') : "";
-        //     let msg = `  ${OpCode[instruction.opCode]} ${operand}`
-        //     if (sourceReference) {
-        //         msg += " # " + sourceReference.print();
-        //     }
-        //     console.log(msg)
-        // }
+        }
     }
 }
 
@@ -129,11 +105,18 @@ export function dumpArtifacts({ nef, methods }: Immutable<CompileArtifacts>) {
 }
 
 export function getComment(ins: Instruction, instructions: ReadonlyArray<Instruction>): string | undefined {
-    if (isJumpInstruction(ins)) {
-        if (!ins.target.instruction) { return "jump target not set"; }
-        const index = instructions.findIndex(v => v === ins.target.instruction);
-        if (index < 0) { return "jump target not found"; }
-        return `jump target ${index}`;
+
+    function resolveTarget(target: JumpTarget) {
+        if (!target.instruction) { return "offset target not set"; }
+        const index = instructions.findIndex(v => v === target.instruction);
+        return index < 0 ? "offset target not found" : `offset target ${index}`;
+    }
+
+    if (isJumpInstruction(ins)) { return resolveTarget(ins.target); }
+    if (isTryInstruction(ins)) {
+        const catchResolved = resolveTarget(ins.catchTarget);
+        const finallyResolved = resolveTarget(ins.finallyTarget);
+        return `catch ${catchResolved}, finally ${finallyResolved}`;
     }
 
     switch (ins.opCode) {

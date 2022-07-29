@@ -378,9 +378,13 @@ if (file === "compiler.js") {
     const contractSource = /*javascript*/`
 import * as neo from '@neo-project/neo-contract-framework';
 
+/** @safe */
 export function symbol() { return "TOKEN"; }
+
+/** @safe */
 export function decimals() { return 8; }
 
+/** @safe */
 export function getValue() { 
     return neo.Storage.get(neo.Storage.currentContext, Uint8Array.from([0x00])); 
 }
@@ -389,8 +393,10 @@ export function setValue(value: string) {
     neo.Storage.put(neo.Storage.currentContext, Uint8Array.from([0x00]), value); 
 }
 
+/** @safe */
 export function helloWorld() { return "Hello, World!"; }
 
+/** @safe */
 export function sayHello(name: string) { return "Hello, " + name + "!"; }
 `;
 

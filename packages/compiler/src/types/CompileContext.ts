@@ -41,6 +41,7 @@ export interface OperationInfo {
     readonly node: tsm.FunctionDeclaration,
     name: string,
     isPublic: boolean,
+    safe: boolean,
     parameters: Array<ParameterInfo>,
     returnType: tsm.Type,
     instructions?: Array<Instruction | tsm.Node>,
