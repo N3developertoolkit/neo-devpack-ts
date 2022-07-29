@@ -1,8 +1,8 @@
 import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
-import { Builtins } from "../builtins";
 import { DebugMethodInfo } from "./DebugInfo";
 import { Immutable } from "../utility/Immutable";
+import { Builtins } from "../passes/resolveBuiltins";
 
 export interface CompileContext {
     readonly project: tsm.Project,

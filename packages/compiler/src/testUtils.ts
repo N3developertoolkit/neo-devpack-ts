@@ -3,6 +3,29 @@ import { Immutable } from "./utility/Immutable";
 import { separateInstructions } from "./ScriptBuilder";
 import { CompileArtifacts, OperationInfo } from "./types/CompileContext";
 import { sc } from "@cityofzion/neon-core";
+import * as util from 'util';
+
+export enum AnsiEscapeSequences {
+    Black = "\u001b[30m",
+    Red = "\u001b[31m",
+    Green = "\u001b[32m",
+    Yellow = "\u001b[33m",
+    Blue = "\u001b[34m",
+    Magenta = "\u001b[35m",
+    Cyan = "\u001b[36m",
+    White = "\u001b[37m",
+    Gray = "\u001b[90m",
+    BrightRed = "\u001b[91m",
+    BrightGreen = "\u001b[92m",
+    BrightYellow = "\u001b[93m",
+    BrightBlue = "\u001b[94m",
+    BrightMagenta = "\u001b[95m",
+    BrightCyan = "\u001b[96m",
+    BrightWhite = "\u001b[97m",
+    Invert = "\u001b[7m",
+    Reset = "\u001b[0m",
+}
+
 
 export function dumpOperations(operations?: ReadonlyArray<OperationInfo>) {
     // for (const op of operations ?? []) {
@@ -42,22 +65,27 @@ export function dumpArtifacts({ nef, methods }: Immutable<CompileArtifacts>) {
     }
 
     const padding = `${address}`.length;
+
+    const green = `${AnsiEscapeSequences.BrightGreen}%s${AnsiEscapeSequences.Reset}`;
+    const cyan = `${AnsiEscapeSequences.BrightCyan}%s${AnsiEscapeSequences.Reset}`;
+    const maegenta = `${AnsiEscapeSequences.BrightMagenta}%s${AnsiEscapeSequences.Reset}`;
     
     address = 0;
     for (const token of opTokens) {
         const s = starts.get(address);
-        if (s) { console.log(`\x1b[92m# Method Start ${s.name}\x1b[0m`); }
+        if (s) {  console.log(maegenta, `# Method Start ${s.name}`); }
+
         const n = points.get(address);
-        if (n) { console.log(`\x1b[96m# ${n.print()}\x1b[0m`); }
+        if (n) { console.log(cyan, `# ${n.print()}`); }
 
         let msg = `${address.toString().padStart(padding)}: ${token.prettyPrint()}`;
         const comment = getComment(token, address);
         if (comment)
-            msg += ` \x1b[96m# ${comment}\x1b[0m`;
+            msg += util.format(green, ` # ${comment}`);
         console.log(msg);
 
         const e = ends.get(address);
-        if (e) { console.log(`\x1b[92m# Method End ${e.name}\x1b[0m`); }
+        if (e) { console.log(maegenta, `# Method End ${e.name}`); }
 
         const size = token.toScript().length / 2;
         address += size;

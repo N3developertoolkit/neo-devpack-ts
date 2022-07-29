@@ -225,17 +225,17 @@ function convertBinaryExpression(node: tsm.BinaryExpression, options: ConverterO
 function convertCallExpression(node: tsm.CallExpression, options: ConverterOptions) {
     const { context: { builtins } } = options;
 
-    const expr = node.getExpression();
-    if (tsm.Node.isPropertyAccessExpression(expr)) {
-        const symbol = expr.getNameNode().getSymbolOrThrow();
-        const call = builtins?.symbols.get(symbol);
-        if (call) {
-            call.call(node, options);
-            return;
-        }
-    }
+    // const expr = node.getExpression();
+    // if (tsm.Node.isPropertyAccessExpression(expr)) {
+    //     const symbol = expr.getNameNode().getSymbolOrThrow();
+    //     const call = builtins?.symbols.get(symbol);
+    //     if (call) {
+    //         call.call(node, options);
+    //         return;
+    //     }
+    // }
 
-    throw new CompileError('convertCallExpression not implemented', expr);
+    throw new CompileError('convertCallExpression not implemented', node);
 }
 
 // [SyntaxKind.ClassExpression]: ClassExpression;
@@ -301,12 +301,12 @@ function convertNumericLiteral(node: tsm.NumericLiteral, options: ConverterOptio
 function convertPropertyAccessExpression(node: tsm.PropertyAccessExpression, options: ConverterOptions) {
     const { context: { builtins }, builder } = options;
 
-    const symbol = node.getNameNode().getSymbolOrThrow();
-    const call = builtins?.symbols.get(symbol);
-    if (call) {
-        call.call(node, options);
-        return;
-    }
+    // const symbol = node.getNameNode().getSymbolOrThrow();
+    // const call = builtins?.symbols.get(symbol);
+    // if (call) {
+    //     call.call(node, options);
+    //     return;
+    // }
 
     throw new CompileError(`convertPropertyAccessExpression not implemented`, node);
 }

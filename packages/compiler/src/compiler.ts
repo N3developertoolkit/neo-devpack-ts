@@ -7,7 +7,7 @@ import { ContractType, } from "./types/ContractType";
 import { dumpArtifacts, dumpOperations } from "./testUtils";
 import { optimizeReturn } from "./optimizations";
 import { Immutable } from "./utility/Immutable";
-import { resolveDeclarationsPass } from "./passes/resolveDeclarations";
+import { resolveBuiltinsPass } from "./passes/resolveBuiltins";
 import { discoverOperationsPass } from "./passes/discoverOperations";
 import { processOperationsPass } from "./passes/processOperations";
 import { CompileArtifacts, CompileContext, CompileOptions, CompileResults, OperationInfo } from "./types/CompileContext";
@@ -15,10 +15,6 @@ import { DebugMethodInfo } from "./types/DebugInfo";
 
 // https://github.com/CityOfZion/neon-js/issues/858
 const DEFAULT_ADDRESS_VALUE = 53;
-
-
-
-;
 
 export class CompileError extends Error {
     constructor(
@@ -44,7 +40,7 @@ function compile(options: CompileOptions): CompileResults {
 
     type CompilePass = (context: CompileContext) => void;
     const passes: ReadonlyArray<CompilePass> = [
-        resolveDeclarationsPass,
+        resolveBuiltinsPass,
         discoverOperationsPass,
         processOperationsPass,
         optimizePass,
@@ -92,17 +88,17 @@ function compile(options: CompileOptions): CompileResults {
 
 
 function optimizePass(context: CompileContext): void {
-    if (!context.options.optimize) { return; }
-    if (!context.operations) { return; }
-    const operations = context.operations;
-    const length = operations.length;
-    for (let i = 0; i < length; i++) {
-        const op = operations[i];
-        const newOp = optimizeReturn(op);
-        if (newOp) {
-            operations[i] = newOp;
-        }
-    }
+    // if (!context.options.optimize) { return; }
+    // if (!context.operations) { return; }
+    // const operations = context.operations;
+    // const length = operations.length;
+    // for (let i = 0; i < length; i++) {
+    //     const op = operations[i];
+    //     const newOp = optimizeReturn(op);
+    //     if (newOp) {
+    //         operations[i] = newOp;
+    //     }
+    // }
 }
 
 function isNotNullOrUndefined<T extends Object>(input: null | undefined | T): input is T {
