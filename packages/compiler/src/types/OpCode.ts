@@ -3,6 +3,8 @@
 //          Console.WriteLine($"{opCode} = 0x{(byte)opCode:x2},");
 //      }
 
+import { Lazy } from "../utility/Lazy";
+
 export const enum OpCode {
     PUSHINT8 = 0x00,
     PUSHINT16 = 0x01,
@@ -198,7 +200,8 @@ export const enum OpCode {
     CONVERT = 0xdb,
 }
 
-export type JumpOpCode = OpCode.JMP |
+export type JumpOpCode = 
+    OpCode.JMP |
     OpCode.JMP_L |
     OpCode.JMPIF |
     OpCode.JMPIF_L |
@@ -217,9 +220,11 @@ export type JumpOpCode = OpCode.JMP |
     OpCode.JMPLE |
     OpCode.JMPLE_L;
 
-export type TryOpCode = OpCode.TRY | OpCode.TRY_L;
+export type TryOpCode = 
+    OpCode.TRY | 
+    OpCode.TRY_L;
 
-export function print(opCode: OpCode): string {
+export function toString(opCode: OpCode): string {
     switch (opCode) {
         case OpCode.PUSHINT8: return "PUSHINT8";
         case OpCode.PUSHINT16: return "PUSHINT16";
@@ -415,4 +420,65 @@ export function print(opCode: OpCode): string {
         case OpCode.CONVERT: return "CONVERT";
         default: throw new Error(`Unrecognized VmOpCode ${opCode}`);
     }
+}
+
+export interface OpCodeAnnotation {
+    operandSize?: number;
+    operandSizePrefix?: number;
+}
+
+const annotationMap = new Lazy(() => {
+    return new Map<OpCode, OpCodeAnnotation>([
+        [OpCode.PUSHINT8, { operandSize: 1 }],
+        [OpCode.PUSHINT16, { operandSize: 2 }],
+        [OpCode.PUSHINT32, { operandSize: 4 }],
+        [OpCode.PUSHINT64, { operandSize: 8 }],
+        [OpCode.PUSHINT128, { operandSize: 16 }],
+        [OpCode.PUSHINT256, { operandSize: 32 }],
+        [OpCode.PUSHA, { operandSize: 4 }],
+        [OpCode.PUSHDATA1, { operandSizePrefix: 1 }],
+        [OpCode.PUSHDATA2, { operandSizePrefix: 2 }],
+        [OpCode.PUSHDATA4, { operandSizePrefix: 4 }],
+        [OpCode.JMP, { operandSize: 1 }],
+        [OpCode.JMP_L, { operandSize: 4 }],
+        [OpCode.JMPIF, { operandSize: 1 }],
+        [OpCode.JMPIF_L, { operandSize: 4 }],
+        [OpCode.JMPIFNOT, { operandSize: 1 }],
+        [OpCode.JMPIFNOT_L, { operandSize: 4 }],
+        [OpCode.JMPEQ, { operandSize: 1 }],
+        [OpCode.JMPEQ_L, { operandSize: 4 }],
+        [OpCode.JMPNE, { operandSize: 1 }],
+        [OpCode.JMPNE_L, { operandSize: 4 }],
+        [OpCode.JMPGT, { operandSize: 1 }],
+        [OpCode.JMPGT_L, { operandSize: 4 }],
+        [OpCode.JMPGE, { operandSize: 1 }],
+        [OpCode.JMPGE_L, { operandSize: 4 }],
+        [OpCode.JMPLT, { operandSize: 1 }],
+        [OpCode.JMPLT_L, { operandSize: 4 }],
+        [OpCode.JMPLE, { operandSize: 1 }],
+        [OpCode.JMPLE_L, { operandSize: 4 }],
+        [OpCode.CALL, { operandSize: 1 }],
+        [OpCode.CALL_L, { operandSize: 4 }],
+        [OpCode.CALLT, { operandSize: 2 }],
+        [OpCode.TRY, { operandSize: 2 }],
+        [OpCode.TRY_L, { operandSize: 8 }],
+        [OpCode.ENDTRY, { operandSize: 1 }],
+        [OpCode.ENDTRY_L, { operandSize: 4 }],
+        [OpCode.SYSCALL, { operandSize: 4 }],
+        [OpCode.INITSSLOT, { operandSize: 1 }],
+        [OpCode.INITSLOT, { operandSize: 2 }],
+        [OpCode.LDSFLD, { operandSize: 1 }],
+        [OpCode.STSFLD, { operandSize: 1 }],
+        [OpCode.LDLOC, { operandSize: 1 }],
+        [OpCode.STLOC, { operandSize: 1 }],
+        [OpCode.LDARG, { operandSize: 1 }],
+        [OpCode.STARG, { operandSize: 1 }],
+        [OpCode.NEWARRAY_T, { operandSize: 1 }],
+        [OpCode.ISTYPE, { operandSize: 1 }],
+        [OpCode.CONVERT, { operandSize: 1 }],
+    ]);
+});
+
+export function getAnnotation(opCode: OpCode): OpCodeAnnotation | undefined {
+    return annotationMap.instance.get(opCode);
 }

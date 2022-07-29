@@ -4,8 +4,7 @@ import * as tsmc from "@ts-morph/common";
 import * as fs from 'fs';
 import * as path from 'path';
 import { ContractType, } from "./types/ContractType";
-import { dumpArtifacts, dumpOperations } from "./testUtils";
-import { optimizeReturn } from "./optimizations";
+import { dumpOperations } from "./testUtils";
 import { Immutable } from "./utility/Immutable";
 import { resolveBuiltinsPass } from "./passes/resolveBuiltins";
 import { discoverOperationsPass } from "./passes/discoverOperations";
@@ -362,7 +361,7 @@ function testCompile(source: string, filename: string = "contract.ts") {
             printDiagnostic(results.diagnostics);
         } else {
             if (results.artifacts) {
-                dumpArtifacts(results.artifacts);
+                // dumpArtifacts(results.artifacts);
                 saveArtifacts(artifactPath, filename, source, results.artifacts);
             } else {
                 dumpOperations(results.context.operations);

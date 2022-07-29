@@ -1,8 +1,22 @@
-import { JumpOpCode, OpCode, TryOpCode, } from "./OpCode";
+import { getAnnotation, JumpOpCode, OpCode, toString as opCodeToString, TryOpCode, } from "./OpCode";
 
 export interface Instruction {
     readonly opCode: OpCode,
     readonly operand?: Uint8Array,
+}
+
+export function getSize(ins: Instruction): number {
+    const annotation = getAnnotation(ins.opCode);
+    if (annotation?.operandSize) {
+        return annotation.operandSize + 1;
+    } else if (annotation?.operandSizePrefix) {
+        if (!ins.operand) { 
+            throw new Error(`Invalid operand for ${opCodeToString(ins.opCode)}`); 
+        }
+        return 1 + ins.operand.length;
+    } else {
+        return 1;
+    }
 }
 
 export interface JumpTarget {
@@ -27,15 +41,6 @@ export interface TryInstruction extends Instruction {
 export function isTryInstruction(ins: Instruction): ins is TryInstruction {
     return ins.opCode === OpCode.TRY || ins.opCode === OpCode.TRY_L
 }
-
-// https://melvingeorge.me/blog/convert-array-into-string-literal-union-type-typescript
-export type NeoService = typeof neoServices[number];
-
-// export interface SysCallInstruction extends Instruction {
-//     opCode: OpCode.SYSCALL,
-//     value: NeoService,
-// }
-
 
 // List of services generated via this C# code:
 //      var services = ApplicationEngine.Services.Values.OrderBy(d => d.Name);
@@ -79,3 +84,6 @@ export const neoServices = [
     "System.Storage.GetReadOnlyContext",
     "System.Storage.Put",
 ] as const;
+
+// https://melvingeorge.me/blog/convert-array-into-string-literal-union-type-typescript
+export type NeoService = typeof neoServices[number];

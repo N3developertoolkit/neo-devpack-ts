@@ -1,11 +1,10 @@
-import * as tsm from "ts-morph";
-import { Immutable } from "./utility/Immutable";
-import { CompileArtifacts, OperationInfo } from "./types/CompileContext";
+import { OperationInfo } from "./types/CompileContext";
+import { format } from 'util';
+import { OpCode, toString as printOpCode } from "./types/OpCode";
+import { separateInstructions, sysCallHash } from "./types/OperationBuilder";
+import { Instruction, isJumpInstruction, isTryInstruction, JumpTarget } from "./types/Instruction";
 import { sc } from "@cityofzion/neon-core";
-import * as util from 'util';
-import { OpCode, print as printOpCode } from "./types/OpCode";
-import { isInstruction, isNode, sysCallHash } from "./types/OperationBuilder";
-import { Instruction, isJumpInstruction, isTryInstruction, JumpInstruction, JumpTarget } from "./types/Instruction";
+import * as tsm from "ts-morph";
 
 export enum AnsiEscapeSequences {
     Black = "\u001b[30m",
@@ -39,72 +38,74 @@ export function dumpOperations(operations?: ReadonlyArray<OperationInfo>) {
         const safeStr = op.safe ? ' [safe]' : '';
         console.log(magenta, `${publicStr}${op.name}(${params})${safeStr}`);
 
-        const instructions = op.instructions ?? [];
-        const insOnly = instructions.filter(isInstruction);
+        const [instructions, references] = separateInstructions(op.instructions);
+        const padding = `${instructions.length}`.length;
+
         const instructionsLength = instructions.length;
         for (let i = 0; i < instructionsLength; i++) {
-            const item = instructions[i];
-            if (isNode(item)) {
-                console.log(cyan, `# ${item.print()}`);
-            } else {
-                let msg = printOpCode(item.opCode);
-                if (item.operand) {
-                    msg += ` ${Buffer.from(item.operand).toString('hex')}`;
-                }
-                const comment = getComment(item, insOnly);
-                if (comment) {
-                    msg += util.format(cyan, ` # ${comment}`);
-                }
-                console.log(`${i}: ${msg}`);
+            const ins = instructions[i];
+            const ref = references.get(i);
+            if (ref) {
+                console.log(cyan, `# ${ref.print()}`);
             }
+
+            let msg = printOpCode(ins.opCode);
+            if (ins.operand) {
+                msg += ` ${Buffer.from(ins.operand).toString('hex')}`;
+            }
+            const comment = getComment(ins, instructions);
+            if (comment) {
+                msg += format(cyan, ` # ${comment}`);
+            }
+            console.log(`${i.toString().padStart(padding)}: ${msg}`);
         }
     }
 }
 
-export function dumpArtifacts({ nef, methods }: Immutable<CompileArtifacts>) {
+// export function dumpArtifacts({ nef, methods }: Immutable<CompileArtifacts>) {
 
-    const starts = new Map(methods.map(m => [m.range.start, m]));
-    const ends = new Map(methods.map(m => [m.range.end, m]));
-    const points = new Map<number, tsm.Node>();
-    for (const m of methods) {
-        for (const [address, node] of m.sequencePoints) {
-            points.set(address, node);
-        }
-    }
+//     const starts = new Map(methods.map(m => [m.range.start, m]));
+//     const ends = new Map(methods.map(m => [m.range.end, m]));
+//     const points = new Map<number, tsm.Node>();
+//     for (const m of methods) {
+//         for (const [address, node] of m.sequencePoints) {
+//             points.set(address, node);
+//         }
+//     }
 
-    const opTokens = sc.OpToken.fromScript(nef.script);
-    let address = 0;
-    for (const token of opTokens) {
-        const size = token.toScript().length / 2;
-        address += size;
-    }
+//     const opTokens = sc.OpToken.fromScript(nef.script);
+//     let address = 0;
+//     for (const token of opTokens) {
+//         const size = token.toScript().length / 2;
+//         address += size;
+//     }
 
-    const padding = `${address}`.length;
+//     const padding = `${address}`.length;
 
 
-    address = 0;
-    for (const token of opTokens) {
-        const s = starts.get(address);
-        if (s) { console.log(magenta, `# Method Start ${s.name}`); }
+//     address = 0;
+//     for (const token of opTokens) {
+//         const s = starts.get(address);
+//         if (s) { console.log(magenta, `# Method Start ${s.name}`); }
 
-        const n = points.get(address);
-        if (n) { console.log(cyan, `# ${n.print()}`); }
+//         const n = points.get(address);
+//         if (n) { console.log(cyan, `# ${n.print()}`); }
 
-        let msg = `${address.toString().padStart(padding)}: ${token.prettyPrint()}`;
-        // const comment = getComment(token, address);
-        // if (comment)
-        //     msg += util.format(green, ` # ${comment}`);
-        console.log(msg);
+//         let msg = `${address.toString().padStart(padding)}: ${token.prettyPrint()}`;
+//         // const comment = getComment(token, address);
+//         // if (comment)
+//         //     msg += util.format(green, ` # ${comment}`);
+//         console.log(msg);
 
-        const e = ends.get(address);
-        if (e) { console.log(magenta, `# Method End ${e.name}`); }
+//         const e = ends.get(address);
+//         if (e) { console.log(magenta, `# Method End ${e.name}`); }
 
-        const size = token.toScript().length / 2;
-        address += size;
-    }
-}
+//         const size = token.toScript().length / 2;
+//         address += size;
+//     }
+// }
 
-export function getComment(ins: Instruction, instructions: ReadonlyArray<Instruction>): string | undefined {
+export function getComment(ins: Instruction, instructions: ReadonlyArray<Instruction | tsm.Node>): string | undefined {
 
     function resolveTarget(target: JumpTarget) {
         if (!target.instruction) { return "offset target not set"; }
