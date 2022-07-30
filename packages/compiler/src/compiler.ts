@@ -315,13 +315,13 @@ const artifactPath = path.join(
 function testCompile(source: string, filename: string = "contract.ts") {
 
     const libFolderPath: string | undefined = undefined;
-    const skipLoadingLibFiles: boolean | undefined = true;
+    const skipLoadingLibFiles: boolean | undefined = undefined;
 
-    const defaultLibFileName = "lib.es5.d.ts";
-    const defaultLibSourceCode = tsmc.getLibFiles().find(value => value.fileName === defaultLibFileName)?.text;
-    if (!defaultLibSourceCode) throw new Error();
-    const defaultLibFolder = tsmc.getLibFolderPath({ libFolderPath, skipLoadingLibFiles });
-    const defaultLibPath = path.join(defaultLibFolder, defaultLibFileName);
+    const defaultLibFileName = "lib.es2020.d.ts";
+    // const defaultLibSourceCode = tsmc.getLibFiles().find(value => value.fileName === defaultLibFileName)?.text;
+    // if (!defaultLibSourceCode) throw new Error();
+    // const defaultLibFolder = tsmc.getLibFolderPath({ libFolderPath, skipLoadingLibFiles });
+    // const defaultLibPath = path.join(defaultLibFolder, defaultLibFileName);
 
     const scfxPath = '/node_modules/@neo-project/neo-contract-framework/index.d.ts';
     const scfxActualPath = path.join(__dirname, "../../framework/src/index.d.ts");
@@ -331,13 +331,15 @@ function testCompile(source: string, filename: string = "contract.ts") {
         compilerOptions: {
             experimentalDecorators: true,
             lib: [defaultLibFileName],
+            target: tsm.ts.ScriptTarget.ES2020,
+            moduleResolution: tsm.ts.ModuleResolutionKind.NodeJs,
         },
         useInMemoryFileSystem: true,
         libFolderPath,
         skipLoadingLibFiles
     });
 
-    project.getFileSystem().writeFileSync(defaultLibPath, defaultLibSourceCode);
+    // project.getFileSystem().writeFileSync(defaultLibPath, defaultLibSourceCode);
     project.getFileSystem().writeFileSync(scfxPath, scfxSourceCode);
     project.createSourceFile(filename, source);
     project.resolveSourceFileDependencies();
@@ -349,12 +351,12 @@ function testCompile(source: string, filename: string = "contract.ts") {
     if (diagnostics.length > 0) {
         printDiagnostic(diagnostics.map(d => d.compilerObject));
     } else {
-        const defaultLibSourceFile = project.getSourceFileOrThrow(defaultLibPath);
+        // const defaultLibSourceFile = project.getSourceFileOrThrow(defaultLibPath);
         const scfxLibSourceFile = project.getSourceFileOrThrow(scfxPath);
         const results = compile({
             project,
             declarationFiles: [
-                defaultLibSourceFile,
+                // defaultLibSourceFile,
                 scfxLibSourceFile]
         });
         if (results.diagnostics.length > 0) {
@@ -383,20 +385,24 @@ export function symbol() { return "TOKEN"; }
 /** @safe */
 export function decimals() { return 8; }
 
-/** @safe */
-export function getValue() { 
-    return neo.Storage.get(neo.Storage.currentContext, Uint8Array.from([0x00])); 
+export function mint(account: Uint8Array, amount: bigint): void {
+    if (amount === 0n) return;
 }
 
-export function setValue(value: string) { 
-    neo.Storage.put(neo.Storage.currentContext, Uint8Array.from([0x00]), value); 
-}
+// /** @safe */
+// export function getValue() { 
+//     return neo.Storage.get(neo.Storage.currentContext, Uint8Array.from([0x00])); 
+// }
 
-/** @safe */
-export function helloWorld() { return "Hello, World!"; }
+// export function setValue(value: string) { 
+//     neo.Storage.put(neo.Storage.currentContext, Uint8Array.from([0x00]), value); 
+// }
 
-/** @safe */
-export function sayHello(name: string) { return "Hello, " + name + "!"; }
+// /** @safe */
+// export function helloWorld() { return "Hello, World!"; }
+
+// /** @safe */
+// export function sayHello(name: string) { return "Hello, " + name + "!"; }
 `;
 
     testCompile(contractSource);

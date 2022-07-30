@@ -1,7 +1,7 @@
 import * as tsm from "ts-morph";
 import { bigIntToByteArray } from "../utils";
 import { Instruction, JumpInstruction, JumpTarget, NeoService } from "./Instruction";
-import { OpCode } from "./OpCode";
+import { JumpOpCode, OpCode } from "./OpCode";
 
 export interface NodeSetter {
     set(node?: tsm.Node): void;
@@ -237,9 +237,17 @@ export class OperationBuilder {
         return this.push({ opCode, operand });
     }
 
-    pushJump(target: JumpTarget) {
+    pushJump(target: JumpTarget): NodeSetterWithInstruction;
+    pushJump(opCode: OpCode, target: JumpTarget): NodeSetterWithInstruction;
+    pushJump(arg1: OpCode | JumpTarget, arg2?: JumpTarget): NodeSetterWithInstruction {
+        const opCode = typeof arg1 === 'number' ? arg1 : OpCode.JMP_L;
+        const target = typeof arg1 === 'number' ? arg2 : arg1;
+        if (!target) throw new Error('undefined JumpTarget');
         this._targets.add(target);
-        const ins: JumpInstruction = { opCode:OpCode.JMP_L, target };
+        const ins: JumpInstruction = { 
+            opCode:opCode as JumpOpCode, 
+            target
+        };
         return this.push(ins);
     }
 }

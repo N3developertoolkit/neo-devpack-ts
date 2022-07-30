@@ -1,4 +1,3 @@
-import { u } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
 
 const checkFlags = (type: tsm.Type, flags: tsm.ts.TypeFlags) => type.getFlags() & flags;

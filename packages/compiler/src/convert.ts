@@ -1,6 +1,3 @@
-// import { sc, u } from "@cityofzion/neon-core";
-import { sc, u } from "@cityofzion/neon-core";
-import { nodeModuleNameResolver } from "@ts-morph/common/lib/typescript";
 import * as tsm from "ts-morph";
 import { CompileError } from "./compiler";
 import { CompileContext, OperationInfo } from "./types/CompileContext";
@@ -8,7 +5,7 @@ import { JumpTarget } from "./types/Instruction";
 import { OpCode } from "./types/OpCode";
 import { OperationBuilder, SlotType } from "./types/OperationBuilder";
 import { Immutable } from "./utility/Immutable";
-import { bigIntToByteArray, isStringLike } from "./utils";
+import { isBigIntLike, isStringLike } from "./utils";
 
 export interface ConverterOptions {
     context: Immutable<CompileContext>,
@@ -17,7 +14,7 @@ export interface ConverterOptions {
     returnTarget: JumpTarget,
 };
 
-export type ConvertFunction<TNode extends tsm.Node> = (node: TNode, options: ConverterOptions) => void;
+type ConvertFunction<TNode extends tsm.Node> = (node: TNode, options: ConverterOptions) => void;
 
 type NodeConvertMap = {
     [TKind in tsm.SyntaxKind]?: ConvertFunction<tsm.KindToNodeMappings[TKind]>
@@ -25,6 +22,7 @@ type NodeConvertMap = {
 
 function resolveSymbol(symbol: tsm.Symbol | undefined, options: ConverterOptions): ConvertFunction<tsm.Node> | undefined {
     if (!symbol) return undefined;
+
     const { context: { builtins } } = options;
     const builtIn = builtins?.symbols.get(symbol);
     if (builtIn) return builtIn;
@@ -54,6 +52,7 @@ export function convertStatement(node: tsm.Statement, options: ConverterOptions)
     return dispatch(node.getKind(), {
         [tsm.SyntaxKind.Block]: convertBlock,
         [tsm.SyntaxKind.ExpressionStatement]: convertExpressionStatement,
+        [tsm.SyntaxKind.IfStatement]: convertIfStatement,
         [tsm.SyntaxKind.ReturnStatement]: convertReturnStatement,
     })
 
@@ -101,6 +100,27 @@ function convertExpressionStatement(node: tsm.ExpressionStatement, options: Conv
 // case SyntaxKind.ForStatement:
 // case SyntaxKind.FunctionDeclaration:
 // case SyntaxKind.IfStatement:
+function convertIfStatement(node: tsm.IfStatement, options: ConverterOptions) {
+    const { builder } = options;
+    const elseTarget:JumpTarget = { instruction: undefined };
+    const nodeSetter = builder.getNodeSetter();
+    const expr = node.getExpression();
+    convertExpression(expr, options);
+    nodeSetter.set(expr);
+    builder.pushJump(OpCode.JMPIFNOT_L, elseTarget);
+    convertStatement(node.getThenStatement(), options);
+    const _else = node.getElseStatement();
+    if (_else) {
+        const endTarget:JumpTarget = { instruction: undefined };
+        builder.pushJump(endTarget);
+        elseTarget.instruction = builder.push(OpCode.NOP).instruction;
+        convertStatement(_else, options);
+        endTarget.instruction = builder.push(OpCode.NOP).instruction;
+    } else {
+        elseTarget.instruction = builder.push(OpCode.NOP).instruction;
+    } 
+}
+
 // case SyntaxKind.ImportDeclaration:
 // case SyntaxKind.ImportEqualsDeclaration:
 // case SyntaxKind.InterfaceDeclaration:
@@ -130,6 +150,7 @@ export function convertExpression(node: tsm.Expression, options: ConverterOption
 
     return dispatch(node.getKind(), {
         // [tsm.SyntaxKind.ArrayLiteralExpression]: convertArrayLiteralExpression,
+        [tsm.SyntaxKind.BigIntLiteral]: convertBigIntLiteral,
         [tsm.SyntaxKind.BinaryExpression]: convertBinaryExpression,
         [tsm.SyntaxKind.CallExpression]: convertCallExpression,
         [tsm.SyntaxKind.Identifier]: convertIdentifier,
@@ -212,7 +233,7 @@ export function parseArrayLiteral(node: tsm.ArrayLiteralExpression) {
 // [SyntaxKind.BigIntLiteral]: BigIntLiteral;
 function convertBigIntLiteral(node: tsm.BigIntLiteral, options: ConverterOptions) {
     const { builder } = options;
-    const literal = BigInt(node.getLiteralText());
+    const literal = node.getLiteralValue() as bigint;
     builder.pushInt(literal);
 }
 
@@ -238,12 +259,19 @@ function convertBinaryExpression(node: tsm.BinaryExpression, options: ConverterO
         right: tsm.Type
     ): OpCode {
         switch (op.getKind()) {
+            case tsm.SyntaxKind.EqualsEqualsToken:
+            case tsm.SyntaxKind.EqualsEqualsEqualsToken: {
+                if (isBigIntLike(left) && isBigIntLike(right)) {
+                    return OpCode.NUMEQUAL;
+                }
+                throw new Error(`convertBinaryOperator.${op.getKindName()} not implemented for ${left.getText()} and ${right.getText()}`);
+            }
+            case tsm.SyntaxKind.LessThanToken: return OpCode.LT;
             case tsm.SyntaxKind.PlusToken: {
                 if (isStringLike(left) && isStringLike(right)) {
                     return OpCode.CAT;
-                } else {
-                    throw new Error(`convertBinaryOperator.PlusToken not implemented for ${left.getText()} and ${right.getText()}`);
-                }
+                } 
+                throw new Error(`convertBinaryOperator.PlusToken not implemented for ${left.getText()} and ${right.getText()}`);
             }
             default:
                 throw new Error(`convertOperator ${op.getKindName()} not implemented`);
