@@ -16,13 +16,7 @@ export interface ConverterOptions {
     returnTarget: JumpTarget,
 };
 
-type ConvertFunction<TNode extends tsm.Node> = (node: TNode, options: ConverterOptions) => void;
-
-type NodeConvertMap = {
-    [TKind in tsm.SyntaxKind]?: ConvertFunction<tsm.KindToNodeMappings[TKind]>
-};
-
-function resolveInteropCall(signature: tsm.MethodSignature | tsm.PropertySignature, options: ConverterOptions): ConvertFunction<tsm.Node> | undefined {
+function getInteropCallInfo(signature: tsm.MethodSignature | tsm.PropertySignature) {
     const calls = new Array<(builder: OperationBuilder) => void>();
 
     for (const doc of signature.getJsDocs()) {
@@ -37,147 +31,152 @@ function resolveInteropCall(signature: tsm.MethodSignature | tsm.PropertySignatu
         }
     }
 
-    return calls.length === 0 ? undefined
-        : (node, options) => {
-            const { builder } = options;
+    return calls.length > 0 ? calls : undefined;
+    // : (node, options) => {
+    //     const { builder } = options;
 
-            if (tsm.Node.isCallExpression(node)) {
-                if (!signature.isKind(tsm.SyntaxKind.MethodSignature)) {
-                    throw new CompileError("expected method", node);
-                }
+    //     if (tsm.Node.isCallExpression(node)) {
+    //         if (!signature.isKind(tsm.SyntaxKind.MethodSignature)) {
+    //             throw new CompileError("expected method", node);
+    //         }
 
-                const args = node.getArguments();
-                const argsLength = args.length;
-                for (let i = argsLength - 1; i >= 0; i--) {
-                    const arg = args[i];
-                    if (tsm.Node.isExpression(arg)) {
-                        convertExpression(arg, options);
-                    } else {
-                        throw new CompileError(`Expected expression, got ${arg.getKindName()}`, arg);
-                    }
-                }
-            } else if (tsm.Node.isPropertyAccessExpression(node)) {
-                if (!signature.isKind(tsm.SyntaxKind.PropertySignature)) {
-                    throw new CompileError("expected property", node);
-                }
-            } else {
-                throw new Error(`Invalid SysCall node ${node.getKindName()}`);
-            }
+    //         const args = node.getArguments();
+    //         const argsLength = args.length;
+    //         for (let i = argsLength - 1; i >= 0; i--) {
+    //             const arg = args[i];
+    //             if (tsm.Node.isExpression(arg)) {
+    //                 convertExpression(arg, options);
+    //             } else {
+    //                 throw new CompileError(`Expected expression, got ${arg.getKindName()}`, arg);
+    //             }
+    //         }
+    //     } else if (tsm.Node.isPropertyAccessExpression(node)) {
+    //         if (!signature.isKind(tsm.SyntaxKind.PropertySignature)) {
+    //             throw new CompileError("expected property", node);
+    //         }
+    //     } else {
+    //         throw new Error(`Invalid SysCall node ${node.getKindName()}`);
+    //     }
 
-            for (const call of calls) { call(builder); }
-        }
+    //     for (const call of calls) { call(builder); }
+    // }
 }
 
-
-function resolveSymbolDeclaration(decl: tsm.Node, name: string, options: ConverterOptions): ConvertFunction<tsm.Node> | undefined {
-
-    if (!decl.getSourceFile().isDeclarationFile()) { return undefined; }
-
-    if (tsm.Node.isMethodSignature(decl) || tsm.Node.isPropertySignature(decl)) {
-        const interopCall = resolveInteropCall(decl, options);
-        if (interopCall) { return interopCall; }
-    }
-
+function getBuiltIn(decl: tsm.Node, name: string) {
     const ancestors = decl.getAncestors()
-        .filter(n => !n.isKind(tsm.SyntaxKind.SourceFile))
-        .map(a => a.getSymbol()?.getName() ?? "<undefined>");
+        .filter(n => !n.isKind(tsm.SyntaxKind.SourceFile));
 
-    if (ancestors.length == 1) {
-        const parent = builtins[ancestors[0]];
+    if (ancestors.length === 1) {
+        const parentName = ancestors[0].getSymbol()?.getName();
+        const parent = parentName ? builtins[parentName] : undefined;
         if (parent) {
-            const func = parent[name];
-            if (func) { return func; }
-        }
-    }
-
-    ancestors.reverse();
-    ancestors.push(name);
-    return (node, options) => {
-        throw new CompileError(`${ancestors.join('.')} not defined`, node);
-    };
-}
-
-interface ResolvedSymbol {
-    get?: (options: ConverterOptions) => void;
-    call?: (args: Array<tsm.Node>, options: ConverterOptions) => void;
-}
-
-function resolveSymbol(symbol: tsm.Symbol) : ResolvedSymbol | undefined {
-    const decl = symbol.getValueDeclaration();
-    if (!decl) return undefined;
-
-    if (tsm.Node.isParameterDeclaration(decl)) {
-        const parent = decl.getParent();
-        if (tsm.Node.isFunctionLikeDeclaration(parent)) {
-            const index = parent.getParameters()
-                .findIndex(p => p.getSymbol() === symbol);
-            if (index >= 0) {
-                return {
-                    get: (options) => {
-                        const { builder } = options;
-                        builder.pushLoad(SlotType.Parameter, index);
-                    }
-                };
-            }
+            const memberFunc = parent[name];
+            if (memberFunc) { return memberFunc; }
         }
     }
 
     return undefined;
 }
 
-function resolveIdentifier(node: tsm.Identifier) : ResolvedSymbol | undefined {
-    const symbol = node.getSymbol();
-    return symbol ? resolveSymbol(symbol) : undefined;
+type ResolvedSymbol = (options: ConverterOptions, args?: Array<tsm.Node>) => void;
+
+function pushArguments(args: Array<tsm.Node>, options: ConverterOptions) {
+    const argsLength = args.length;
+    for (let i = argsLength - 1; i >= 0; i--) {
+        const arg = args[i];
+        if (!tsm.Node.isExpression(arg)) {
+            throw new CompileError(`Expected expression, got ${arg.getKindName()}`, arg);
+        }
+        convertExpression(arg, options);
+    }
 }
 
-// function resolveSymbol(symbol: tsm.Symbol | undefined, options: ConverterOptions): ConvertFunction<tsm.Node> | undefined {
-//     if (!symbol) { return undefined; }
-//     const decl = symbol.getValueDeclaration();
-//     if (!decl) { return undefined; }
+function resolveSymbol(symbol: tsm.Symbol | undefined): ResolvedSymbol {
+    if (!symbol) throw new Error("Invalid symbol");
+    const decl = symbol.getValueDeclaration();
+    if (!decl) throw new Error(`value decl for ${symbol.getName()} not found`);
 
-//     const declFunc = resolveSymbolDeclaration(decl, symbol.getName(), options);
-//     if (declFunc) { return declFunc; }
+    if (tsm.Node.isParameterDeclaration(decl)) {
+        const parent = decl.getParent();
+        if (tsm.Node.isParametered(parent)) {
+            const params = parent.getParameters();
+            const index = params.findIndex(p => symbol === p.getSymbol());
+            if (index >= 0) {
+                return (options, args) => {
+                    if (args !== undefined) throw new Error("arguments not supported for resolved parameter");
+                    options.builder.pushLoad(SlotType.Parameter, index);
+                }
+            }
+        }
+    }
 
-//     if (tsm.Node.isParameterDeclaration(decl)) {
-//         const parent = decl.getParent();
-//         if (tsm.Node.isFunctionLikeDeclaration(parent)) {
-//             const index = parent.getParameters()
-//                 .findIndex(p => p.getSymbol() === symbol);
-//             if (index >= 0) {
-//                 return (_node, options) => {
-//                     const { builder } = options;
-//                     builder.pushLoad(SlotType.Parameter, index);
-//                 }
-//             }
-//         }
-//     }
+    const foo = decl.getKindName();
+    const isDeclFile = decl.getSourceFile().isDeclarationFile();
+    if (tsm.Node.isFunctionDeclaration(decl)) {
+        if (!isDeclFile) {
+            return (options, args) => {
+                if (args === undefined) throw new CompileError("arguments missing", decl);
+                const op = options.context.operations!.find(op => op.node.getSymbol() === symbol);
+                if (!op) throw new CompileError(`failed to resolve`, decl);
 
-//     if (tsm.Node.isFunctionDeclaration(decl)) {
-//         const { context: { operations = [] } } = options;
-//         for (const op of operations) {
-//             if (op.node.getSymbol() === symbol) {
-//                 const i = 0;
-//             }
-//         }
-//     }
+                pushArguments(args, options);
+                options.builder.pushCall(op);
+            }
+        }
+    }
 
-//     return undefined;
-// }
+    if (tsm.Node.isMethodSignature(decl)) {
+        if (isDeclFile) {
+            const calls = getInteropCallInfo(decl);
+            if (calls && calls.length > 0) {
+                return (options, args) => {
+                    if (args === undefined) throw new CompileError("arguments missing", decl);
 
-// function resolveIdentifier(node: tsm.Identifier) {
-//     const symbol = node.getSymbol();
-//     if (!symbol) return undefined;
-//     const decl = symbol.getValueDeclaration();
-//     if (!decl) return undefined;
+                    pushArguments(args, options);
+                    const builder = options.builder;
+                    for (const call of calls) { call(builder); }
+                }
+            }
 
-//     if (decl.getSourceFile().isDeclarationFile()) {
-//         //declaration
-//     } else {
-//         // implementation
-//     }
+            const builtin = getBuiltIn(decl, symbol.getName());
+            if (builtin) {
+                return builtin;
+            }
+        }
+    }
 
+    if (tsm.Node.isPropertySignature(decl)) {
+        if (isDeclFile) {
+            const calls = getInteropCallInfo(decl);
+            if (calls && calls.length > 0) {
+                return (options, args) => {
+                    if (args !== undefined) throw new CompileError("arguments provided", decl);
 
-// }
+                    const builder = options.builder;
+                    for (const call of calls) { call(builder); }
+                }
+            }
+        }
+    }
+
+    throw new Error(`failed to resolve "${symbol.getName()}" symbol`);
+}
+
+function resolve(node: tsm.Node) {
+    if (tsm.Node.isIdentifier(node)) {
+        return resolveSymbol(node.getSymbol());
+    }
+    if (tsm.Node.isPropertyAccessExpression(node)) {
+        return resolveSymbol(node.getNameNode().getSymbol());
+    }
+    throw new CompileError(`failed to resolve ${node.getKindName()}`, node);
+}
+
+type ConvertFunction<TNode extends tsm.Node> = (node: TNode, options: ConverterOptions) => void;
+
+type NodeConvertMap = {
+    [TKind in tsm.SyntaxKind]?: ConvertFunction<tsm.KindToNodeMappings[TKind]>
+};
 
 export function convertStatement(node: tsm.Statement, options: ConverterOptions): void {
 
@@ -345,7 +344,7 @@ function parseArrayLiteral(node: tsm.ArrayLiteralExpression) {
 }
 
 // [SyntaxKind.ArrayLiteralExpression]: ArrayLiteralExpression;
-function convertArrayLiteralExpression(node: tsm.ArrayLiteralExpression, options: ConverterOptions) {
+export function convertArrayLiteralExpression(node: tsm.ArrayLiteralExpression, options: ConverterOptions) {
     const { builder } = options;
 
     const buffer = parseArrayLiteral(node);
@@ -434,44 +433,13 @@ function convertBinaryExpression(node: tsm.BinaryExpression, options: ConverterO
 // [SyntaxKind.CallExpression]: CallExpression;
 function convertCallExpression(node: tsm.CallExpression, options: ConverterOptions) {
 
-    // const args = node.getArguments();
-    // const argsLength = args.length;
-    // for (let i = argsLength - 1; i >= 0; i--) {
-    //     const arg = args[i];
-    //     if (!tsm.Node.isExpression(arg)) { 
-    //         throw new CompileError(`Expected expression, got ${arg.getKindName()}`, arg); 
-    //     }
-    //     convertExpression(arg, options);
-    // }
-
-    // const symbol = getSymbol(node.getExpression());
-    // const foo = resolveCall(symbol);
-    // if (foo) {
-    //     foo(node.getArguments(), options);
-    // }
-    // const convertFunc = resolveSymbol(symbol, options);
-    // if (convertFunc) {
-    //     convertFunc(node, options);
-    //     return;
-    // }
-
     const resolved = resolve(node.getExpression());
-    if (resolved && resolved.call) {
-        resolved.call(node.getArguments(), options);
+    if (resolved) {
+        resolved(options, node.getArguments());
         return;
     }
-    // const expr = node.getExpression();
-    // const kind = expr.getKindName();
 
-    // const { builder } = options;
-    // builder.push(OpCode.NOP);
     throw new CompileError('convertCallExpression not implemented', node);
-
-    function resolve(expr: tsm.Expression) {
-        if (tsm.Node.isIdentifier(expr)) { return resolveIdentifier(expr); }
-        if (tsm.Node.isPropertyAccessExpression(expr)) { return resolveIdentifier(expr.getNameNode()); }
-        throw new CompileError("Woops", node);
-    }
 }
 
 // [SyntaxKind.ClassExpression]: ClassExpression;
@@ -483,26 +451,11 @@ function convertCallExpression(node: tsm.CallExpression, options: ConverterOptio
 // [SyntaxKind.Identifier]: Identifier;
 function convertIdentifier(node: tsm.Identifier, options: ConverterOptions) {
 
-    const resolved = resolveIdentifier(node);
-    if (resolved && resolved.get) {
-        resolved.get(options);
+    const resolved = resolve(node);
+    if (resolved) {
+        resolved(options);
         return;
     }
-
-    // const { builder } = options;
-
-    // const symbol = node.getSymbol();
-    // if (symbol) {
-    //     const decl = symbol.getValueDeclaration();
-    //     if (decl) {
-    //         if (tsm.Node.isParameterDeclaration(decl)) {
-    //             const parent = decl.getParent().asKindOrThrow(tsm.SyntaxKind.FunctionDeclaration);
-    //             const index = parent.getParameters().findIndex(p => p.getSymbol() === symbol);
-    //             builder.pushLoad(SlotType.Parameter, index);
-    //             return;
-    //         }
-    //     }
-    // }
 
     throw new CompileError('convertIdentifier not implemented', node);
 }
@@ -535,27 +488,12 @@ function convertNumericLiteral(node: tsm.NumericLiteral, options: ConverterOptio
 // [SyntaxKind.PropertyAccessExpression]: PropertyAccessExpression;
 function convertPropertyAccessExpression(node: tsm.PropertyAccessExpression, options: ConverterOptions) {
 
-    const resolved = resolveIdentifier(node.getNameNode());
-    if (resolved && resolved.get) {
-        resolved.get(options);
+    const resolved = resolve(node.getNameNode());
+    if (resolved) {
+        resolved(options);
         return;
     }
 
-
-
-    // const symbol = node.getNameNode().getSymbol()
-    // const func = resolveSymbol(symbol, options);
-    // if (func) {
-    //     func(node, options);
-    //     return;
-    // }
-
-    // const foo = resolveIdentifier(node.getNameNode());
-    // const expr = node.getNameNode();
-
-    // const { builder } = options;
-    
-    // builder.push(OpCode.NOP);
     throw new CompileError(`convertPropertyAccessExpression not implemented`, node);
 }
 

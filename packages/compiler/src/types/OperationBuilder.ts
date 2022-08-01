@@ -1,6 +1,8 @@
 import * as tsm from "ts-morph";
+import { Immutable } from "../utility/Immutable";
 import { bigIntToByteArray } from "../utils";
-import { Instruction, JumpInstruction, JumpTarget, NeoService } from "./Instruction";
+import { OperationInfo } from "./CompileContext";
+import { CallInstruction, Instruction, JumpInstruction, JumpTarget, NeoService } from "./Instruction";
 import { JumpOpCode, OpCode } from "./OpCode";
 import { StackItemType } from "./StackItem";
 
@@ -19,8 +21,8 @@ export const enum SlotType {
 const pushIntSizes = [1, 2, 4, 8, 16, 32] as const;
 
 export const sysCallHash: Record<NeoService, number> = {
-    ["System.Contract.Call"]: 1381727586, 
-    ["System.Contract.CallNative"]: 1736177434, 
+    ["System.Contract.Call"]: 1381727586,
+    ["System.Contract.CallNative"]: 1736177434,
     ["System.Contract.CreateMultisigAccount"]: 166277994,
     ["System.Contract.CreateStandardAccount"]: 42441167,
     ["System.Contract.GetCallFlags"]: 2168117909,
@@ -66,7 +68,7 @@ export function isInstruction(input: Instruction | tsm.Node): input is Instructi
 
 export function separateInstructions(
     items?: ReadonlyArray<Instruction | tsm.Node>
-) : [ReadonlyArray<Instruction>, ReadonlyMap<number, tsm.Node>] {
+): [ReadonlyArray<Instruction>, ReadonlyMap<number, tsm.Node>] {
     if (!items) return [[], new Map()];
 
     const instructions = items.filter(isInstruction);
@@ -74,7 +76,7 @@ export function separateInstructions(
 
     return [instructions, references];
 
-    function *iterateRefs(instructions: ReadonlyArray<Instruction | tsm.Node>): IterableIterator<[number, tsm.Node]> {
+    function* iterateRefs(instructions: ReadonlyArray<Instruction | tsm.Node>): IterableIterator<[number, tsm.Node]> {
         if (!items) throw new Error();
 
         const length = items.length;
@@ -85,7 +87,7 @@ export function separateInstructions(
                 if (next && isInstruction(next)) {
                     const index = instructions.indexOf(next);
                     if (index >= 0) {
-                        yield [ index, item ];
+                        yield [index, item];
                     }
                 }
             }
@@ -105,9 +107,9 @@ export class OperationBuilder {
         const instructions = [...this._instructions];
 
         if (this.localCount > 0 || this.paramCount > 0) {
-            instructions.unshift({ 
-                opCode: OpCode.INITSLOT, 
-                operand:Uint8Array.from([this.localCount, this.paramCount])
+            instructions.unshift({
+                opCode: OpCode.INITSLOT,
+                operand: Uint8Array.from([this.localCount, this.paramCount])
             });
         }
 
@@ -142,6 +144,20 @@ export class OperationBuilder {
                 if (node) { this._instructions.splice(index, 0, node); }
             }
         }
+    }
+
+    pushCall(operation: Immutable<OperationInfo>) {
+        const ins: CallInstruction = {
+            opCode: OpCode.CALL_L,
+            operation
+        };
+        return this.push(ins);
+    }
+
+    pushConvert(type: StackItemType) {
+        const opCode = OpCode.CONVERT;
+        const operand = Uint8Array.from([type]);
+        return this.push({ opCode, operand });
     }
 
     pushData(data: string | Uint8Array) {
@@ -205,6 +221,23 @@ export class OperationBuilder {
         throw new Error(`pushInt buffer length ${buffer.length} too long`)
     }
 
+    pushJump(target: JumpTarget): NodeSetterWithInstruction;
+    pushJump(opCode: JumpOpCode, target: JumpTarget): NodeSetterWithInstruction;
+    pushJump(...args:
+        [target: JumpTarget] |
+        [opCode: JumpOpCode, target: JumpTarget]
+    ): NodeSetterWithInstruction {
+        const [opCode, target] = args.length === 1
+            ? [OpCode.JMP_L as JumpOpCode, args[0]]
+            : args;
+        this._targets.add(target);
+        const ins: JumpInstruction = {
+            opCode,
+            target
+        };
+        return this.push(ins);
+    }
+
     pushLoad(slotType: SlotType, index: number) {
         let opCode = slotType === SlotType.Parameter
             ? OpCode.LDARG0
@@ -223,19 +256,6 @@ export class OperationBuilder {
         return this.pushLoadStoreHelper(opCode, index);
     }
 
-    private pushLoadStoreHelper(opCode: OpCode, index: number) {
-        if (index < 0) throw new Error(`Invalid negative slot index ${index}`);
-        if (index <= 6) { return this.push(opCode + index); }
-        const operand = Uint8Array.from([index]);
-        return this.push({ opCode: opCode + 7, operand });
-    }
-
-    pushConvert(type: StackItemType) {
-        const opCode = OpCode.CONVERT;
-        const operand = Uint8Array.from([type]);
-        return this.push({ opCode, operand });        
-    }
-
     pushSysCall(sysCall: NeoService) {
         const opCode = OpCode.SYSCALL;
         const hash = sysCallHash[sysCall];
@@ -244,17 +264,10 @@ export class OperationBuilder {
         return this.push({ opCode, operand });
     }
 
-    pushJump(target: JumpTarget): NodeSetterWithInstruction;
-    pushJump(opCode: OpCode, target: JumpTarget): NodeSetterWithInstruction;
-    pushJump(arg1: OpCode | JumpTarget, arg2?: JumpTarget): NodeSetterWithInstruction {
-        const opCode = typeof arg1 === 'number' ? arg1 : OpCode.JMP_L;
-        const target = typeof arg1 === 'number' ? arg2 : arg1;
-        if (!target) throw new Error('undefined JumpTarget');
-        this._targets.add(target);
-        const ins: JumpInstruction = { 
-            opCode:opCode as JumpOpCode, 
-            target
-        };
-        return this.push(ins);
+    private pushLoadStoreHelper(opCode: OpCode, index: number) {
+        if (index < 0) throw new Error(`Invalid negative slot index ${index}`);
+        if (index <= 6) { return this.push(opCode + index); }
+        const operand = Uint8Array.from([index]);
+        return this.push({ opCode: opCode + 7, operand });
     }
 }

@@ -2,7 +2,7 @@ import { OperationInfo } from "./types/CompileContext";
 import { format } from 'util';
 import { OpCode, toString as printOpCode } from "./types/OpCode";
 import { separateInstructions, sysCallHash } from "./types/OperationBuilder";
-import { Instruction, isJumpInstruction, isTryInstruction, JumpTarget } from "./types/Instruction";
+import { Instruction, isCallInstruction, isJumpInstruction, isTryInstruction, JumpTarget } from "./types/Instruction";
 import { toString as printStackItemType } from "./types/StackItem";
 import * as tsm from "ts-morph";
 
@@ -114,6 +114,9 @@ export function getComment(ins: Instruction, instructions: ReadonlyArray<Instruc
     }
 
     if (isJumpInstruction(ins)) { return resolveTarget(ins.target); }
+    if (isCallInstruction(ins)) {
+        return `call ${ins.operation.name}`;
+    }
     if (isTryInstruction(ins)) {
         const catchResolved = resolveTarget(ins.catchTarget);
         const finallyResolved = resolveTarget(ins.finallyTarget);

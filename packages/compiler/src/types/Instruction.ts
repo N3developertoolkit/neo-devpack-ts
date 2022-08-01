@@ -1,3 +1,5 @@
+import { Immutable } from "../utility/Immutable";
+import { OperationInfo } from "./CompileContext";
 import { getAnnotation, JumpOpCode, OpCode, toString as opCodeToString, TryOpCode, } from "./OpCode";
 
 export interface Instruction {
@@ -30,6 +32,15 @@ export interface JumpInstruction extends Instruction {
 
 export function isJumpInstruction(ins: Instruction): ins is JumpInstruction {
     return OpCode.JMP <= ins.opCode && ins.opCode <= OpCode.JMPLE_L;
+}
+
+export interface CallInstruction extends Instruction {
+    readonly opCode: OpCode.CALL | OpCode.CALL_L,
+    readonly operation: Immutable<OperationInfo>, 
+}
+
+export function isCallInstruction(ins: Instruction): ins is CallInstruction {
+    return ins.opCode == OpCode.CALL || ins.opCode == OpCode.CALL_L;
 }
 
 export interface TryInstruction extends Instruction {
