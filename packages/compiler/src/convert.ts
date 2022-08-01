@@ -118,6 +118,15 @@ function resolveSymbol(symbol: tsm.Symbol | undefined, options: ConverterOptions
         }
     }
 
+    if (tsm.Node.isFunctionDeclaration(decl)) {
+        const { context: { operations = [] } } = options;
+        for (const op of operations) {
+            if (op.node.getSymbol() === symbol) {
+                const i = 0;
+            }
+        }
+    }
+
     return undefined;
 }
 
@@ -220,13 +229,24 @@ function convertThrowStatement(node: tsm.ThrowStatement, options: ConverterOptio
     const nodeSetter = builder.getNodeSetter();
 
     var expr = node.getExpression();
-    if (tsm.Node.isNewExpression(expr)) {
+    if (tsm.Node.isNewExpression(expr)
+        // TODO: More robust expression type resolution
+        && expr.getType().getText() === "Error") {
 
+        const args = expr.getArguments();
+        if (args.length === 0) {
+            builder.pushData("unknown error");
+        }
+        if (tsm.Node.isStringLiteral(args[0])) {
+            convertExpression(args[0], options);
+            builder.push(OpCode.THROW);
+            nodeSetter.set(node);
+            return;
+        }
     }
 
-    builder.pushData("some shit happened");
-    builder.push(OpCode.THROW);
-    nodeSetter.set(node);
+    throw new CompileError(`Throw Statement not implemented`, node)
+
 }
 
 // case SyntaxKind.TryStatement:
@@ -367,6 +387,13 @@ function convertCallExpression(node: tsm.CallExpression, options: ConverterOptio
     // const { context: { builtins } } = options;
 
     const expr = node.getExpression();
+    if (tsm.Node.isIdentifier(expr)) {
+        const func = resolveSymbol(expr.getSymbol(), options);
+        if (func) {
+            func(node, options);
+            return;
+        }
+    }
     if (tsm.Node.isPropertyAccessExpression(expr)) {
         const func = resolveSymbol(expr.getNameNode().getSymbol(), options);
         if (func) {
