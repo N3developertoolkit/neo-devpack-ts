@@ -2,7 +2,6 @@ import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
 import { DebugMethodInfo } from "./DebugInfo";
 import { Immutable } from "../utility/Immutable";
-import { Builtins } from "../passes/resolveBuiltins";
 import { Instruction } from "./Instruction";
 
 export interface CompileContext {
@@ -10,7 +9,6 @@ export interface CompileContext {
     readonly declarationFiles: ReadonlyArray<tsm.SourceFile>,
     readonly options: Readonly<Pick<CompileOptions, 'addressVersion' | 'inline' | 'optimize'>>
     name?: string,
-    builtins?: Builtins,
     operations?: Array<OperationInfo>,
     staticFields?: Array<StaticField>,
     diagnostics: Array<tsm.ts.Diagnostic>,

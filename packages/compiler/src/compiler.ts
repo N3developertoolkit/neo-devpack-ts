@@ -6,7 +6,6 @@ import * as path from 'path';
 import { ContractType, } from "./types/ContractType";
 import { dumpOperations } from "./testUtils";
 import { Immutable } from "./utility/Immutable";
-import { resolveBuiltinsPass } from "./passes/resolveBuiltins";
 import { discoverOperationsPass } from "./passes/discoverOperations";
 import { processOperationsPass } from "./passes/processOperations";
 import { CompileArtifacts, CompileContext, CompileOptions, CompileResults, OperationInfo } from "./types/CompileContext";
@@ -39,7 +38,6 @@ function compile(options: CompileOptions): CompileResults {
 
     type CompilePass = (context: CompileContext) => void;
     const passes: ReadonlyArray<CompilePass> = [
-        resolveBuiltinsPass,
         discoverOperationsPass,
         processOperationsPass,
         optimizePass,
@@ -387,22 +385,23 @@ export function decimals() { return 8; }
 
 export function mint(account: Uint8Array, amount: bigint): void {
     if (amount === 0n) return;
+    if (amount < 0n) throw new Error("amount must be greater than zero")
 }
 
-// /** @safe */
-// export function getValue() { 
-//     return neo.Storage.get(neo.Storage.currentContext, Uint8Array.from([0x00])); 
-// }
+/** @safe */
+export function getValue() { 
+    return neo.Storage.get(neo.Storage.currentContext, Uint8Array.from([0x00])); 
+}
 
-// export function setValue(value: string) { 
-//     neo.Storage.put(neo.Storage.currentContext, Uint8Array.from([0x00]), value); 
-// }
+export function setValue(value: string) { 
+    neo.Storage.put(neo.Storage.currentContext, Uint8Array.from([0x00]), value); 
+}
 
-// /** @safe */
-// export function helloWorld() { return "Hello, World!"; }
+/** @safe */
+export function helloWorld() { return "Hello, World!"; }
 
-// /** @safe */
-// export function sayHello(name: string) { return "Hello, " + name + "!"; }
+/** @safe */
+export function sayHello(name: string) { return "Hello, " + name + "!"; }
 `;
 
     testCompile(contractSource);

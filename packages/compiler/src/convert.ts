@@ -1,7 +1,8 @@
 import * as tsm from "ts-morph";
+import { builtins } from "./builtins";
 import { CompileError } from "./compiler";
 import { CompileContext, OperationInfo } from "./types/CompileContext";
-import { JumpTarget } from "./types/Instruction";
+import { JumpTarget, NeoService, neoServices } from "./types/Instruction";
 import { OpCode } from "./types/OpCode";
 import { OperationBuilder, SlotType } from "./types/OperationBuilder";
 import { Immutable } from "./utility/Immutable";
@@ -20,12 +21,93 @@ type NodeConvertMap = {
     [TKind in tsm.SyntaxKind]?: ConvertFunction<tsm.KindToNodeMappings[TKind]>
 };
 
+type InteropCall = (builder: OperationBuilder) => void;
+
+function implementInteropCall(calls: readonly InteropCall[]): ConvertFunction<tsm.Node> {
+    return (node, options) => {
+        const {  builder } = options;
+
+        if (tsm.Node.isCallExpression(node)) {
+            const args = node.getArguments();
+            const argsLength = args.length;
+            for (let i = argsLength - 1; i >= 0; i--) {
+                const arg = args[i];
+                if (tsm.Node.isExpression(arg)) {
+                    convertExpression(arg, options);
+                } else {
+                    throw new CompileError(`Expected expression, got ${arg.getKindName()}`, arg);
+                }
+            }
+        } else if (tsm.Node.isPropertyAccessExpression(node)) {
+            // no need to do anything for property access expression
+        } else {
+            throw new Error(`Invalid SysCall node ${node.getKindName()}`);
+        }
+
+        for (const call of calls) { call(builder); }
+    }
+}
+
+function resolveValueDeclaration(symbol: tsm.Symbol, options: ConverterOptions): ConvertFunction<tsm.Node> | undefined {
+    const valdecl = symbol.getValueDeclaration();
+    if (!valdecl) return undefined;
+
+    const src = valdecl?.getSourceFile();
+    const isDecl = src?.isDeclarationFile() ?? false;
+    if (!isDecl) return undefined;
+
+    if (tsm.Node.isMethodSignature(valdecl) ||
+        tsm.Node.isPropertySignature(valdecl)
+    ) {
+        const calls = new Array<InteropCall>();
+        for (const doc of valdecl.getJsDocs()) {
+            for (const tag of doc.getTags()) {
+                if (tag.getTagName() === 'syscall') {
+                    const syscall = tag.getCommentText();
+                    if (!syscall) continue;
+                    const i = neoServices.indexOf(syscall as NeoService);
+                    if (i < 0) throw new Error();
+                    calls.push((builder) => { builder.pushSysCall(syscall as NeoService); })
+                }
+            }
+        }
+        if (calls.length > 0) {
+            return implementInteropCall(calls);
+        }
+    }
+
+    const ancestors = valdecl.getAncestors()
+        .filter(n => !n.isKind(tsm.SyntaxKind.SourceFile))
+        .map(a => a.getSymbol()?.getName() ?? "<undefined>");
+
+    if (ancestors.length == 1) {
+        const parent = builtins[ancestors[0]]; 
+        if (parent) {
+            const func = parent[symbol.getName()];
+            if (func) {
+                return func;
+            }
+        }
+    }
+
+    ancestors.reverse();
+    ancestors.push(symbol.getName());
+    return (node, options) => {
+        throw new CompileError(`${ancestors.join('.')} not defined`, node);
+    };
+}
+
 function resolveSymbol(symbol: tsm.Symbol | undefined, options: ConverterOptions): ConvertFunction<tsm.Node> | undefined {
     if (!symbol) return undefined;
 
-    const { context: { builtins } } = options;
-    const builtIn = builtins?.symbols.get(symbol);
-    if (builtIn) return builtIn;
+    const valDeclFunc = resolveValueDeclaration(symbol, options);
+    if (valDeclFunc) { 
+        return valDeclFunc;
+    }
+
+    // const { context: { builtins } } = options;
+    // const builtIn = builtins?.symbols.get(symbol);
+    // if (builtIn) return builtIn;
 
     const decl = symbol.getValueDeclaration();
     if (decl) {
@@ -54,6 +136,7 @@ export function convertStatement(node: tsm.Statement, options: ConverterOptions)
         [tsm.SyntaxKind.ExpressionStatement]: convertExpressionStatement,
         [tsm.SyntaxKind.IfStatement]: convertIfStatement,
         [tsm.SyntaxKind.ReturnStatement]: convertReturnStatement,
+        [tsm.SyntaxKind.ThrowStatement]: convertThrowStatement,
     })
 
     function dispatch<TKind extends tsm.SyntaxKind>(kind: TKind, convertMap: NodeConvertMap) {
@@ -140,6 +223,20 @@ function convertReturnStatement(node: tsm.ReturnStatement, options: ConverterOpt
 
 // case SyntaxKind.SwitchStatement:
 // case SyntaxKind.ThrowStatement:
+function convertThrowStatement(node: tsm.ThrowStatement, options: ConverterOptions) {
+    const { builder } = options;
+    const nodeSetter = builder.getNodeSetter();
+
+    var expr = node.getExpression();
+    if (tsm.Node.isNewExpression(expr)) {
+        
+    }
+
+    builder.pushData("some shit happened");
+    builder.push(OpCode.THROW);
+    nodeSetter.set(node);
+}
+
 // case SyntaxKind.TryStatement:
 // case SyntaxKind.TypeAliasDeclaration:
 // case SyntaxKind.VariableStatement:
@@ -281,7 +378,7 @@ function convertBinaryExpression(node: tsm.BinaryExpression, options: ConverterO
 
 // [SyntaxKind.CallExpression]: CallExpression;
 function convertCallExpression(node: tsm.CallExpression, options: ConverterOptions) {
-    const { context: { builtins } } = options;
+    // const { context: { builtins } } = options;
 
     const expr = node.getExpression();
     if (tsm.Node.isPropertyAccessExpression(expr)) {
