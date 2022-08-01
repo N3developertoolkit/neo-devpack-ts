@@ -6,7 +6,6 @@ import { Instruction } from "./Instruction";
 
 export interface CompileContext {
     readonly project: tsm.Project,
-    readonly declarationFiles: ReadonlyArray<tsm.SourceFile>,
     readonly options: Readonly<Pick<CompileOptions, 'addressVersion' | 'inline' | 'optimize'>>
     name?: string,
     operations?: Array<OperationInfo>,
@@ -17,7 +16,6 @@ export interface CompileContext {
 
 export interface CompileOptions {
     project: tsm.Project;
-    declarationFiles: Array<tsm.SourceFile>;
     addressVersion?: number;
     inline?: boolean;
     optimize?: boolean;

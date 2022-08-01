@@ -27,7 +27,6 @@ function compile(options: CompileOptions): CompileResults {
 
     const context: CompileContext = {
         project: options.project,
-        declarationFiles: options.declarationFiles,
         options: {
             addressVersion: options.addressVersion ?? DEFAULT_ADDRESS_VALUE,
             inline: options.inline ?? false,
@@ -312,33 +311,22 @@ const artifactPath = path.join(
 
 function testCompile(source: string, filename: string = "contract.ts") {
 
-    const libFolderPath: string | undefined = undefined;
-    const skipLoadingLibFiles: boolean | undefined = undefined;
-
-    const defaultLibFileName = "lib.es2020.d.ts";
-    // const defaultLibSourceCode = tsmc.getLibFiles().find(value => value.fileName === defaultLibFileName)?.text;
-    // if (!defaultLibSourceCode) throw new Error();
-    // const defaultLibFolder = tsmc.getLibFolderPath({ libFolderPath, skipLoadingLibFiles });
-    // const defaultLibPath = path.join(defaultLibFolder, defaultLibFileName);
-
-    const scfxPath = '/node_modules/@neo-project/neo-contract-framework/index.d.ts';
-    const scfxActualPath = path.join(__dirname, "../../framework/src/index.d.ts");
-    const scfxSourceCode = fs.readFileSync(scfxActualPath, 'utf8');
-
     const project = new tsm.Project({
         compilerOptions: {
             experimentalDecorators: true,
-            lib: [defaultLibFileName],
+            // specify lib file directly to avoid bringing in web apis like DOM and WebWorker
+            lib: ["lib.es2020.d.ts"],
             target: tsm.ts.ScriptTarget.ES2020,
             moduleResolution: tsm.ts.ModuleResolutionKind.NodeJs,
         },
         useInMemoryFileSystem: true,
-        libFolderPath,
-        skipLoadingLibFiles
     });
 
-    // project.getFileSystem().writeFileSync(defaultLibPath, defaultLibSourceCode);
+    const scfxPath = '/node_modules/@neo-project/neo-contract-framework/index.d.ts';
+    const scfxActualPath = path.join(__dirname, "../../framework/src/index.d.ts");
+    const scfxSourceCode = fs.readFileSync(scfxActualPath, 'utf8');
     project.getFileSystem().writeFileSync(scfxPath, scfxSourceCode);
+
     project.createSourceFile(filename, source);
     project.resolveSourceFileDependencies();
 
@@ -351,12 +339,7 @@ function testCompile(source: string, filename: string = "contract.ts") {
     } else {
         // const defaultLibSourceFile = project.getSourceFileOrThrow(defaultLibPath);
         const scfxLibSourceFile = project.getSourceFileOrThrow(scfxPath);
-        const results = compile({
-            project,
-            declarationFiles: [
-                // defaultLibSourceFile,
-                scfxLibSourceFile]
-        });
+        const results = compile({ project });
         if (results.diagnostics.length > 0) {
             printDiagnostic(results.diagnostics);
         } else {
