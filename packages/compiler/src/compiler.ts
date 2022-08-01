@@ -369,30 +369,28 @@ export function decimals() { return 8; }
 export function mint(account: Uint8Array, amount: bigint): void {
     if (amount === 0n) return;
     if (amount < 0n) throw new Error("amount must be greater than zero");
-    // if (!checkWitness(getOwner())) throw new Error("contract owner must sign burn operations");
 
     updateBalance(account, amount);
-
 }
 
 function updateBalance(account: Uint8Array, amount: bigint) {
-
 }
 
-// /** @safe */
-// export function getValue() { 
-//     return neo.Storage.get(neo.Storage.currentContext, Uint8Array.from([0x00])); 
-// }
 
-// export function setValue(value: string) { 
-//     neo.Storage.put(neo.Storage.currentContext, Uint8Array.from([0x00]), value); 
-// }
+/** @safe */
+export function getValue() { 
+    return neo.Storage.get(neo.Storage.currentContext, Uint8Array.from([0x00])); 
+}
 
-// /** @safe */
-// export function helloWorld() { return "Hello, World!"; }
+export function setValue(value: string) { 
+    neo.Storage.put(neo.Storage.currentContext, Uint8Array.from([0x00]), value); 
+}
 
-// /** @safe */
-// export function sayHello(name: string) { return "Hello, " + name + "!"; }
+/** @safe */
+export function helloWorld() { return "Hello, World!"; }
+
+/** @safe */
+export function sayHello(name: string) { return "Hello, " + name + "!"; }
 `;
 
     testCompile(contractSource);
