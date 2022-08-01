@@ -21,106 +21,98 @@ type NodeConvertMap = {
     [TKind in tsm.SyntaxKind]?: ConvertFunction<tsm.KindToNodeMappings[TKind]>
 };
 
-type InteropCall = (builder: OperationBuilder) => void;
+function resolveInteropCall(signature: tsm.MethodSignature | tsm.PropertySignature, options: ConverterOptions): ConvertFunction<tsm.Node> | undefined {
+    const calls = new Array<(builder: OperationBuilder) => void>();
 
-function implementInteropCall(calls: readonly InteropCall[]): ConvertFunction<tsm.Node> {
-    return (node, options) => {
-        const {  builder } = options;
-
-        if (tsm.Node.isCallExpression(node)) {
-            const args = node.getArguments();
-            const argsLength = args.length;
-            for (let i = argsLength - 1; i >= 0; i--) {
-                const arg = args[i];
-                if (tsm.Node.isExpression(arg)) {
-                    convertExpression(arg, options);
-                } else {
-                    throw new CompileError(`Expected expression, got ${arg.getKindName()}`, arg);
-                }
+    for (const doc of signature.getJsDocs()) {
+        for (const tag of doc.getTags()) {
+            if (tag.getTagName() === 'syscall') {
+                const syscall = tag.getCommentText();
+                if (!syscall) continue;
+                const i = neoServices.indexOf(syscall as NeoService);
+                if (i < 0) throw new Error();
+                calls.push((builder) => { builder.pushSysCall(syscall as NeoService); })
             }
-        } else if (tsm.Node.isPropertyAccessExpression(node)) {
-            // no need to do anything for property access expression
-        } else {
-            throw new Error(`Invalid SysCall node ${node.getKindName()}`);
         }
-
-        for (const call of calls) { call(builder); }
     }
+
+    return calls.length === 0 ? undefined
+        : (node, options) => {
+            const { builder } = options;
+
+            if (tsm.Node.isCallExpression(node)) {
+                if (!signature.isKind(tsm.SyntaxKind.MethodSignature)) {
+                    throw new CompileError("expected method", node);
+                }
+
+                const args = node.getArguments();
+                const argsLength = args.length;
+                for (let i = argsLength - 1; i >= 0; i--) {
+                    const arg = args[i];
+                    if (tsm.Node.isExpression(arg)) {
+                        convertExpression(arg, options);
+                    } else {
+                        throw new CompileError(`Expected expression, got ${arg.getKindName()}`, arg);
+                    }
+                }
+            } else if (tsm.Node.isPropertyAccessExpression(node)) {
+                if (!signature.isKind(tsm.SyntaxKind.PropertySignature)) {
+                    throw new CompileError("expected property", node);
+                }
+            } else {
+                throw new Error(`Invalid SysCall node ${node.getKindName()}`);
+            }
+
+            for (const call of calls) { call(builder); }
+        }
 }
 
-function resolveValueDeclaration(symbol: tsm.Symbol, options: ConverterOptions): ConvertFunction<tsm.Node> | undefined {
-    const valdecl = symbol.getValueDeclaration();
-    if (!valdecl) return undefined;
 
-    const src = valdecl?.getSourceFile();
-    const isDecl = src?.isDeclarationFile() ?? false;
-    if (!isDecl) return undefined;
+function resolveSymbolDeclaration(decl: tsm.Node, name: string, options: ConverterOptions): ConvertFunction<tsm.Node> | undefined {
 
-    if (tsm.Node.isMethodSignature(valdecl) ||
-        tsm.Node.isPropertySignature(valdecl)
-    ) {
-        const calls = new Array<InteropCall>();
-        for (const doc of valdecl.getJsDocs()) {
-            for (const tag of doc.getTags()) {
-                if (tag.getTagName() === 'syscall') {
-                    const syscall = tag.getCommentText();
-                    if (!syscall) continue;
-                    const i = neoServices.indexOf(syscall as NeoService);
-                    if (i < 0) throw new Error();
-                    calls.push((builder) => { builder.pushSysCall(syscall as NeoService); })
-                }
-            }
-        }
-        if (calls.length > 0) {
-            return implementInteropCall(calls);
-        }
+    if (!decl.getSourceFile().isDeclarationFile()) { return undefined; }
+
+    if (tsm.Node.isMethodSignature(decl) || tsm.Node.isPropertySignature(decl)) {
+        const interopCall = resolveInteropCall(decl, options);
+        if (interopCall) { return interopCall; }
     }
 
-    const ancestors = valdecl.getAncestors()
+    const ancestors = decl.getAncestors()
         .filter(n => !n.isKind(tsm.SyntaxKind.SourceFile))
         .map(a => a.getSymbol()?.getName() ?? "<undefined>");
 
     if (ancestors.length == 1) {
-        const parent = builtins[ancestors[0]]; 
+        const parent = builtins[ancestors[0]];
         if (parent) {
-            const func = parent[symbol.getName()];
-            if (func) {
-                return func;
-            }
+            const func = parent[name];
+            if (func) { return func; }
         }
     }
 
     ancestors.reverse();
-    ancestors.push(symbol.getName());
+    ancestors.push(name);
     return (node, options) => {
         throw new CompileError(`${ancestors.join('.')} not defined`, node);
     };
 }
 
 function resolveSymbol(symbol: tsm.Symbol | undefined, options: ConverterOptions): ConvertFunction<tsm.Node> | undefined {
-    if (!symbol) return undefined;
-
-    const valDeclFunc = resolveValueDeclaration(symbol, options);
-    if (valDeclFunc) { 
-        return valDeclFunc;
-    }
-
-    // const { context: { builtins } } = options;
-    // const builtIn = builtins?.symbols.get(symbol);
-    // if (builtIn) return builtIn;
-
+    if (!symbol) { return undefined; }
     const decl = symbol.getValueDeclaration();
-    if (decl) {
-        if (tsm.Node.isParameterDeclaration(decl)) {
-            const parent = decl.getParent();
-            if (tsm.Node.isFunctionLikeDeclaration(parent)) {
-                const index = parent.getParameters()
-                    .findIndex(p => p.getSymbol() === symbol);
-                if (index >= 0) {
-                    return (node, options) => {
-                        const { builder } = options;
-                        builder.pushLoad(SlotType.Parameter, index);
-                    }
+    if (!decl) { return undefined; }
+
+    const declFunc = resolveSymbolDeclaration(decl, symbol.getName(), options);
+    if (declFunc) { return declFunc; }
+
+    if (tsm.Node.isParameterDeclaration(decl)) {
+        const parent = decl.getParent();
+        if (tsm.Node.isFunctionLikeDeclaration(parent)) {
+            const index = parent.getParameters()
+                .findIndex(p => p.getSymbol() === symbol);
+            if (index >= 0) {
+                return (_node, options) => {
+                    const { builder } = options;
+                    builder.pushLoad(SlotType.Parameter, index);
                 }
             }
         }
@@ -185,7 +177,7 @@ function convertExpressionStatement(node: tsm.ExpressionStatement, options: Conv
 // case SyntaxKind.IfStatement:
 function convertIfStatement(node: tsm.IfStatement, options: ConverterOptions) {
     const { builder } = options;
-    const elseTarget:JumpTarget = { instruction: undefined };
+    const elseTarget: JumpTarget = { instruction: undefined };
     const nodeSetter = builder.getNodeSetter();
     const expr = node.getExpression();
     convertExpression(expr, options);
@@ -194,14 +186,14 @@ function convertIfStatement(node: tsm.IfStatement, options: ConverterOptions) {
     convertStatement(node.getThenStatement(), options);
     const _else = node.getElseStatement();
     if (_else) {
-        const endTarget:JumpTarget = { instruction: undefined };
+        const endTarget: JumpTarget = { instruction: undefined };
         builder.pushJump(endTarget);
         elseTarget.instruction = builder.push(OpCode.NOP).instruction;
         convertStatement(_else, options);
         endTarget.instruction = builder.push(OpCode.NOP).instruction;
     } else {
         elseTarget.instruction = builder.push(OpCode.NOP).instruction;
-    } 
+    }
 }
 
 // case SyntaxKind.ImportDeclaration:
@@ -229,7 +221,7 @@ function convertThrowStatement(node: tsm.ThrowStatement, options: ConverterOptio
 
     var expr = node.getExpression();
     if (tsm.Node.isNewExpression(expr)) {
-        
+
     }
 
     builder.pushData("some shit happened");
@@ -269,17 +261,10 @@ export function convertExpression(node: tsm.Expression, options: ConverterOption
 export function parseArrayLiteral(node: tsm.ArrayLiteralExpression) {
     const bytes = new Array<number>();
     for (const element of node.getElements()) {
-        const value = helper(element);
-        if (value === undefined) { return undefined; }
-        bytes.push(value);
-    }
-    return Buffer.from(bytes);
-
-    function helper(element: tsm.Expression) {
         if (tsm.Node.isNumericLiteral(element)) {
             const value = element.getLiteralValue();
             if (Number.isInteger(value) && value >= 0 && value <= 255) {
-                return value;
+                bytes.push(value);
             } else {
                 return undefined;
             }
@@ -287,6 +272,7 @@ export function parseArrayLiteral(node: tsm.ArrayLiteralExpression) {
             return undefined;
         }
     }
+    return Uint8Array.from(bytes);
 }
 
 // [SyntaxKind.ArrayLiteralExpression]: ArrayLiteralExpression;
@@ -367,7 +353,7 @@ function convertBinaryExpression(node: tsm.BinaryExpression, options: ConverterO
             case tsm.SyntaxKind.PlusToken: {
                 if (isStringLike(left) && isStringLike(right)) {
                     return OpCode.CAT;
-                } 
+                }
                 throw new Error(`convertBinaryOperator.PlusToken not implemented for ${left.getText()} and ${right.getText()}`);
             }
             default:

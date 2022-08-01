@@ -2,6 +2,7 @@ import * as tsm from "ts-morph";
 import { bigIntToByteArray } from "../utils";
 import { Instruction, JumpInstruction, JumpTarget, NeoService } from "./Instruction";
 import { JumpOpCode, OpCode } from "./OpCode";
+import { StackItemType } from "./StackItem";
 
 export interface NodeSetter {
     set(node?: tsm.Node): void;
@@ -227,6 +228,12 @@ export class OperationBuilder {
         if (index <= 6) { return this.push(opCode + index); }
         const operand = Uint8Array.from([index]);
         return this.push({ opCode: opCode + 7, operand });
+    }
+
+    pushConvert(type: StackItemType) {
+        const opCode = OpCode.CONVERT;
+        const operand = Uint8Array.from([type]);
+        return this.push({ opCode, operand });        
     }
 
     pushSysCall(sysCall: NeoService) {

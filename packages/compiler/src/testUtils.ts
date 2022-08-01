@@ -3,7 +3,7 @@ import { format } from 'util';
 import { OpCode, toString as printOpCode } from "./types/OpCode";
 import { separateInstructions, sysCallHash } from "./types/OperationBuilder";
 import { Instruction, isJumpInstruction, isTryInstruction, JumpTarget } from "./types/Instruction";
-import { sc } from "@cityofzion/neon-core";
+import { toString as printStackItemType } from "./types/StackItem";
 import * as tsm from "ts-morph";
 
 export enum AnsiEscapeSequences {
@@ -136,9 +136,7 @@ export function getComment(ins: Instruction, instructions: ReadonlyArray<Instruc
             const sysCall = Object.entries(sysCallHash).find(v => v[1] === hash);
             if (sysCall) { return sysCall[0]; }
         }
-        case OpCode.CONVERT: {
-            return sc.StackItemType[ins.operand![0]];
-        }
+        case OpCode.CONVERT: return printStackItemType(ins.operand![0]);
         case OpCode.LDSFLD:
         case OpCode.STSFLD:
         case OpCode.LDLOC:

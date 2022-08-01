@@ -427,7 +427,7 @@ export interface OpCodeAnnotation {
     operandSizePrefix?: number;
 }
 
-const annotationMap = new Lazy(() => {
+const annotationMap = new Lazy<ReadonlyMap<OpCode, OpCodeAnnotation>>(() => {
     return new Map<OpCode, OpCodeAnnotation>([
         [OpCode.PUSHINT8, { operandSize: 1 }],
         [OpCode.PUSHINT16, { operandSize: 2 }],

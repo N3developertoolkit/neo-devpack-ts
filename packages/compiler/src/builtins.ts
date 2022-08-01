@@ -1,7 +1,9 @@
+import { buffer } from "stream/consumers";
 import * as tsm from "ts-morph";
 import { CompileError } from "./compiler";
 import { ConverterOptions, convertExpression, parseArrayLiteral } from "./convert";
 import { NeoService } from "./types/Instruction";
+import { StackItemType } from "./types/StackItem";
 
 export type ConvertFunction = (node: tsm.Node, options: ConverterOptions) => void;
 
@@ -18,17 +20,19 @@ export const builtins: BuiltinDefinitions = {
 };
 
 function Uint8Array_from(node: tsm.Node, options: ConverterOptions): void {
-    const {  builder } = options;
-    if (tsm.Node.isCallExpression(node)) {
-        const args = node.getArguments();
-        if (args.length == 1 && tsm.Node.isArrayLiteralExpression(args[0])) {
-            const buffer = parseArrayLiteral(args[0]);
-            if (buffer) {
-                builder.pushData(buffer);
-                return;
-            }
+    const expr = node.asKindOrThrow(tsm.SyntaxKind.CallExpression);
+    const args = expr.getArguments();
+    if (args.length !== 1) throw new CompileError("Uint8Array.from mapfn and thisArg parameters not supported", node);
+    const arrayLike = args[0];
+    if (tsm.Node.isArrayLiteralExpression(arrayLike)) {
+        const data = parseArrayLiteral(arrayLike);
+        if (data) {
+            const { builder } = options;
+            builder.pushData(data);
+            builder.pushConvert(StackItemType.Buffer);
+            return;
         }
     }
 
-    throw new CompileError("Invalid Uint8Array_from", node);
+    throw new CompileError("Uint8Array.from only supports array literals of numeric literals", arrayLike);
 }
