@@ -227,6 +227,8 @@ export type JumpOpCode =
     OpCode.JMPLE |
     OpCode.JMPLE_L;
 
+export function isJumpOpCode(opCode: OpCode) { return OpCode.JMP <= opCode && opCode <= OpCode.JMPLE_L; }
+
 export type TryOpCode = 
     OpCode.TRY | 
     OpCode.TRY_L;

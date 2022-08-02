@@ -2,8 +2,8 @@ import * as tsm from "ts-morph";
 import { Immutable } from "../utility/Immutable";
 import { bigIntToByteArray } from "../utils";
 import { OperationInfo } from "./CompileContext";
-import { CallInstruction, Instruction, JumpInstruction, JumpTarget, NeoService } from "./Instruction";
-import { JumpOpCode, OpCode } from "./OpCode";
+import { CallInstruction, Instruction, isJumpInstruction, isTryInstruction, JumpInstruction, JumpTarget, NeoService } from "./Instruction";
+import { isJumpOpCode, JumpOpCode, OpCode, toString as opCodeToString } from "./OpCode";
 import { StackItemType } from "./StackItem";
 
 export interface NodeSetter {
@@ -99,7 +99,6 @@ export class OperationBuilder {
 
     private localCount: number = 0;
     private readonly _instructions = new Array<Instruction | tsm.Node>();
-    private readonly _targets = new Set<JumpTarget>();
 
     constructor(readonly paramCount: number = 0) { }
 
@@ -113,12 +112,24 @@ export class OperationBuilder {
             });
         }
 
-        for (const target of this._targets) {
-            if (!target.instruction) throw new Error();
-            if (!instructions.includes(target.instruction)) throw new Error();
+        for (const ins of this._instructions) {
+            if (isInstruction(ins)) {
+                if (isJumpInstruction(ins)) {
+                    validateTarget(ins.target);
+                }
+                if (isTryInstruction(ins)) {
+                    validateTarget(ins.catchTarget);
+                    validateTarget(ins.finallyTarget);
+                }
+            }
         }
 
         return instructions;
+
+        function validateTarget(target: JumpTarget) {
+            if (!target.instruction) throw new Error("missing target instruction");
+            if (!instructions.includes(target.instruction)) throw new Error("invalid target instruction");
+        }
     }
 
     getNodeSetter(): NodeSetter {
@@ -230,9 +241,13 @@ export class OperationBuilder {
         const [opCode, target] = args.length === 1
             ? [OpCode.JMP_L as JumpOpCode, args[0]]
             : args;
-        this._targets.add(target);
+
+        if (!isJumpOpCode(opCode)) { throw new Error(`Invalid Jump OpCode ${opCodeToString(opCode)}`); }
+
         const ins: JumpInstruction = {
-            opCode,
+            // short operand jump opCodes are even, 
+            // long operand  jump opCodes are one more than the equivalent short operand opCode
+            opCode: opCode % 2 == 0 ? opCode + 1 : opCode,
             target
         };
         return this.push(ins);
