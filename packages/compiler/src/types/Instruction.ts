@@ -7,6 +7,16 @@ export interface Instruction {
     readonly operand?: Uint8Array,
 }
 
+export function getPrefix(operandSizePrefix: number, operand: Uint8Array): number {
+    const buffer = Buffer.from(operand.slice(0, operandSizePrefix));
+    switch (operandSizePrefix) {
+        case 1: return buffer[0];
+        case 2: return buffer.readUInt16LE();
+        case 4: return buffer.readUInt32LE();
+        default: throw new Error(`Unexpected operandSizePrefix ${operandSizePrefix}`);
+    }
+}
+
 export function getSize(ins: Instruction): number {
     const annotation = getAnnotation(ins.opCode);
     if (annotation?.operandSize) {

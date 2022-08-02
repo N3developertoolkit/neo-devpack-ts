@@ -200,6 +200,13 @@ export const enum OpCode {
     CONVERT = 0xdb,
 }
 
+// Other single target op codes:
+//  * OpCode.CALL
+//  * OpCode.CALL_L
+//  * OpCode.PUSHA
+//  * OpCode.ENDTRY
+//  * OpCode.ENDTRY_L
+
 export type JumpOpCode = 
     OpCode.JMP |
     OpCode.JMP_L |
