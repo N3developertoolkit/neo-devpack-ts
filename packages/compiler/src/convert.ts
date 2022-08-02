@@ -180,12 +180,14 @@ type NodeConvertMap = {
 
 export function convertStatement(node: tsm.Statement, options: ConverterOptions): void {
 
+    const t = node.print();
     return dispatch(node.getKind(), {
         [tsm.SyntaxKind.Block]: convertBlock,
         [tsm.SyntaxKind.ExpressionStatement]: convertExpressionStatement,
         [tsm.SyntaxKind.IfStatement]: convertIfStatement,
         [tsm.SyntaxKind.ReturnStatement]: convertReturnStatement,
         [tsm.SyntaxKind.ThrowStatement]: convertThrowStatement,
+        [tsm.SyntaxKind.VariableStatement]: convertVariableStatement,
     })
 
     function dispatch<TKind extends tsm.SyntaxKind>(kind: TKind, convertMap: NodeConvertMap) {
@@ -193,7 +195,7 @@ export function convertStatement(node: tsm.Statement, options: ConverterOptions)
         if (converter) {
             converter(node.asKindOrThrow(kind), options);
         } else {
-            throw new CompileError(`${tsm.SyntaxKind[kind]} not supported`, node)
+            throw new CompileError(`convertStatement ${node.getKindName()} not supported`, node)
         }
     }
 }
@@ -300,6 +302,24 @@ function convertThrowStatement(node: tsm.ThrowStatement, options: ConverterOptio
 // case SyntaxKind.TryStatement:
 // case SyntaxKind.TypeAliasDeclaration:
 // case SyntaxKind.VariableStatement:
+function convertVariableStatement(node: tsm.VariableStatement, options: ConverterOptions) {
+
+    const declKind = node.getDeclarationKind();
+    const decls = node.getDeclarations();
+    for (const decl of decls) {
+        const name = decl.getName();
+        const init = decl.getInitializer();
+        const td = init?.print();
+        console.log();
+    }
+
+    const t = node.print();
+    const tt = node.print();
+
+    throw new CompileError(`VariableStatement not implemented`, node)
+
+}
+
 // case SyntaxKind.WhileStatement:
 // case SyntaxKind.WithStatement:
 
@@ -321,7 +341,7 @@ export function convertExpression(node: tsm.Expression, options: ConverterOption
         if (converter) {
             converter(node.asKindOrThrow(kind), options);
         } else {
-            throw new CompileError(`${tsm.SyntaxKind[kind]} not supported`, node)
+            throw new CompileError(`convertExpression ${tsm.SyntaxKind[kind]} not supported`, node)
         }
     }
 }
@@ -418,9 +438,13 @@ function convertBinaryExpression(node: tsm.BinaryExpression, options: ConverterO
                 throw new Error(`convertBinaryOperator.${op.getKindName()} not implemented for ${left.getText()} and ${right.getText()}`);
             }
             case tsm.SyntaxKind.LessThanToken: return OpCode.LT;
-            case tsm.SyntaxKind.PlusToken: {
+            case tsm.SyntaxKind.PlusToken:
+            case tsm.SyntaxKind.PlusEqualsToken: {
                 if (isStringLike(left) && isStringLike(right)) {
                     return OpCode.CAT;
+                }
+                if (isBigIntLike(left) && isBigIntLike(right)) {
+                    return OpCode.ADD;
                 }
                 throw new Error(`convertBinaryOperator.PlusToken not implemented for ${left.getText()} and ${right.getText()}`);
             }

@@ -366,31 +366,41 @@ export function symbol() { return "TOKEN"; }
 /** @safe */
 export function decimals() { return 8; }
 
-export function mint(account: Uint8Array, amount: bigint): void {
+export function mint(account: neo.Address, amount: bigint): void {
     if (amount === 0n) return;
     if (amount < 0n) throw new Error("amount must be greater than zero");
 
     updateBalance(account, amount);
 }
 
-function updateBalance(account: Uint8Array, amount: bigint) {
+const _prefixTotalSupply = 0x00;
+const _prefixBalance = 0x01;
+const _prefixContractOwner = 0xFF;
+
+function updateBalance(account: neo.Address, amount: bigint) {
+    const key = Uint8Array.from([_prefixBalance, ...account]);
+    let balance = neo.Storage.get(neo.Storage.currentContext, key) as bigint;
+    balance += amount;
+    if (balance < 0) return false;
+    neo.Storage.put(neo.Storage.currentContext, key, balance);
+    return true;
 }
 
 
-/** @safe */
-export function getValue() { 
-    return neo.Storage.get(neo.Storage.currentContext, Uint8Array.from([0x00])); 
-}
+// /** @safe */
+// export function getValue() { 
+//     return neo.Storage.get(neo.Storage.currentContext, Uint8Array.from([0x00])); 
+// }
 
-export function setValue(value: string) { 
-    neo.Storage.put(neo.Storage.currentContext, Uint8Array.from([0x00]), value); 
-}
+// export function setValue(value: string) { 
+//     neo.Storage.put(neo.Storage.currentContext, Uint8Array.from([0x00]), value); 
+// }
 
-/** @safe */
-export function helloWorld() { return "Hello, World!"; }
+// /** @safe */
+// export function helloWorld() { return "Hello, World!"; }
 
-/** @safe */
-export function sayHello(name: string) { return "Hello, " + name + "!"; }
+// /** @safe */
+// export function sayHello(name: string) { return "Hello, " + name + "!"; }
 `;
 
     testCompile(contractSource);
