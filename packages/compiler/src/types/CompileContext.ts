@@ -4,14 +4,19 @@ import { DebugMethodInfo } from "./DebugInfo";
 import { Immutable } from "../utility/Immutable";
 import { Instruction } from "./Instruction";
 
-export interface CompileContext {
-    readonly project: tsm.Project,
-    readonly options: Readonly<Pick<CompileOptions, 'addressVersion' | 'inline' | 'optimize'>>
-    name?: string,
-    operations?: Array<OperationInfo>,
-    staticFields?: Array<StaticField>,
-    diagnostics: Array<tsm.ts.Diagnostic>,
-    artifacts?: CompileArtifacts
+export type DefineSymbolFunction<T extends SymbolDefinition> = (scope: NeoScope) => T;
+
+export interface NeoScope {
+    readonly name: string;
+    readonly enclosingScope: NeoScope | undefined;
+    getSymbols(): IterableIterator<SymbolDefinition>;
+    define<T extends SymbolDefinition>(factory: T | DefineSymbolFunction<T>): T;
+    resolve(symbol: tsm.Symbol): SymbolDefinition | undefined;
+}
+
+export interface SymbolDefinition {
+    readonly symbol: tsm.Symbol;
+    readonly scope: NeoScope;
 }
 
 export interface CompileOptions {
@@ -20,6 +25,20 @@ export interface CompileOptions {
     inline?: boolean;
     optimize?: boolean;
 }
+
+export interface CompileContext {
+    readonly project: tsm.Project,
+    readonly options: Readonly<Pick<CompileOptions, 'addressVersion' | 'inline' | 'optimize'>>
+    readonly globals: NeoScope,
+    readonly diagnostics: Array<tsm.ts.Diagnostic>,
+    
+    name?: string,
+
+    operations?: Array<OperationInfo>,
+    staticFields?: Array<StaticField>,
+    artifacts?: CompileArtifacts
+}
+
 
 export interface CompileResults {
     readonly diagnostics: ReadonlyArray<tsm.ts.Diagnostic>,

@@ -6,7 +6,7 @@ import * as path from 'path';
 import { ContractType, } from "./types/ContractType";
 import { dumpOperations } from "./testUtils";
 import { Immutable } from "./utility/Immutable";
-import { discoverOperationsPass } from "./passes/discoverOperations";
+import { createSymbolTable } from "./symbolTable";
 import { processOperationsPass } from "./passes/processOperations";
 import { CompileArtifacts, CompileContext, CompileOptions, CompileResults, OperationInfo } from "./types/CompileContext";
 import { DebugMethodInfo } from "./types/DebugInfo";
@@ -25,6 +25,8 @@ export class CompileError extends Error {
 
 function compile(options: CompileOptions): CompileResults {
 
+    const globals = createSymbolTable(options.project);
+
     const context: CompileContext = {
         project: options.project,
         options: {
@@ -32,12 +34,12 @@ function compile(options: CompileOptions): CompileResults {
             inline: options.inline ?? false,
             optimize: options.optimize ?? false,
         },
-        diagnostics: []
+        diagnostics: [],
+        globals
     };
 
     type CompilePass = (context: CompileContext) => void;
     const passes: ReadonlyArray<CompilePass> = [
-        discoverOperationsPass,
         processOperationsPass,
         optimizePass,
         collectArtifactsPass,
@@ -53,7 +55,6 @@ function compile(options: CompileOptions): CompileResults {
             const node = error instanceof CompileError
                 ? error.node
                 : undefined;
-            if (!context.diagnostics) { context.diagnostics = []; }
             context.diagnostics.push({
                 category: tsm.ts.DiagnosticCategory.Error,
                 code: 0,
@@ -322,9 +323,12 @@ function testCompile(source: string, filename: string = "contract.ts") {
         useInMemoryFileSystem: true,
     });
 
-    const scfxPath = '/node_modules/@neo-project/neo-contract-framework/index.d.ts';
+    // load scfx definitions from framework package path
     const scfxActualPath = path.join(__dirname, "../../framework/src/index.d.ts");
     const scfxSourceCode = fs.readFileSync(scfxActualPath, 'utf8');
+
+    // add scfx definitions to fake node_modules path
+    const scfxPath = '/node_modules/@neo-project/neo-contract-framework/index.d.ts';
     project.getFileSystem().writeFileSync(scfxPath, scfxSourceCode);
 
     project.createSourceFile(filename, source);
@@ -337,8 +341,6 @@ function testCompile(source: string, filename: string = "contract.ts") {
     if (diagnostics.length > 0) {
         printDiagnostic(diagnostics.map(d => d.compilerObject));
     } else {
-        // const defaultLibSourceFile = project.getSourceFileOrThrow(defaultLibPath);
-        const scfxLibSourceFile = project.getSourceFileOrThrow(scfxPath);
         const results = compile({ project });
         if (results.diagnostics.length > 0) {
             printDiagnostic(results.diagnostics);
@@ -387,20 +389,20 @@ function updateBalance(account: neo.Address, amount: bigint) {
 }
 
 
-// /** @safe */
-// export function getValue() { 
-//     return neo.Storage.get(neo.Storage.currentContext, Uint8Array.from([0x00])); 
-// }
+/** @safe */
+export function getValue() { 
+    return neo.Storage.get(neo.Storage.currentContext, Uint8Array.from([0x00])); 
+}
 
-// export function setValue(value: string) { 
-//     neo.Storage.put(neo.Storage.currentContext, Uint8Array.from([0x00]), value); 
-// }
+export function setValue(value: string) { 
+    neo.Storage.put(neo.Storage.currentContext, Uint8Array.from([0x00]), value); 
+}
 
-// /** @safe */
-// export function helloWorld() { return "Hello, World!"; }
+/** @safe */
+export function helloWorld() { return "Hello, World!"; }
 
-// /** @safe */
-// export function sayHello(name: string) { return "Hello, " + name + "!"; }
+/** @safe */
+export function sayHello(name: string) { return "Hello, " + name + "!"; }
 `;
 
     testCompile(contractSource);
