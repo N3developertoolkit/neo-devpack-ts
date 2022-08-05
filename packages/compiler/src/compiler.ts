@@ -10,6 +10,7 @@ import { createSymbolTable } from "./symbolTable";
 import { processFunctionDeclarationsPass } from "./passes/processOperations";
 import { CompileArtifacts, CompileContext, CompileOptions, CompileResults, OperationInfo } from "./types/CompileContext";
 import { DebugMethodInfo } from "./types/DebugInfo";
+import { dumpOperations } from "./testUtils";
 
 // https://github.com/CityOfZion/neon-js/issues/858
 const DEFAULT_ADDRESS_VALUE = 53;
@@ -350,7 +351,7 @@ function testCompile(source: string, filename: string = "contract.ts") {
                 // dumpArtifacts(results.artifacts);
                 saveArtifacts(artifactPath, filename, source, results.artifacts);
             } else {
-                // dumpOperations(results.context.operations);
+                dumpOperations(results.context.operations);
             }
         }
     }

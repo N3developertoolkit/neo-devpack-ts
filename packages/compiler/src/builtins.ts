@@ -74,7 +74,7 @@ function resolveInteropCallInfo(decl: tsm.JSDocableNode & tsm.Node): ProcessFunc
 
     const declHasArgs = tsm.Node.isMethodSignature(decl)
         ? true
-        : tsm.Node.isPropertyDeclaration(decl)
+        : tsm.Node.isPropertySignature(decl)
             ? false
             : undefined;
     if (declHasArgs === undefined) { throw new CompileError(`Invalid Interop Call Declaration ${decl.getKindName()}`, decl); }
@@ -151,19 +151,33 @@ const builtins: BuiltinDefinitions = {
     },
 };
 
-function ByteStringConstructor_from(node: tsm.Node, options: ProcessOptions): void {
-    // if (!tsm.Node.isCallExpression(node)) { throw new CompileError(`Invalid node kind ${node.getKindName()}`, node); }
-    // const args = node.getArguments();
-    // const type = args[0].getType();
+function parseArrayLiteral(node: tsm.ArrayLiteralExpression) {
+    const bytes = new Array<number>();
+    for (const element of node.getElements()) {
+        if (tsm.Node.isNumericLiteral(element)) {
+            const value = element.getLiteralValue();
+            if (Number.isInteger(value) && value >= 0 && value <= 255) {
+                bytes.push(value);
+            } else {
+                return undefined;
+            }
+        } else {
+            return undefined;
+        }
+    }
+    return Uint8Array.from(bytes);
+}
 
+function ByteStringConstructor_from(node: tsm.Node, options: ProcessOptions): void {
+    if (!tsm.Node.isCallExpression(node)) { throw new CompileError(`Invalid node kind ${node.getKindName()}`, node); }
+    const arg = node.getArguments()[0];
+    if (tsm.Node.isArrayLiteralExpression(arg)) {
+        const bytes = parseArrayLiteral(arg);
+        if (bytes) {
+            options.builder.pushData(bytes);
+            return;
+        } 
+    }
     
-    throw new CompileError("woops!", node);
-    // if (!args) throw new Error();
-    // if (args.length !== 1) throw new Error("Uint8Array.from mapfn and thisArg parameters not supported");
-    // const arrayLike = args[0];
-    // if (tsm.Node.isArrayLiteralExpression(arrayLike)) {
-    //     convertArrayLiteralExpression(arrayLike, options);
-    // } else {
-    //     throw new Error("Invalid parameter")
-    // }
+    throw new CompileError("ByteStringConstructor.from not supported", node);
 }

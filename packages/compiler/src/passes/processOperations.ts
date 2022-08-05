@@ -258,6 +258,8 @@ function processFunctionDeclaration(decl: FunctionSymbolDefinition, context: Com
         const returnTarget: JumpTarget = { instruction: undefined };
         processStatement(body, { builder, returnTarget, scope: decl, });
         returnTarget.instruction = builder.push(OpCode.RET).instruction;
+        const instructions = builder.compile();
+        context.operations.push({ node, instructions });
     } else {
         throw new CompileError(`Unexpected body kind ${body.getKindName()}`, body);
     }
@@ -269,5 +271,22 @@ export function processFunctionDeclarationsPass(context: CompileContext): void {
         if (symbol instanceof FunctionSymbolDefinition) {
             processFunctionDeclaration(symbol, context);
         }
+    }
+}
+
+export function getOperationInfo(node: tsm.FunctionDeclaration) {
+    return {
+        name: node.getNameOrThrow(),
+        safe: node.getJsDocs()
+            .flatMap(d => d.getTags())
+            .findIndex(t => t.getTagName() === 'safe') >= 0,
+        isPublic: !!node.getExportKeyword(),
+        returnType: node.getReturnType(),
+        parameters: node.getParameters().map((p, index) => ({
+            node: p,
+            name: p.getName(),
+            type: p.getType(),
+            index
+        }))
     }
 }
