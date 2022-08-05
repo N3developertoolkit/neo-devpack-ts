@@ -1,4 +1,5 @@
 import * as tsm from "ts-morph";
+import { FunctionSymbolDefinition } from "../symbolTable";
 import { Immutable } from "../utility/Immutable";
 import { bigIntToByteArray } from "../utils";
 import { OperationInfo } from "./CompileContext";
@@ -157,7 +158,7 @@ export class OperationBuilder {
         }
     }
 
-    pushCall(operation: Immutable<OperationInfo>) {
+    pushCall(operation: FunctionSymbolDefinition) {
         const ins: CallInstruction = {
             opCode: OpCode.CALL_L,
             operation

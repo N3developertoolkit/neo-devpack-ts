@@ -1,3 +1,4 @@
+import { FunctionSymbolDefinition } from "../symbolTable";
 import { Immutable } from "../utility/Immutable";
 import { OperationInfo } from "./CompileContext";
 import { getAnnotation, isJumpOpCode, JumpOpCode, OpCode, toString as opCodeToString, TryOpCode, } from "./OpCode";
@@ -44,7 +45,7 @@ export function isJumpInstruction(ins: Instruction): ins is JumpInstruction { re
 
 export interface CallInstruction extends Instruction {
     readonly opCode: OpCode.CALL | OpCode.CALL_L,
-    readonly operation: Immutable<OperationInfo>, 
+    readonly operation: FunctionSymbolDefinition, 
 }
 
 export function isCallInstruction(ins: Instruction): ins is CallInstruction {

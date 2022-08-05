@@ -4,11 +4,11 @@ import { DebugMethodInfo } from "./DebugInfo";
 import { Immutable } from "../utility/Immutable";
 import { Instruction } from "./Instruction";
 
-export type DefineSymbolFunction<T extends SymbolDefinition> = (scope: NeoScope) => T;
+export type DefineSymbolFunction<T extends SymbolDefinition> = (scope: Scope) => T;
 
-export interface NeoScope {
+export interface Scope {
     readonly name: string;
-    readonly enclosingScope: NeoScope | undefined;
+    readonly parentScope: Scope | undefined;
     getSymbols(): IterableIterator<SymbolDefinition>;
     define<T extends SymbolDefinition>(factory: T | DefineSymbolFunction<T>): T;
     resolve(symbol: tsm.Symbol): SymbolDefinition | undefined;
@@ -16,7 +16,7 @@ export interface NeoScope {
 
 export interface SymbolDefinition {
     readonly symbol: tsm.Symbol;
-    readonly scope: NeoScope;
+    readonly parentScope: Scope;
 }
 
 export interface CompileOptions {
@@ -29,16 +29,13 @@ export interface CompileOptions {
 export interface CompileContext {
     readonly project: tsm.Project,
     readonly options: Readonly<Pick<CompileOptions, 'addressVersion' | 'inline' | 'optimize'>>
-    readonly globals: NeoScope,
+    readonly globals: Scope,
     readonly diagnostics: Array<tsm.ts.Diagnostic>,
+    readonly operations: Array<OperationInfo>,
     
     name?: string,
-
-    operations?: Array<OperationInfo>,
-    staticFields?: Array<StaticField>,
     artifacts?: CompileArtifacts
 }
-
 
 export interface CompileResults {
     readonly diagnostics: ReadonlyArray<tsm.ts.Diagnostic>,
@@ -54,12 +51,6 @@ export interface CompileArtifacts {
 
 export interface OperationInfo {
     readonly node: tsm.FunctionDeclaration,
-    name: string,
-    isPublic: boolean,
-    safe: boolean,
-    parameters: Array<ParameterInfo>,
-    returnType: tsm.Type,
-    instructions?: Array<Instruction | tsm.Node>,
 }
 
 export interface ParameterInfo {
@@ -68,5 +59,3 @@ export interface ParameterInfo {
     index: number,
     type: tsm.Type,
 }
-
-export interface StaticField { }

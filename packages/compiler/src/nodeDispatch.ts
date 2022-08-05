@@ -1,17 +1,15 @@
 import * as tsm from "ts-morph";
 import { CompileError } from "./compiler";
 
-type DispatchFunction<T extends tsm.Node> = (node: T) => void;
-
-export type NodeDispatchMap = {
-    [TKind in tsm.SyntaxKind]?: DispatchFunction<tsm.KindToNodeMappings[TKind]>
+export type NodeDispatchMap<TOptions> = {
+    [TKind in tsm.SyntaxKind]?: (node: tsm.KindToNodeMappings[TKind], options: TOptions) => void;
 };
 
-export function dispatch(node: tsm.Node, dispatchMap: NodeDispatchMap, missing?: (node: tsm.Node) => void) {
+export function dispatch<TOptions>(node: tsm.Node, options: TOptions, dispatchMap: NodeDispatchMap<TOptions>, missing?: (node: tsm.Node) => void) {
     const kind = node.getKind();
     const dispatchFunction = dispatchMap[kind];
     if (dispatchFunction) {
-        dispatchFunction(node as any);
+        dispatchFunction(node as any, options);
     } else {
         if (missing) {
             missing(node);

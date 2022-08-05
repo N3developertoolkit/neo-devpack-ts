@@ -1,7 +1,7 @@
 import * as tsm from "ts-morph";
-import { builtins } from "./builtins";
+// import { builtins } from "./builtins";
 import { CompileError } from "./compiler";
-import { CompileContext, OperationInfo } from "./types/CompileContext";
+import { CompileContext, Scope, OperationInfo } from "./types/CompileContext";
 import { JumpTarget, NeoService, neoServices } from "./types/Instruction";
 import { OpCode } from "./types/OpCode";
 import { OperationBuilder, SlotType } from "./types/OperationBuilder";
@@ -11,7 +11,7 @@ import { isBigIntLike, isStringLike } from "./utils";
 
 export interface ConverterOptions {
     context: Immutable<CompileContext>,
-    info: Immutable<OperationInfo>,
+    scope: Scope,
     builder: OperationBuilder,
     returnTarget: JumpTarget,
 };
@@ -66,14 +66,14 @@ function getBuiltIn(decl: tsm.Node, name: string) {
     const ancestors = decl.getAncestors()
         .filter(n => !n.isKind(tsm.SyntaxKind.SourceFile));
 
-    if (ancestors.length === 1) {
-        const parentName = ancestors[0].getSymbol()?.getName();
-        const parent = parentName ? builtins[parentName] : undefined;
-        if (parent) {
-            const memberFunc = parent[name];
-            if (memberFunc) { return memberFunc; }
-        }
-    }
+    // if (ancestors.length === 1) {
+    //     const parentName = ancestors[0].getSymbol()?.getName();
+    //     const parent = parentName ? builtins[parentName] : undefined;
+    //     if (parent) {
+    //         const memberFunc = parent[name];
+    //         if (memberFunc) { return memberFunc; }
+    //     }
+    // }
 
     return undefined;
 }
@@ -120,7 +120,7 @@ function resolveSymbol(symbol: tsm.Symbol | undefined): ResolvedSymbol {
                 if (!op) throw new CompileError(`failed to resolve`, decl);
 
                 pushArguments(args, options);
-                options.builder.pushCall(op);
+                // options.builder.pushCall(op);
             }
         }
     }

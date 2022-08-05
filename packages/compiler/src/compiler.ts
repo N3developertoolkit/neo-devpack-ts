@@ -4,10 +4,10 @@ import * as tsmc from "@ts-morph/common";
 import * as fs from 'fs';
 import * as path from 'path';
 import { ContractType, } from "./types/ContractType";
-import { dumpOperations } from "./testUtils";
+// import { dumpOperations } from "./testUtils";
 import { Immutable } from "./utility/Immutable";
 import { createSymbolTable } from "./symbolTable";
-import { processOperationsPass } from "./passes/processOperations";
+import { processFunctionDeclarationsPass } from "./passes/processOperations";
 import { CompileArtifacts, CompileContext, CompileOptions, CompileResults, OperationInfo } from "./types/CompileContext";
 import { DebugMethodInfo } from "./types/DebugInfo";
 
@@ -34,13 +34,14 @@ function compile(options: CompileOptions): CompileResults {
             inline: options.inline ?? false,
             optimize: options.optimize ?? false,
         },
+        globals,
         diagnostics: [],
-        globals
+        operations: [],
     };
 
     type CompilePass = (context: CompileContext) => void;
     const passes: ReadonlyArray<CompilePass> = [
-        processOperationsPass,
+        processFunctionDeclarationsPass,
         optimizePass,
         collectArtifactsPass,
     ] as const;
@@ -349,7 +350,7 @@ function testCompile(source: string, filename: string = "contract.ts") {
                 // dumpArtifacts(results.artifacts);
                 saveArtifacts(artifactPath, filename, source, results.artifacts);
             } else {
-                dumpOperations(results.context.operations);
+                // dumpOperations(results.context.operations);
             }
         }
     }
@@ -368,34 +369,34 @@ export function symbol() { return "TOKEN"; }
 /** @safe */
 export function decimals() { return 8; }
 
-export function mint(account: neo.Address, amount: bigint): void {
-    if (amount === 0n) return;
-    if (amount < 0n) throw new Error("amount must be greater than zero");
+// export function mint(account: neo.Address, amount: bigint): void {
+//     if (amount === 0n) return;
+//     if (amount < 0n) throw new Error("amount must be greater than zero");
 
-    updateBalance(account, amount);
-}
+//     updateBalance(account, amount);
+// }
 
-const _prefixTotalSupply = 0x00;
-const _prefixBalance = 0x01;
-const _prefixContractOwner = 0xFF;
+// const _prefixTotalSupply = 0x00;
+// const _prefixBalance = 0x01;
+// const _prefixContractOwner = 0xFF;
 
-function updateBalance(account: neo.Address, amount: bigint) {
-    const key = Uint8Array.from([_prefixBalance, ...account]);
-    let balance = neo.Storage.get(neo.Storage.currentContext, key) as bigint;
-    balance += amount;
-    if (balance < 0) return false;
-    neo.Storage.put(neo.Storage.currentContext, key, balance);
-    return true;
-}
+// function updateBalance(account: neo.Address, amount: bigint) {
+//     const key = Uint8Array.from([_prefixBalance, ...account]);
+//     let balance = neo.Storage.get(neo.Storage.currentContext, key) as bigint;
+//     balance += amount;
+//     if (balance < 0) return false;
+//     neo.Storage.put(neo.Storage.currentContext, key, balance);
+//     return true;
+// }
 
 
 /** @safe */
 export function getValue() { 
-    return neo.Storage.get(neo.Storage.currentContext, Uint8Array.from([0x00])); 
+    return neo.Storage.get(neo.Storage.currentContext, neo.ByteString.from([0x00])); 
 }
 
 export function setValue(value: string) { 
-    neo.Storage.put(neo.Storage.currentContext, Uint8Array.from([0x00]), value); 
+    neo.Storage.put(neo.Storage.currentContext, neo.ByteString.from([0x00]), value); 
 }
 
 /** @safe */

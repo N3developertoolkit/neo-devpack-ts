@@ -1,4 +1,5 @@
 import * as tsm from "ts-morph";
+import { CompileError } from "./compiler";
 
 const checkFlags = (type: tsm.Type, flags: tsm.ts.TypeFlags) => type.getFlags() & flags;
 
@@ -65,3 +66,8 @@ export function bigIntToByteArray(value: bigint): Uint8Array {
     }
 }
 
+export function getSymbolOrCompileError(node: tsm.Node) {
+    const symbol = node.getSymbol();
+    if (!symbol) throw new CompileError("undefined symbol", node);
+    return symbol;
+}
