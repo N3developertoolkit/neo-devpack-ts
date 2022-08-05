@@ -1,6 +1,4 @@
 import { FunctionSymbolDefinition } from "../symbolTable";
-import { Immutable } from "../utility/Immutable";
-import { OperationInfo } from "./CompileContext";
 import { getAnnotation, isJumpOpCode, JumpOpCode, OpCode, toString as opCodeToString, TryOpCode, } from "./OpCode";
 
 export interface Instruction {

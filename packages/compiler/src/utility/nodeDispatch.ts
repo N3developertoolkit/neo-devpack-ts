@@ -1,5 +1,5 @@
 import * as tsm from "ts-morph";
-import { CompileError } from "./compiler";
+import { CompileError } from "../compiler";
 
 export type NodeDispatchMap<TOptions> = {
     [TKind in tsm.SyntaxKind]?: (node: tsm.KindToNodeMappings[TKind], options: TOptions) => void;

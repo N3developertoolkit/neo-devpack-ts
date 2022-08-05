@@ -1,8 +1,6 @@
 import * as tsm from "ts-morph";
 import { FunctionSymbolDefinition } from "../symbolTable";
-import { Immutable } from "../utility/Immutable";
 import { bigIntToByteArray } from "../utils";
-import { OperationInfo } from "./CompileContext";
 import { CallInstruction, Instruction, isJumpInstruction, isTryInstruction, JumpInstruction, JumpTarget, NeoService } from "./Instruction";
 import { isJumpOpCode, JumpOpCode, OpCode, toString as opCodeToString } from "./OpCode";
 import { StackItemType } from "./StackItem";

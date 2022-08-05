@@ -51,17 +51,5 @@ export interface CompileArtifacts {
 
 export interface OperationInfo {
     readonly node: tsm.FunctionDeclaration,
-    // readonly name: string,
-    // readonly isPublic: boolean,
-    // readonly safe: boolean,
-    // readonly parameters: ReadonlyArray<ParameterInfo>,
-    // readonly returnType: tsm.Type,
     readonly instructions: ReadonlyArray<Instruction | tsm.Node>,
 }
-
-// export interface ParameterInfo {
-//     readonly node: tsm.ParameterDeclaration,
-//     readonly name: string,
-//     readonly index: number,
-//     readonly type: tsm.Type,
-// }

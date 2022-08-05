@@ -4,11 +4,9 @@ import { CompileError } from "../compiler";
 import { OperationBuilder, SlotType } from "../types/OperationBuilder";
 import { OpCode } from "../types/OpCode";
 import { BlockScope, FunctionSymbolDefinition, ParameterSymbolDefinition } from "../symbolTable";
-import { dispatch, NodeDispatchMap } from "../nodeDispatch";
+import { dispatch, NodeDispatchMap } from "../utility/nodeDispatch";
 import { JumpTarget } from "../types/Instruction";
 import { getSymbolOrCompileError, isBigIntLike, isStringLike } from "../utils";
-import { resolve } from "path";
-import { timeStamp } from "console";
 import { isBuiltInSymbolDefinition } from "../builtins";
 
 export type ProcessFunction = (node: tsm.Node, options: ProcessOptions) => void;
