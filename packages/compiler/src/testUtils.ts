@@ -50,7 +50,7 @@ export function dumpOperations(operations?: ReadonlyArray<OperationInfo>) {
             const ins = instructions[i];
             const ref = references.get(i);
             if (ref) {
-                console.log(cyan, `# ${ref.print()}`);
+                console.log(cyan, `# ${ref.print({ removeComments: true })}`);
             }
 
             let msg = util.format(yellow, `${i.toString().padStart(padding)}: `);
