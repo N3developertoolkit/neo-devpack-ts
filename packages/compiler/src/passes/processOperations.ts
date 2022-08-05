@@ -8,6 +8,7 @@ import { dispatch, NodeDispatchMap } from "../utility/nodeDispatch";
 import { JumpTarget } from "../types/Instruction";
 import { getSymbolOrCompileError, isBigIntLike, isStringLike } from "../utils";
 import { isBuiltInSymbolDefinition } from "../builtins";
+import { StackItemType } from "../types/StackItem";
 
 export type ProcessFunction = (node: tsm.Node, options: ProcessOptions) => void;
 
@@ -177,6 +178,10 @@ function processCallExpression(node: tsm.CallExpression, options: ProcessOptions
     processSymbolDefinition(options.scope.resolve(symbol), node, options);
 }
 
+function processFalseKeyword(node: tsm.FalseLiteral, options: ProcessOptions) {
+    processBoolean(node.getLiteralValue(), options);
+}
+
 function processIdentifier(node: tsm.Identifier, options: ProcessOptions) {
     const symbol = getSymbolOrCompileError(node);
     processSymbolDefinition(options.scope.resolve(symbol), node, options);
@@ -198,15 +203,21 @@ function processStringLiteral(node: tsm.StringLiteral, options: ProcessOptions) 
     options.builder.pushData(literal);
 }
 
+function processTrueKeyword(node: tsm.TrueLiteral, options: ProcessOptions) {
+    processBoolean(node.getLiteralValue(), options);
+}
+
 const expressionMap: NodeDispatchMap<ProcessOptions> = {
     [tsm.SyntaxKind.ArrayLiteralExpression]: processArrayLiteralExpression,
     [tsm.SyntaxKind.BigIntLiteral]: processBigIntLiteral,
     [tsm.SyntaxKind.BinaryExpression]: processBinaryExpression,
     [tsm.SyntaxKind.CallExpression]: processCallExpression,
+    [tsm.SyntaxKind.FalseKeyword]: processFalseKeyword,
     [tsm.SyntaxKind.Identifier]: processIdentifier,
     [tsm.SyntaxKind.NumericLiteral]: processNumericLiteral,
     [tsm.SyntaxKind.PropertyAccessExpression]: processPropertyAccessExpression,
     [tsm.SyntaxKind.StringLiteral]: processStringLiteral,
+    [tsm.SyntaxKind.TrueKeyword]: processTrueKeyword,
 };
 
 export function processExpression(node: tsm.Expression, options: ProcessOptions) {
@@ -223,6 +234,13 @@ export function processArguments(args: Array<tsm.Node>, options: ProcessOptions)
             throw new CompileError(`Unexpected call arg kind ${arg.getKindName()}`, arg);
         }
     }
+}
+
+function processBoolean(value: boolean, options: ProcessOptions) {
+    const builder = options.builder;
+    const opCode = value ? OpCode.PUSH1 : OpCode.PUSH0;
+    builder.push(opCode);
+    builder.pushConvert(StackItemType.Boolean);
 }
 
 function processSymbolDefinition(resolved: SymbolDefinition | undefined, node: tsm.Node, options: ProcessOptions) {
