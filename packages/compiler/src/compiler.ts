@@ -23,6 +23,25 @@ export class CompileError extends Error {
         super(message);
     }
 }
+function toDiagnostic(error: unknown): tsm.ts.Diagnostic {
+    const messageText = error instanceof Error
+        ? error.message
+        : "unknown error";
+    const node = error instanceof CompileError
+        ? error.node
+        : undefined;
+    return {
+        category: tsm.ts.DiagnosticCategory.Error,
+        code: 0,
+        file: node?.getSourceFile().compilerNode,
+        length: node
+            ? node.getEnd() - node.getPos()
+            : undefined,
+        messageText,
+        start: node?.getPos(),
+        source: node?.print()
+    };
+}
 
 function compile(options: CompileOptions): CompileResults {
 
@@ -51,23 +70,7 @@ function compile(options: CompileOptions): CompileResults {
         try {
             pass(context);
         } catch (error) {
-            const messageText = error instanceof Error
-                ? error.message
-                : "unknown error";
-            const node = error instanceof CompileError
-                ? error.node
-                : undefined;
-            context.diagnostics.push({
-                category: tsm.ts.DiagnosticCategory.Error,
-                code: 0,
-                file: node?.getSourceFile().compilerNode,
-                length: node
-                    ? node.getEnd() - node.getPos()
-                    : undefined,
-                messageText,
-                start: node?.getPos(),
-                source: node?.print()
-            });
+            context.diagnostics.push(toDiagnostic(error));
         }
 
         if (context.diagnostics?.some(d => d.category == tsm.ts.DiagnosticCategory.Error)) {
@@ -81,10 +84,6 @@ function compile(options: CompileOptions): CompileResults {
         context
     };
 }
-
-
-
-
 
 function optimizePass(context: CompileContext): void {
     // if (!context.options.optimize) { return; }
@@ -278,7 +277,7 @@ function toMethodDef(method: DebugMethodInfo): sc.ContractMethodDefinition | und
     });
 }
 
-function printDiagnostic(diags: ReadonlyArray<tsm.ts.Diagnostic>) {
+function printDiagnostics(diags: ReadonlyArray<tsm.ts.Diagnostic>) {
     const formatHost: tsm.ts.FormatDiagnosticsHost = {
         getCurrentDirectory: () => tsm.ts.sys.getCurrentDirectory(),
         getNewLine: () => tsm.ts.sys.newLine,
@@ -306,7 +305,6 @@ function saveArtifacts(
     fs.writeFileSync(manifestPath, JSON.stringify(artifacts.manifest.toJson(), null, 4));
     fs.writeFileSync(tsPath, source);
 }
-
 
 const artifactPath = path.join(
     path.dirname(path.dirname(path.dirname(__dirname))),
@@ -341,18 +339,22 @@ function testCompile(source: string, filename: string = "contract.ts") {
     // console.timeEnd('getPreEmitDiagnostics')
 
     if (diagnostics.length > 0) {
-        printDiagnostic(diagnostics.map(d => d.compilerObject));
+        printDiagnostics(diagnostics.map(d => d.compilerObject));
     } else {
-        const results = compile({ project });
-        if (results.diagnostics.length > 0) {
-            printDiagnostic(results.diagnostics);
-        } else {
-            if (results.artifacts) {
-                // dumpArtifacts(results.artifacts);
-                saveArtifacts(artifactPath, filename, source, results.artifacts);
+        try {
+            const results = compile({ project });
+            if (results.diagnostics.length > 0) {
+                printDiagnostics(results.diagnostics);
             } else {
-                dumpOperations(results.context.operations);
+                if (results.artifacts) {
+                    // dumpArtifacts(results.artifacts);
+                    saveArtifacts(artifactPath, filename, source, results.artifacts);
+                } else {
+                    dumpOperations(results.context.operations);
+                }
             }
+        } catch (error) {
+            printDiagnostics([toDiagnostic(error)]);
         }
     }
 }
@@ -370,42 +372,51 @@ export function symbol() { return "TOKEN"; }
 /** @safe */
 export function decimals() { return 8; }
 
-// export function mint(account: neo.Address, amount: bigint): void {
-//     if (amount === 0n) return;
-//     if (amount < 0n) throw new Error("amount must be greater than zero");
+export function mint(account: neo.Address, amount: bigint): void {
+    if (amount === 0n) return;
+    if (amount < 0n) throw new Error("amount must be greater than zero");
 
-//     updateBalance(account, amount);
-// }
-
-// const _prefixTotalSupply = 0x00;
-// const _prefixBalance = 0x01;
-// const _prefixContractOwner = 0xFF;
-
-// function updateBalance(account: neo.Address, amount: bigint) {
-//     const key = Uint8Array.from([_prefixBalance, ...account]);
-//     let balance = neo.Storage.get(neo.Storage.currentContext, key) as bigint;
-//     balance += amount;
-//     if (balance < 0) return false;
-//     neo.Storage.put(neo.Storage.currentContext, key, balance);
-//     return true;
-// }
-
-
-/** @safe */
-export function getValue() { 
-    return neo.Storage.get(neo.Storage.currentContext, neo.ByteString.from([0x00])); 
+    updateBalance(account, amount);
 }
 
-export function setValue(value: string) { 
-    neo.Storage.put(neo.Storage.currentContext, neo.ByteString.from([0x00]), value); 
+const _prefixTotalSupply = 0x00;
+const _prefixBalance = 0x10;
+const _prefixContractOwner = 0xFF;
+const _testPrefix = [0x00, 0x01] as const;
+
+function updateBalance(account: neo.Address, amount: bigint) {
+    const key = [_prefixBalance, ...account] as const;
+    // let balance = neo.Storage.get(neo.Storage.currentContext, key) as bigint;
+    // balance += amount;
+    // if (balance < 0) return false;
+    // neo.Storage.put(neo.Storage.currentContext, key, balance);
+    return true;
 }
 
-/** @safe */
-export function helloWorld() { return "Hello, World!"; }
 
-/** @safe */
-export function sayHello(name: string) { return "Hello, " + name + "!"; }
+// /** @safe */
+// export function getValue() { 
+//     return neo.Storage.get(neo.Storage.currentContext, neo.ByteString.from([0x00])); 
+// }
+
+// export function setValue(value: string) { 
+//     neo.Storage.put(neo.Storage.currentContext, neo.ByteString.from([0x00]), value); 
+// }
+
+// /** @safe */
+// export function helloWorld() { return "Hello, World!"; }
+
+// /** @safe */
+// export function sayHello(name: string) { return "Hello, " + name + "!"; }
 `;
 
     testCompile(contractSource);
 }
+
+
+
+
+
+// const foo = 0x01;
+// const bar = [10,11,12,13,14,15,16,17,18,19] as const;
+// const baz = [foo, ...bar] as const;

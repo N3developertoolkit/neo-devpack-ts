@@ -9,6 +9,16 @@ export const isNumberLike = (type: tsm.Type) => checkFlags(type, tsm.ts.TypeFlag
 export const isStringLike = (type: tsm.Type) => checkFlags(type, tsm.ts.TypeFlags.StringLike);
 export const isVoidLike = (type: tsm.Type) => checkFlags(type, tsm.ts.TypeFlags.VoidLike);
 
+export function isConst(node: tsm.TypeNode) {
+    if (tsm.Node.isTypeReference(node)) {
+        const typeName = node.getTypeName();
+        if (typeName instanceof tsm.Identifier) {
+            return typeName.compilerNode.originalKeywordKind === tsm.SyntaxKind.ConstKeyword;
+        }
+    }
+    return false;
+}
+
 // convert JS BigInt to C# BigInt byte array encoding
 export function bigIntToByteArray(value: bigint): Uint8Array {
     if (value >= 0n) {

@@ -96,6 +96,37 @@ function processThrowStatement(node: tsm.ThrowStatement, options: ProcessOptions
 }
 
 function processVariableStatement(node: tsm.VariableStatement, options: ProcessOptions): void {
+    const declKind = node.getDeclarationKind();
+    for (const decl of node.getDeclarations()) {
+        const init = decl.getInitializerOrThrow();
+
+
+        // const expr = init.getExpression();
+        // const exprType = expr.getType();
+        // const typeNode = init.getTypeNodeOrThrow();
+        // const asType = typeNode.getType();
+
+
+        // if (tsm.Node.isAsExpression(init)) {
+        //     const expr = init.getExpression();
+        //     const type = init.getType();
+        //     const apparent = type.getApparentType();
+        //     const typeNode = init.getTypeNode()?.asKind(tsm.SyntaxKind.TypeReference);
+        //     const foo = typeNode?.getType();
+
+        //     const sdsd = expr.print();
+        //     const j = 0;
+
+        // }
+        // const initText = init?.print();
+        // const symbol = decl.getSymbolOrThrow();
+
+        const i = 0;
+
+    }
+
+
+
     throw new CompileError(`processVariableStatement not implemented`, node);
 }
 
@@ -113,6 +144,7 @@ function processStatement(node: tsm.Statement, options: ProcessOptions): void {
 }
 
 function processArrayLiteralExpression(node: tsm.ArrayLiteralExpression, options: ProcessOptions) {
+    throw new CompileError("not implemented", node);
 }
 
 function processBigIntLiteral(node: tsm.BigIntLiteral, options: ProcessOptions) {
