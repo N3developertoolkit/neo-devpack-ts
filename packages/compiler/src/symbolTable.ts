@@ -2,7 +2,16 @@ import * as tsm from "ts-morph";
 import { resolveBuiltIn } from "./builtins";
 import { CompileError } from "./compiler";
 import { DefineSymbolFunction, Scope, SymbolDefinition } from "./types/CompileContext";
+import { transform } from "./utility/nodeDispatch";
 import { getSymbolOrCompileError } from "./utils";
+
+export class ByteString extends Uint8Array {
+    constructor(array: ArrayLike<number> | ArrayBufferLike) {
+        super(array);
+    }
+}
+
+export type ConstantValue = boolean | number | bigint | ByteString;
 
 class SymbolMap {
     private readonly map = new Map<tsm.Symbol, SymbolDefinition>();
@@ -56,7 +65,7 @@ abstract class ScopedSymbolDefinition extends ScopeImpl implements SymbolDefinit
         readonly parentScope: Scope
     ) {
         const symbol = getSymbolOrCompileError(node);
-        super(`${symbol.getName()} function`, parentScope);
+        super(`${symbol.getName()}`, parentScope);
         this.symbol = symbol;
     }
 
@@ -87,6 +96,15 @@ export class FunctionSymbolDefinition extends ScopedSymbolDefinition {
     }
 }
 
+export class ConstantValueSymbolDefinition implements SymbolDefinition {
+    constructor(
+        readonly symbol: tsm.Symbol,
+        readonly parentScope: Scope,
+        readonly value: ConstantValue
+    ) {
+    }
+}
+
 export class VariableSymbolDefinition implements SymbolDefinition {
     readonly symbol: tsm.Symbol;
     constructor(
@@ -96,7 +114,7 @@ export class VariableSymbolDefinition implements SymbolDefinition {
         this.symbol = getSymbolOrCompileError(node);
     }
 
-    get declarationKind() { return this.node.getVariableStatementOrThrow().getDeclarationKind();}
+    get declarationKind() { return this.node.getVariableStatementOrThrow().getDeclarationKind(); }
     get initializer() { return this.node.getInitializer(); }
 }
 
@@ -142,111 +160,33 @@ class GlobalScope implements Scope {
     }
 }
 
-// type InitializerType = boolean |  bigint | ReadonlyUint8Array;
+function getConstantValue(node: tsm.VariableDeclaration, declKind: tsm.VariableDeclarationKind) {
+    if (declKind !== tsm.VariableDeclarationKind.Const) return undefined;
 
-// function parseInitializer(node: tsm.Expression, scope: Scope): InitializerType | undefined {
+    const init = node.getInitializerOrThrow();
 
-//     return dispatch<Scope, InitializerType | undefined>(node, scope, {
-//         [tsm.SyntaxKind.ArrayLiteralExpression]: (node) => {
-//             const bytes = new Array<number>();
-//             for (const element of node.getElements()) {
-//                 if (tsm.Node.isNumericLiteral(element)) {
-//                     const value = element.getLiteralValue();
-//                     if (Number.isInteger(value) && value >= 0 && value <= 255) {
-//                         bytes.push(value);
-//                     } else {
-//                         return undefined;
-//                     }
-//                 } else {
-//                     return undefined;
-//                 }
-//             }
-//             return Uint8Array.from(bytes);
-//         },
-//         [tsm.SyntaxKind.AsExpression]: (node) => {
-//             const typeNode = node.getTypeNodeOrThrow();
-//             const asConst = typeNode.asKind(tsm.SyntaxKind.TypeReference)
-//                 ?.getTypeName().asKind(tsm.SyntaxKind.Identifier)
-//                 ?.compilerNode.originalKeywordKind === tsm.SyntaxKind.ConstKeyword;
-//             return asConst ? parseInitializer(node.getExpression(), scope) : undefined;
-//         },
-//         [tsm.SyntaxKind.BigIntLiteral]: (node) => {
-//             return node.getLiteralValue() as bigint;
-//         },
-//         [tsm.SyntaxKind.FalseKeyword]: (node) => {
-//             return node.getLiteralValue();
-//         },
-//         [tsm.SyntaxKind.NumericLiteral]: (node) => {
-//             const literal = node.getLiteralValue();
-//             if (!Number.isInteger(literal)) throw new CompileError(`invalid non-integer numeric literal`, node);
-//             return BigInt(literal);
-//         },
-//         [tsm.SyntaxKind.StringLiteral]: (node) => {
-//             return Buffer.from(node.getLiteralValue(), 'utf-8');
-//         },
-//         [tsm.SyntaxKind.TrueKeyword]: (node) => {
-//             return node.getLiteralValue();
-//         },
-//     });
-// }
-
-// function createVariableSymbol(node: tsm.VariableDeclaration, scope: Scope) {
-//     const kind = node.getVariableStatement()?.getDeclarationKind();
-//     const value = parseInitializer(node.getInitializerOrThrow(), scope);
-
-
-//     const symbol = node.getSymbolOrThrow();
-
-//     if (kind === tsm.VariableDeclarationKind.Const) {
-
-//     }
-
-//     //     const symbol = 
-//     //     const init = node.getInitializerOrThrow();
-//     //     dispatch(init, { scope, symbol }, {
-//     //         [tsm.SyntaxKind.AsExpression]: (node, options) => {
-//     //             const typeNode = node.getTypeNodeOrThrow();
-//     //             const asConst = typeNode.asKind(tsm.SyntaxKind.TypeReference)
-//     //                 ?.getTypeName().asKind(tsm.SyntaxKind.Identifier)
-//     //                 ?.compilerNode.originalKeywordKind === tsm.SyntaxKind.ConstKeyword;
-//     //             if (asConst) {
-//     //                 createVariableSymbol(node.getExpression(), )
-//     //             }
-
-//     //         },
-//     //         [tsm.SyntaxKind.ArrayLiteralExpression]: (node, options) => {
-//     //             const literal = parseArrayLiteral(node);
-//     //             if (!literal) throw new CompileError("Invalid constant array literal", node);
-//     //             options.scope.define(s => new ConstantValueSymbolDefinition(options.symbol, s, literal));
-//     //         },
-//     //         [tsm.SyntaxKind.BigIntLiteral]: (node, options) => {
-//     //             if (kind !== tsm.VariableDeclarationKind.Const) { throw new CompileError(`createVariableSymbol ${kind} ${node.getKindName()} not implemented`, node); }
-//     //             const literal = node.getLiteralValue() as bigint;
-//     //             options.scope.define(s => new ConstantValueSymbolDefinition(options.symbol, s, literal))
-//     //         },
-//     //         [tsm.SyntaxKind.FalseKeyword]: (node, options) => {
-//     //             if (kind !== tsm.VariableDeclarationKind.Const) { throw new CompileError(`createVariableSymbol ${kind} ${node.getKindName()} not implemented`, node); }
-//     //             const literal = node.getLiteralValue();
-//     //             options.scope.define(s => new ConstantValueSymbolDefinition(options.symbol, s, literal))
-//     //         },
-//     //         [tsm.SyntaxKind.NumericLiteral]: (node, options) => {
-//     //             if (kind !== tsm.VariableDeclarationKind.Const) { throw new CompileError(`createVariableSymbol ${kind} ${node.getKindName()} not implemented`, node); }
-//     //             const literal = node.getLiteralValue();
-//     //             if (!Number.isInteger(literal)) throw new CompileError(`invalid non-integer numeric literal`, node);
-//     //             options.scope.define(s => new ConstantValueSymbolDefinition(options.symbol, s, literal));
-//     //         },
-//     //         [tsm.SyntaxKind.StringLiteral]: (node, options) => {
-//     //             if (kind !== tsm.VariableDeclarationKind.Const) { throw new CompileError(`createVariableSymbol ${kind} ${node.getKindName()} not implemented`, node); }
-//     //             const data = Buffer.from(node.getLiteralValue(), 'utf-8');
-//     //             options.scope.define(s => new ConstantValueSymbolDefinition(options.symbol, s, data))
-//     //         },
-//     //         [tsm.SyntaxKind.TrueKeyword]: (node, options) => {
-//     //             if (kind !== tsm.VariableDeclarationKind.Const) { throw new CompileError(`createVariableSymbol ${kind} ${node.getKindName()} not implemented`, node); }
-//     //             const literal = node.getLiteralValue();
-//     //             options.scope.define(s => new ConstantValueSymbolDefinition(options.symbol, s, literal))
-//     //         },
-//     //     })
-// }
+    return transform<ConstantValue | undefined>(init, {
+        [tsm.SyntaxKind.BigIntLiteral]: (node) => {
+            return node.getLiteralValue() as bigint;
+        },
+        [tsm.SyntaxKind.FalseKeyword]: (node) => {
+            return node.getLiteralValue();
+        },
+        [tsm.SyntaxKind.NumericLiteral]: (node) => {
+            const literal = node.getLiteralValue();
+            if (!Number.isInteger(literal)) throw new CompileError(`invalid non-integer numeric literal`, node);
+            return literal;
+        },
+        [tsm.SyntaxKind.StringLiteral]: (node) => {
+            return new ByteString(Buffer.from(node.getLiteralValue(), 'utf-8'));
+        },
+        [tsm.SyntaxKind.TrueKeyword]: (node) => {
+            return node.getLiteralValue();
+        }
+    }, {
+        missing: (node) => { return undefined; }
+    });
+}
 
 export function createSymbolTable(project: tsm.Project): Scope {
     const globals = new GlobalScope();
@@ -260,8 +200,16 @@ export function createSymbolTable(project: tsm.Project): Scope {
                 globals.define(s => new FunctionSymbolDefinition(node, s));
             }
             else if (tsm.Node.isVariableStatement(node)) {
+                const declKind = node.getDeclarationKind();
+
                 for (const decl of node.getDeclarations()) {
-                    globals.define(s => new VariableSymbolDefinition(decl, s));
+                    const value = getConstantValue(decl, declKind);
+                    if (value !== undefined) {
+                        const symbol = decl.getSymbolOrThrow();
+                        globals.define(s => new ConstantValueSymbolDefinition(symbol, s, value));
+                    } else {
+                        globals.define(s => new VariableSymbolDefinition(decl, s));
+                    }
                 }
             }
         });

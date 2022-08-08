@@ -14,15 +14,13 @@ export type ProcessFunction = (node: tsm.Node, options: ProcessOptions) => void;
 
 export interface ProcessOptions {
     builder: OperationBuilder,
-    returnTarget: JumpTarget,
     scope: Scope,
 }
 
 function processBlock(node: tsm.Block, options: ProcessOptions): void {
-    const { builder, scope, returnTarget } = options;
+    const { builder, scope } = options;
     const blockOptions = {
         builder,
-        returnTarget,
         scope: new BlockScope(node, scope),
     };
     builder.push(OpCode.NOP)
@@ -63,11 +61,11 @@ function processIfStatement(node: tsm.IfStatement, options: ProcessOptions): voi
 }
 
 function processReturnStatement(node: tsm.ReturnStatement, options: ProcessOptions): void {
-    const { builder, returnTarget } = options;
+    const { builder } = options;
     const nodeSetter = builder.getNodeSetter();
     const expr = node.getExpression();
     if (expr) { processExpression(expr, options); }
-    builder.pushJump(returnTarget);
+    builder.pushJump(builder.returnTarget);
     nodeSetter.set(node);
 }
 
@@ -92,7 +90,7 @@ function processThrowStatement(node: tsm.ThrowStatement, options: ProcessOptions
         }
     }
 
-    throw new CompileError(`Throw Statement not implemented`, node)
+    throw new CompileError(`processThrowStatement not implemented`, node)
 }
 
 function processVariableStatement(node: tsm.VariableStatement, options: ProcessOptions): void {
@@ -136,7 +134,7 @@ const statementMap: NodeDispatchMap<ProcessOptions> = {
     [tsm.SyntaxKind.IfStatement]: processIfStatement,
     [tsm.SyntaxKind.ReturnStatement]: processReturnStatement,
     [tsm.SyntaxKind.ThrowStatement]: processThrowStatement,
-    [tsm.SyntaxKind.VariableStatement]: processVariableStatement,
+    // [tsm.SyntaxKind.VariableStatement]: processVariableStatement,
 };
 
 function processStatement(node: tsm.Statement, options: ProcessOptions): void {
@@ -303,9 +301,7 @@ function processFunctionDeclaration(decl: FunctionSymbolDefinition, context: Com
     const body = node.getBodyOrThrow();
     if (tsm.Node.isStatement(body)) {
         const builder = new OperationBuilder(node.getParameters().length);
-        const returnTarget: JumpTarget = { instruction: undefined };
-        processStatement(body, { builder, returnTarget, scope: decl, });
-        returnTarget.instruction = builder.push(OpCode.RET).instruction;
+        processStatement(body, { builder, scope: decl, });
         const instructions = builder.compile();
         context.operations.push({ node, instructions });
     } else {

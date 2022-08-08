@@ -16,6 +16,8 @@ export interface StorageConstructor {
     get(context: StorageContext, key: ByteString): ByteString;
     /** @syscall System.Storage.Put */ 
     put(context: StorageContext, key: ByteString, value: ByteString): void;
+    /** @syscall System.Storage.Delete */
+    delete(context: StorageContext, key: ByteString): void;
 }
 
 export interface Address {

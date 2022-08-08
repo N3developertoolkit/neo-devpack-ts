@@ -19,16 +19,24 @@ export function dispatch<TOptions>(node: tsm.Node, options: TOptions, dispatchMa
     }
 }
 
-export type NodeTransformMap<TResult, TContext> = {
-    [TKind in tsm.SyntaxKind]?: (node: tsm.KindToNodeMappings[TKind], options?: TContext) => TResult;
-};
-
-export function transform<TResult, TContext = undefined>(node: tsm.Node, map: NodeTransformMap<TResult, TContext>, context?: TContext) {
+export function transform<TResult, TContext = undefined>(
+    node: tsm.Node, 
+    map: {
+        [TKind in tsm.SyntaxKind]?: (node: tsm.KindToNodeMappings[TKind], context?: TContext) => TResult }, 
+    options?: {
+        context?: TContext, 
+        missing?: (node: tsm.Node) => TResult }
+) {
+    const {context, missing} = options ?? {};
     const func = map[node.getKind()];
     if (func) {
         return func(node as any, context);
     } else {
-        throw new CompileError(`transform ${node.getKindName()} failed`, node);
+        if (missing) {
+            return missing(node);
+        } else {
+            throw new CompileError(`transform ${node.getKindName()} failed`, node);
+        }
     }
 }
 

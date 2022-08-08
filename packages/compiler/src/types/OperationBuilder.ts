@@ -98,8 +98,11 @@ export class OperationBuilder {
 
     private localCount: number = 0;
     private readonly _instructions = new Array<Instruction | tsm.Node>();
-
+    private readonly _returnTarget: JumpTarget = { instruction: undefined }
+    
     constructor(readonly paramCount: number = 0) { }
+
+    get returnTarget(): Readonly<JumpTarget> { return this._returnTarget; }
 
     compile() {
         const instructions = [...this._instructions];
@@ -259,6 +262,11 @@ export class OperationBuilder {
                 ? OpCode.LDLOC0
                 : OpCode.LDSFLD0;
         return this.pushLoadStoreHelper(opCode, index);
+    }
+
+    pushReturn() {
+        if (this.returnTarget.instruction) { throw new Error("returnTarget already set"); }
+        this._returnTarget.instruction = this.push(OpCode.RET).instruction;
     }
 
     pushStore(slotType: SlotType, index: number) {
