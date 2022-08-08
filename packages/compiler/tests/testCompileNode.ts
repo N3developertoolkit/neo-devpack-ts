@@ -1,4 +1,5 @@
-import { InMemoryFileSystemHost, KindToNodeMappings, Project, SyntaxKind, ts } from 'ts-morph';
+import { KindToNodeMappings, SyntaxKind } from 'ts-morph';
+import { configureProject } from '../src/compiler';
 
 export function testCompileNode<TKind extends SyntaxKind>(text: string, kind: TKind): KindToNodeMappings[TKind] {
     const { sourceFile } = testCompile(text);
@@ -6,12 +7,7 @@ export function testCompileNode<TKind extends SyntaxKind>(text: string, kind: TK
 }
 
 export function testCompile(text: string) {
-    const project = new Project({
-        compilerOptions: {
-            target: ts.ScriptTarget.ES5
-        },
-        fileSystem: new InMemoryFileSystemHost()
-    });
+    const project = configureProject();
     const sourceFile = project.createSourceFile("fake.ts", text);
     return { project, sourceFile };
 }

@@ -310,8 +310,7 @@ const artifactPath = path.join(
     path.dirname(path.dirname(path.dirname(__dirname))),
     "express", "out");
 
-function testCompile(source: string, filename: string = "contract.ts") {
-
+export function configureProject(): tsm.Project {
     const project = new tsm.Project({
         compilerOptions: {
             experimentalDecorators: true,
@@ -330,7 +329,13 @@ function testCompile(source: string, filename: string = "contract.ts") {
     // add scfx definitions to fake node_modules path
     const scfxPath = '/node_modules/@neo-project/neo-contract-framework/index.d.ts';
     project.getFileSystem().writeFileSync(scfxPath, scfxSourceCode);
+    return project;
 
+}
+
+function testCompile(source: string, filename: string = "contract.ts") {
+
+    const project = configureProject();
     project.createSourceFile(filename, source);
     project.resolveSourceFileDependencies();
 
