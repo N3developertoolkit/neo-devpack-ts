@@ -302,6 +302,7 @@ function processFunctionDeclaration(decl: FunctionSymbolDefinition, context: Com
     if (tsm.Node.isStatement(body)) {
         const builder = new OperationBuilder(node.getParameters().length);
         processStatement(body, { builder, scope: decl, });
+        builder.pushReturn();
         const instructions = builder.compile();
         context.operations.push({ node, instructions });
     } else {

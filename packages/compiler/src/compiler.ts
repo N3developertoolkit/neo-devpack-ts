@@ -366,75 +366,7 @@ function testCompile(source: string, filename: string = "contract.ts") {
 
 const file = path.basename(process.argv[1]);
 if (file === "compiler.js") {
-    console.log('test compile');
-
-    const contractSource = /*javascript*/`
-import * as neo from '@neo-project/neo-contract-framework';
-
-/** @safe */
-export function symbol() { return "TOKEN"; }
-
-/** @safe */
-export function decimals() { return 8; }
-
-export function mint(account: neo.Address, amount: bigint): void {
-    if (amount === 0n) return;
-    if (amount < 0n) throw new Error("amount must be greater than zero");
-
-    updateBalance(account, amount);
-    updateTotalSupply(amount);
+    const testContractPath = path.join(__dirname, "../tests/testContract.ts");
+    const testContractSourceCode = fs.readFileSync(testContractPath, 'utf8');
+    testCompile(testContractSourceCode);
 }
-
-const _prefixTotalSupply = 0x00;
-const _prefixBalance = 0x10;
-const _prefixContractOwner = 0xFF;
-
-function updateBalance(account: neo.Address, amount: bigint) {
-    const context = neo.Storage.currentContext;
-    const key = [_prefixBalance, ...account] as const;
-    let balance = neo.Storage.get(context, key) as bigint;
-    balance += amount;
-    if (balance < 0n) return false;
-    if (balance === 0n) {
-        neo.Storage.delete(context, key);
-    } else {
-        neo.Storage.put(context, key, balance);
-    }
-    return true;
-}
-
-function updateTotalSupply(amount: bigint) {
-    const context = neo.Storage.currentContext;
-    const key = [_prefixTotalSupply] as const;
-    let totalSupply = neo.Storage.get(context, key) as bigint;
-    totalSupply += amount;
-    neo.Storage.put(context, key, totalSupply);
-}
-
-
-// /** @safe */
-// export function getValue() { 
-//     return neo.Storage.get(neo.Storage.currentContext, neo.ByteString.from([0x00])); 
-// }
-
-// export function setValue(value: string) { 
-//     neo.Storage.put(neo.Storage.currentContext, neo.ByteString.from([0x00]), value); 
-// }
-
-// /** @safe */
-// export function helloWorld() { return "Hello, World!"; }
-
-// /** @safe */
-// export function sayHello(name: string) { return "Hello, " + name + "!"; }
-`;
-
-    testCompile(contractSource);
-}
-
-
-
-
-
-// const foo = 0x01;
-// const bar = [10,11,12,13,14,15,16,17,18,19] as const;
-// const baz = [foo, ...bar] as const;
