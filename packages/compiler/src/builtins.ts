@@ -1,9 +1,13 @@
 import * as tsm from "ts-morph";
 import { CompileError } from "./compiler";
-import { processArguments, ProcessOptions, ProcessFunction } from "./passes/processOperations";
+import { processArguments, ProcessOptions, ProcessFunction, processExpression } from "./passes/processOperations";
+import { ConstantValueSymbolDefinition } from "./symbolTable";
 import { Scope, SymbolDefinition } from "./types/CompileContext";
 import { NeoService, neoServices } from "./types/Instruction";
 import { OpCode } from "./types/OpCode";
+import { StackItemType } from "./types/StackItem";
+import { dispatch } from "./utility/nodeDispatch";
+import { getNumericLiteral } from "./utils";
 
 export type InteropCallKind = 'syscall' | 'opcode';
 
@@ -11,7 +15,7 @@ export interface InteropCallInfo {
     kind: InteropCallKind,
 }
 
-export interface SysCallInfo extends InteropCallInfo{
+export interface SysCallInfo extends InteropCallInfo {
     kind: 'syscall',
     name: NeoService,
 }
@@ -63,7 +67,7 @@ function resolveInteropCallInfo(decl: tsm.JSDocableNode & tsm.Node): ProcessFunc
                     } as SysCallInfo)
                     break;
                 }
-                case 'opcode': 
+                case 'opcode':
                     throw new Error("opcode interop call not implemented");
                 default:
                     throw new Error(`${tagName} interop call tag not recognized`);
@@ -95,7 +99,7 @@ function resolveInteropCallInfo(decl: tsm.JSDocableNode & tsm.Node): ProcessFunc
         const { builder } = options;
 
         for (const call of callInfo) {
-            if (isSysCall(call)) { builder.pushSysCall(call.name); } 
+            if (isSysCall(call)) { builder.pushSysCall(call.name); }
             // else if (isOpCodeCall(call)) {  TODO }
             else { throw new Error(`unrecognized interop call kind ${call.kind}`); }
         }
@@ -111,8 +115,8 @@ export function resolveBuiltIn(symbol: tsm.Symbol, scope: Scope): BuiltInSymbolD
         const processFunc = resolveInteropCallInfo(decl);
         if (processFunc) {
             return {
-                symbol, 
-                parentScope: scope, 
+                symbol,
+                parentScope: scope,
                 invokeBuiltIn: processFunc
             };
         }
@@ -128,8 +132,8 @@ export function resolveBuiltIn(symbol: tsm.Symbol, scope: Scope): BuiltInSymbolD
             const name = symbol.getName();
             if (name in parent) {
                 return {
-                    symbol, 
-                    parentScope: scope, 
+                    symbol,
+                    parentScope: scope,
                     invokeBuiltIn: parent[name]
                 };
             }
@@ -146,38 +150,63 @@ type BuiltinDefinitions = {
 }
 
 const builtins: BuiltinDefinitions = {
+    ByteString: {
+        toBigInt: ByteString_toBigInt,
+    },
     ByteStringConstructor: {
         from: ByteStringConstructor_from
     },
 };
 
-function parseArrayLiteral(node: tsm.ArrayLiteralExpression) {
-    const bytes = new Array<number>();
-    for (const element of node.getElements()) {
-        if (tsm.Node.isNumericLiteral(element)) {
-            const value = element.getLiteralValue();
-            if (Number.isInteger(value) && value >= 0 && value <= 255) {
-                bytes.push(value);
-            } else {
-                return undefined;
-            }
-        } else {
-            return undefined;
+function ByteString_toBigInt(node: tsm.Node, options: ProcessOptions): void {
+    options.builder.pushConvert(StackItemType.Integer);
+}
+
+class ByteStringBuilder {
+    private readonly buffer = new Array<number>();
+    push(value: number | bigint) {
+        if (typeof value === 'bigint') {
+            value = Number(value);
         }
+        if (value < 0 || value > 255) throw new Error("Invalid byte value");
+        this.buffer.push(value);
     }
-    return Uint8Array.from(bytes);
+    get value() { return Uint8Array.from(this.buffer); }
+
 }
 
 function ByteStringConstructor_from(node: tsm.Node, options: ProcessOptions): void {
-    if (!tsm.Node.isCallExpression(node)) { throw new CompileError(`Invalid node kind ${node.getKindName()}`, node); }
-    const arg = node.getArguments()[0];
-    if (tsm.Node.isArrayLiteralExpression(arg)) {
-        const bytes = parseArrayLiteral(arg);
-        if (bytes) {
-            options.builder.pushData(bytes);
-            return;
-        } 
-    }
-    
-    throw new CompileError("ByteStringConstructor.from not supported", node);
+    const { builder, scope } = options;
+    builder.pullByteString();
+    return;
+    // if (!tsm.Node.isCallExpression(node)) { throw new CompileError(`Invalid node kind ${node.getKindName()}`, node); }
+    // const arg = node.getArguments()[0];
+    // if (!tsm.Node.isExpression(arg)) throw new CompileError(`Expected expression`, arg);
+    // if (tsm.Node.isArrayLiteralExpression(arg)) {
+    //     const buffer = new ByteStringBuilder();
+    //     for (const e of arg.getElements()) {
+    //         dispatch(e, undefined, {
+    //             [tsm.SyntaxKind.NumericLiteral]: (node) => {
+    //                 const literal = getNumericLiteral(node);
+    //                 if (literal < 0 || literal >= 256) throw new CompileError("Invalid byte value", node);
+    //                 buffer.push(literal);
+    //             },
+    //             [tsm.SyntaxKind.Identifier]: (node) => {
+    //                 const resolved = scope.resolve(node.getSymbolOrThrow());
+    //                 if (resolved instanceof ConstantValueSymbolDefinition) {
+    //                     if (typeof resolved.value === 'number') {
+    //                         buffer.push(resolved.value);
+    //                     } else if (typeof resolved.value === 'bigint') {
+    //                         buffer.push(resolved.value);
+    //                     } else { 
+    //                         throw new CompileError("invalid constant value type", node); 
+    //                     }
+    //                 }
+    //             }
+    //         })
+    //     }
+    //     builder.pushData(buffer.value);
+    //     return;
+    // }
+    // throw new CompileError("ByteStringConstructor.from not supported", arg);
 }

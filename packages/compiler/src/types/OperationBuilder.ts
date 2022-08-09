@@ -4,6 +4,8 @@ import { bigIntToByteArray } from "../utils";
 import { CallInstruction, Instruction, isJumpInstruction, isTryInstruction, JumpInstruction, JumpTarget, NeoService } from "./Instruction";
 import { isJumpOpCode, JumpOpCode, OpCode, toString as opCodeToString } from "./OpCode";
 import { StackItemType } from "./StackItem";
+import { from } from 'ix/iterable';
+import { reverse, filter, map } from 'ix/iterable/operators';
 
 export interface NodeSetter {
     set(node?: tsm.Node): void;
@@ -143,6 +145,17 @@ export class OperationBuilder {
                 }
             }
         }
+    }
+
+    addLocalSlot() { return this.localCount++; }
+
+    pullByteString() {
+        const foo = from(this._instructions).pipe(reverse());
+        const iter = foo[Symbol.iterator]();
+        const a = iter.next();
+        const b = iter.next();
+        
+        return;
     }
 
     push(instruction: Instruction): NodeSetterWithInstruction;

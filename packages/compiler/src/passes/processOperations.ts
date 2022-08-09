@@ -3,10 +3,10 @@ import { CompileContext, Scope, SymbolDefinition } from "../types/CompileContext
 import { CompileError } from "../compiler";
 import { OperationBuilder, SlotType } from "../types/OperationBuilder";
 import { OpCode } from "../types/OpCode";
-import { BlockScope, FunctionSymbolDefinition, ParameterSymbolDefinition } from "../symbolTable";
+import { BlockScope, FunctionSymbolDefinition, ParameterSymbolDefinition, VariableSymbolDefinition } from "../symbolTable";
 import { dispatch, NodeDispatchMap } from "../utility/nodeDispatch";
 import { JumpTarget } from "../types/Instruction";
-import { getSymbolOrCompileError, isBigIntLike, isStringLike } from "../utils";
+import { getNumericLiteral, getSymbolOrCompileError, isBigIntLike, isStringLike } from "../utils";
 import { isBuiltInSymbolDefinition } from "../builtins";
 import { StackItemType } from "../types/StackItem";
 
@@ -94,36 +94,21 @@ function processThrowStatement(node: tsm.ThrowStatement, options: ProcessOptions
 }
 
 function processVariableStatement(node: tsm.VariableStatement, options: ProcessOptions): void {
+    const { builder, scope } = options;
+
     const declKind = node.getDeclarationKind();
     for (const decl of node.getDeclarations()) {
-        const init = decl.getInitializerOrThrow();
-
-
-        // const expr = init.getExpression();
-        // const exprType = expr.getType();
-        // const typeNode = init.getTypeNodeOrThrow();
-        // const asType = typeNode.getType();
-
-
-        // if (tsm.Node.isAsExpression(init)) {
-        //     const expr = init.getExpression();
-        //     const type = init.getType();
-        //     const apparent = type.getApparentType();
-        //     const typeNode = init.getTypeNode()?.asKind(tsm.SyntaxKind.TypeReference);
-        //     const foo = typeNode?.getType();
-
-        //     const sdsd = expr.print();
-        //     const j = 0;
-
-        // }
-        // const initText = init?.print();
-        // const symbol = decl.getSymbolOrThrow();
-
-        const i = 0;
-
+        const slotIndex = options.builder.addLocalSlot();
+        scope.define(s => new VariableSymbolDefinition(decl, s, SlotType.Local, slotIndex));
+        const init = decl.getInitializer();
+        if (init) {
+            const nodeSetter = builder.getNodeSetter();
+            processExpression(init, options);
+            builder.pushStore(SlotType.Local, slotIndex);
+            nodeSetter.set(decl);
+        }
+        return;
     }
-
-
 
     throw new CompileError(`processVariableStatement not implemented`, node);
 }
@@ -134,7 +119,7 @@ const statementMap: NodeDispatchMap<ProcessOptions> = {
     [tsm.SyntaxKind.IfStatement]: processIfStatement,
     [tsm.SyntaxKind.ReturnStatement]: processReturnStatement,
     [tsm.SyntaxKind.ThrowStatement]: processThrowStatement,
-    // [tsm.SyntaxKind.VariableStatement]: processVariableStatement,
+    [tsm.SyntaxKind.VariableStatement]: processVariableStatement,
 };
 
 function processStatement(node: tsm.Statement, options: ProcessOptions): void {
@@ -142,7 +127,12 @@ function processStatement(node: tsm.Statement, options: ProcessOptions): void {
 }
 
 function processArrayLiteralExpression(node: tsm.ArrayLiteralExpression, options: ProcessOptions) {
-    throw new CompileError("not implemented", node);
+    const elements = node.getElements();
+    for (const element of elements) {
+        processExpression(element, options);
+    }
+    options.builder.pushInt(elements.length);
+    options.builder.push(OpCode.PACK);
 }
 
 function processBigIntLiteral(node: tsm.BigIntLiteral, options: ProcessOptions) {
@@ -150,7 +140,24 @@ function processBigIntLiteral(node: tsm.BigIntLiteral, options: ProcessOptions) 
     options.builder.pushInt(literal);
 }
 
+function processNullishCoalescingOperator(node: tsm.BinaryExpression, options: ProcessOptions) {
+    const { builder } = options;
+    const endTarget: JumpTarget = { instruction: undefined };
+
+    processExpression(node.getLeft(), options, true);
+    builder.push(OpCode.DUP);
+    builder.push(OpCode.ISNULL);
+    builder.pushJump(OpCode.JMPIFNOT_L, endTarget);
+    processExpression(node.getRight(), options, true);
+    endTarget.instruction = builder.push(OpCode.NOP).instruction;
+}
+
 function processBinaryExpression(node: tsm.BinaryExpression, options: ProcessOptions) {
+    const opTokenKind = node.getOperatorToken().getKind();
+    if (opTokenKind === tsm.SyntaxKind.QuestionQuestionToken) {
+        return processNullishCoalescingOperator(node, options);
+    }
+
     const left = node.getLeft();
     const right = node.getRight();
     const opCode = binaryOperatorTokenToOpCode(
@@ -195,17 +202,8 @@ function binaryOperatorTokenToOpCode(
 }
 
 function processCallExpression(node: tsm.CallExpression, options: ProcessOptions) {
-
-    const expr = node.getExpression();
-    const symbol = tsm.Node.isIdentifier(expr)
-        ? getSymbolOrCompileError(expr)
-        : tsm.Node.isPropertyAccessExpression(expr)
-            ? getSymbolOrCompileError(expr.getNameNode())
-            : undefined;
-    if (!symbol) {
-        throw new CompileError(`processCallExpression unsupported expression kind ${expr.getKindName()}`, expr);
-    }
-    processSymbolDefinition(options.scope.resolve(symbol), node, options);
+    processArguments(node.getArguments(), options);
+    processExpression(node.getExpression(), options);
 }
 
 function processFalseKeyword(node: tsm.FalseLiteral, options: ProcessOptions) {
@@ -218,9 +216,7 @@ function processIdentifier(node: tsm.Identifier, options: ProcessOptions) {
 }
 
 function processNumericLiteral(node: tsm.NumericLiteral, options: ProcessOptions) {
-    const literal = node.getLiteralValue();
-    if (!Number.isInteger(literal)) throw new CompileError(`invalid non-integer numeric literal`, node);
-    options.builder.pushInt(literal);
+    options.builder.pushInt(getNumericLiteral(node));
 }
 
 function processPropertyAccessExpression(node: tsm.PropertyAccessExpression, options: ProcessOptions) {
@@ -250,8 +246,10 @@ const expressionMap: NodeDispatchMap<ProcessOptions> = {
     [tsm.SyntaxKind.TrueKeyword]: processTrueKeyword,
 };
 
-export function processExpression(node: tsm.Expression, options: ProcessOptions) {
+export function processExpression(node: tsm.Expression, options: ProcessOptions, setNode = false) {
+    const nodeSetter = setNode ? options.builder.getNodeSetter() : undefined;
     dispatch(node, options, expressionMap);
+    nodeSetter?.set(node);
 }
 
 export function processArguments(args: Array<tsm.Node>, options: ProcessOptions) {
@@ -282,8 +280,6 @@ function processSymbolDefinition(resolved: SymbolDefinition | undefined, node: t
     }
 
     if (resolved instanceof FunctionSymbolDefinition) {
-        const expr = node.asKindOrThrow(tsm.SyntaxKind.CallExpression);
-        processArguments(expr.getArguments(), options);
         options.builder.pushCall(resolved);
         return;
     }

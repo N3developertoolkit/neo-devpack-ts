@@ -2,6 +2,7 @@ import * as tsm from "ts-morph";
 import { resolveBuiltIn } from "./builtins";
 import { CompileError } from "./compiler";
 import { DefineSymbolFunction, Scope, SymbolDefinition } from "./types/CompileContext";
+import { SlotType } from "./types/OperationBuilder";
 import { transform } from "./utility/nodeDispatch";
 import { getSymbolOrCompileError } from "./utils";
 
@@ -109,7 +110,9 @@ export class VariableSymbolDefinition implements SymbolDefinition {
     readonly symbol: tsm.Symbol;
     constructor(
         readonly node: tsm.VariableDeclaration,
-        readonly parentScope: Scope
+        readonly parentScope: Scope,
+        readonly slotType: SlotType,
+        readonly index: number,
     ) {
         this.symbol = getSymbolOrCompileError(node);
     }
@@ -191,6 +194,7 @@ function getConstantValue(node: tsm.VariableDeclaration, declKind: tsm.VariableD
 export function createSymbolTable(project: tsm.Project): Scope {
     const globals = new GlobalScope();
 
+    let staticSlotCount = 0;
     for (const src of project.getSourceFiles()) {
         if (src.isDeclarationFile()) continue;
 
@@ -208,7 +212,7 @@ export function createSymbolTable(project: tsm.Project): Scope {
                         const symbol = decl.getSymbolOrThrow();
                         globals.define(s => new ConstantValueSymbolDefinition(symbol, s, value));
                     } else {
-                        globals.define(s => new VariableSymbolDefinition(decl, s));
+                        globals.define(s => new VariableSymbolDefinition(decl, s, SlotType.Static, staticSlotCount++));
                     }
                 }
             }

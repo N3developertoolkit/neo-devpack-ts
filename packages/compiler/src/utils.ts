@@ -19,6 +19,12 @@ export function isConst(node: tsm.TypeNode) {
     return false;
 }
 
+export function getNumericLiteral(node: tsm.NumericLiteral) {
+    const literal = node.getLiteralValue();
+    if (!Number.isInteger(literal)) throw new CompileError(`invalid non-integer numeric literal`, node);
+    return literal;
+}
+
 // convert JS BigInt to C# BigInt byte array encoding
 export function bigIntToByteArray(value: bigint): Uint8Array {
     if (value >= 0n) {

@@ -34,10 +34,10 @@ function updateBalance(account: neo.Address, amount: bigint) {
 
 function updateTotalSupply(amount: bigint) {
     const context = neo.Storage.currentContext;
-    const key = neo.ByteString.from([_prefixTotalSupply]);
-    let totalSupply = neo.Storage.get(context, key)?.toBigInt() ?? 0n;
-    totalSupply += amount;
-    neo.Storage.put(context, key, neo.ByteString.from(totalSupply));
+    const key = neo.ByteString.from([0x00]);
+    // let totalSupply = neo.Storage.get(context, key)?.toBigInt() ?? 0n;
+    // totalSupply += amount;
+    // neo.Storage.put(context, key, neo.ByteString.from(totalSupply));
 }
 
 
