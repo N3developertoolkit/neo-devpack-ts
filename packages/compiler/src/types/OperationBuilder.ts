@@ -150,12 +150,16 @@ export class OperationBuilder {
     addLocalSlot() { return this.localCount++; }
 
     pullByteString() {
-        const foo = from(this._instructions).pipe(reverse());
-        const iter = foo[Symbol.iterator]();
-        const a = iter.next();
-        const b = iter.next();
-        
-        return;
+        const iterable = from(this._instructions)
+            .pipe(
+                filter(isInstruction),
+                reverse()
+            );
+        const iterator = iterable[Symbol.iterator]();
+
+        const foo = [...iterable];
+
+        return undefined;
     }
 
     push(instruction: Instruction): NodeSetterWithInstruction;

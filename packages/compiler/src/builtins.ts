@@ -1,13 +1,10 @@
 import * as tsm from "ts-morph";
 import { CompileError } from "./compiler";
-import { processArguments, ProcessOptions, ProcessFunction, processExpression } from "./passes/processOperations";
-import { ConstantValueSymbolDefinition } from "./symbolTable";
+import { ProcessOptions, ProcessFunction } from "./passes/processOperations";
 import { Scope, SymbolDefinition } from "./types/CompileContext";
 import { NeoService, neoServices } from "./types/Instruction";
 import { OpCode } from "./types/OpCode";
 import { StackItemType } from "./types/StackItem";
-import { dispatch } from "./utility/nodeDispatch";
-import { getNumericLiteral } from "./utils";
 
 export type InteropCallKind = 'syscall' | 'opcode';
 
@@ -84,17 +81,17 @@ function resolveInteropCallInfo(decl: tsm.JSDocableNode & tsm.Node): ProcessFunc
     if (declHasArgs === undefined) { throw new CompileError(`Invalid Interop Call Declaration ${decl.getKindName()}`, decl); }
 
     return (node, options) => {
-        if (tsm.Node.isArgumented(node)) {
-            if (declHasArgs) {
-                processArguments(node.getArguments(), options);
-            } else {
-                throw new CompileError(`expected argumented node, received ${node.getKindName()}`, node);
-            }
-        } else {
-            if (declHasArgs) {
-                throw new CompileError(`expected non argumented node, received ${node.getKindName()}`, node);
-            }
-        }
+        // if (tsm.Node.isArgumented(node)) {
+        //     if (declHasArgs) {
+        //         processArguments(node.getArguments(), options);
+        //     } else {
+        //         throw new CompileError(`expected argumented node, received ${node.getKindName()}`, node);
+        //     }
+        // } else {
+        //     if (declHasArgs) {
+        //         throw new CompileError(`expected non argumented node, received ${node.getKindName()}`, node);
+        //     }
+        // }
 
         const { builder } = options;
 
@@ -122,12 +119,11 @@ export function resolveBuiltIn(symbol: tsm.Symbol, scope: Scope): BuiltInSymbolD
         }
     }
 
-    const ancestors = decl.getAncestors()
-        .filter(n => !n.isKind(tsm.SyntaxKind.SourceFile))
-        .map(a => a.getSymbolOrThrow().getName());
+    const ancestors = decl.getAncestors().filter(n => !n.isKind(tsm.SyntaxKind.SourceFile));
 
     if (ancestors.length == 1) {
-        const parent = builtins[ancestors[0]];
+        const ancestor = ancestors[0].getSymbol()?.getName();
+        const parent = ancestor ? builtins[ancestor] : undefined;
         if (parent) {
             const name = symbol.getName();
             if (name in parent) {
@@ -142,6 +138,23 @@ export function resolveBuiltIn(symbol: tsm.Symbol, scope: Scope): BuiltInSymbolD
 
     return undefined;
 }
+
+const staticBuiltIns = new Map<string, Map<string, ProcessFunction>>([
+    ["ByteStringConstructor", new Map<string, ProcessFunction>([
+        ["from", ByteStringConstructor_from],
+    ])],
+    ["StorageConstructor", new Map<string, ProcessFunction>([
+        ["get", (node: tsm.Node, options: ProcessOptions) => { }],
+        ["put", (node: tsm.Node, options: ProcessOptions) => { }],
+        ["delete", (node: tsm.Node, options: ProcessOptions) => { }],
+    ])]
+])
+
+const instanceBuiltIns = new Map<string, Map<string, ProcessFunction>>([
+    ["ByteString", new Map<string, ProcessFunction>([
+        ["toBigInt", ByteString_toBigInt],
+    ])]
+])
 
 type BuiltinDefinitions = {
     [key: string]: {
@@ -177,7 +190,7 @@ class ByteStringBuilder {
 
 function ByteStringConstructor_from(node: tsm.Node, options: ProcessOptions): void {
     const { builder, scope } = options;
-    builder.pullByteString();
+    builder.pushConvert(StackItemType.ByteString);
     return;
     // if (!tsm.Node.isCallExpression(node)) { throw new CompileError(`Invalid node kind ${node.getKindName()}`, node); }
     // const arg = node.getArguments()[0];

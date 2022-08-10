@@ -123,6 +123,7 @@ const statementMap: NodeDispatchMap<ProcessOptions> = {
 };
 
 function processStatement(node: tsm.Statement, options: ProcessOptions): void {
+    const text = node.print();
     dispatch(node, options, statementMap);
 }
 
@@ -144,22 +145,31 @@ function processNullishCoalescingOperator(node: tsm.BinaryExpression, options: P
     const { builder } = options;
     const endTarget: JumpTarget = { instruction: undefined };
 
-    processExpression(node.getLeft(), options, true);
-    builder.push(OpCode.DUP);
+    processExpression(node.getLeft(), options);
+    builder.push(OpCode.DUP); //.set(node.getOperatorToken());
     builder.push(OpCode.ISNULL);
     builder.pushJump(OpCode.JMPIFNOT_L, endTarget);
-    processExpression(node.getRight(), options, true);
+    processExpression(node.getRight(), options);
     endTarget.instruction = builder.push(OpCode.NOP).instruction;
 }
 
 function processBinaryExpression(node: tsm.BinaryExpression, options: ProcessOptions) {
     const opTokenKind = node.getOperatorToken().getKind();
+
+    const left = node.getLeft();
+    const leftType = left.getType();
+    const leftTypeSymbol = leftType.getSymbol();
+    const leftTypeSymbolName = leftTypeSymbol?.getName();
+
+    const right = node.getRight();
+    const rightType = right.getType();
+    const rightTypeSymbol = rightType.getSymbol();
+    const rightTypeSymbolName = rightTypeSymbol?.getName();
+
     if (opTokenKind === tsm.SyntaxKind.QuestionQuestionToken) {
         return processNullishCoalescingOperator(node, options);
     }
 
-    const left = node.getLeft();
-    const right = node.getRight();
     const opCode = binaryOperatorTokenToOpCode(
         node.getOperatorToken(),
         left.getType(),
@@ -202,8 +212,14 @@ function binaryOperatorTokenToOpCode(
 }
 
 function processCallExpression(node: tsm.CallExpression, options: ProcessOptions) {
+
+    const expr = node.getExpression();
+    const exprType = expr.getType();
+    const exprTypeSymbol = exprType.getSymbol();
+    const exprTypeSymbolName = exprTypeSymbol?.getName();
+
     processArguments(node.getArguments(), options);
-    processExpression(node.getExpression(), options);
+    processExpression(expr, options);
 }
 
 function processFalseKeyword(node: tsm.FalseLiteral, options: ProcessOptions) {
@@ -211,7 +227,14 @@ function processFalseKeyword(node: tsm.FalseLiteral, options: ProcessOptions) {
 }
 
 function processIdentifier(node: tsm.Identifier, options: ProcessOptions) {
+
+    const nodeType = node.getType();
+    const nodeTypeSymbol = nodeType.getSymbol();
+    const nodeTypeSymbolName = nodeTypeSymbol?.getName();
+
     const symbol = getSymbolOrCompileError(node);
+    const decl = symbol.getValueDeclaration();
+    const foo = decl?.getKindName();
     processSymbolDefinition(options.scope.resolve(symbol), node, options);
 }
 
@@ -220,8 +243,37 @@ function processNumericLiteral(node: tsm.NumericLiteral, options: ProcessOptions
 }
 
 function processPropertyAccessExpression(node: tsm.PropertyAccessExpression, options: ProcessOptions) {
-    const symbol = getSymbolOrCompileError(node.getNameNode());
-    processSymbolDefinition(options.scope.resolve(symbol), node, options);
+
+    const expr = node.getExpression();
+    const exprType = expr.getType();
+    const exprTypeSymbol = exprType.getSymbol();
+    const exprTypeSymbolName = exprTypeSymbol?.getName();
+
+    const name = node.getNameNode();
+    const hasQuestionDot = node.hasQuestionDotToken();
+
+    const symbol = name.getSymbol();
+    const resolved = symbol ? options.scope.resolve(symbol) : undefined;
+
+    // TODO: better approach for determining if we need to process the node expression
+    const staticExpression = exprTypeSymbolName === 'StorageConstructor' 
+        || exprTypeSymbolName === 'ByteStringConstructor';
+
+    const { builder } = options;
+    const endTarget: JumpTarget = { instruction: undefined };
+
+    if (!staticExpression) { 
+        processExpression(expr, options); 
+        if (hasQuestionDot) {
+            builder.push(OpCode.DUP); //.set(node.getOperatorToken());
+            builder.push(OpCode.ISNULL);
+            builder.pushJump(OpCode.JMPIFNOT_L, endTarget);
+        }
+    }
+    processSymbolDefinition(resolved, node, options);
+    if (!staticExpression && hasQuestionDot) {
+        endTarget.instruction = builder.push(OpCode.NOP).instruction;
+    }
 }
 
 function processStringLiteral(node: tsm.StringLiteral, options: ProcessOptions) {
@@ -246,10 +298,8 @@ const expressionMap: NodeDispatchMap<ProcessOptions> = {
     [tsm.SyntaxKind.TrueKeyword]: processTrueKeyword,
 };
 
-export function processExpression(node: tsm.Expression, options: ProcessOptions, setNode = false) {
-    const nodeSetter = setNode ? options.builder.getNodeSetter() : undefined;
+export function processExpression(node: tsm.Expression, options: ProcessOptions) {
     dispatch(node, options, expressionMap);
-    nodeSetter?.set(node);
 }
 
 export function processArguments(args: Array<tsm.Node>, options: ProcessOptions) {
@@ -276,6 +326,11 @@ function processSymbolDefinition(resolved: SymbolDefinition | undefined, node: t
 
     if (resolved instanceof ParameterSymbolDefinition) {
         options.builder.pushLoad(SlotType.Parameter, resolved.index);
+        return;
+    }
+
+    if (resolved instanceof VariableSymbolDefinition) {
+        options.builder.pushLoad(SlotType.Local, resolved.index);
         return;
     }
 

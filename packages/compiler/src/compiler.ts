@@ -366,7 +366,7 @@ function testCompile(source: string, filename: string = "contract.ts") {
 
 const file = path.basename(process.argv[1]);
 if (file === "compiler.js") {
-    const testContractPath = path.join(__dirname, "../tests/testContract.ts");
+    const testContractPath = path.join(__dirname, "../../../express/testContract.ts");
     const testContractSourceCode = fs.readFileSync(testContractPath, 'utf8');
     testCompile(testContractSourceCode);
 }
