@@ -13,7 +13,7 @@ describe('OperationBuilder', () => {
         builder.pushInt(14);
         builder.pushInt(5);
         builder.push(OpCode.PACK);
-        const bytes = builder.pullByteString();
+        // const bytes = builder.pullByteString();
 
     });
 });

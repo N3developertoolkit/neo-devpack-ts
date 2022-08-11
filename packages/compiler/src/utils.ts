@@ -1,3 +1,4 @@
+import { buffer } from "stream/consumers";
 import * as tsm from "ts-morph";
 import { CompileError } from "./compiler";
 
@@ -25,10 +26,25 @@ export function getNumericLiteral(node: tsm.NumericLiteral) {
     return literal;
 }
 
+function toBigInt(buffer: Buffer): bigint {
+    return BigInt(`0x${buffer.toString('hex')}`);
+}
+
+export function byteArrayToBigInt(value: Uint8Array): bigint {
+    const buffer = Buffer.from(value);
+    buffer.reverse();
+    const negativeValue = buffer[0] & 0x80;
+    if (!negativeValue) {
+        return toBigInt(buffer);
+    }
+    
+    throw new Error("Not Implemented");
+}
+
 // convert JS BigInt to C# BigInt byte array encoding
 export function bigIntToByteArray(value: bigint): Uint8Array {
     if (value >= 0n) {
-        // convert vsalue to buffer
+        // convert value to buffer
         let buffer = toBuffer(value);
         // if the most significant bit is 1, prepend a 0x00 byte to 
         // indicate positive value
@@ -69,10 +85,6 @@ export function bigIntToByteArray(value: bigint): Uint8Array {
             if (buffer[i] !== 0xff) return false;
         }
         return true;
-    }
-
-    function toBigInt(buffer: Buffer): bigint {
-        return BigInt(`0x${buffer.toString('hex')}`);
     }
 
     function toBuffer(value: bigint): Buffer {

@@ -1,11 +1,9 @@
 import * as tsm from "ts-morph";
 import { FunctionSymbolDefinition } from "../symbolTable";
-import { bigIntToByteArray } from "../utils";
+import { bigIntToByteArray, byteArrayToBigInt } from "../utils";
 import { CallInstruction, Instruction, isJumpInstruction, isTryInstruction, JumpInstruction, JumpTarget, NeoService } from "./Instruction";
-import { isJumpOpCode, JumpOpCode, OpCode, toString as opCodeToString } from "./OpCode";
+import { isJumpOpCode, JumpOpCode, OpCode, toString as opCodeToString, toString as printOpCode } from "./OpCode";
 import { StackItemType } from "./StackItem";
-import { from } from 'ix/iterable';
-import { reverse, filter, map } from 'ix/iterable/operators';
 
 export interface NodeSetter {
     set(node?: tsm.Node): void;
@@ -96,6 +94,18 @@ export function separateInstructions(
     }
 }
 
+function readInt(ins: Instruction): bigint {
+    if (OpCode.PUSHM1 <= ins.opCode && ins.opCode <= OpCode.PUSH16) {
+        return BigInt(ins.opCode - OpCode.PUSH0);
+    }
+
+    if (OpCode.PUSHINT8 <= ins.opCode && ins.opCode <= OpCode.PUSHINT256) {
+        return byteArrayToBigInt(ins.operand!);
+    }
+
+    throw new Error(`invalid integer opcode ${printOpCode(ins.opCode)}`);
+}
+
 export class OperationBuilder {
 
     private localCount: number = 0;
@@ -149,15 +159,24 @@ export class OperationBuilder {
 
     addLocalSlot() { return this.localCount++; }
 
-    pullByteString() {
-        const iterable = from(this._instructions)
-            .pipe(
-                filter(isInstruction),
-                reverse()
-            );
-        const iterator = iterable[Symbol.iterator]();
+    popBytes() {
+        // const foo = this._instructions.filter(isInstruction).reverse();
+        // if (foo.length <= 2) return undefined;
+        // if (foo[0].opCode !== OpCode.PACK) return undefined;
+        // const len = Number(readInt(foo[1]));
+        // if (foo.length <= len + 2) return undefined;
 
-        const foo = [...iterable];
+        // const bytes = new Array<number>();
+
+        
+        // const iterable = from(this._instructions)
+        //     .pipe(
+        //         filter(isInstruction),
+        //         reverse()
+        //     );
+        // const iterator = iterable[Symbol.iterator]();
+
+        // const foo = [...iterable];
 
         return undefined;
     }

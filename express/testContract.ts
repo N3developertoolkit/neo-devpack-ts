@@ -33,7 +33,7 @@ import * as neo from '@neo-project/neo-contract-framework';
 // }
 
 function updateTotalSupply(amount: bigint) {
-    const context = neo.Storage.currentContext;
+    const context = neo.Storage?.currentContext;
     const key = neo.ByteString.from([0x00]);
     let totalSupply = neo.Storage.get(context, key)?.toBigInt() ?? 0n;
     totalSupply += amount;
