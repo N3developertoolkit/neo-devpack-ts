@@ -1,75 +1,104 @@
 import * as tsm from "ts-morph";
 import { CompileError } from "./compiler";
-import { ProcessOptions, ProcessFunction } from "./passes/processOperations";
-import { Scope, SymbolDefinition } from "./types/CompileContext";
-import { NeoService, neoServices } from "./types/Instruction";
+import { ProcessOptions, processExpression } from "./passes/processOperations";
 import { StackItemType } from "./types/StackItem";
+import { asExpressionOrCompileError, asKindOrCompileError, getNumericLiteral, isBigIntLike } from "./utils";
 
-export interface BuiltInSymbolDefinition extends SymbolDefinition {
-    invokeBuiltIn(node: tsm.Node, options: ProcessOptions): void;
-}
+// I need to be able to resolve types and symbols
+// SCFX types have a prefix like : "\"/node_modules/@neo-project/neo-contract-framework/index\".StorageConstructor"
+// native types have no prefix like : Uint8ArrayConstructor
 
-export function isBuiltInSymbolDefinition(def: SymbolDefinition): def is BuiltInSymbolDefinition {
-    return 'invokeBuiltIn' in def;
-}
+// interface ExternInfo {
+//     kind: tsm.SyntaxKind,
+//     func: ProcessFunction
+// };
 
-export function resolveBuiltIn(symbol: tsm.Symbol, scope: Scope): BuiltInSymbolDefinition | undefined {
-    const decl = symbol.getValueDeclaration();
-    if (!decl) return undefined;
-    if (!decl.getSourceFile().isDeclarationFile()) { return undefined; }
+// type ExternMembers = {
+//     [key: string]: ExternInfo
+// };
 
-    const ancestors = decl.getAncestors().filter(n => !n.isKind(tsm.SyntaxKind.SourceFile));
-    if (ancestors.length === 1) {
-        const ancestorName = ancestors[0].getSymbol()?.getName();
-        const ancestorMap = ancestorName 
-            ? staticBuiltIns.get(ancestorName) ?? instanceBuiltIns.get(ancestorName)
-            : undefined;
-        const invoke = ancestorMap?.get(symbol.getName());
-        if (invoke) {
-            return {
-                symbol,
-                parentScope: scope,
-                invokeBuiltIn: invoke
-            };
-        }
-    }
+// type ExternContainers = {
+//     [key: string]: ExternMembers
+// };
 
-    return undefined;
-}
+// const scfx: ExternContainers = {
+//     StorageConstructor: {
+//         currentContext: {
+//             kind: tsm.SyntaxKind.PropertyAccessExpression,
+//             func:  (node, options) => { options.builder.pushSysCall("System.Storage.GetContext"); }
+//         },
+//         get: {
+//             kind: tsm.SyntaxKind.CallExpression,
+//             func: storageConstructorMethod("System.Storage.Get")
+//         },
+//         put: {
+//             kind: tsm.SyntaxKind.CallExpression,
+//             func: storageConstructorMethod("System.Storage.Put")
+//         },
+//         delete: {
+//             kind: tsm.SyntaxKind.CallExpression,
+//             func: storageConstructorMethod("System.Storage.Delete")
+//         },
+//     },
+//     // ByteStringConstructor: {
+//     //     from: {
+//     //         kind: tsm.SyntaxKind.CallExpression,
+//     //         func: ByteStringConstructor_from,
+//     //     },
+//     // },
+//     ByteString: {
+//         toBigInt: {
+//             kind: tsm.SyntaxKind.CallExpression,
+//             func: ByteString_toBigInt
+//         },
+//     }
+// }
 
-const staticBuiltIns = new Map<string, Map<string, ProcessFunction>>([
-    ["ByteStringConstructor", new Map<string, ProcessFunction>([
-        ["from", ByteStringConstructor_from],
-    ])],
-    ["StorageConstructor", new Map<string, ProcessFunction>([
-        ["currentContext", (node: tsm.Node, options: ProcessOptions) => {
-            processSysCall("System.Storage.GetContext", options);
-        }],
-        ["get", (node: tsm.Node, options: ProcessOptions) => {
-            processSysCall("System.Storage.Get", options);
-        }],
-        ["put", (node: tsm.Node, options: ProcessOptions) => {
-            processSysCall("System.Storage.Put", options);
-        }],
-        ["delete", (node: tsm.Node, options: ProcessOptions) => {
-            processSysCall("System.Storage.Delete", options);
-        }],
-    ])]
-])
+// const scfxPath = '"/node_modules/@neo-project/neo-contract-framework/index"';
 
-const instanceBuiltIns = new Map<string, Map<string, ProcessFunction>>([
-    ["ByteString", new Map<string, ProcessFunction>([
-        ["toBigInt", ByteString_toBigInt],
-    ])]
-])
+// function resolveExtern(node: tsm.Node): ExternInfo | undefined {
+//     if (tsm.Node.isPropertyAccessExpression(node)) {
+//         const expr = node.getExpression();
+//         const exprType = expr.getType();
+//         const exprTypeFQN = exprType.getSymbolOrThrow().getFullyQualifiedName();
+//         if (exprTypeFQN.startsWith(`${scfxPath}.`)) {
+//             const typeName = exprTypeFQN.substring(scfxPath.length + 1);
+//             if (typeName in scfx) {
+//                 const obj = scfx[typeName];
+//                 const propName = node.getName();
+//                 if (propName in obj) {
+//                     return obj[propName];
+//                 }
+//             }
+//         }
+//     } else if (tsm.Node.isCallExpression(node)) {
+//         return resolveExtern(node.getExpression());
+//     }
 
-function processSysCall(syscall: NeoService, options: ProcessOptions) {
-    options.builder.pushSysCall(syscall);
-}
+//     return undefined;
+// }
+// export function resolveBuiltIn2(node: tsm.Node): ProcessFunction | undefined {
+//     const extern = resolveExtern(node);
+//     if (extern && node.isKind(extern.kind)) {
+//         return extern.func;
+//     }
 
-function ByteString_toBigInt(node: tsm.Node, options: ProcessOptions): void {
-    options.builder.pushConvert(StackItemType.Integer);
-}
+//     return undefined;
+// }
+
+// function storageConstructorMethod(syscall: NeoService): ProcessFunction {
+//     return (node: tsm.Node, options: ProcessOptions) => {
+//         const call = asKindOrCompileError(node, tsm.SyntaxKind.CallExpression);
+//         processArguments(call.getArguments(), options);
+//         options.builder.pushSysCall(syscall);
+//     }
+// }
+
+// function ByteString_toBigInt(node: tsm.Node, options: ProcessOptions): void {
+//     const call = asKindOrCompileError(node, tsm.SyntaxKind.CallExpression);
+//     processExpression(call.getExpression(), options);
+//     options.builder.pushConvert(StackItemType.Integer);
+// }
 
 class ByteStringBuilder {
     private readonly buffer = new Array<number>();
@@ -84,38 +113,30 @@ class ByteStringBuilder {
 
 }
 
-function ByteStringConstructor_from(node: tsm.Node, options: ProcessOptions): void {
-    const { builder, scope } = options;
-    builder.pushConvert(StackItemType.ByteString);
-    return;
-    // if (!tsm.Node.isCallExpression(node)) { throw new CompileError(`Invalid node kind ${node.getKindName()}`, node); }
-    // const arg = node.getArguments()[0];
-    // if (!tsm.Node.isExpression(arg)) throw new CompileError(`Expected expression`, arg);
-    // if (tsm.Node.isArrayLiteralExpression(arg)) {
-    //     const buffer = new ByteStringBuilder();
-    //     for (const e of arg.getElements()) {
-    //         dispatch(e, undefined, {
-    //             [tsm.SyntaxKind.NumericLiteral]: (node) => {
-    //                 const literal = getNumericLiteral(node);
-    //                 if (literal < 0 || literal >= 256) throw new CompileError("Invalid byte value", node);
-    //                 buffer.push(literal);
-    //             },
-    //             [tsm.SyntaxKind.Identifier]: (node) => {
-    //                 const resolved = scope.resolve(node.getSymbolOrThrow());
-    //                 if (resolved instanceof ConstantValueSymbolDefinition) {
-    //                     if (typeof resolved.value === 'number') {
-    //                         buffer.push(resolved.value);
-    //                     } else if (typeof resolved.value === 'bigint') {
-    //                         buffer.push(resolved.value);
-    //                     } else { 
-    //                         throw new CompileError("invalid constant value type", node); 
-    //                     }
-    //                 }
-    //             }
-    //         })
-    //     }
-    //     builder.pushData(buffer.value);
-    //     return;
-    // }
-    // throw new CompileError("ByteStringConstructor.from not supported", arg);
+function asBytes(node: tsm.Expression) {
+    const arrayLiteral = asKindOrCompileError(node, tsm.SyntaxKind.ArrayLiteralExpression);
+    const builder = new ByteStringBuilder();
+    for (const e of arrayLiteral.getElements()) {
+        if (tsm.Node.isNumericLiteral(e)) {
+            const literal = getNumericLiteral(e);
+            if (literal < 0 || literal >= 256) throw new CompileError("Invalid byte value", e);
+            builder.push(literal);
+        }
+    }
+    return builder.value;
+}
+
+export function ByteStringConstructor_from(node: tsm.CallExpression, options: ProcessOptions): void {
+    const { builder } = options;
+    const arg = asExpressionOrCompileError(node.getArguments()[0]);
+    const argType = arg.getType();
+    if (argType.isArray() && argType.getArrayElementType()?.isNumber()) {
+        const data = asBytes(arg);
+        builder.pushData(data);
+    } else if (isBigIntLike(argType)) {
+        processExpression(arg, options);
+        builder.pushConvert(StackItemType.ByteString);
+    } else {
+        throw new CompileError("ByteStringConstructor_from failed", node);
+    }
 }

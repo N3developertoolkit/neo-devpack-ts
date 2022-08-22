@@ -43,6 +43,7 @@ function toDiagnostic(error: unknown): tsm.ts.Diagnostic {
     };
 }
 
+
 function compile(options: CompileOptions): CompileResults {
 
     const globals = createSymbolTable(options.project);

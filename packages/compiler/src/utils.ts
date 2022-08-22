@@ -1,4 +1,3 @@
-import { buffer } from "stream/consumers";
 import * as tsm from "ts-morph";
 import { CompileError } from "./compiler";
 
@@ -98,4 +97,15 @@ export function getSymbolOrCompileError(node: tsm.Node) {
     const symbol = node.getSymbol();
     if (!symbol) throw new CompileError("undefined symbol", node);
     return symbol;
+}
+
+export function asKindOrCompileError<TKind extends tsm.SyntaxKind>(node: tsm.Node, kind: TKind): tsm.KindToNodeMappings[TKind] {
+    const node2 = node.asKind(kind);
+    if (node2) { return node2; }
+    throw new CompileError(`Invalid node kind. Expected ${tsm.SyntaxKind[kind]}, received ${node.getKindName()}`, node);
+}
+
+export function asExpressionOrCompileError(node: tsm.Node): tsm.Expression {
+    if (tsm.Node.isExpression(node)) { return node; }
+    throw new CompileError(`Invalid expression node ${node.getKindName()}`, node);
 }

@@ -4,10 +4,10 @@ import { CompileError } from "../compiler";
 import { OperationBuilder, SlotType } from "../types/OperationBuilder";
 import { OpCode } from "../types/OpCode";
 import { BlockScope, FunctionSymbolDefinition, ParameterSymbolDefinition, VariableSymbolDefinition } from "../symbolTable";
-import { dispatch, NodeDispatchMap } from "../utility/nodeDispatch";
+import { dispatch } from "../utility/nodeDispatch";
 import { JumpTarget } from "../types/Instruction";
 import { getNumericLiteral, getSymbolOrCompileError, isBigIntLike, isStringLike } from "../utils";
-import { isBuiltInSymbolDefinition } from "../builtins";
+import { ByteStringConstructor_from } from "../builtins";
 import { StackItemType } from "../types/StackItem";
 
 export type ProcessFunction = (node: tsm.Node, options: ProcessOptions) => void;
@@ -146,29 +146,24 @@ function processNullishCoalescingOperator(node: tsm.BinaryExpression, options: P
 }
 
 
-function deets(node: tsm.Expression) {
-    const type = node.getType();
-    const typeSymbol = type.getSymbol();
-    const typeSymbolDecls = typeSymbol?.getDeclarations();
-    const typeSymbolValueDecl = typeSymbol?.getValueDeclaration();
-    const typeSymbolName = typeSymbol?.getName();
-    const symbol = node.getSymbol();
-    const symbolDecls = symbol?.getDeclarations();
-    const symbolValueDecl = symbol?.getValueDeclaration();
-
-    return { type, typeSymbol, typeSymbolDecls, typeSymbolValueDecl, typeSymbolName, symbol, symbolDecls, symbolValueDecl }
-}
-
 function processBinaryExpression(node: tsm.BinaryExpression, options: ProcessOptions) {
     const opTokenKind = node.getOperatorToken().getKind();
 
     const left = node.getLeft();
     const right = node.getRight();
-    const lDeets = deets(left);
-    const rDeets = deets(right);
 
     if (opTokenKind === tsm.SyntaxKind.QuestionQuestionToken) {
         return processNullishCoalescingOperator(node, options);
+    }
+    if (opTokenKind === tsm.SyntaxKind.EqualsToken) {
+        processExpression(right, options);
+        const s = left.getSymbol();
+        const r = s ? options.scope.resolve(s) : undefined;
+
+        if (r instanceof VariableSymbolDefinition) {
+            options.builder.pushStore(SlotType.Local, r.index);
+        }
+        return;
     }
 
     const opCode = binaryOperatorTokenToOpCode(
@@ -180,6 +175,16 @@ function processBinaryExpression(node: tsm.BinaryExpression, options: ProcessOpt
     processExpression(left, options);
     processExpression(right, options);
     options.builder.push(opCode);
+
+    if (opTokenKind === tsm.SyntaxKind.PlusEqualsToken) {
+        const s = left.getSymbol();
+        const r = s ? options.scope.resolve(s) : undefined;
+
+        if (r instanceof VariableSymbolDefinition) {
+            options.builder.pushStore(SlotType.Local, r.index);
+        }
+    }
+
 
 }
 
@@ -212,68 +217,168 @@ function binaryOperatorTokenToOpCode(
     }
 }
 
+function toBytes(node: tsm.Expression): Uint8Array {
+    if (tsm.Node.isArrayLiteralExpression(node)) {
+        const buffer = new Array<number>();
+        for (const e of node.getElements()) {
+            dispatch(e, undefined, {
+                [tsm.SyntaxKind.NumericLiteral]: (node) => {
+                    const literal = getNumericLiteral(node);
+                    if (literal < 0 || literal >= 256) throw new CompileError("Invalid byte value", node);
+                    buffer.push(literal);
+                }
+            });
+        }
+        return Uint8Array.from(buffer);;
+    }
+    throw new CompileError("toBytes", node);
+}
+
+function asExpressionOrThrow(node: tsm.Node): tsm.Expression {
+    if (tsm.Node.isExpression(node)) { return node; }
+    throw new CompileError(`asExpression`, node);
+}
+
 function processCallExpression(node: tsm.CallExpression, options: ProcessOptions) {
 
+    const nodeSymbol = node.getSymbol();
+    const nodeType = node.getType();
+    const nodeTypeSymbol = nodeType.getAliasSymbol() ?? nodeType.getSymbol();
+    const nodeTypeFQN = nodeTypeSymbol?.getFullyQualifiedName();
+
     const expr = node.getExpression();
+    const exprType = expr.getType();
+    const exprTypeSymbol = exprType.getAliasSymbol() ?? exprType.getSymbol();
+    const exprTypeFQN = exprTypeSymbol?.getFullyQualifiedName();
 
-    const nodeDeets = deets(node);
-    const exprDeets = deets(expr);
+    if (exprTypeFQN === '"/node_modules/@neo-project/neo-contract-framework/index".ByteStringConstructor.from') {
+        ByteStringConstructor_from(node, options);
+        return;
+    }
 
-    processArguments(node.getArguments(), options);
-    processExpression(expr, options);
+    if (exprTypeFQN?.startsWith('"/node_modules/@neo-project/neo-contract-framework/index".StorageConstructor.')) {
+        processArguments(node.getArguments(), options);
+        processExpression(expr, options);
+        return;
+    }
+
+    if (exprTypeFQN === '"/node_modules/@neo-project/neo-contract-framework/index".ByteString.toBigInt') {
+        processExpression(expr, options);
+        return;
+    }
+
+    throw new CompileError(`processCallExpression not implemented ${node.getExpression().print()}`, node);
+}
+
+function processConditionalExpression(node: tsm.ConditionalExpression, options: ProcessOptions) {
+
+    const expr = node.getCondition();
+    const exprType = expr.getType();
+    const exprTypeSymbol = exprType.getAliasSymbol() ?? exprType.getSymbol();
+    const exprTypeFQN = exprTypeSymbol?.getFullyQualifiedName();
+
+    const { builder } = options;
+
+    const falseTarget: JumpTarget = { instruction: undefined };
+    const endTarget: JumpTarget = { instruction: undefined };
+    processExpression(node.getCondition(), options);
+    if (!exprType.isBoolean()) {
+        builder.push(OpCode.ISNULL);
+    }
+    builder.pushJump(OpCode.JMPIFNOT_L, falseTarget);
+    processExpression(node.getWhenTrue(), options);
+    builder.pushJump(endTarget);
+    falseTarget.instruction = builder.push(OpCode.NOP).instruction;
+    processExpression(node.getWhenFalse(), options);
+    endTarget.instruction = builder.push(OpCode.NOP).instruction;
 }
 
 function processIdentifier(node: tsm.Identifier, options: ProcessOptions) {
 
-    const nodeDeets = deets(node);
-
+    const type = node.getType();
+    const typeText = type.getText();
+    const flags = tsm.TypeFlags[type.getFlags()];
     const symbol = getSymbolOrCompileError(node);
+    const valDecl = symbol.getValueDeclaration()
+        ?? symbol.getAliasedSymbol()?.getValueDeclaration();
+
+    const decls = symbol.getDeclarations();
+    if (!valDecl
+        && decls.length === 1
+        && decls[0].isKind(tsm.SyntaxKind.NamespaceImport)
+    ) {
+        return;
+    }
     processSymbolDefinition(options.scope.resolve(symbol), node, options);
+}
+
+function processQuestionDot(hasQuestionDot: boolean, options: ProcessOptions, func: (options: ProcessOptions) => void) {
+    const { builder } = options;
+    if (hasQuestionDot) {
+        const endTarget: JumpTarget = { instruction: undefined };
+        builder.push(OpCode.DUP); //.set(node.getOperatorToken());
+        builder.push(OpCode.ISNULL);
+        builder.pushJump(OpCode.JMPIFNOT_L, endTarget);
+        func(options);
+        endTarget.instruction = builder.push(OpCode.NOP).instruction;
+    } else {
+        func(options);
+    }
 }
 
 function processPropertyAccessExpression(node: tsm.PropertyAccessExpression, options: ProcessOptions) {
 
+    const aNodeSymbol = node.getSymbol();
+    const aNodeType = node.getType();
+    const aNodeTypeSymbol = aNodeType.getAliasSymbol() ?? aNodeType.getSymbolOrThrow();
+    const aNodeTypeFQN = aNodeTypeSymbol.getFullyQualifiedName();
+
     const expr = node.getExpression();
+    const exprSymbol = expr.getSymbol();
+    const exprType = expr.getType();
+    const exprTypeSymbol = exprType.getAliasSymbol() ?? exprType.getSymbolOrThrow();
+    const exprTypeFQN = exprTypeSymbol.getFullyQualifiedName();
 
-    const nodeDeets = deets(node);
-    const exprDeets = deets(expr);
-
-    const name = node.getNameNode();
-    const exprTypeSymbolName = expr.getType().getSymbol()?.getName();
-    const hasQuestionDot = node.hasQuestionDotToken();
-
-    const symbol = name.getSymbol();
-    const resolved = symbol ? options.scope.resolve(symbol) : undefined;
-
-    // TODO: better approach for determining if we need to process the node expression
-    const staticExpression = exprTypeSymbolName === 'StorageConstructor'
-        || exprTypeSymbolName === 'ByteStringConstructor';
-
-    const { builder } = options;
-    const endTarget: JumpTarget = { instruction: undefined };
-
-    if (!staticExpression) {
-        processExpression(expr, options);
-        if (hasQuestionDot) {
-            builder.push(OpCode.DUP); //.set(node.getOperatorToken());
-            builder.push(OpCode.ISNULL);
-            builder.pushJump(OpCode.JMPIFNOT_L, endTarget);
+    if (exprTypeSymbol.getFullyQualifiedName() === "\"/node_modules/@neo-project/neo-contract-framework/index\".StorageConstructor"
+    ) {
+        switch (node.getName()) {
+            case "currentContext":
+                options.builder.pushSysCall("System.Storage.GetContext");
+                return;
+            case "get":
+                options.builder.pushSysCall("System.Storage.Get");
+                return;
+            case "put":
+                options.builder.pushSysCall("System.Storage.Put");
+                return;
+            case "delete":
+                options.builder.pushSysCall("System.Storage.Delete");
+                return;
+            default:
+                throw new CompileError(`Unrecognized StorageConstructor method ${node.getName()}`, node);
         }
     }
-    processSymbolDefinition(resolved, node, options);
-    if (hasQuestionDot) {
-        endTarget.instruction = builder.push(OpCode.NOP).instruction;
+
+    if (exprTypeSymbol.getFullyQualifiedName() === "\"/node_modules/@neo-project/neo-contract-framework/index\".ByteString"
+        && node.getName() === "toBigInt"
+    ) {
+        processExpression(expr, options);
+        processQuestionDot(node.hasQuestionDotToken(), options, (options => options.builder.pushConvert(StackItemType.Integer)));
+        return;
     }
+
+    throw new CompileError("processPropertyAccessExpression not implemented", node);
 }
 
 export function processExpression(node: tsm.Expression, options: ProcessOptions) {
+
     dispatch(node, options, {
         [tsm.SyntaxKind.ArrayLiteralExpression]: processArrayLiteralExpression,
         [tsm.SyntaxKind.BinaryExpression]: processBinaryExpression,
         [tsm.SyntaxKind.CallExpression]: processCallExpression,
+        [tsm.SyntaxKind.ConditionalExpression]: processConditionalExpression,
         [tsm.SyntaxKind.Identifier]: processIdentifier,
         [tsm.SyntaxKind.PropertyAccessExpression]: processPropertyAccessExpression,
-
 
         [tsm.SyntaxKind.BigIntLiteral]: (node, options) => {
             options.builder.pushInt(node.getLiteralValue() as bigint);
@@ -327,11 +432,6 @@ function processSymbolDefinition(resolved: SymbolDefinition | undefined, node: t
 
     if (resolved instanceof FunctionSymbolDefinition) {
         options.builder.pushCall(resolved);
-        return;
-    }
-
-    if (isBuiltInSymbolDefinition(resolved)) {
-        resolved.invokeBuiltIn(node, options);
         return;
     }
 

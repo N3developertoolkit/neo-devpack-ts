@@ -1,5 +1,4 @@
 import * as tsm from "ts-morph";
-import { resolveBuiltIn } from "./builtins";
 import { CompileError } from "./compiler";
 import { DefineSymbolFunction, Scope, SymbolDefinition } from "./types/CompileContext";
 import { SlotType } from "./types/OperationBuilder";
@@ -158,8 +157,8 @@ class GlobalScope implements Scope {
     }
 
     resolve(symbol: tsm.Symbol): SymbolDefinition | undefined {
-        const resolved = this.map.resolve(symbol);
-        return resolved ?? resolveBuiltIn(symbol, this);
+        return this.map.resolve(symbol);
+        // return resolved ?? resolveBuiltIn(symbol, this);
     }
 }
 

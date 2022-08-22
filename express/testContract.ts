@@ -1,4 +1,4 @@
-import * as neo from '@neo-project/neo-contract-framework';
+import { Storage, ByteString } from '@neo-project/neo-contract-framework';
 
 // /** @safe */
 // export function symbol() { return "TOKEN"; }
@@ -33,13 +33,16 @@ import * as neo from '@neo-project/neo-contract-framework';
 // }
 
 function updateTotalSupply(amount: bigint) {
-    const context = neo.Storage?.currentContext;
-    const key = neo.ByteString.from([0x00]);
-    let totalSupply = neo.Storage.get(context, key)?.toBigInt() ?? 0n;
-    totalSupply += amount;
-    // neo.Storage.put(context, key, neo.ByteString.from(totalSupply));
+    const context = Storage.currentContext;
+    const key = ByteString.from([0x00, 0xff, 0xf0]);
+    const keyValue = Storage.get(context, key);
+    let totalSupply = keyValue ? keyValue.toBigInt() : 0n;
+    totalSupply = totalSupply + amount;
+    Storage.put(context, key, ByteString.from(totalSupply));
 }
 
+
+    // let totalSupply = Storage.get(context, key)?.toBigInt() ?? 0n;
 
 // /** @safe */
 // export function getValue() { 
