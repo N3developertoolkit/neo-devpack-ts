@@ -1,11 +1,12 @@
 {
+    "extends": "@tsconfig/node16/tsconfig.json",
     "compilerOptions": {
         "disableSourceOfProjectReferenceRedirect": true
     },
     "files": [],
     "references": [
-        { 
-            "path": "./src"
+        {
+            "path": "./packages/compiler"
         }
     ]
 }
