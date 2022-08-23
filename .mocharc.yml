@@ -1,2 +1,4 @@
 require: 'ts-node/register'
-spec: packages/*/tests/**/*.ts
+spec: 
+  - packages/*/tests/**/*.spec.ts
+  - packages/*/src/**/*.spec.ts

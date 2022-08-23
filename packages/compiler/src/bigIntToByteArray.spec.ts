@@ -1,7 +1,7 @@
 import { u } from '@cityofzion/neon-core';
 import { expect } from 'chai';
 import 'mocha';
-import { bigIntToByteArray, byteArrayToBigInt } from '../src/utils'
+import { bigIntToByteArray, byteArrayToBigInt } from './utils'
 
 // tables generated via powershell in order to ensure .NET BigInteger compat
 const positiveValueTests = [
