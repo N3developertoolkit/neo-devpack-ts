@@ -19,6 +19,29 @@ export function isConst(node: tsm.TypeNode) {
     return false;
 }
 
+export function isCompoundAssignment(kind: tsm.SyntaxKind) {
+    switch (kind) {
+        case tsm.SyntaxKind.PlusEqualsToken:
+        case tsm.SyntaxKind.MinusEqualsToken:
+        case tsm.SyntaxKind.AsteriskAsteriskEqualsToken:
+        case tsm.SyntaxKind.AsteriskEqualsToken:
+        case tsm.SyntaxKind.SlashEqualsToken:
+        case tsm.SyntaxKind.PercentEqualsToken:
+        case tsm.SyntaxKind.AmpersandEqualsToken:
+        case tsm.SyntaxKind.BarEqualsToken:
+        case tsm.SyntaxKind.CaretEqualsToken:
+        case tsm.SyntaxKind.LessThanLessThanEqualsToken:
+        case tsm.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken:
+        case tsm.SyntaxKind.GreaterThanGreaterThanEqualsToken:
+        case tsm.SyntaxKind.BarBarEqualsToken:
+        case tsm.SyntaxKind.AmpersandAmpersandEqualsToken:
+        case tsm.SyntaxKind.QuestionQuestionEqualsToken:
+            return true;
+        default:
+            return false;
+    }
+}
+
 export function getNumericLiteral(node: tsm.NumericLiteral) {
     const literal = node.getLiteralValue();
     if (!Number.isInteger(literal)) throw new CompileError(`invalid non-integer numeric literal`, node);
@@ -36,7 +59,7 @@ export function byteArrayToBigInt(value: Uint8Array): bigint {
     if (!negativeValue) {
         return toBigInt(buffer);
     }
-    
+
     throw new Error("Not Implemented");
 }
 
@@ -56,7 +79,7 @@ export function bigIntToByteArray(value: bigint): Uint8Array {
         // convert negative number to positive and create buffer 
         let buffer = toBuffer(value * -1n);
         // if the buffer has all the bits set, prepend an empty padding byte
-        buffer = allBitsSet(buffer) 
+        buffer = allBitsSet(buffer)
             ? Buffer.concat([Buffer.alloc(1, 0x00), buffer])
             : buffer;
         // invert the bits

@@ -34,9 +34,8 @@ import { Storage, ByteString } from '@neo-project/neo-contract-framework';
 
 function updateTotalSupply(amount: bigint) {
     const context = Storage.currentContext;
-    const key = ByteString.from([0x00, 0xff, 0xf0]);
-    const keyValue = Storage.get(context, key);
-    let totalSupply = keyValue ? keyValue.toBigInt() : 0n;
+    const key = ByteString.from([0x00]);
+    let totalSupply = Storage.get(context, key)?.toBigInt() ?? 0n;
     totalSupply = totalSupply + amount;
     Storage.put(context, key, ByteString.from(totalSupply));
 }

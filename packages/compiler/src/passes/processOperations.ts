@@ -6,7 +6,7 @@ import { OpCode } from "../types/OpCode";
 import { BlockScope, FunctionSymbolDefinition, ParameterSymbolDefinition, VariableSymbolDefinition } from "../symbolTable";
 import { dispatch } from "../utility/nodeDispatch";
 import { JumpTarget } from "../types/Instruction";
-import { getNumericLiteral, getSymbolOrCompileError, isBigIntLike, isStringLike } from "../utils";
+import { getNumericLiteral, getSymbolOrCompileError, isBigIntLike, isCompoundAssignment, isStringLike } from "../utils";
 import { ByteStringConstructor_from } from "../builtins";
 import { StackItemType } from "../types/StackItem";
 
@@ -133,19 +133,6 @@ function processArrayLiteralExpression(node: tsm.ArrayLiteralExpression, options
     options.builder.push(OpCode.PACK);
 }
 
-function processNullishCoalescingOperator(node: tsm.BinaryExpression, options: ProcessOptions) {
-    const { builder } = options;
-    const endTarget: JumpTarget = { instruction: undefined };
-
-    processExpression(node.getLeft(), options);
-    builder.push(OpCode.DUP); //.set(node.getOperatorToken());
-    builder.push(OpCode.ISNULL);
-    builder.pushJump(OpCode.JMPIFNOT_L, endTarget);
-    processExpression(node.getRight(), options);
-    endTarget.instruction = builder.push(OpCode.NOP).instruction;
-}
-
-
 function processBinaryExpression(node: tsm.BinaryExpression, options: ProcessOptions) {
     const opTokenKind = node.getOperatorToken().getKind();
 
@@ -153,7 +140,11 @@ function processBinaryExpression(node: tsm.BinaryExpression, options: ProcessOpt
     const right = node.getRight();
 
     if (opTokenKind === tsm.SyntaxKind.QuestionQuestionToken) {
-        return processNullishCoalescingOperator(node, options);
+        processExpression(node.getLeft(), options);
+        processNullCoalesce(options, (options) => {
+            processExpression(node.getRight(), options);
+        })
+        return;
     }
     if (opTokenKind === tsm.SyntaxKind.EqualsToken) {
         processExpression(right, options);
@@ -176,7 +167,7 @@ function processBinaryExpression(node: tsm.BinaryExpression, options: ProcessOpt
     processExpression(right, options);
     options.builder.push(opCode);
 
-    if (opTokenKind === tsm.SyntaxKind.PlusEqualsToken) {
+    if (isCompoundAssignment(opTokenKind)) {
         const s = left.getSymbol();
         const r = s ? options.scope.resolve(s) : undefined;
 
@@ -184,8 +175,6 @@ function processBinaryExpression(node: tsm.BinaryExpression, options: ProcessOpt
             options.builder.pushStore(SlotType.Local, r.index);
         }
     }
-
-
 }
 
 function binaryOperatorTokenToOpCode(
@@ -201,7 +190,8 @@ function binaryOperatorTokenToOpCode(
             }
             throw new Error(`getBinaryOperator.${op.getKindName()} not implemented for ${left.getText()} and ${right.getText()}`);
         }
-        case tsm.SyntaxKind.LessThanToken: return OpCode.LT;
+        case tsm.SyntaxKind.LessThanToken:
+            return OpCode.LT;
         case tsm.SyntaxKind.PlusToken:
         case tsm.SyntaxKind.PlusEqualsToken: {
             if (isStringLike(left) && isStringLike(right)) {
@@ -215,28 +205,6 @@ function binaryOperatorTokenToOpCode(
         default:
             throw new Error(`getBinaryOperator ${op.getKindName()} not implemented`);
     }
-}
-
-function toBytes(node: tsm.Expression): Uint8Array {
-    if (tsm.Node.isArrayLiteralExpression(node)) {
-        const buffer = new Array<number>();
-        for (const e of node.getElements()) {
-            dispatch(e, undefined, {
-                [tsm.SyntaxKind.NumericLiteral]: (node) => {
-                    const literal = getNumericLiteral(node);
-                    if (literal < 0 || literal >= 256) throw new CompileError("Invalid byte value", node);
-                    buffer.push(literal);
-                }
-            });
-        }
-        return Uint8Array.from(buffer);;
-    }
-    throw new CompileError("toBytes", node);
-}
-
-function asExpressionOrThrow(node: tsm.Node): tsm.Expression {
-    if (tsm.Node.isExpression(node)) { return node; }
-    throw new CompileError(`asExpression`, node);
 }
 
 function processCallExpression(node: tsm.CallExpression, options: ProcessOptions) {
@@ -312,7 +280,12 @@ function processIdentifier(node: tsm.Identifier, options: ProcessOptions) {
     processSymbolDefinition(options.scope.resolve(symbol), node, options);
 }
 
-function processQuestionDot(hasQuestionDot: boolean, options: ProcessOptions, func: (options: ProcessOptions) => void) {
+
+function processNullCoalesce(...args:
+    [hasQuestionDot: boolean, options: ProcessOptions, func: (options: ProcessOptions) => void]
+    | [options: ProcessOptions, func: (options: ProcessOptions) => void]
+) {
+    const [hasQuestionDot, options, func] = args.length === 3 ? args : [true, ...args];
     const { builder } = options;
     if (hasQuestionDot) {
         const endTarget: JumpTarget = { instruction: undefined };
@@ -363,7 +336,7 @@ function processPropertyAccessExpression(node: tsm.PropertyAccessExpression, opt
         && node.getName() === "toBigInt"
     ) {
         processExpression(expr, options);
-        processQuestionDot(node.hasQuestionDotToken(), options, (options => options.builder.pushConvert(StackItemType.Integer)));
+        processNullCoalesce(node.hasQuestionDotToken(), options, (options => options.builder.pushConvert(StackItemType.Integer)));
         return;
     }
 
