@@ -1,4 +1,3 @@
-import { u } from '@cityofzion/neon-core';
 import { expect } from 'chai';
 import 'mocha';
 import { bigIntToByteArray, byteArrayToBigInt } from './utils'
