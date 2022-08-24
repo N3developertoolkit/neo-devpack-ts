@@ -1,5 +1,5 @@
 import { FunctionSymbolDefinition } from "../symbolTable";
-import { getAnnotation, isJumpOpCode, JumpOpCode, OpCode, toString as opCodeToString, TryOpCode, } from "./OpCode";
+import { getAnnotation, isJumpOpCode, isTryOpCode, JumpOpCode, OpCode, toString as opCodeToString, TryOpCode, } from "./OpCode";
 
 export interface Instruction {
     readonly opCode: OpCode,
@@ -39,7 +39,9 @@ export interface JumpInstruction extends Instruction {
     readonly target: JumpTarget,
 }
 
-export function isJumpInstruction(ins: Instruction): ins is JumpInstruction { return isJumpOpCode(ins.opCode); }
+export function isJumpInstruction(ins: Instruction): ins is JumpInstruction { 
+    return isJumpOpCode(ins.opCode) && 'target' in ins;
+}
 
 export interface CallInstruction extends Instruction {
     readonly opCode: OpCode.CALL | OpCode.CALL_L,
@@ -57,7 +59,7 @@ export interface TryInstruction extends Instruction {
 }
 
 export function isTryInstruction(ins: Instruction): ins is TryInstruction {
-    return ins.opCode === OpCode.TRY || ins.opCode === OpCode.TRY_L
+    return isTryOpCode(ins.opCode) && 'catchTarget' in ins && 'finallyTarget' in ins;
 }
 
 // List of services generated via this C# code:
