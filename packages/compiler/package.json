@@ -2,7 +2,7 @@
   "name": "@neo-project/neo-compiler-ts",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "./lib/index",
   "keywords": [],
   "author": "neo-project",
   "license": "MIT",

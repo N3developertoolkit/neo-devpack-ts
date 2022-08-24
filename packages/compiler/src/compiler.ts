@@ -4,13 +4,11 @@ import * as tsmc from "@ts-morph/common";
 import * as fs from 'fs';
 import * as path from 'path';
 import { ContractType, } from "./types/ContractType";
-// import { dumpOperations } from "./testUtils";
 import { Immutable } from "./utility/Immutable";
 import { createSymbolTable } from "./symbolTable";
 import { processFunctionDeclarationsPass } from "./passes/processOperations";
-import { CompileArtifacts, CompileContext, CompileOptions, CompileResults, OperationInfo } from "./types/CompileContext";
+import { CompileArtifacts, CompileContext, OperationInfo } from "./types/CompileContext";
 import { DebugMethodInfo } from "./types/DebugInfo";
-import { dumpOperations } from "./testUtils";
 
 // https://github.com/CityOfZion/neon-js/issues/858
 const DEFAULT_ADDRESS_VALUE = 53;
@@ -23,7 +21,21 @@ export class CompileError extends Error {
         super(message);
     }
 }
-function toDiagnostic(error: unknown): tsm.ts.Diagnostic {
+
+export interface CompileOptions {
+    project: tsm.Project;
+    addressVersion?: number;
+    inline?: boolean;
+    optimize?: boolean;
+}
+
+export interface CompileResults {
+    readonly diagnostics: ReadonlyArray<tsm.ts.Diagnostic>,
+    readonly artifacts?: Immutable<CompileArtifacts>,
+    readonly context: Immutable<Omit<CompileContext, 'diagnostics' | 'artifacts'>>
+}
+
+export function toDiagnostic(error: unknown): tsm.ts.Diagnostic {
     const messageText = error instanceof Error
         ? error.message
         : "unknown error";
@@ -44,7 +56,7 @@ function toDiagnostic(error: unknown): tsm.ts.Diagnostic {
 }
 
 
-function compile(options: CompileOptions): CompileResults {
+export function compile(options: CompileOptions): CompileResults {
 
     const globals = createSymbolTable(options.project);
 
@@ -233,9 +245,9 @@ function compileOperation(
     // }
 }
 
-export function convertContractType(type: tsm.Type): sc.ContractParamType;
-export function convertContractType(type: ContractType): sc.ContractParamType;
-export function convertContractType(type: ContractType | tsm.Type): sc.ContractParamType {
+function convertContractType(type: tsm.Type): sc.ContractParamType;
+function convertContractType(type: ContractType): sc.ContractParamType;
+function convertContractType(type: ContractType | tsm.Type): sc.ContractParamType {
     throw new Error();
     // if (type instanceof tsm.Type) { type = toContractType(type); }
     // switch (type.kind) {
@@ -278,96 +290,96 @@ function toMethodDef(method: DebugMethodInfo): sc.ContractMethodDefinition | und
     });
 }
 
-function printDiagnostics(diags: ReadonlyArray<tsm.ts.Diagnostic>) {
-    const formatHost: tsm.ts.FormatDiagnosticsHost = {
-        getCurrentDirectory: () => tsm.ts.sys.getCurrentDirectory(),
-        getNewLine: () => tsm.ts.sys.newLine,
-        getCanonicalFileName: (fileName: string) => tsm.ts.sys.useCaseSensitiveFileNames
-            ? fileName : fileName.toLowerCase()
-    }
+// function printDiagnostics(diags: ReadonlyArray<tsm.ts.Diagnostic>) {
+//     const formatHost: tsm.ts.FormatDiagnosticsHost = {
+//         getCurrentDirectory: () => tsm.ts.sys.getCurrentDirectory(),
+//         getNewLine: () => tsm.ts.sys.newLine,
+//         getCanonicalFileName: (fileName: string) => tsm.ts.sys.useCaseSensitiveFileNames
+//             ? fileName : fileName.toLowerCase()
+//     }
 
-    const msg = tsm.ts.formatDiagnosticsWithColorAndContext(diags, formatHost);
-    console.log(msg);
-}
+//     const msg = tsm.ts.formatDiagnosticsWithColorAndContext(diags, formatHost);
+//     console.log(msg);
+// }
 
-function saveArtifacts(
-    rootPath: string,
-    filename: string,
-    source: string,
-    artifacts: Immutable<CompileArtifacts>
-) {
-    if (!fs.existsSync(rootPath)) { fs.mkdirSync(rootPath); }
-    const basename = path.parse(filename).name;
-    const nefPath = path.join(rootPath, basename + ".nef");
-    const manifestPath = path.join(rootPath, basename + ".manifest.json");
-    const tsPath = path.join(artifactPath, filename);
+// function saveArtifacts(
+//     rootPath: string,
+//     filename: string,
+//     source: string,
+//     artifacts: Immutable<CompileArtifacts>
+// ) {
+//     if (!fs.existsSync(rootPath)) { fs.mkdirSync(rootPath); }
+//     const basename = path.parse(filename).name;
+//     const nefPath = path.join(rootPath, basename + ".nef");
+//     const manifestPath = path.join(rootPath, basename + ".manifest.json");
+//     const tsPath = path.join(artifactPath, filename);
 
-    fs.writeFileSync(nefPath, Buffer.from(artifacts.nef.serialize(), 'hex'));
-    fs.writeFileSync(manifestPath, JSON.stringify(artifacts.manifest.toJson(), null, 4));
-    fs.writeFileSync(tsPath, source);
-}
+//     fs.writeFileSync(nefPath, Buffer.from(artifacts.nef.serialize(), 'hex'));
+//     fs.writeFileSync(manifestPath, JSON.stringify(artifacts.manifest.toJson(), null, 4));
+//     fs.writeFileSync(tsPath, source);
+// }
 
-const artifactPath = path.join(
-    path.dirname(path.dirname(path.dirname(__dirname))),
-    "express", "out");
+// const artifactPath = path.join(
+//     path.dirname(path.dirname(path.dirname(__dirname))),
+//     "express", "out");
 
-export function configureProject(): tsm.Project {
-    const project = new tsm.Project({
-        compilerOptions: {
-            experimentalDecorators: true,
-            // specify lib file directly to avoid bringing in web apis like DOM and WebWorker
-            lib: ["lib.es2020.d.ts"],
-            target: tsm.ts.ScriptTarget.ES2020,
-            moduleResolution: tsm.ts.ModuleResolutionKind.NodeJs,
-        },
-        useInMemoryFileSystem: true,
-    });
+// function configureProject(): tsm.Project {
+//     const project = new tsm.Project({
+//         compilerOptions: {
+//             experimentalDecorators: true,
+//             // specify lib file directly to avoid bringing in web apis like DOM and WebWorker
+//             lib: ["lib.es2020.d.ts"],
+//             target: tsm.ts.ScriptTarget.ES2020,
+//             moduleResolution: tsm.ts.ModuleResolutionKind.NodeJs,
+//         },
+//         useInMemoryFileSystem: true,
+//     });
 
-    // load scfx definitions from framework package path
-    const scfxActualPath = path.join(__dirname, "../../framework/src/index.d.ts");
-    const scfxSourceCode = fs.readFileSync(scfxActualPath, 'utf8');
+//     // load scfx definitions from framework package path
+//     const scfxActualPath = path.join(__dirname, "../../framework/src/index.d.ts");
+//     const scfxSourceCode = fs.readFileSync(scfxActualPath, 'utf8');
 
-    // add scfx definitions to fake node_modules path
-    const scfxPath = '/node_modules/@neo-project/neo-contract-framework/index.d.ts';
-    project.getFileSystem().writeFileSync(scfxPath, scfxSourceCode);
-    return project;
+//     // add scfx definitions to fake node_modules path
+//     const scfxPath = '/node_modules/@neo-project/neo-contract-framework/index.d.ts';
+//     project.getFileSystem().writeFileSync(scfxPath, scfxSourceCode);
+//     return project;
 
-}
+// }
 
-function testCompile(source: string, filename: string = "contract.ts") {
+// function testCompile(source: string, filename: string = "contract.ts") {
 
-    const project = configureProject();
-    project.createSourceFile(filename, source);
-    project.resolveSourceFileDependencies();
+//     const project = configureProject();
+//     project.createSourceFile(filename, source);
+//     project.resolveSourceFileDependencies();
 
-    // console.time('getPreEmitDiagnostics');
-    const diagnostics = project.getPreEmitDiagnostics();
-    // console.timeEnd('getPreEmitDiagnostics')
+//     // console.time('getPreEmitDiagnostics');
+//     const diagnostics = project.getPreEmitDiagnostics();
+//     // console.timeEnd('getPreEmitDiagnostics')
 
-    if (diagnostics.length > 0) {
-        printDiagnostics(diagnostics.map(d => d.compilerObject));
-    } else {
-        try {
-            const results = compile({ project });
-            if (results.diagnostics.length > 0) {
-                printDiagnostics(results.diagnostics);
-            } else {
-                if (results.artifacts) {
-                    // dumpArtifacts(results.artifacts);
-                    saveArtifacts(artifactPath, filename, source, results.artifacts);
-                } else {
-                    dumpOperations(results.context.operations);
-                }
-            }
-        } catch (error) {
-            printDiagnostics([toDiagnostic(error)]);
-        }
-    }
-}
+//     if (diagnostics.length > 0) {
+//         printDiagnostics(diagnostics.map(d => d.compilerObject));
+//     } else {
+//         try {
+//             const results = compile({ project });
+//             if (results.diagnostics.length > 0) {
+//                 printDiagnostics(results.diagnostics);
+//             } else {
+//                 if (results.artifacts) {
+//                     // dumpArtifacts(results.artifacts);
+//                     saveArtifacts(artifactPath, filename, source, results.artifacts);
+//                 } else {
+//                     dumpOperations(results.context.operations);
+//                 }
+//             }
+//         } catch (error) {
+//             printDiagnostics([toDiagnostic(error)]);
+//         }
+//     }
+// }
 
-const file = path.basename(process.argv[1]);
-if (file === "compiler.js") {
-    const testContractPath = path.join(__dirname, "../../../express/testContract.ts");
-    const testContractSourceCode = fs.readFileSync(testContractPath, 'utf8');
-    testCompile(testContractSourceCode);
-}
+// const file = path.basename(process.argv[1]);
+// if (file === "compiler.js") {
+//     const testContractPath = path.join(__dirname, "../../../express/testContract.ts");
+//     const testContractSourceCode = fs.readFileSync(testContractPath, 'utf8');
+//     testCompile(testContractSourceCode);
+// }

@@ -7,6 +7,9 @@
     "references": [
         {
             "path": "./packages/compiler"
+        },
+        {
+            "path": "./src"
         }
     ]
 }

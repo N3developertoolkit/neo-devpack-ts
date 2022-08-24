@@ -200,3 +200,6 @@ $RECYCLE.BIN/
 
 packages/*/lib
 express/out/*
+src/main.d.ts
+src/main.js
+src/main.js.map

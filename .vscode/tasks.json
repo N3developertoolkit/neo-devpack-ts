@@ -3,16 +3,13 @@
 	"tasks": [
 		{
 			"type": "typescript",
-			"tsconfig": "packages/compiler/tsconfig.json",
+			"tsconfig": "tsconfig.json",
 			"option": "watch",
 			"problemMatcher": [
 				"$tsc-watch"
 			],
-			"group": {
-				"kind": "build",
-				"isDefault": true
-			},
-			"label": "tsc: watch - packages/compiler/tsconfig.json"
+			"group": "build",
+			"label": "tsc: watch - tsconfig.json"
 		}
 	]
 }

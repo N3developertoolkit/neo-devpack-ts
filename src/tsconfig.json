@@ -1,0 +1,17 @@
+{
+    "extends": "@tsconfig/node16/tsconfig.json",
+    "compilerOptions": {
+        "composite": true,
+        "rootDir": ".",
+        "sourceMap": true,
+    },
+    "exclude": [
+        "bin/",
+        "contract.ts",
+    ],
+    "references": [
+        {
+            "path": "../packages/compiler"
+        }
+    ]
+}

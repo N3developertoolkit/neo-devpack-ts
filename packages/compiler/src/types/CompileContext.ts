@@ -3,6 +3,7 @@ import * as tsm from "ts-morph";
 import { DebugMethodInfo } from "./DebugInfo";
 import { Immutable } from "../utility/Immutable";
 import { Instruction } from "./Instruction";
+import { CompileOptions } from "../compiler";
 
 export type DefineSymbolFunction<T extends SymbolDefinition> = (scope: Scope) => T;
 
@@ -19,13 +20,6 @@ export interface SymbolDefinition {
     readonly parentScope: Scope;
 }
 
-export interface CompileOptions {
-    project: tsm.Project;
-    addressVersion?: number;
-    inline?: boolean;
-    optimize?: boolean;
-}
-
 export interface CompileContext {
     readonly project: tsm.Project,
     readonly options: Readonly<Pick<CompileOptions, 'addressVersion' | 'inline' | 'optimize'>>
@@ -35,12 +29,6 @@ export interface CompileContext {
     
     name?: string,
     artifacts?: CompileArtifacts
-}
-
-export interface CompileResults {
-    readonly diagnostics: ReadonlyArray<tsm.ts.Diagnostic>,
-    readonly artifacts?: Immutable<CompileArtifacts>,
-    readonly context: Immutable<Omit<CompileContext, 'diagnostics' | 'artifacts'>>
 }
 
 export interface CompileArtifacts {
