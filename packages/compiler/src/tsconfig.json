@@ -2,9 +2,10 @@
     "extends": "@tsconfig/node16/tsconfig.json",
     "compilerOptions": {
         "composite": true,
-        "sourceMap": true,
         "outDir": "../lib",
-        "rootDir": "."
+        "rootDir": ".",
+        "sourceMap": true,
+        "stripInternal": true
     },
     "exclude": [
         "*.spec.ts"

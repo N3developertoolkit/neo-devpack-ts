@@ -1,27 +1,7 @@
 import { join } from "path";
 import { readFile } from "fs/promises";
 import { Project, ts } from "ts-morph";
-import { compile, toDiagnostic } from '../packages/compiler/';
-
-async function createContractProject() {
-    const project = new Project({
-        compilerOptions: {
-            experimentalDecorators: true,
-            // specify lib file directly to avoid bringing in web apis like DOM and WebWorker
-            lib: ["lib.es2020.d.ts"],
-            target: ts.ScriptTarget.ES2020,
-            moduleResolution: ts.ModuleResolutionKind.NodeJs,
-        },
-        useInMemoryFileSystem: true,
-    });
-
-    // load SCFX definitions
-    const scfxPath = join(__dirname, "../packages/framework/src/index.d.ts");
-    const scfxSource = await readFile(scfxPath, 'utf8');
-
-    await project.getFileSystem().writeFile('/node_modules/@neo-project/neo-contract-framework/index.d.ts', scfxSource);
-    return project;
-}
+import { compile, createContractProject, toDiagnostic } from '../packages/compiler/';
 
 function printDiagnostics(diags: ReadonlyArray<ts.Diagnostic>) {
     const formatHost: ts.FormatDiagnosticsHost = {
@@ -56,16 +36,16 @@ async function main() {
 
     try {
         const results = compile({ project });
-        if (results.diagnostics.length > 0) {
-            printDiagnostics(results.diagnostics);
-        } else {
-            if (results.artifacts) {
-                // dumpArtifacts(results.artifacts);
-                // saveArtifacts(artifactPath, filename, source, results.artifacts);
-            } else {
-                // dumpOperations(results.context.operations);
-            }
-        }
+        // if (results.diagnostics.length > 0) {
+        //     printDiagnostics(results.diagnostics);
+        // } else {
+        //     if (results.artifacts) {
+        //         // dumpArtifacts(results.artifacts);
+        //         // saveArtifacts(artifactPath, filename, source, results.artifacts);
+        //     } else {
+        //         // dumpOperations(results.context.operations);
+        //     }
+        // }
     } catch (error) {
         printDiagnostics([toDiagnostic(error)]);
     }
@@ -73,7 +53,7 @@ async function main() {
 
 main();
 
-export enum AnsiEscapeSequences {
+enum AnsiEscapeSequences {
     Black = "\u001b[30m",
     Red = "\u001b[31m",
     Green = "\u001b[32m",

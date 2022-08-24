@@ -1,5 +1,47 @@
 import * as tsm from "ts-morph";
 import { CompileError } from "./compiler";
+import { join } from "path";
+import { readFile } from "fs/promises";
+
+export function toDiagnostic(error: unknown): tsm.ts.Diagnostic {
+    const messageText = error instanceof Error
+        ? error.message
+        : "unknown error";
+    const node = error instanceof CompileError
+        ? error.node
+        : undefined;
+    return {
+        category: tsm.ts.DiagnosticCategory.Error,
+        code: 0,
+        file: node?.getSourceFile().compilerNode,
+        length: node
+            ? node.getEnd() - node.getPos()
+            : undefined,
+        messageText,
+        start: node?.getPos(),
+        source: node?.print()
+    };
+}
+
+export async function createContractProject(scfxPath?: string) {
+    const project = new tsm.Project({
+        compilerOptions: {
+            experimentalDecorators: true,
+            // specify lib file directly to avoid bringing in web apis like DOM and WebWorker
+            lib: ["lib.es2020.d.ts"],
+            target: tsm.ts.ScriptTarget.ES2020,
+            moduleResolution: tsm.ts.ModuleResolutionKind.NodeJs,
+        },
+        useInMemoryFileSystem: true,
+    });
+
+    // load SCFX definitions
+    scfxPath ??= join(__dirname, "../../framework/src/index.d.ts");
+    const scfxSource = await readFile(scfxPath, 'utf8');
+
+    await project.getFileSystem().writeFile('/node_modules/@neo-project/neo-contract-framework/index.d.ts', scfxSource);
+    return project;
+}
 
 const checkFlags = (type: tsm.Type, flags: tsm.ts.TypeFlags) => type.getFlags() & flags;
 
