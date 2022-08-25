@@ -1,4 +1,4 @@
-// import * as tsm from "ts-morph";
+import * as tsm from "ts-morph";
 // import { CompileContext, Scope, SymbolDefinition } from "../types/CompileContext";
 // import { CompileError } from "../compiler";
 // import { OperationBuilder, SlotType } from "../types/OperationBuilder";
@@ -10,120 +10,124 @@
 // import { ByteStringConstructor_from } from "../builtins";
 // import { StackItemType } from "../types/StackItem";
 
-import { CompileContext } from "../compiler";
+import { CompileContext, CompileError } from "../compiler";
+import { BlockScope, FunctionSymbolDef, Scope, VariableSymbolDef } from "../scope";
+import { InstructionKind, TargetOffset } from "../types/Instruction";
+import { OperationBuilder } from "../types/OperationBuilder";
+import { dispatch } from "../utility/nodeDispatch";
 
 // export type ProcessFunction = (node: tsm.Node, options: ProcessOptions) => void;
 
-// export interface ProcessOptions {
-//     builder: OperationBuilder,
-//     scope: Scope,
-// }
+export interface ProcessOptions {
+    builder: OperationBuilder,
+    scope: Scope,
+}
 
-// function processBlock(node: tsm.Block, options: ProcessOptions): void {
-//     const { builder, scope } = options;
-//     const blockOptions = {
-//         builder,
-//         scope: new BlockScope(node, scope),
-//     };
-//     builder.push(OpCode.NOP)
-//         .set(node.getFirstChildByKind(tsm.SyntaxKind.OpenBraceToken));
-//     node.getStatements()
-//         .forEach(s => processStatement(s, blockOptions));
-//     builder.push(OpCode.NOP)
-//         .set(node.getLastChildByKind(tsm.SyntaxKind.CloseBraceToken));
-// }
+function processBlock(node: tsm.Block, options: ProcessOptions): void {
+    const { builder, scope } = options;
+    const blockOptions = {
+        builder,
+        scope: new BlockScope(node, scope),
+    };
+    builder.push(InstructionKind.NOP)
+        .set(node.getFirstChildByKind(tsm.SyntaxKind.OpenBraceToken));
+    node.getStatements()
+        .forEach(s => processStatement(s, blockOptions));
+    builder.push(InstructionKind.NOP)
+        .set(node.getLastChildByKind(tsm.SyntaxKind.CloseBraceToken));
+}
 
-// function processExpressionStatement(node: tsm.ExpressionStatement, options: ProcessOptions): void {
-//     const { builder } = options;
-//     const nodeSetter = builder.getNodeSetter();
-//     const expr = node.getExpression();
-//     processExpression(expr, options);
-//     nodeSetter.set(node);
-// }
+function processExpressionStatement(node: tsm.ExpressionStatement, options: ProcessOptions): void {
+    const { builder } = options;
+    const nodeSetter = builder.getNodeSetter();
+    const expr = node.getExpression();
+    processExpression(expr, options);
+    nodeSetter.set(node);
+}
 
-// function processIfStatement(node: tsm.IfStatement, options: ProcessOptions): void {
-//     const { builder } = options;
-//     const elseTarget: JumpTarget = { instruction: undefined };
-//     const nodeSetter = builder.getNodeSetter();
-//     const expr = node.getExpression();
-//     processExpression(expr, options);
-//     nodeSetter.set(expr);
-//     builder.pushJump(OpCode.JMPIFNOT_L, elseTarget);
-//     processStatement(node.getThenStatement(), options);
-//     const _else = node.getElseStatement();
-//     if (_else) {
-//         const endTarget: JumpTarget = { instruction: undefined };
-//         builder.pushJump(endTarget);
-//         elseTarget.instruction = builder.push(OpCode.NOP).instruction;
-//         processStatement(_else, options);
-//         endTarget.instruction = builder.push(OpCode.NOP).instruction;
-//     } else {
-//         elseTarget.instruction = builder.push(OpCode.NOP).instruction;
-//     }
-// }
+function processIfStatement(node: tsm.IfStatement, options: ProcessOptions): void {
+    const { builder } = options;
+    const elseTarget: TargetOffset = { instruction: undefined };
+    const nodeSetter = builder.getNodeSetter();
+    const expr = node.getExpression();
+    processExpression(expr, options);
+    nodeSetter.set(expr);
+    builder.pushJump(InstructionKind.JMPIFNOT, elseTarget);
+    processStatement(node.getThenStatement(), options);
+    const elseStmt = node.getElseStatement();
+    if (elseStmt) {
+        const endTarget: TargetOffset = { instruction: undefined };
+        builder.pushJump(InstructionKind.JMP, endTarget);
+        elseTarget.instruction = builder.push(InstructionKind.NOP).instruction;
+        processStatement(elseStmt, options);
+        endTarget.instruction = builder.push(InstructionKind.NOP).instruction;
+    } else {
+        elseTarget.instruction = builder.push(InstructionKind.NOP).instruction;
+    }
+}
 
-// function processReturnStatement(node: tsm.ReturnStatement, options: ProcessOptions): void {
-//     const { builder } = options;
-//     const nodeSetter = builder.getNodeSetter();
-//     const expr = node.getExpression();
-//     if (expr) { processExpression(expr, options); }
-//     builder.pushJump(builder.returnTarget);
-//     nodeSetter.set(node);
-// }
+function processReturnStatement(node: tsm.ReturnStatement, options: ProcessOptions): void {
+    const { builder } = options;
+    const nodeSetter = builder.getNodeSetter();
+    const expr = node.getExpression();
+    if (expr) { processExpression(expr, options); }
+    builder.pushJump(InstructionKind.JMP, builder.returnTarget);
+    nodeSetter.set(node);
+}
 
-// function processThrowStatement(node: tsm.ThrowStatement, options: ProcessOptions) {
-//     const { builder } = options;
-//     const nodeSetter = builder.getNodeSetter();
+function processThrowStatement(node: tsm.ThrowStatement, options: ProcessOptions) {
+    const { builder } = options;
+    const nodeSetter = builder.getNodeSetter();
 
-//     var expr = node.getExpression();
-//     if (tsm.Node.isNewExpression(expr)
-//         && expr.getType().getSymbol()?.getName() === "Error") {
+    var expr = node.getExpression();
+    if (tsm.Node.isNewExpression(expr)
+        && expr.getType().getSymbol()?.getName() === "Error") {
 
-//         const arg = expr.getArguments()[0];
-//         if (!arg) {
-//             builder.pushData("unknown error");
-//         } else {
-//             if (tsm.Node.isExpression(arg)) {
-//                 processExpression(arg, options);
-//                 builder.push(OpCode.THROW);
-//                 nodeSetter.set(node);
-//                 return;
-//             }
-//         }
-//     }
+        const arg = expr.getArguments()[0];
+        if (!arg) {
+            builder.pushData("unknown error");
+        } else {
+            if (tsm.Node.isExpression(arg)) {
+                processExpression(arg, options);
+                builder.push(InstructionKind.THROW);
+                nodeSetter.set(node);
+                return;
+            }
+        }
+    }
 
-//     throw new CompileError(`processThrowStatement not implemented`, node)
-// }
+    throw new CompileError(`processThrowStatement not implemented`, node)
+}
 
-// function processVariableStatement(node: tsm.VariableStatement, options: ProcessOptions): void {
-//     const { builder, scope } = options;
+function processVariableStatement(node: tsm.VariableStatement, options: ProcessOptions): void {
+    const { builder, scope } = options;
 
-//     for (const decl of node.getDeclarations()) {
-//         const slotIndex = options.builder.addLocalSlot();
-//         scope.define(s => new VariableSymbolDefinition(decl, s, SlotType.Local, slotIndex));
-//         const init = decl.getInitializer();
-//         if (init) {
-//             const nodeSetter = builder.getNodeSetter();
-//             processExpression(init, options);
-//             builder.pushStore(SlotType.Local, slotIndex);
-//             nodeSetter.set(decl);
-//         }
-//         return;
-//     }
+    for (const decl of node.getDeclarations()) {
+        const slotIndex = options.builder.addLocalSlot();
+        scope.define(s => new VariableSymbolDef(decl, s, 'local', slotIndex));
+        const init = decl.getInitializer();
+        if (init) {
+            const nodeSetter = builder.getNodeSetter();
+            processExpression(init, options);
+            builder.pushStore('local', slotIndex);
+            nodeSetter.set(decl);
+        }
+        return;
+    }
 
-//     throw new CompileError(`processVariableStatement not implemented`, node);
-// }
+    throw new CompileError(`processVariableStatement not implemented`, node);
+}
 
-// function processStatement(node: tsm.Statement, options: ProcessOptions): void {
-//     dispatch(node, options, {
-//         [tsm.SyntaxKind.Block]: processBlock,
-//         [tsm.SyntaxKind.ExpressionStatement]: processExpressionStatement,
-//         [tsm.SyntaxKind.IfStatement]: processIfStatement,
-//         [tsm.SyntaxKind.ReturnStatement]: processReturnStatement,
-//         [tsm.SyntaxKind.ThrowStatement]: processThrowStatement,
-//         [tsm.SyntaxKind.VariableStatement]: processVariableStatement,
-//     });
-// }
+function processStatement(node: tsm.Statement, options: ProcessOptions): void {
+    dispatch(node, options, {
+        [tsm.SyntaxKind.Block]: processBlock,
+        [tsm.SyntaxKind.ExpressionStatement]: processExpressionStatement,
+        [tsm.SyntaxKind.IfStatement]: processIfStatement,
+        [tsm.SyntaxKind.ReturnStatement]: processReturnStatement,
+        [tsm.SyntaxKind.ThrowStatement]: processThrowStatement,
+        [tsm.SyntaxKind.VariableStatement]: processVariableStatement,
+    });
+}
 
 // function processArrayLiteralExpression(node: tsm.ArrayLiteralExpression, options: ProcessOptions) {
 //     const elements = node.getElements();
@@ -345,33 +349,33 @@ import { CompileContext } from "../compiler";
 //     throw new CompileError("processPropertyAccessExpression not implemented", node);
 // }
 
-// export function processExpression(node: tsm.Expression, options: ProcessOptions) {
+export function processExpression(node: tsm.Expression, options: ProcessOptions) {
 
-//     dispatch(node, options, {
-//         [tsm.SyntaxKind.ArrayLiteralExpression]: processArrayLiteralExpression,
-//         [tsm.SyntaxKind.BinaryExpression]: processBinaryExpression,
-//         [tsm.SyntaxKind.CallExpression]: processCallExpression,
-//         [tsm.SyntaxKind.ConditionalExpression]: processConditionalExpression,
-//         [tsm.SyntaxKind.Identifier]: processIdentifier,
-//         [tsm.SyntaxKind.PropertyAccessExpression]: processPropertyAccessExpression,
+    dispatch(node, options, {
+        // [tsm.SyntaxKind.ArrayLiteralExpression]: processArrayLiteralExpression,
+        // [tsm.SyntaxKind.BinaryExpression]: processBinaryExpression,
+        // [tsm.SyntaxKind.CallExpression]: processCallExpression,
+        // [tsm.SyntaxKind.ConditionalExpression]: processConditionalExpression,
+        // [tsm.SyntaxKind.Identifier]: processIdentifier,
+        // [tsm.SyntaxKind.PropertyAccessExpression]: processPropertyAccessExpression,
 
-//         [tsm.SyntaxKind.BigIntLiteral]: (node, options) => {
-//             options.builder.pushInt(node.getLiteralValue() as bigint);
-//         },
-//         [tsm.SyntaxKind.FalseKeyword]: (node, options) => {
-//             processBoolean(node.getLiteralValue(), options);
-//         },
-//         [tsm.SyntaxKind.NumericLiteral]: (node, options) => {
-//             options.builder.pushInt(getNumericLiteral(node));
-//         },
-//         [tsm.SyntaxKind.StringLiteral]: (node, options) => {
-//             options.builder.pushData(node.getLiteralValue());
-//         },
-//         [tsm.SyntaxKind.TrueKeyword]: (node, options) => {
-//             processBoolean(node.getLiteralValue(), options);
-//         },
-//     });
-// }
+        [tsm.SyntaxKind.BigIntLiteral]: (node, options) => {
+            options.builder.pushInt(node.getLiteralValue() as bigint);
+        },
+        [tsm.SyntaxKind.FalseKeyword]: (node, options) => {
+            options.builder.pushBool(node.getLiteralValue());
+        },
+        [tsm.SyntaxKind.NumericLiteral]: (node, options) => {
+            options.builder.pushInt(node.getLiteralValue());
+        },
+        [tsm.SyntaxKind.StringLiteral]: (node, options) => {
+            options.builder.pushData(node.getLiteralValue());
+        },
+        [tsm.SyntaxKind.TrueKeyword]: (node, options) => {
+            options.builder.pushBool(node.getLiteralValue());
+        },
+    });
+}
 
 // export function processArguments(args: Array<tsm.Node>, options: ProcessOptions) {
 //     const argsLength = args.length;
@@ -413,27 +417,26 @@ import { CompileContext } from "../compiler";
 //     throw new CompileError(`${resolved.symbol.getName()} not implemented`, node);
 // }
 
-// function processFunctionDeclaration(decl: FunctionSymbolDefinition, context: CompileContext) {
-//     const node = decl.node;
-//     const body = node.getBodyOrThrow();
-//     if (tsm.Node.isStatement(body)) {
-//         const builder = new OperationBuilder(node.getParameters().length);
-//         processStatement(body, { builder, scope: decl, });
-//         builder.pushReturn();
-//         const instructions = builder.compile();
-//         context.operations.push({ node, instructions });
-//     } else {
-//         throw new CompileError(`Unexpected body kind ${body.getKindName()}`, body);
-//     }
-// }
+function processFunctionDeclaration(symbolDef: FunctionSymbolDef, context: CompileContext) {
+    const node = symbolDef.node;
+    const body = node.getBodyOrThrow();
+    if (!tsm.Node.isStatement(body)) {
+        throw new CompileError(`Unexpected body kind ${body.getKindName()}`, body);
+    }
+
+    const params = node.getParameters();
+    const builder = new OperationBuilder(params.length);
+    processStatement(body, { builder, scope: symbolDef, });
+    builder.pushReturn();
+    symbolDef.setInstructions(builder.getInstructions());
+}
 
 export function processFunctionDeclarationsPass(context: CompileContext): void {
-
-    // for (const symbol of context.globals.getSymbols()) {
-    //     if (symbol instanceof FunctionSymbolDefinition) {
-    //         processFunctionDeclaration(symbol, context);
-    //     }
-    // }
+    for (const symbolDef of context.globals.symbolDefs) {
+        if (symbolDef instanceof FunctionSymbolDef) {
+            processFunctionDeclaration(symbolDef, context);
+        }
+    }
 }
 
 // export function getOperationInfo(node: tsm.FunctionDeclaration) {

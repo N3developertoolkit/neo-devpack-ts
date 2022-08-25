@@ -231,9 +231,7 @@ export function isJumpOpCode(opCode: OpCode): opCode is JumpOpCode {
     return OpCode.JMP <= opCode && opCode <= OpCode.JMPLE_L; 
 }
 
-export type TryOpCode = 
-    OpCode.TRY | 
-    OpCode.TRY_L;
+export type TryOpCode = OpCode.TRY | OpCode.TRY_L;
 
 export function isTryOpCode(opCode: OpCode): opCode is TryOpCode { 
     return opCode === OpCode.TRY || opCode === OpCode.TRY_L; 

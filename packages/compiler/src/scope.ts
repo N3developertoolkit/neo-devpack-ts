@@ -1,11 +1,13 @@
 import * as tsm from "ts-morph";
+import { Instruction } from "./types/Instruction";
+import { SlotType } from "./types/OperationBuilder";
 import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
 import { getConstantValue, getSymbolOrCompileError } from "./utils";
 
 // @internal
 export interface Scope {
     readonly parentScope: Scope | undefined;
-    readonly symbols: IterableIterator<SymbolDef>;
+    readonly symbolDefs: IterableIterator<SymbolDef>;
     define<T extends SymbolDef>(factory: T | ((scope: Scope) => T)): T;
     resolve(symbol: tsm.Symbol): SymbolDef | undefined;
 }
@@ -17,22 +19,12 @@ export interface SymbolDef {
 }
 
 // @internal
-export class ConstantSymbolDef implements SymbolDef {
-    constructor(
-        readonly symbol: tsm.Symbol,
-        readonly parentScope: Scope,
-        readonly value: boolean | bigint | null | ReadonlyUint8Array,
-    ) {
-    }
-}
-
-// @internal
 export class SymbolMap {
     private readonly map = new Map<tsm.Symbol, SymbolDef>();
 
     constructor(readonly scope: Scope) { }
 
-    get symbols() { return this.map.values(); }
+    get symbolDefs() { return this.map.values(); }
 
     define<T extends SymbolDef>(factory: T | ((scope: Scope) => T)): T {
         const instance = typeof factory === 'function' ? factory(this.scope) : factory;
@@ -53,7 +45,42 @@ export class SymbolMap {
 }
 
 // @internal
+export class ConstantSymbolDef implements SymbolDef {
+    constructor(
+        readonly symbol: tsm.Symbol,
+        readonly parentScope: Scope,
+        readonly value: boolean | bigint | null | ReadonlyUint8Array,
+    ) {
+    }
+}
+
+export class VariableSymbolDef implements SymbolDef {
+    readonly symbol: tsm.Symbol;
+
+    constructor(
+        readonly node: tsm.VariableDeclaration,
+        readonly parentScope: Scope,
+        readonly slotType: Exclude<SlotType, 'parameter'>,
+        readonly index: number,
+    ) {
+        this.symbol = getSymbolOrCompileError(node);
+    }
+}
+
+export class ParameterSymbolDef implements SymbolDef {
+    readonly symbol: tsm.Symbol;
+    constructor(
+        readonly node: tsm.ParameterDeclaration,
+        readonly parentScope: Scope,
+        readonly index: number
+    ) {
+        this.symbol = getSymbolOrCompileError(node);
+    }
+}
+
+// @internal
 export class FunctionSymbolDef implements SymbolDef, Scope {
+    private instructions: ReadonlyArray<Instruction | tsm.Node> | undefined;
     private readonly map: SymbolMap;
     readonly symbol: tsm.Symbol;
 
@@ -63,9 +90,38 @@ export class FunctionSymbolDef implements SymbolDef, Scope {
     ) {
         this.map = new SymbolMap(this);
         this.symbol = getSymbolOrCompileError(node);
+
+        const params = node.getParameters();
+        const paramsLength = params.length;
+        for (let index = 0; index < paramsLength; index++) {
+            this.define(s => new ParameterSymbolDef(params[index], s, index))
+        }
     }
 
-    get symbols() { return this.map.symbols; }
+    setInstructions(instructions: IterableIterator<Instruction | tsm.Node>) {
+        this.instructions = [...instructions];
+    }
+
+    get symbolDefs() { return this.map.symbolDefs; }
+    define<T extends SymbolDef>(factory: T | ((scope: Scope) => T)): T {
+        return this.map.define(factory);
+    }
+    resolve(symbol: tsm.Symbol): SymbolDef | undefined {
+        return this.map.resolve(symbol);
+    }
+}
+
+// @internal
+export class BlockScope implements Scope {
+    private readonly map: SymbolMap;
+
+    constructor(
+        readonly node: tsm.Block,
+        readonly parentScope: Scope,
+    ) {
+        this.map = new SymbolMap(this);
+    }
+    get symbolDefs() { return this.map.symbolDefs; }
     define<T extends SymbolDef>(factory: T | ((scope: Scope) => T)): T {
         return this.map.define(factory);
     }
@@ -83,7 +139,7 @@ export class GlobalScope implements Scope {
         this.map = new SymbolMap(this);
     }
 
-    get symbols() { return this.map.symbols; }
+    get symbolDefs() { return this.map.symbolDefs; }
     define<T extends SymbolDef>(factory: T | ((scope: Scope) => T)): T {
         return this.map.define(factory);
     }

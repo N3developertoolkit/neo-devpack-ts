@@ -1,21 +1,20 @@
-// import * as tsm from "ts-morph";
+import * as tsm from "ts-morph";
 // import { FunctionSymbolDefinition } from "../symbolTable";
 // import { bigIntToByteArray, byteArrayToBigInt } from "../utils";
 // import { CallInstruction, Instruction, isJumpInstruction, isTryInstruction, JumpInstruction, JumpTarget, NeoService } from "./Instruction";
 // import { isJumpOpCode, JumpOpCode, OpCode, toString as opCodeToString, toString as printOpCode } from "./OpCode";
 // import { StackItemType } from "./StackItem";
 
-// export interface NodeSetter {
-//     set(node?: tsm.Node): void;
-// }
+import { ConvertInstruction, InitSlotInstruction, Instruction, InstructionKind, JumpInstruction, JumpInstructionKind, LoadStoreInstruction, NeoService, PushBoolInstruction, PushDataInstruction, PushIntInstruction, specializedInstructionKinds, SysCallInstruction, TargetOffset } from "./Instruction";
+import { StackItemType } from "./StackItem";
 
-// type NodeSetterWithInstruction = NodeSetter & { readonly instruction: Instruction };
+export interface NodeSetter {
+    set(node?: tsm.Node): void;
+}
 
-// export const enum SlotType {
-//     Local,
-//     Parameter,
-//     Static
-// }
+type NodeSetterWithInstruction = NodeSetter & { readonly instruction: Instruction };
+
+export type SlotType = 'local' | 'static' | 'parameter';
 
 // const pushIntSizes = [1, 2, 4, 8, 16, 32] as const;
 
@@ -111,7 +110,7 @@
 //     private localCount: number = 0;
 //     private readonly _instructions = new Array<Instruction | tsm.Node>();
 //     private readonly _returnTarget: JumpTarget = { instruction: undefined }
-    
+
 //     constructor(readonly paramCount: number = 0) { }
 
 //     get returnTarget(): Readonly<JumpTarget> { return this._returnTarget; }
@@ -146,62 +145,10 @@
 //         }
 //     }
 
-//     getNodeSetter(): NodeSetter {
-//         const length = this._instructions.length;
-//         return {
-//             set: (node?) => {
-//                 if (node && length < this._instructions.length) {
-//                     this._instructions.splice(length, 0, node);
-//                 }
-//             }
-//         }
-//     }
 
 //     addLocalSlot() { return this.localCount++; }
 
-//     popBytes() {
-//         // const foo = this._instructions.filter(isInstruction).reverse();
-//         // if (foo.length <= 2) return undefined;
-//         // if (foo[0].opCode !== OpCode.PACK) return undefined;
-//         // const len = Number(readInt(foo[1]));
-//         // if (foo.length <= len + 2) return undefined;
 
-//         // const bytes = new Array<number>();
-
-        
-//         // const iterable = from(this._instructions)
-//         //     .pipe(
-//         //         filter(isInstruction),
-//         //         reverse()
-//         //     );
-//         // const iterator = iterable[Symbol.iterator]();
-
-//         // const foo = [...iterable];
-
-//         return undefined;
-//     }
-
-//     push(instruction: Instruction): NodeSetterWithInstruction;
-//     push(opCode: OpCode): NodeSetterWithInstruction;
-//     push(arg1: Instruction | OpCode): NodeSetterWithInstruction {
-//         const ins = typeof arg1 === 'object'
-//             ? arg1 : { opCode: arg1 };
-//         const index = this._instructions.push(ins) - 1;
-//         return {
-//             instruction: ins,
-//             set: (node?) => {
-//                 if (node) { this._instructions.splice(index, 0, node); }
-//             }
-//         }
-//     }
-
-//     pushCall(operation: FunctionSymbolDefinition) {
-//         const ins: CallInstruction = {
-//             opCode: OpCode.CALL_L,
-//             operation
-//         };
-//         return this.push(ins);
-//     }
 
 //     pushConvert(type: StackItemType) {
 //         const opCode = OpCode.CONVERT;
@@ -209,123 +156,124 @@
 //         return this.push({ opCode, operand });
 //     }
 
-//     pushData(data: string | Uint8Array) {
-//         if (typeof data === 'string') {
-//             data = Buffer.from(data, 'utf-8');
-//         }
-//         if (data.length <= 255) /* byte.MaxValue */ {
-//             const opCode = OpCode.PUSHDATA1;
-//             const operand = Uint8Array.from([data.length, ...data]);
-//             return this.push({ opCode, operand });
-//         }
-//         if (data.length <= 65535) /* ushort.MaxValue */ {
-//             const opCode = OpCode.PUSHDATA2;
-//             const length = Buffer.alloc(2);
-//             length.writeUint16LE(data.length);
-//             const operand = Uint8Array.from([...length, ...data]);
-//             return this.push({ opCode, operand });
-//         }
-//         if (data.length <= 4294967295) /* uint.MaxValue */ {
-//             const opCode = OpCode.PUSHDATA4;
-//             const length = Buffer.alloc(4);
-//             length.writeUint32LE(data.length);
-//             const operand = Uint8Array.from([...length, ...data]);
-//             return this.push({ opCode, operand });
-//         }
-//         throw new Error(`pushData length ${data.length} too long`);
-//     }
 
-//     pushInt(value: number | bigint) {
-//         if (typeof value === 'number') {
-//             if (!Number.isInteger(value)) throw new Error(`invalid non-integer number ${value}`);
-//             value = BigInt(value);
-//         }
 
-//         if (value === -1n) {
-//             return this.push(OpCode.PUSHM1);
-//         }
 
-//         if (value >= 0n && value <= 16n) {
-//             const opCode: OpCode = OpCode.PUSH0 + Number(value);
-//             return this.push(opCode);
-//         }
 
-//         const buffer = bigIntToByteArray(value);
-//         const bufferLength = buffer.length;
-//         const pushIntSizesLength = pushIntSizes.length;
-//         for (let index = 0; index < pushIntSizesLength; index++) {
-//             const pushIntSize = pushIntSizes[index];
-//             if (bufferLength <= pushIntSize) {
-//                 const padding = pushIntSize - bufferLength;
-//                 const opCode: OpCode = OpCode.PUSHINT8 + index;
-//                 const operand = padding == 0
-//                     ? buffer
-//                     : Uint8Array.from([
-//                         ...buffer,
-//                         ...Buffer.alloc(padding, value < 0 ? 0xff : 0x00)]);
-//                 return this.push({ opCode, operand });
-//             }
-//         }
 
-//         throw new Error(`pushInt buffer length ${buffer.length} too long`)
-//     }
+export class OperationBuilder {
+    private _localCount: number = 0;
+    private readonly _instructions = new Array<Instruction | tsm.Node>();
+    private readonly _returnTarget: TargetOffset = { instruction: undefined }
 
-//     pushJump(target: JumpTarget): NodeSetterWithInstruction;
-//     pushJump(opCode: JumpOpCode, target: JumpTarget): NodeSetterWithInstruction;
-//     pushJump(...args:
-//         [target: JumpTarget] |
-//         [opCode: JumpOpCode, target: JumpTarget]
-//     ): NodeSetterWithInstruction {
-//         const [opCode, target] = args.length === 1
-//             ? [OpCode.JMP_L as JumpOpCode, args[0]]
-//             : args;
+    constructor(readonly paramCount: number) {}
 
-//         if (!isJumpOpCode(opCode)) { throw new Error(`Invalid Jump OpCode ${opCodeToString(opCode)}`); }
+    get returnTarget(): Readonly<TargetOffset> { return this._returnTarget; }
 
-//         const ins: JumpInstruction = {
-//             // short operand jump opCodes are even, 
-//             // long operand  jump opCodes are one more than the equivalent short operand opCode
-//             opCode: opCode % 2 == 0 ? opCode + 1 : opCode,
-//             target
-//         };
-//         return this.push(ins);
-//     }
+    addLocalSlot() { return this._localCount++; }
 
-//     pushLoad(slotType: SlotType, index: number) {
-//         let opCode = slotType === SlotType.Parameter
-//             ? OpCode.LDARG0
-//             : slotType === SlotType.Local
-//                 ? OpCode.LDLOC0
-//                 : OpCode.LDSFLD0;
-//         return this.pushLoadStoreHelper(opCode, index);
-//     }
+    *getInstructions() {
+        if (this.paramCount > 0 || this._localCount > 0) {
+            const ins: InitSlotInstruction = {
+                kind: InstructionKind.INITSLOT,
+                localCount: this._localCount,
+                paramCount: this.paramCount,
+            }
+            yield ins;
+        }
 
-//     pushReturn() {
-//         if (this.returnTarget.instruction) { throw new Error("returnTarget already set"); }
-//         this._returnTarget.instruction = this.push(OpCode.RET).instruction;
-//     }
+        yield *this._instructions;
+    }
 
-//     pushStore(slotType: SlotType, index: number) {
-//         let opCode = slotType === SlotType.Parameter
-//             ? OpCode.STARG0
-//             : slotType === SlotType.Local
-//                 ? OpCode.STLOC0
-//                 : OpCode.STSFLD0;
-//         return this.pushLoadStoreHelper(opCode, index);
-//     }
+    getNodeSetter(): NodeSetter {
+        const length = this._instructions.length;
+        return {
+            set: (node?) => {
+                if (node && length < this._instructions.length) {
+                    this._instructions.splice(length, 0, node);
+                }
+            }
+        }
+    }
 
-//     pushSysCall(sysCall: NeoService) {
-//         const opCode = OpCode.SYSCALL;
-//         const hash = sysCallHash[sysCall];
-//         const operand = Buffer.alloc(4);
-//         operand.writeUInt32LE(hash);
-//         return this.push({ opCode, operand });
-//     }
+    push(ins: Instruction | InstructionKind): NodeSetterWithInstruction {
+        if (typeof ins !== 'object') {
+            if (specializedInstructionKinds.includes(ins)) {
+                throw new Error(`Invalid ${InstructionKind[ins]} instruction`)
+            }
+            ins = { kind: ins };
+        }
+        const index = this._instructions.push(ins) - 1;
+        return {
+            instruction: ins,
+            set: (node?) => {
+                if (node) {
+                    this._instructions.splice(index, 0, node);
+                }
+            }
+        }
+    }
 
-//     private pushLoadStoreHelper(opCode: OpCode, index: number) {
-//         if (index < 0) throw new Error(`Invalid negative slot index ${index}`);
-//         if (index <= 6) { return this.push(opCode + index); }
-//         const operand = Uint8Array.from([index]);
-//         return this.push({ opCode: opCode + 7, operand });
-//     }
-// }
+    pushBool(value: boolean) {
+        const ins: PushBoolInstruction = { kind: InstructionKind.PUSHBOOL, value };
+        return this.push(ins);
+    }
+
+    pushConvert(type: StackItemType) {
+        const ins: ConvertInstruction = { kind: InstructionKind.CONVERT, type };
+        return this.push(ins);
+    }
+
+    pushInt(value: number | bigint) {
+        if (typeof value === 'number') {
+            if (!Number.isInteger(value)) throw new Error(`invalid non-integer number ${value}`);
+            value = BigInt(value);
+        }
+
+        const ins: PushIntInstruction = { kind: InstructionKind.PUSHINT, value };
+        return this.push(ins);
+    }
+
+    pushData(value: string | Uint8Array) {
+        if (typeof value === 'string') {
+            value = Buffer.from(value, 'utf8');
+        }
+        const ins: PushDataInstruction = { kind: InstructionKind.PUSHDATA, value };
+        return this.push(ins);
+    }
+
+    pushJump(kind: JumpInstructionKind, target: TargetOffset) {
+        const ins: JumpInstruction = { kind, target };
+        return this.push(ins);
+    }
+
+    pushLoad(slot: SlotType, index: number) {
+        const kind = slot === 'local'
+            ? InstructionKind.LDLOC
+            : slot === 'parameter'
+                ? InstructionKind.LDARG
+                : InstructionKind.LDSFLD;
+        const ins: LoadStoreInstruction = { kind, index };
+        return this.push(ins);
+    }
+
+    pushStore(slot: SlotType, index: number) {
+        const kind = slot === 'local'
+            ? InstructionKind.STLOC
+            : slot === 'parameter'
+                ? InstructionKind.STARG
+                : InstructionKind.STSFLD;
+        const ins: LoadStoreInstruction = { kind, index };
+        return this.push(ins);
+    }
+
+    pushReturn() {
+        if (this._returnTarget.instruction) { throw new Error("returnTarget already set"); }
+        this._returnTarget.instruction = this.push(InstructionKind.RET).instruction;
+    }
+
+    pushSysCall(service: NeoService) {
+        const ins: SysCallInstruction = { kind: InstructionKind.SYSCALL, service };
+        return this.push(ins);
+    }
+}
