@@ -3,27 +3,35 @@ import 'mocha';
 import * as tsm from "ts-morph";
 import { createContractProject } from './utils';
 import { ConstantSymbolDef, createGlobalScope, FunctionSymbolDef, getConstantValue } from './compiler';
+import path from 'path';
+import fs from 'fs/promises';
+import { AsyncLazy } from './utility/Lazy';
+
+const scfx = new AsyncLazy(async () => {
+    const scfxPath = path.join(__dirname, "../../framework/src/index.d.ts");
+    return await fs.readFile(scfxPath, 'utf8');
+})
 
 export async function createTestProject(source: string) {
-    const project = await createContractProject();
+    const scfxSrc = await scfx.get();
+    const project = await createContractProject(scfxSrc);
     const sourceFile = project.createSourceFile("contract.ts", source);
     return { project, sourceFile };
 }
 
+// note, this function will only save the last symbol with a given name
 export function getSymbols(node: tsm.Node): ReadonlyMap<string, tsm.Symbol> {
-    const set = new Set<tsm.Symbol>();
-    const nodeSymbol = node.getSymbol();
-    if (nodeSymbol) { set.add(nodeSymbol); }
-    node.forEachDescendant((n, t) => {
-        const s = n.getSymbol();
-        if (s) { set.add(s); }
-    })
-
     const map = new Map<string, tsm.Symbol>();
-    for (const s of set) {
-        map.set(s.getName(), s);
-    }
+    add(node);
+    node.forEachDescendant((n,t) => add(n));
     return map;
+
+    function add(node: tsm.Node) {
+        const symbol = node.getSymbol();
+        if (symbol) {
+            map.set(symbol.getName(), symbol);
+        }
+    }
 }
 
 describe("createGlobalScope", () => {

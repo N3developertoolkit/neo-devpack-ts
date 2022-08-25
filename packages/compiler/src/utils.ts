@@ -23,7 +23,7 @@ export function toDiagnostic(error: unknown): tsm.ts.Diagnostic {
     };
 }
 
-export async function createContractProject(scfxPath?: string) {
+export async function createContractProject(scfxSource?: string) {
     const project = new tsm.Project({
         compilerOptions: {
             experimentalDecorators: true,
@@ -36,8 +36,10 @@ export async function createContractProject(scfxPath?: string) {
     });
 
     // load SCFX definitions
-    scfxPath ??= join(__dirname, "../../framework/src/index.d.ts");
-    const scfxSource = await readFile(scfxPath, 'utf8');
+    if (!scfxSource) {
+        const scfxPath = join(__dirname, "../../framework/src/index.d.ts");
+        scfxSource = await readFile(scfxPath, 'utf8');
+    }
 
     await project.getFileSystem().writeFile('/node_modules/@neo-project/neo-contract-framework/index.d.ts', scfxSource);
     return project;
