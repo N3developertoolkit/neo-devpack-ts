@@ -1,11 +1,11 @@
+import { StackItemType } from "./StackItem";
+
 // List of services generated via this C# code:
 //      var services = ApplicationEngine.Services.Values.OrderBy(d => d.Name);
 //      foreach (var value in services) {
 //          Console.WriteLine($"\"{value.Name}\", ");
-
-import { StackItemType } from "./StackItem";
-
 //      }
+
 export const neoServices = [
     "System.Contract.Call",
     "System.Contract.CallNative",

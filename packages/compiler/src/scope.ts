@@ -4,7 +4,6 @@ import { SlotType } from "./types/OperationBuilder";
 import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
 import { getConstantValue, getSymbolOrCompileError } from "./utils";
 
-// @internal
 export interface Scope {
     readonly parentScope: Scope | undefined;
     readonly symbolDefs: IterableIterator<SymbolDef>;
@@ -12,7 +11,6 @@ export interface Scope {
     resolve(symbol: tsm.Symbol): SymbolDef | undefined;
 }
 
-// @internal
 export interface SymbolDef {
     readonly symbol: tsm.Symbol;
     readonly parentScope: Scope;
@@ -44,7 +42,6 @@ export class SymbolMap {
     }
 }
 
-// @internal
 export class ConstantSymbolDef implements SymbolDef {
     constructor(
         readonly symbol: tsm.Symbol,
@@ -78,17 +75,16 @@ export class ParameterSymbolDef implements SymbolDef {
     }
 }
 
-// @internal
 export class FunctionSymbolDef implements SymbolDef, Scope {
-    private instructions: ReadonlyArray<Instruction | tsm.Node> | undefined;
-    private readonly map: SymbolMap;
+    private _instructions: ReadonlyArray<Instruction | tsm.Node> | undefined;
+    private readonly _map: SymbolMap;
     readonly symbol: tsm.Symbol;
 
     constructor(
         readonly node: tsm.FunctionDeclaration,
         readonly parentScope: Scope,
     ) {
-        this.map = new SymbolMap(this);
+        this._map = new SymbolMap(this);
         this.symbol = getSymbolOrCompileError(node);
 
         const params = node.getParameters();
@@ -98,20 +94,27 @@ export class FunctionSymbolDef implements SymbolDef, Scope {
         }
     }
 
-    setInstructions(instructions: IterableIterator<Instruction | tsm.Node>) {
-        this.instructions = [...instructions];
+    get instructions(): IterableIterator<Instruction | tsm.Node> { return this.getInstructions(); }
+    private *getInstructions() {
+        if (this._instructions) {
+            yield *this._instructions;
+        }
     }
 
-    get symbolDefs() { return this.map.symbolDefs; }
+    // @internal
+    setInstructions(instructions: IterableIterator<Instruction | tsm.Node>) {
+        this._instructions = [...instructions];
+    }
+
+    get symbolDefs() { return this._map.symbolDefs; }
     define<T extends SymbolDef>(factory: T | ((scope: Scope) => T)): T {
-        return this.map.define(factory);
+        return this._map.define(factory);
     }
     resolve(symbol: tsm.Symbol): SymbolDef | undefined {
-        return this.map.resolve(symbol);
+        return this._map.resolve(symbol);
     }
 }
 
-// @internal
 export class BlockScope implements Scope {
     private readonly map: SymbolMap;
 
@@ -130,7 +133,6 @@ export class BlockScope implements Scope {
     }
 }
 
-// @internal
 export class GlobalScope implements Scope {
     private readonly map: SymbolMap;
     readonly parentScope = undefined;
@@ -161,7 +163,7 @@ export function createGlobalScope(project: tsm.Project) {
                 && node.getDeclarationKind() === tsm.VariableDeclarationKind.Const
             ) {
                 for (const decl of node.getDeclarations()) {
-                    const value = getConstantValue(decl);
+                    const value = getConstantValue(decl.getInitializerOrThrow());
                     if (value !== undefined) {
                         const symbol = decl.getSymbol();
                         if (symbol) {

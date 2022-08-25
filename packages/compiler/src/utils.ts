@@ -94,18 +94,14 @@ export function getNumericLiteral(node: tsm.NumericLiteral) {
 }
 
 // @internal
-export function getConstantValue(node: tsm.VariableDeclaration) {
-    const kind = node.getVariableStatementOrThrow().getDeclarationKind();
-    if (kind !== tsm.VariableDeclarationKind.Const) return undefined;
-
-    const init = node.getInitializerOrThrow();
-    switch (init.getKind()) {
+export function getConstantValue(node: tsm.Expression) {
+    switch (node.getKind()) {
         case tsm.SyntaxKind.NullKeyword:
             return null;
         case tsm.SyntaxKind.BigIntLiteral: 
-            return (init as tsm.BigIntLiteral).getLiteralValue() as bigint;
+            return (node as tsm.BigIntLiteral).getLiteralValue() as bigint;
         case tsm.SyntaxKind.NumericLiteral: {
-            const literal = getNumericLiteral(init as tsm.NumericLiteral);
+            const literal = getNumericLiteral(node as tsm.NumericLiteral);
             return BigInt(literal);
         }
         case tsm.SyntaxKind.FalseKeyword:
@@ -113,12 +109,12 @@ export function getConstantValue(node: tsm.VariableDeclaration) {
         case tsm.SyntaxKind.TrueKeyword:
             return true;
         case tsm.SyntaxKind.StringLiteral: {
-            const literal = (init as tsm.StringLiteral).getLiteralValue();
+            const literal = (node as tsm.StringLiteral).getLiteralValue();
             return <ReadonlyUint8Array>Buffer.from(literal, 'utf8');
         }
         // case tsm.SyntaxKind.ArrayLiteralExpression: {
         //     const buffer = new Array<number>();
-        //     for (const e of (init as tsm.ArrayLiteralExpression).getElements()) {
+        //     for (const e of (node as tsm.ArrayLiteralExpression).getElements()) {
         //         if (tsm.Node.isNumericLiteral(e)) {
         //             buffer.push(getNumericLiteral(e) % 256);
         //         } else {

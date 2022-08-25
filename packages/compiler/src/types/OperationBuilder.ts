@@ -64,35 +64,6 @@ export type SlotType = 'local' | 'static' | 'parameter';
 //     return !isNode(input);
 // }
 
-// export function separateInstructions(
-//     items?: ReadonlyArray<Instruction | tsm.Node>
-// ): [ReadonlyArray<Instruction>, ReadonlyMap<number, tsm.Node>] {
-//     if (!items) return [[], new Map()];
-
-//     const instructions = items.filter(isInstruction);
-//     const references = new Map(iterateRefs(instructions));
-
-//     return [instructions, references];
-
-//     function* iterateRefs(instructions: ReadonlyArray<Instruction | tsm.Node>): IterableIterator<[number, tsm.Node]> {
-//         if (!items) throw new Error();
-
-//         const length = items.length;
-//         for (let i = 0; i < length; i++) {
-//             const item = items[i];
-//             if (isNode(item)) {
-//                 const next = items[i + 1];
-//                 if (next && isInstruction(next)) {
-//                     const index = instructions.indexOf(next);
-//                     if (index >= 0) {
-//                         yield [index, item];
-//                     }
-//                 }
-//             }
-//         }
-//     }
-// }
-
 // function readInt(ins: Instruction): bigint {
 //     if (OpCode.PUSHM1 <= ins.opCode && ins.opCode <= OpCode.PUSH16) {
 //         return BigInt(ins.opCode - OpCode.PUSH0);
@@ -146,16 +117,6 @@ export type SlotType = 'local' | 'static' | 'parameter';
 //     }
 
 
-//     addLocalSlot() { return this.localCount++; }
-
-
-
-//     pushConvert(type: StackItemType) {
-//         const opCode = OpCode.CONVERT;
-//         const operand = Uint8Array.from([type]);
-//         return this.push({ opCode, operand });
-//     }
-
 
 
 
@@ -172,7 +133,8 @@ export class OperationBuilder {
 
     addLocalSlot() { return this._localCount++; }
 
-    *getInstructions() {
+    get instructions(): IterableIterator<Instruction | tsm.Node> { return this.getInstructions(); }
+    private *getInstructions() {
         if (this.paramCount > 0 || this._localCount > 0) {
             const ins: InitSlotInstruction = {
                 kind: InstructionKind.INITSLOT,

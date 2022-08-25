@@ -1,4 +1,7 @@
-// import * as tsm from "ts-morph";
+import * as tsm from "ts-morph";
+import { CompileError } from "../compiler";
+import { asExpressionOrCompileError, getConstantValue, getNumericLiteral } from "../utils";
+import { ProcessOptions } from "./processOperations";
 // import { CompileError } from "./compiler";
 // import { ProcessOptions, processExpression } from "./passes/processOperations";
 // import { StackItemType } from "./types/StackItem";
@@ -126,17 +129,21 @@
 //     return builder.value;
 // }
 
-// export function ByteStringConstructor_from(node: tsm.CallExpression, options: ProcessOptions): void {
-//     const { builder } = options;
-//     const arg = asExpressionOrCompileError(node.getArguments()[0]);
-//     const argType = arg.getType();
-//     if (argType.isArray() && argType.getArrayElementType()?.isNumber()) {
-//         const data = asBytes(arg);
-//         builder.pushData(data);
-//     } else if (isBigIntLike(argType)) {
-//         processExpression(arg, options);
-//         builder.pushConvert(StackItemType.ByteString);
-//     } else {
-//         throw new CompileError("ByteStringConstructor_from failed", node);
-//     }
-// }
+export function ByteStringConstructor_from(node: tsm.CallExpression, options: ProcessOptions): void {
+    const { builder } = options;
+
+    const buffer = new Array<number>();
+    const arg = asExpressionOrCompileError(node.getArguments()[0]);
+    if (tsm.Node.isArrayLiteralExpression(arg)) {
+        for (const e of arg.getElements()) {
+            if (tsm.Node.isNumericLiteral(e)) {
+                buffer.push(getNumericLiteral(e));
+            } else {
+                throw new CompileError(`not supported`, e);
+            }
+        }
+    } else {
+        throw new CompileError(`not supported`, arg)
+    }
+    builder.pushData(Uint8Array.from(buffer))
+}

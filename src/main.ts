@@ -1,17 +1,18 @@
 import { join } from "path";
 import { readFile } from "fs/promises";
-import { Project, ts } from "ts-morph";
-import { compile, createContractProject, toDiagnostic } from '../packages/compiler/';
+import * as tsm from "ts-morph";
+import { compile, createContractProject, FunctionSymbolDef, InitSlotInstruction, Instruction, InstructionKind, LoadStoreInstruction, PushDataInstruction, PushIntInstruction, SysCallInstruction, toDiagnostic } from '../packages/compiler/';
+import util from 'util';
 
-function printDiagnostics(diags: ReadonlyArray<ts.Diagnostic>) {
-    const formatHost: ts.FormatDiagnosticsHost = {
-        getCurrentDirectory: () => ts.sys.getCurrentDirectory(),
-        getNewLine: () => ts.sys.newLine,
-        getCanonicalFileName: (fileName: string) => ts.sys.useCaseSensitiveFileNames
+function printDiagnostics(diags: ReadonlyArray<tsm.ts.Diagnostic>) {
+    const formatHost: tsm.ts.FormatDiagnosticsHost = {
+        getCurrentDirectory: () => tsm.ts.sys.getCurrentDirectory(),
+        getNewLine: () => tsm.ts.sys.newLine,
+        getCanonicalFileName: (fileName: string) => tsm.ts.sys.useCaseSensitiveFileNames
             ? fileName : fileName.toLowerCase()
     }
 
-    const msg = ts.formatDiagnosticsWithColorAndContext(diags, formatHost);
+    const msg = tsm.ts.formatDiagnosticsWithColorAndContext(diags, formatHost);
     console.log(msg);
 }
 
@@ -38,16 +39,14 @@ async function main() {
         const results = compile({ project });
         if (results.diagnostics.length > 0) {
             printDiagnostics(results.diagnostics);
+            return;
         } 
-        
-        //else {
-        //     if (results.artifacts) {
-        //         // dumpArtifacts(results.artifacts);
-        //         // saveArtifacts(artifactPath, filename, source, results.artifacts);
-        //     } else {
-        //         // dumpOperations(results.context.operations);
-        //     }
-        // }
+
+        for (const def of results.context.globals.symbolDefs) {
+            if (def instanceof FunctionSymbolDef) {
+                dumpFunctionDef(def);
+            }
+        }
     } catch (error) {
         printDiagnostics([toDiagnostic(error)]);
     }
@@ -81,13 +80,33 @@ const cyan = `${AnsiEscapeSequences.BrightCyan}%s${AnsiEscapeSequences.Reset}`;
 const magenta = `${AnsiEscapeSequences.BrightMagenta}%s${AnsiEscapeSequences.Reset}`;
 const yellow = `${AnsiEscapeSequences.BrightYellow}%s${AnsiEscapeSequences.Reset}`;
 
-// export function dumpOperations(operations?: ReadonlyArray<OperationInfo>) {
+export function dumpFunctionDef(def: FunctionSymbolDef) {
+    const info = getOperationInfo(def.node);
+    const params = info.parameters.map(p => `${p.name}: ${p.type.getText()}`).join(', ');
+    const publicStr = info.isPublic ? 'public ' : '';
+    const safeStr = info.safe ? ' [safe]' : '';
+    console.log(magenta, `${publicStr}${info.name}(${params})${safeStr}`);
+
+    let insNum = 0;
+    for (const ins of def.instructions) {
+        if (ins instanceof tsm.Node) {
+            console.log(cyan, `# ${ins.print({ removeComments: true })}`);
+        } else {
+            let msg = util.format(yellow, `${++insNum}: `);
+            msg += InstructionKind[ins.kind];
+            const comment = getComment(ins);
+            if (comment) {
+                msg += util.format(green, ` # ${comment}`);
+            }
+            console.log(msg);
+        }
+    }
+
+
+
 //     for (const op of operations ?? []) {
 //         const info = getOperationInfo(op.node);
-//         const params = info.parameters.map(p => `${p.name}: ${p.type.getText()}`).join(', ');
-//         const publicStr = info.isPublic ? 'public ' : '';
-//         const safeStr = info.safe ? ' [safe]' : '';
-//         console.log(magenta, `${publicStr}${info.name}(${params})${safeStr}`);
+//         
 
 //         const [instructions, references] = separateInstructions(op.instructions);
 //         const padding = `${instructions.length}`.length;
@@ -114,4 +133,101 @@ const yellow = `${AnsiEscapeSequences.BrightYellow}%s${AnsiEscapeSequences.Reset
 //             console.log(msg);
 //         }
 //     }
-// }
+}
+
+function getOperationInfo(node: tsm.FunctionDeclaration) {
+    return {
+        name: node.getNameOrThrow(),
+        safe: node.getJsDocs()
+            .flatMap(d => d.getTags())
+            .findIndex(t => t.getTagName() === 'safe') >= 0,
+        isPublic: !!node.getExportKeyword(),
+        returnType: node.getReturnType(),
+        parameters: node.getParameters().map((p, index) => ({
+            node: p,
+            name: p.getName(),
+            type: p.getType(),
+            index
+        }))
+    }
+}
+
+function getComment(ins: Instruction): string | undefined {
+
+    switch (ins.kind) {
+        case InstructionKind.PUSHINT: {
+            const _ins = ins as PushIntInstruction;
+            return `${_ins.value}`;
+        }
+        case InstructionKind.PUSHDATA: {
+            const _ins = ins as PushDataInstruction;
+            return "0x" + Buffer.from(_ins.value).toString('hex');
+        }
+        case InstructionKind.INITSLOT: {
+            const _ins = ins as InitSlotInstruction;
+            return `locals: ${_ins.localCount}, params: ${_ins.paramCount}`;
+        }
+        case InstructionKind.SYSCALL: {
+            const _ins = ins as SysCallInstruction;
+            return `${_ins.service}`;
+        }
+        case InstructionKind.LDARG:
+        case InstructionKind.LDLOC:
+        case InstructionKind.LDSFLD:
+        case InstructionKind.STARG:
+        case InstructionKind.STLOC:
+        case InstructionKind.STSFLD: {
+            const _ins = ins as LoadStoreInstruction;
+            return `${_ins.index}`;
+        }
+
+    }
+
+    return undefined;
+
+    // function resolveTarget(target: JumpTarget) {
+    //     if (!target.instruction) { return "offset target not set"; }
+    //     const index = findIndex(target.instruction);
+    //     return index < 0 ? "offset target not found" : `offset target ${index}`;
+    // }
+
+    // if (isJumpInstruction(ins)) { 
+    //     return resolveTarget(ins.target); 
+    // }
+    // if (isCallInstruction(ins)) {
+    //     return `call ${ins.operation.node.getNameOrThrow()}`;
+    // }
+    // if (isTryInstruction(ins)) {
+    //     const catchResolved = resolveTarget(ins.catchTarget);
+    //     const finallyResolved = resolveTarget(ins.finallyTarget);
+    //     return `catch ${catchResolved}, finally ${finallyResolved}`;
+    // }
+
+    // switch (ins.opCode) {
+    //     case OpCode.PUSHINT8:
+    //     case OpCode.PUSHINT16:
+    //     case OpCode.PUSHINT32:
+    //     case OpCode.PUSHINT64:
+    //     case OpCode.PUSHINT128:
+    //     case OpCode.PUSHINT256: {
+    //         let hex = Buffer.from(ins.operand!).reverse().toString('hex');
+    //         return `${BigInt(hex)}`
+    //     }
+    //     case OpCode.SYSCALL: {
+    //         const buffer = Buffer.from(ins.operand!);
+    //         const hash = buffer.readUint32LE();
+    //         const sysCall = Object.entries(sysCallHash).find(v => v[1] === hash);
+    //         if (sysCall) { return sysCall[0]; }
+    //     }
+    //     case OpCode.CONVERT: return printStackItemType(ins.operand![0]);
+    //     case OpCode.LDSFLD:
+    //     case OpCode.STSFLD:
+    //     case OpCode.LDLOC:
+    //     case OpCode.STLOC:
+    //     case OpCode.LDARG:
+    //     case OpCode.STARG:
+    //         return `Slot Index ${ins.operand![0]}`;
+    //     default:
+    //         return undefined;
+    // }
+}
