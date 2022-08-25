@@ -73,18 +73,21 @@ export function getConstantValue(node: tsm.VariableDeclaration) {
     }
 }
 
-interface Scope {
+// @internal
+export interface Scope {
     readonly parentScope: Scope | undefined;
     readonly symbols: IterableIterator<SymbolDef>;
     define<T extends SymbolDef>(factory: T | ((scope: Scope) => T)): T;
     resolve(symbol: tsm.Symbol): SymbolDef | undefined;
 }
 
-interface SymbolDef {
+// @internal
+export interface SymbolDef {
     readonly symbol: tsm.Symbol;
     readonly parentScope: Scope;
 }
 
+// @internal
 export class ConstantSymbolDef implements SymbolDef {
     constructor(
         readonly symbol: tsm.Symbol,
