@@ -2,6 +2,7 @@ import * as tsm from "ts-morph";
 import { CompileError } from "./compiler";
 import { join } from "path";
 import { readFile } from "fs/promises";
+import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
 
 export function toDiagnostic(error: unknown): tsm.ts.Diagnostic {
     const messageText = error instanceof Error
@@ -90,6 +91,45 @@ export function getNumericLiteral(node: tsm.NumericLiteral) {
     const literal = node.getLiteralValue();
     if (!Number.isInteger(literal)) throw new CompileError(`invalid non-integer numeric literal`, node);
     return literal;
+}
+
+// @internal
+export function getConstantValue(node: tsm.VariableDeclaration) {
+    const kind = node.getVariableStatementOrThrow().getDeclarationKind();
+    if (kind !== tsm.VariableDeclarationKind.Const) return undefined;
+
+    const init = node.getInitializerOrThrow();
+    switch (init.getKind()) {
+        case tsm.SyntaxKind.NullKeyword:
+            return null;
+        case tsm.SyntaxKind.BigIntLiteral: 
+            return (init as tsm.BigIntLiteral).getLiteralValue() as bigint;
+        case tsm.SyntaxKind.NumericLiteral: {
+            const literal = getNumericLiteral(init as tsm.NumericLiteral);
+            return BigInt(literal);
+        }
+        case tsm.SyntaxKind.FalseKeyword:
+            return false;
+        case tsm.SyntaxKind.TrueKeyword:
+            return true;
+        case tsm.SyntaxKind.StringLiteral: {
+            const literal = (init as tsm.StringLiteral).getLiteralValue();
+            return <ReadonlyUint8Array>Buffer.from(literal, 'utf8');
+        }
+        // case tsm.SyntaxKind.ArrayLiteralExpression: {
+        //     const buffer = new Array<number>();
+        //     for (const e of (init as tsm.ArrayLiteralExpression).getElements()) {
+        //         if (tsm.Node.isNumericLiteral(e)) {
+        //             buffer.push(getNumericLiteral(e) % 256);
+        //         } else {
+        //             return undefined;
+        //         }
+        //     }
+        //     return Uint8Array.from(buffer);
+        // }
+        default:
+            return undefined;
+    }
 }
 
 function toBigInt(buffer: Buffer): bigint {
