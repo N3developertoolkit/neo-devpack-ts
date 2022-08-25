@@ -6,7 +6,8 @@ import { createSymbolTable } from "./symbolTable";
 import { processFunctionDeclarationsPass } from "./passes/processOperations";
 import { CompileArtifacts, CompileContext, OperationInfo } from "./types/CompileContext";
 import { DebugMethodInfo } from "./types/DebugInfo";
-import { getNumericLiteral } from "./utils";
+import { getNumericLiteral, getSymbolOrCompileError } from "./utils";
+import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
 
 // https://github.com/CityOfZion/neon-js/issues/858
 const DEFAULT_ADDRESS_VALUE = 53;
@@ -35,8 +36,7 @@ export interface CompileOptions {
 
 // @internal
 export function getConstantValue(node: tsm.VariableDeclaration) {
-    const stmt = node.getVariableStatementOrThrow();
-    const kind = stmt.getDeclarationKind();
+    const kind = node.getVariableStatementOrThrow().getDeclarationKind();
     if (kind !== tsm.VariableDeclarationKind.Const) return undefined;
 
     const init = node.getInitializerOrThrow();
@@ -55,7 +55,7 @@ export function getConstantValue(node: tsm.VariableDeclaration) {
             return true;
         case tsm.SyntaxKind.StringLiteral: {
             const literal = (init as tsm.StringLiteral).getLiteralValue();
-            return <Uint8Array>Buffer.from(literal, 'utf8');
+            return <ReadonlyUint8Array>Buffer.from(literal, 'utf8');
         }
         // case tsm.SyntaxKind.ArrayLiteralExpression: {
         //     const buffer = new Array<number>();
@@ -73,30 +73,118 @@ export function getConstantValue(node: tsm.VariableDeclaration) {
     }
 }
 
+interface Scope {
+    readonly parentScope: Scope | undefined;
+    readonly symbols: IterableIterator<SymbolDef>;
+    define<T extends SymbolDef>(factory: T | ((scope: Scope) => T)): T;
+    resolve(symbol: tsm.Symbol): SymbolDef | undefined;
+}
+
+interface SymbolDef {
+    readonly symbol: tsm.Symbol;
+    readonly parentScope: Scope;
+}
+
+export class ConstantSymbolDef implements SymbolDef {
+    constructor(
+        readonly symbol: tsm.Symbol,
+        readonly parentScope: Scope,
+        readonly value: boolean | bigint | null | ReadonlyUint8Array,
+    ) {
+    }
+}
+
+// @internal
+export class SymbolMap {
+    private readonly map = new Map<tsm.Symbol, SymbolDef>();
+
+    constructor(readonly scope: Scope) { }
+
+    get symbols() { return this.map.values(); }
+
+    define<T extends SymbolDef>(factory: T | ((scope: Scope) => T)): T {
+        const instance = typeof factory === 'function' ? factory(this.scope) : factory;
+        if (instance.parentScope !== this.scope) {
+            throw new Error(`Invalid scope for ${instance.symbol.getName()}`);
+        }
+        if (this.map.has(instance.symbol)) {
+            throw new Error(`${instance.symbol.getName()} already defined in this scope`);
+        }
+        this.map.set(instance.symbol, instance);
+        return instance;
+    }
+
+    resolve(symbol: tsm.Symbol): SymbolDef | undefined {
+        const symbolDef = this.map.get(symbol);
+        return symbolDef ?? this.scope.parentScope?.resolve(symbol);
+    }
+}
+
+// @internal
+export class FunctionSymbolDef implements SymbolDef, Scope {
+    private readonly map: SymbolMap;
+    readonly symbol: tsm.Symbol;
+
+    constructor(
+        readonly node: tsm.FunctionDeclaration,
+        readonly parentScope: Scope,
+    ) {
+        this.map = new SymbolMap(this);
+        this.symbol = getSymbolOrCompileError(node);
+    }
+
+    get symbols() { return this.map.symbols; }
+    define<T extends SymbolDef>(factory: T | ((scope: Scope) => T)): T {
+        return this.map.define(factory);
+    }
+    resolve(symbol: tsm.Symbol): SymbolDef | undefined {
+        return this.map.resolve(symbol);
+    }
+}
+
+// @internal
+export class GlobalScope implements Scope {
+    private readonly map: SymbolMap;
+    readonly parentScope = undefined;
+
+    constructor() {
+        this.map = new SymbolMap(this);
+    }
+
+    get symbols() { return this.map.symbols; }
+    define<T extends SymbolDef>(factory: T | ((scope: Scope) => T)): T {
+        return this.map.define(factory);
+    }
+    resolve(symbol: tsm.Symbol): SymbolDef | undefined {
+        return this.map.resolve(symbol);
+    }
+}
+
 // @internal
 export function createGlobalScope(project: tsm.Project) {
+    const globals = new GlobalScope();
     for (const src of project.getSourceFiles()) {
         if (src.isDeclarationFile()) continue;
         src.forEachChild(node => {
             if (tsm.Node.isFunctionDeclaration(node)) {
-                // globals.define(s => new FunctionSymbolDefinition(node, s));
+                globals.define(s => new FunctionSymbolDef(node, s));
             }
-            else if (tsm.Node.isVariableStatement(node)) {
-                const declKind = node.getDeclarationKind();
-
+            else if (tsm.Node.isVariableStatement(node)
+                && node.getDeclarationKind() === tsm.VariableDeclarationKind.Const
+            ) {
                 for (const decl of node.getDeclarations()) {
-                    // const value = getConstantValue(decl, declKind);
-                    // if (value !== undefined) {
-                    //     const symbol = decl.getSymbolOrThrow();
-                    //     globals.define(s => new ConstantValueSymbolDefinition(symbol, s, value));
-                    // } else {
-                    //     globals.define(s => new VariableSymbolDefinition(decl, s, SlotType.Static, staticSlotCount++));
-                    // }
+                    const value = getConstantValue(decl);
+                    if (value !== undefined) {
+                        const symbol = decl.getSymbol();
+                        if (symbol) {
+                            globals.define(s => new ConstantSymbolDef(symbol, s, value));
+                        }
+                    }
                 }
             }
-
         });
     }
+    return globals;
 }
 
 export function compile(options: CompileOptions) {
