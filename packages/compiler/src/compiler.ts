@@ -1,4 +1,7 @@
 import * as tsm from "ts-morph";
+import { processFunctionDeclarationsPass } from "./passes/processOperations";
+import { createGlobalScope, Scope } from "./scope";
+import { toDiagnostic } from "./utils";
 
 // https://github.com/CityOfZion/neon-js/issues/858
 const DEFAULT_ADDRESS_VALUE = 53;
@@ -19,55 +22,51 @@ export interface CompileOptions {
     optimize?: boolean;
 }
 
-// export interface CompileResults {
-//     readonly diagnostics: ReadonlyArray<tsm.ts.Diagnostic>,
-//     readonly artifacts?: Immutable<CompileArtifacts>,
-//     readonly context: Immutable<Omit<CompileContext, 'diagnostics' | 'artifacts'>>
-// }
-
-
-
+export interface CompileContext {
+    readonly diagnostics: Array<tsm.ts.Diagnostic>,
+    readonly globals: Scope,
+    readonly options: Readonly<Required<Omit<CompileOptions, 'project'>>>
+    readonly project: tsm.Project,
+}
 
 export function compile(options: CompileOptions) {
 
-    // const globals = createSymbolTable(options.project);
-
-    // const context: CompileContext = {
-    //     project: options.project,
-    //     options: {
-    //         addressVersion: options.addressVersion ?? DEFAULT_ADDRESS_VALUE,
-    //         inline: options.inline ?? false,
-    //         optimize: options.optimize ?? false,
-    //     },
-    //     globals,
-    //     diagnostics: [],
-    //     operations: [],
-    // };
+    const globals = createGlobalScope(options.project);
+    const context: CompileContext = {
+        diagnostics: [],
+        globals,
+        options: {
+            addressVersion: options.addressVersion ?? DEFAULT_ADDRESS_VALUE,
+            inline: options.inline ?? false,
+            optimize: options.optimize ?? false,
+        },
+        project: options.project,
+    };
 
     // type CompilePass = (context: CompileContext) => void;
-    // const passes: ReadonlyArray<CompilePass> = [
-    //     processFunctionDeclarationsPass,
-    //     // optimizePass,
-    //     // collectArtifactsPass,
-    // ] as const;
+    const passes = [
+        processFunctionDeclarationsPass,
+        // optimizePass,
+        // collectArtifactsPass,
+    ] as const;
 
-    // for (const pass of passes) {
-    //     try {
-    //         pass(context);
-    //     } catch (error) {
-    //         context.diagnostics.push(toDiagnostic(error));
-    //     }
+    for (const pass of passes) {
+        try {
+            pass(context);
+        } catch (error) {
+            context.diagnostics.push(toDiagnostic(error));
+        }
 
-    //     if (context.diagnostics?.some(d => d.category == tsm.ts.DiagnosticCategory.Error)) {
-    //         break;
-    //     }
-    // }
+        if (context.diagnostics.some(d => d.category == tsm.ts.DiagnosticCategory.Error)) {
+            break;
+        }
+    }
 
-    // return {
-    //     diagnostics: context.diagnostics,
-    //     artifacts: context.artifacts,
-    //     // context
-    // };
+    return {
+        diagnostics: context.diagnostics,
+        // artifacts: context.artifacts,
+        context
+    };
 }
 
 // function optimizePass(context: CompileContext): void {

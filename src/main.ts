@@ -36,9 +36,11 @@ async function main() {
 
     try {
         const results = compile({ project });
-        // if (results.diagnostics.length > 0) {
-        //     printDiagnostics(results.diagnostics);
-        // } else {
+        if (results.diagnostics.length > 0) {
+            printDiagnostics(results.diagnostics);
+        } 
+        
+        //else {
         //     if (results.artifacts) {
         //         // dumpArtifacts(results.artifacts);
         //         // saveArtifacts(artifactPath, filename, source, results.artifacts);
