@@ -11,10 +11,12 @@ import * as tsm from "ts-morph";
 // import { StackItemType } from "../types/StackItem";
 
 import { CompileContext, CompileError } from "../compiler";
-import { BlockScope, FunctionSymbolDef, Scope, VariableSymbolDef } from "../scope";
+import { BlockScope, FunctionSymbolDef, ParameterSymbolDef, resolveOrThrow, Scope, SymbolDef, VariableSymbolDef } from "../scope";
 import { InstructionKind, TargetOffset } from "../types/Instruction";
 import { OperationBuilder } from "../types/OperationBuilder";
+import { StackItemType } from "../types/StackItem";
 import { dispatch } from "../utility/nodeDispatch";
+import { getSymbolOrCompileError, isBigIntLike, isStringLike } from "../utils";
 import { ByteStringConstructor_from } from "./builtins";
 
 export interface ProcessOptions {
@@ -102,13 +104,13 @@ function processVariableStatement(node: tsm.VariableStatement, options: ProcessO
     const { builder, scope } = options;
 
     for (const decl of node.getDeclarations()) {
-        const slotIndex = options.builder.addLocalSlot();
-        scope.define(s => new VariableSymbolDef(decl, s, 'local', slotIndex));
+        const slotIndex = builder.addLocalSlot();
+        const symbolDef = scope.define(s => new VariableSymbolDef(decl, s, 'local', slotIndex));
         const init = decl.getInitializer();
         if (init) {
             const nodeSetter = builder.getNodeSetter();
             processExpression(init, options);
-            builder.pushStore('local', slotIndex);
+            storeSymbolDef(symbolDef, options);
             nodeSetter.set(decl);
         }
         return;
@@ -139,10 +141,41 @@ function processStatement(node: tsm.Statement, options: ProcessOptions): void {
 // }
 
 function processBinaryExpression(node: tsm.BinaryExpression, options: ProcessOptions) {
-    // const opTokenKind = node.getOperatorToken().getKind();
 
+    const opTokenKind = node.getOperatorToken().getKind();
     const left = node.getLeft();
     const right = node.getRight();
+
+    switch (opTokenKind) {
+        case tsm.SyntaxKind.QuestionQuestionToken: {
+            const { builder } = options;
+            processExpression(left, options);
+            const endTarget: TargetOffset = { instruction: undefined };
+            builder.push(InstructionKind.DUP);
+            builder.push(InstructionKind.ISNULL);
+            builder.pushJump(InstructionKind.JMPIFNOT, endTarget);
+            processExpression(right, options)
+            endTarget.instruction = builder.push(InstructionKind.NOP).instruction;
+            return;
+        }
+        case tsm.SyntaxKind.FirstAssignment: {
+            const resolved = resolveOrThrow(options.scope, left);
+            processExpression(right, options);
+            storeSymbolDef(resolved, options);
+            return;
+        }
+        case tsm.SyntaxKind.PlusToken: {
+            processExpression(left, options);
+            processExpression(right, options);
+            if (isBigIntLike(left.getType()) && isBigIntLike(right.getType()))
+            {
+                options.builder.push(InstructionKind.ADD);
+                return;
+            }
+        }
+    }
+
+    throw new CompileError(`not implemented ${tsm.SyntaxKind[opTokenKind]}`, node);
 
     // if (opTokenKind === tsm.SyntaxKind.QuestionQuestionToken) {
     //     processExpression(node.getLeft(), options);
@@ -230,13 +263,31 @@ function processCallExpression(node: tsm.CallExpression, options: ProcessOptions
     }
 
     if (exprTypeFQN?.startsWith('"/node_modules/@neo-project/neo-contract-framework/index".StorageConstructor.')) {
-        // processArguments(node.getArguments(), options);
-        // processExpression(expr, options);
+        const prop = expr.asKindOrThrow(tsm.SyntaxKind.PropertyAccessExpression);
+        processArguments(node.getArguments(), options);
+
+        switch (prop.getName()) {
+            case "get":
+                options.builder.pushSysCall("System.Storage.Get");
+                break;
+            case "put":
+                options.builder.pushSysCall("System.Storage.Put");
+                break;
+            case "delete":
+                options.builder.pushSysCall("System.Storage.Delete");
+                break;
+            default: throw new CompileError(`not supported`, prop);
+        }
         return;
     }
 
     if (exprTypeFQN === '"/node_modules/@neo-project/neo-contract-framework/index".ByteString.toBigInt') {
-        // processExpression(expr, options);
+        const prop = expr.asKindOrThrow(tsm.SyntaxKind.PropertyAccessExpression);
+        processExpression(prop.getExpression(), options);
+        
+        processOptionalChain(prop.hasQuestionDotToken(), options, (options) => {
+            options.builder.pushConvert(StackItemType.Integer);
+        })
         return;
     }
 
@@ -268,41 +319,12 @@ function processCallExpression(node: tsm.CallExpression, options: ProcessOptions
 
 function processIdentifier(node: tsm.Identifier, options: ProcessOptions) {
 
-    // const type = node.getType();
-    // const typeText = type.getText();
-    // const flags = tsm.TypeFlags[type.getFlags()];
-    // const symbol = getSymbolOrCompileError(node);
-    // const valDecl = symbol.getValueDeclaration()
-    //     ?? symbol.getAliasedSymbol()?.getValueDeclaration();
-
-    // const decls = symbol.getDeclarations();
-    // if (!valDecl
-    //     && decls.length === 1
-    //     && decls[0].isKind(tsm.SyntaxKind.NamespaceImport)
-    // ) {
-    //     return;
-    // }
-    // processSymbolDefinition(options.scope.resolve(symbol), node, options);
+    const symbol = getSymbolOrCompileError(node);
+    const resolved = options.scope.resolve(symbol);
+    if (!resolved) throw new CompileError(`unresolved symbol ${symbol.getName()}`, node);
+    loadSymbolDef(resolved, options);
 }
 
-
-// function processNullCoalesce(...args:
-//     [hasQuestionDot: boolean, options: ProcessOptions, func: (options: ProcessOptions) => void]
-//     | [options: ProcessOptions, func: (options: ProcessOptions) => void]
-// ) {
-//     const [hasQuestionDot, options, func] = args.length === 3 ? args : [true, ...args];
-//     const { builder } = options;
-//     if (hasQuestionDot) {
-//         const endTarget: JumpTarget = { instruction: undefined };
-//         builder.push(OpCode.DUP); //.set(node.getOperatorToken());
-//         builder.push(OpCode.ISNULL);
-//         builder.pushJump(OpCode.JMPIFNOT_L, endTarget);
-//         func(options);
-//         endTarget.instruction = builder.push(OpCode.NOP).instruction;
-//     } else {
-//         func(options);
-//     }
-// }
 
 function processPropertyAccessExpression(node: tsm.PropertyAccessExpression, options: ProcessOptions) {
 
@@ -370,17 +392,31 @@ export function processExpression(node: tsm.Expression, options: ProcessOptions)
     });
 }
 
-// export function processArguments(args: Array<tsm.Node>, options: ProcessOptions) {
-//     const argsLength = args.length;
-//     for (let i = argsLength - 1; i >= 0; i--) {
-//         const arg = args[i];
-//         if (tsm.Node.isExpression(arg)) {
-//             processExpression(arg, options);
-//         } else {
-//             throw new CompileError(`Unexpected call arg kind ${arg.getKindName()}`, arg);
-//         }
-//     }
-// }
+export function processArguments(args: tsm.Node[], options: ProcessOptions) {
+    const argsLength = args.length;
+    for (let i = argsLength - 1; i >= 0; i--) {
+        const arg = args[i];
+        if (tsm.Node.isExpression(arg)) {
+            processExpression(arg, options);
+        } else {
+            throw new CompileError(`Unexpected call arg kind ${arg.getKindName()}`, arg);
+        }
+    }
+}
+
+function processOptionalChain(hasQuestionDot: boolean, options: ProcessOptions, func: (options: ProcessOptions) => void) {
+    const { builder } = options;
+    if (hasQuestionDot) {
+        const endTarget: TargetOffset = { instruction: undefined };
+        builder.push(InstructionKind.DUP); //.set(node.getOperatorToken());
+        builder.push(InstructionKind.ISNULL);
+        builder.pushJump(InstructionKind.JMPIF, endTarget);
+        func(options);
+        endTarget.instruction = builder.push(InstructionKind.NOP).instruction;
+    } else {
+        func(options);
+    }
+}
 
 // function processBoolean(value: boolean, options: ProcessOptions) {
 //     const builder = options.builder;
@@ -388,6 +424,35 @@ export function processExpression(node: tsm.Expression, options: ProcessOptions)
 //     builder.push(opCode);
 //     builder.pushConvert(StackItemType.Boolean);
 // }
+
+function loadSymbolDef(resolved: SymbolDef, options: ProcessOptions) {
+    if (resolved instanceof ParameterSymbolDef) {
+        options.builder.pushLoad("parameter", resolved.index);
+        return;
+    }
+
+    if (resolved instanceof VariableSymbolDef) {
+        options.builder.pushLoad(resolved.slotType, resolved.index);
+        return;
+    }
+
+    throw new Error(`loadSymbolDef failure`);
+}
+
+function storeSymbolDef(resolved: SymbolDef, options: ProcessOptions) {
+    if (resolved instanceof ParameterSymbolDef) {
+        options.builder.pushStore("parameter", resolved.index);
+        return;
+    }
+
+    if (resolved instanceof VariableSymbolDef) {
+        options.builder.pushStore(resolved.slotType, resolved.index);
+        return;
+    }
+
+    throw new Error(`storeSymbolDef failure`);
+
+}
 
 // function processSymbolDefinition(resolved: SymbolDefinition | undefined, node: tsm.Node, options: ProcessOptions) {
 //     if (!resolved) { throw new CompileError(`failed to resolve`, node); }

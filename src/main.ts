@@ -1,8 +1,9 @@
 import { join } from "path";
 import { readFile } from "fs/promises";
 import * as tsm from "ts-morph";
-import { compile, createContractProject, FunctionSymbolDef, InitSlotInstruction, Instruction, InstructionKind, LoadStoreInstruction, PushDataInstruction, PushIntInstruction, SysCallInstruction, toDiagnostic } from '../packages/compiler/';
+import { compile, ConvertInstruction, createContractProject, FunctionSymbolDef, InitSlotInstruction, Instruction, InstructionKind, isJumpInstruction, isLoadStoreInstruction, LoadStoreInstruction, PushDataInstruction, PushIntInstruction, SysCallInstruction, TargetOffset, toDiagnostic } from '../packages/compiler/';
 import util from 'util';
+import { StackItemType } from "../packages/compiler/src/types/StackItem";
 
 function printDiagnostics(diags: ReadonlyArray<tsm.ts.Diagnostic>) {
     const formatHost: tsm.ts.FormatDiagnosticsHost = {
@@ -40,7 +41,7 @@ async function main() {
         if (results.diagnostics.length > 0) {
             printDiagnostics(results.diagnostics);
             return;
-        } 
+        }
 
         for (const def of results.context.globals.symbolDefs) {
             if (def instanceof FunctionSymbolDef) {
@@ -79,6 +80,7 @@ const green = `${AnsiEscapeSequences.BrightGreen}%s${AnsiEscapeSequences.Reset}`
 const cyan = `${AnsiEscapeSequences.BrightCyan}%s${AnsiEscapeSequences.Reset}`;
 const magenta = `${AnsiEscapeSequences.BrightMagenta}%s${AnsiEscapeSequences.Reset}`;
 const yellow = `${AnsiEscapeSequences.BrightYellow}%s${AnsiEscapeSequences.Reset}`;
+const invert = `${AnsiEscapeSequences.Invert}%s${AnsiEscapeSequences.Reset}`;
 
 export function dumpFunctionDef(def: FunctionSymbolDef) {
     const info = getOperationInfo(def.node);
@@ -87,14 +89,33 @@ export function dumpFunctionDef(def: FunctionSymbolDef) {
     const safeStr = info.safe ? ' [safe]' : '';
     console.log(magenta, `${publicStr}${info.name}(${params})${safeStr}`);
 
+    const instructionMap = new Map<Instruction, number>();
     let insNum = 0;
+    for (const ins of def.instructions) {
+        if (ins instanceof tsm.Node) {
+        } else {
+            instructionMap.set(ins, ++insNum);
+        }
+    }
+    const padding = `${instructionMap.size}`.length;
+    function resolveTarget(target: TargetOffset) {
+        if (!target.instruction) throw new Error(`Missing target`);
+        const value = instructionMap.get(target.instruction);
+        if (!value) throw new Error(`Invalid target`);
+        return value
+    }
+
+    insNum = 0;
     for (const ins of def.instructions) {
         if (ins instanceof tsm.Node) {
             console.log(cyan, `# ${ins.print({ removeComments: true })}`);
         } else {
-            let msg = util.format(yellow, `${++insNum}: `);
-            msg += InstructionKind[ins.kind];
-            const comment = getComment(ins);
+            let msg = util.format(invert, `${(++insNum).toString().padStart(padding)}:`);
+            msg += " " + InstructionKind[ins.kind];
+
+            const operand = getOperand(ins, insNum, resolveTarget);
+            msg += util.format(yellow, " " + operand);
+            const comment = getComment(ins, insNum, resolveTarget);
             if (comment) {
                 msg += util.format(green, ` # ${comment}`);
             }
@@ -104,35 +125,35 @@ export function dumpFunctionDef(def: FunctionSymbolDef) {
 
 
 
-//     for (const op of operations ?? []) {
-//         const info = getOperationInfo(op.node);
-//         
+    //     for (const op of operations ?? []) {
+    //         const info = getOperationInfo(op.node);
+    //         
 
-//         const [instructions, references] = separateInstructions(op.instructions);
-//         const padding = `${instructions.length}`.length;
-//         const findIndex = (ins:Instruction) => { return instructions.findIndex(v => v === ins); }
+    //         const [instructions, references] = separateInstructions(op.instructions);
+    //         const padding = `${instructions.length}`.length;
+    //         const findIndex = (ins:Instruction) => { return instructions.findIndex(v => v === ins); }
 
-//         const instructionsLength = instructions.length;
-//         for (let i = 0; i < instructionsLength; i++) {
-//             const ins = instructions[i];
-//             const ref = references.get(i);
-//             if (ref) {
-//                 console.log(cyan, `# ${ref.print({ removeComments: true })}`);
-//             }
+    //         const instructionsLength = instructions.length;
+    //         for (let i = 0; i < instructionsLength; i++) {
+    //             const ins = instructions[i];
+    //             const ref = references.get(i);
+    //             if (ref) {
+    //                 console.log(cyan, `# ${ref.print({ removeComments: true })}`);
+    //             }
 
-//             let msg = util.format(yellow, `${i.toString().padStart(padding)}: `);
-//             msg += printOpCode(ins.opCode);
-//             if (ins.operand) {
-//                 msg += ` ${Buffer.from(ins.operand).toString('hex')}`;
-//             }
-//             const comment = getComment(ins, findIndex);
-//             if (comment) {
-//                 msg += util.format(green, ` # ${comment}`);
-//             }
-            
-//             console.log(msg);
-//         }
-//     }
+    //             let msg = util.format(yellow, `${i.toString().padStart(padding)}: `);
+    //             msg += printOpCode(ins.opCode);
+    //             if (ins.operand) {
+    //                 msg += ` ${Buffer.from(ins.operand).toString('hex')}`;
+    //             }
+    //             const comment = getComment(ins, findIndex);
+    //             if (comment) {
+    //                 msg += util.format(green, ` # ${comment}`);
+    //             }
+
+    //             console.log(msg);
+    //         }
+    //     }
 }
 
 function getOperationInfo(node: tsm.FunctionDeclaration) {
@@ -152,9 +173,35 @@ function getOperationInfo(node: tsm.FunctionDeclaration) {
     }
 }
 
-function getComment(ins: Instruction): string | undefined {
+function getOperand(ins: Instruction, num: number, resolveTarget: (target: TargetOffset) => number) {
+
+    if (isLoadStoreInstruction(ins)) {
+        return `${ins.index}`;
+    }
+
+    if (isJumpInstruction(ins)) {
+        const target = resolveTarget(ins.target);
+        const relative = target - num;
+        return `${relative}`;
+    }
 
     switch (ins.kind) {
+        case InstructionKind.CONVERT: {
+            const _ins = ins as ConvertInstruction;
+            switch (_ins.type) {
+                case StackItemType.Any: return "Any";
+                case StackItemType.Pointer: return "Pointer";
+                case StackItemType.Boolean: return "Boolean";
+                case StackItemType.Integer: return "Integer";
+                case StackItemType.ByteString: return "ByteString";
+                case StackItemType.Buffer: return "Buffer";
+                case StackItemType.Array: return "Array";
+                case StackItemType.Struct: return "Struct";
+                case StackItemType.Map: return "Map";
+                case StackItemType.InteropInterface: return "InteropInterface";
+                default: throw new Error(`Unexpected StackItemType ${_ins.type}`);
+            }
+        }
         case InstructionKind.PUSHINT: {
             const _ins = ins as PushIntInstruction;
             return `${_ins.value}`;
@@ -165,22 +212,33 @@ function getComment(ins: Instruction): string | undefined {
         }
         case InstructionKind.INITSLOT: {
             const _ins = ins as InitSlotInstruction;
-            return `locals: ${_ins.localCount}, params: ${_ins.paramCount}`;
+            return "0x" + Buffer.from([_ins.localCount, _ins.paramCount]).toString('hex');
         }
         case InstructionKind.SYSCALL: {
             const _ins = ins as SysCallInstruction;
-            return `${_ins.service}`;
+            return _ins.service;
         }
-        case InstructionKind.LDARG:
-        case InstructionKind.LDLOC:
-        case InstructionKind.LDSFLD:
-        case InstructionKind.STARG:
-        case InstructionKind.STLOC:
-        case InstructionKind.STSFLD: {
-            const _ins = ins as LoadStoreInstruction;
-            return `${_ins.index}`;
-        }
+    }
 
+    return "";
+}
+
+function getComment(ins: Instruction, num: number, resolveTarget: (target: TargetOffset) => number): string | undefined {
+
+    if (isJumpInstruction(ins)) {
+        const target = resolveTarget(ins.target);
+        return `target: ${target}`;
+    }
+
+    switch (ins.kind) {
+        case InstructionKind.INITSLOT: {
+            const _ins = ins as InitSlotInstruction;
+            return `locals: ${_ins.localCount}, params: ${_ins.paramCount}`;
+        }
+        // case InstructionKind.SYSCALL: {
+        //     const _ins = ins as SysCallInstruction;
+        //     return `${_ins.service}`;
+        // }
     }
 
     return undefined;

@@ -1,5 +1,6 @@
 import * as tsm from "ts-morph";
 import { CompileError } from "../compiler";
+import { VariableSymbolDef } from "../scope";
 import { asExpressionOrCompileError, getConstantValue, getNumericLiteral } from "../utils";
 import { ProcessOptions } from "./processOperations";
 // import { CompileError } from "./compiler";
@@ -132,9 +133,9 @@ import { ProcessOptions } from "./processOperations";
 export function ByteStringConstructor_from(node: tsm.CallExpression, options: ProcessOptions): void {
     const { builder } = options;
 
-    const buffer = new Array<number>();
     const arg = asExpressionOrCompileError(node.getArguments()[0]);
     if (tsm.Node.isArrayLiteralExpression(arg)) {
+        const buffer = new Array<number>();
         for (const e of arg.getElements()) {
             if (tsm.Node.isNumericLiteral(e)) {
                 buffer.push(getNumericLiteral(e));
@@ -142,8 +143,16 @@ export function ByteStringConstructor_from(node: tsm.CallExpression, options: Pr
                 throw new CompileError(`not supported`, e);
             }
         }
-    } else {
-        throw new CompileError(`not supported`, arg)
+        builder.pushData(Uint8Array.from(buffer))
+        return;
+    } 
+    
+    if (tsm.Node.isIdentifier(arg)) {
+        const resolved = options.scope.resolve(arg.getSymbolOrThrow());
+        if (resolved instanceof VariableSymbolDef) {
+            builder.pushLoad(resolved.slotType, resolved.index);
+            return;
+        }
     }
-    builder.pushData(Uint8Array.from(buffer))
+    throw new CompileError(`not supported`, arg)
 }

@@ -1,4 +1,5 @@
 import * as tsm from "ts-morph";
+import { CompileError } from "./compiler";
 import { Instruction } from "./types/Instruction";
 import { SlotType } from "./types/OperationBuilder";
 import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
@@ -9,6 +10,13 @@ export interface Scope {
     readonly symbolDefs: IterableIterator<SymbolDef>;
     define<T extends SymbolDef>(factory: T | ((scope: Scope) => T)): T;
     resolve(symbol: tsm.Symbol): SymbolDef | undefined;
+}
+
+export function resolveOrThrow(scope: Scope, node: tsm.Node): SymbolDef {
+    const symbol = getSymbolOrCompileError(node)
+    const resolved = scope.resolve( symbol);
+    if (!resolved) { throw new CompileError(`unresolved symbol ${symbol.getName()}`, node); }
+    return resolved;
 }
 
 export interface SymbolDef {
