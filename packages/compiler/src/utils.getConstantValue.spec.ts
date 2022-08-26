@@ -8,21 +8,24 @@ describe("getConstantValue", () => {
     async function runTest(expected: string) {
         const { sourceFile } = await createTestProject(`const value = ${expected};`)
         const stmt = sourceFile.getFirstChildByKindOrThrow(tsm.SyntaxKind.VariableStatement);
-        return getConstantValue(stmt.getDeclarations()[0]);
+        const decls = stmt.getDeclarations();
+        return getConstantValue(decls[0].getInitializerOrThrow());
     }
 
-    it("var statement", async () => {
-        const { sourceFile } = await createTestProject(`var value = "test";`)
-        const stmt = sourceFile.getFirstChildByKindOrThrow(tsm.SyntaxKind.VariableStatement);
-        const actual = getConstantValue(stmt.getDeclarations()[0]);
-        expect(actual).undefined;
-    });
-    it("let statement", async () => {
-        const { sourceFile } = await createTestProject(`let value = "test";`)
-        const stmt = sourceFile.getFirstChildByKindOrThrow(tsm.SyntaxKind.VariableStatement);
-        const actual = getConstantValue(stmt.getDeclarations()[0]);
-        expect(actual).undefined;
-    });
+    // it("var statement", async () => {
+    //     const { sourceFile } = await createTestProject(`var value = "test";`)
+    //     const stmt = sourceFile.getFirstChildByKindOrThrow(tsm.SyntaxKind.VariableStatement);
+    //     const decls = stmt.getDeclarations();
+    //     const actual = getConstantValue(decls[0].getInitializerOrThrow());
+    //     expect(actual).undefined;
+    // });
+    // it("let statement", async () => {
+    //     const { sourceFile } = await createTestProject(`let value = "test";`)
+    //     const stmt = sourceFile.getFirstChildByKindOrThrow(tsm.SyntaxKind.VariableStatement);
+    //     const decls = stmt.getDeclarations();
+    //     const actual = getConstantValue(decls[0].getInitializerOrThrow());
+    //     expect(actual).undefined;
+    // });
 
     it("numeric literal", async () => {
         const expected = 123n;
