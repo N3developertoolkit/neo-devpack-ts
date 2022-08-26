@@ -24,7 +24,7 @@ export interface StorageConstructor {
     delete(context: StorageContext, key: ByteString): void;
 }
 
-export type Address = void;
+// export type Address = void;
 
 // export interface Address {
 //     [Symbol.iterator](): Iterator<number>;

@@ -14,30 +14,31 @@ export function decimals() { return 8; }
 //     updateTotalSupply(amount);
 // }
 
-// const _prefixTotalSupply = 0x00;
-// const _prefixBalance = 0x10;
-// const _prefixContractOwner = 0xFF;
+const _prefixTotalSupply = 0x00;
+const _prefixBalance = 0x10;
+const _prefixContractOwner = 0xFF;
 
-// function updateBalance(account: neo.Address, amount: bigint) {
-//     // const context = neo.Storage.currentContext;
-//     // const key = [_prefixBalance, ...account] as const;
-//     // let balance = neo.Storage.get(context, key) as bigint;
-//     // balance += amount;
-//     // if (balance < 0n) return false;
-//     // if (balance === 0n) {
-//     //     neo.Storage.delete(context, key);
-//     // } else {
-//     //     neo.Storage.put(context, key, balance);
-//     // }
+// function updateBalance(account: ByteString, amount: bigint) {
+//     const context = Storage.currentContext;
+//     const key = ByteString.from([_prefixBalance, ...account]);
+//     const value = Storage.get(context, key);
+//     let balance = value ? value as bigint : 0n;
+//     balance = balance + amount;
+//     if (balance < 0n) return false;
+//     if (balance === 0n) {
+//         Storage.delete(context, key);
+//     } else {
+//         Storage.put(context, key, balance);
+//     }
 //     return true;
 // }
 
 function updateTotalSupply(amount: bigint) {
     const context = Storage.currentContext;
-    const key = ByteString.from([0x00]);
+    const key = ByteString.from([_prefixTotalSupply]);
     const value = Storage.get(context, key);
     let totalSupply = value ? value as bigint : 0n;
-    totalSupply = totalSupply + amount;
+    totalSupply += amount;
     Storage.put(context, key, totalSupply);
 }
 

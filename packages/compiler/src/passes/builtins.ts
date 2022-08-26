@@ -1,7 +1,9 @@
+import { resolve } from "path";
 import * as tsm from "ts-morph";
 import { CompileError } from "../compiler";
-import { VariableSymbolDef } from "../scope";
-import { asExpressionOrCompileError, getConstantValue, getNumericLiteral } from "../utils";
+import { ConstantSymbolDef, resolveOrThrow, VariableSymbolDef } from "../scope";
+import { dispatch } from "../utility/nodeDispatch";
+import { asExpressionOrCompileError, getConstantValue, getNumericLiteral, getSymbolOrCompileError } from "../utils";
 import { ProcessOptions } from "./processOperations";
 // import { CompileError } from "./compiler";
 // import { ProcessOptions, processExpression } from "./passes/processOperations";
@@ -137,22 +139,44 @@ export function ByteStringConstructor_from(node: tsm.CallExpression, options: Pr
     if (tsm.Node.isArrayLiteralExpression(arg)) {
         const buffer = new Array<number>();
         for (const e of arg.getElements()) {
-            if (tsm.Node.isNumericLiteral(e)) {
-                buffer.push(getNumericLiteral(e));
+            if (tsm.Node.isSpreadElement(e)) {
+                console.log();
             } else {
-                throw new CompileError(`not supported`, e);
+                buffer.push(getElementValue(e))
             }
+            
         }
         builder.pushData(Uint8Array.from(buffer))
         return;
     } 
     
     if (tsm.Node.isIdentifier(arg)) {
-        const resolved = options.scope.resolve(arg.getSymbolOrThrow());
+        const resolved = resolveOrThrow(options.scope, arg);
         if (resolved instanceof VariableSymbolDef) {
             builder.pushLoad(resolved.slotType, resolved.index);
             return;
         }
     }
     throw new CompileError(`not supported`, arg)
+
+    function getElementValue(node: tsm.Expression) {
+        switch (node.getKind()) {
+            case tsm.SyntaxKind.BigIntLiteral: 
+                return Number((node as tsm.BigIntLiteral).getLiteralValue() as bigint);
+            case tsm.SyntaxKind.NumericLiteral: 
+                return getNumericLiteral(node as tsm.NumericLiteral);
+            case tsm.SyntaxKind.Identifier: {
+                const resolved = resolveOrThrow(options.scope, node);
+                if (resolved instanceof ConstantSymbolDef) {
+                    const value = resolved.value;
+                    if (typeof value === 'bigint') return Number(value);
+                    if (typeof value === 'boolean') return value ? 1 : 0;
+                    if (value === null) return 0;
+                }
+            }
+        }
+
+        throw new CompileError(`not supported`, node);
+    }
+
 }

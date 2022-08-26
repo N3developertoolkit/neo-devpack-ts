@@ -154,7 +154,8 @@ function processAsExpression(node: tsm.AsExpression, options: ProcessOptions) {
 
 function processBinaryExpression(node: tsm.BinaryExpression, options: ProcessOptions) {
 
-    const opTokenKind = node.getOperatorToken().getKind();
+    const opToken = node.getOperatorToken();
+    const opTokenKind = opToken.getKind();
     const left = node.getLeft();
     const right = node.getRight();
 
@@ -175,6 +176,17 @@ function processBinaryExpression(node: tsm.BinaryExpression, options: ProcessOpt
             processExpression(right, options);
             storeSymbolDef(resolved, options);
             return;
+        }
+        case tsm.SyntaxKind.PlusEqualsToken: {
+            const resolved = resolveOrThrow(options.scope, left);
+            processExpression(left, options);
+            processExpression(right, options);
+            if (isBigIntLike(left.getType()) && isBigIntLike(right.getType()))
+            {
+                options.builder.push(InstructionKind.ADD);
+                storeSymbolDef(resolved, options);
+                return;
+            }
         }
         case tsm.SyntaxKind.PlusToken: {
             processExpression(left, options);
