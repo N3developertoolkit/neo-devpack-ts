@@ -16,7 +16,7 @@ import { InstructionKind, TargetOffset } from "../types/Instruction";
 import { OperationBuilder } from "../types/OperationBuilder";
 import { StackItemType } from "../types/StackItem";
 import { dispatch } from "../utility/nodeDispatch";
-import { getSymbolOrCompileError, isBigIntLike, isStringLike } from "../utils";
+import { getSymbolOrCompileError, isBigIntLike, isBooleanLike, isStringLike } from "../utils";
 import { ByteStringConstructor_from } from "./builtins";
 
 export interface ProcessOptions {
@@ -139,6 +139,18 @@ function processStatement(node: tsm.Statement, options: ProcessOptions): void {
 //     options.builder.pushInt(length);
 //     options.builder.push(OpCode.PACK);
 // }
+
+function processAsExpression(node: tsm.AsExpression, options: ProcessOptions) {
+    processExpression(node.getExpression(), options);
+    const type = node.getTypeNodeOrThrow().getType();
+    if (isBigIntLike(type)) {
+        options.builder.pushConvert(StackItemType.Integer);
+    } else if (isBooleanLike(type)) {
+        options.builder.pushConvert(StackItemType.Boolean);
+    } else {
+        throw new CompileError(`not supported`, node);
+    }
+}
 
 function processBinaryExpression(node: tsm.BinaryExpression, options: ProcessOptions) {
 
@@ -293,29 +305,44 @@ function processCallExpression(node: tsm.CallExpression, options: ProcessOptions
 
     throw new CompileError(`processCallExpression not implemented ${node.getExpression().print()}`, node);
 }
-
-// function processConditionalExpression(node: tsm.ConditionalExpression, options: ProcessOptions) {
-
-//     const expr = node.getCondition();
-//     const exprType = expr.getType();
-//     const exprTypeSymbol = exprType.getAliasSymbol() ?? exprType.getSymbol();
-//     const exprTypeFQN = exprTypeSymbol?.getFullyQualifiedName();
-
-//     const { builder } = options;
-
-//     const falseTarget: JumpTarget = { instruction: undefined };
-//     const endTarget: JumpTarget = { instruction: undefined };
-//     processExpression(node.getCondition(), options);
-//     if (!exprType.isBoolean()) {
-//         builder.push(OpCode.ISNULL);
-//     }
-//     builder.pushJump(OpCode.JMPIFNOT_L, falseTarget);
-//     processExpression(node.getWhenTrue(), options);
-//     builder.pushJump(endTarget);
-//     falseTarget.instruction = builder.push(OpCode.NOP).instruction;
-//     processExpression(node.getWhenFalse(), options);
-//     endTarget.instruction = builder.push(OpCode.NOP).instruction;
+// const elseTarget: TargetOffset = { instruction: undefined };
+// const nodeSetter = builder.getNodeSetter();
+// const expr = node.getExpression();
+// processExpression(expr, options);
+// nodeSetter.set(expr);
+// builder.pushJump(InstructionKind.JMPIFNOT, elseTarget);
+// processStatement(node.getThenStatement(), options);
+// const elseStmt = node.getElseStatement();
+// if (elseStmt) {
+//     const endTarget: TargetOffset = { instruction: undefined };
+//     builder.pushJump(InstructionKind.JMP, endTarget);
+//     elseTarget.instruction = builder.push(InstructionKind.NOP).instruction;
+//     processStatement(elseStmt, options);
+//     endTarget.instruction = builder.push(InstructionKind.NOP).instruction;
+// } else {
+//     elseTarget.instruction = builder.push(InstructionKind.NOP).instruction;
 // }
+
+function processConditionalExpression(node: tsm.ConditionalExpression, options: ProcessOptions) {
+
+    const { builder } = options;
+
+    const falseTarget: TargetOffset = { instruction: undefined };
+    const endTarget: TargetOffset = { instruction: undefined };
+    const cond = node.getCondition();
+    processExpression(cond, options);
+    if (!isBooleanLike(cond.getType())) {
+        builder.push(InstructionKind.ISNULL);
+        builder.pushJump(InstructionKind.JMPIF, falseTarget);
+    } else {
+        builder.pushJump(InstructionKind.JMPIFNOT, falseTarget);
+    }
+    processExpression(node.getWhenTrue(), options);
+    builder.pushJump(InstructionKind.JMP, endTarget);
+    falseTarget.instruction = builder.push(InstructionKind.NOP).instruction;
+    processExpression(node.getWhenFalse(), options);
+    endTarget.instruction = builder.push(InstructionKind.NOP).instruction;
+}
 
 function processIdentifier(node: tsm.Identifier, options: ProcessOptions) {
 
@@ -368,9 +395,10 @@ export function processExpression(node: tsm.Expression, options: ProcessOptions)
 
     dispatch(node, options, {
         // [tsm.SyntaxKind.ArrayLiteralExpression]: processArrayLiteralExpression,
+        [tsm.SyntaxKind.AsExpression]: processAsExpression,
         [tsm.SyntaxKind.BinaryExpression]: processBinaryExpression,
         [tsm.SyntaxKind.CallExpression]: processCallExpression,
-        // [tsm.SyntaxKind.ConditionalExpression]: processConditionalExpression,
+        [tsm.SyntaxKind.ConditionalExpression]: processConditionalExpression,
         [tsm.SyntaxKind.Identifier]: processIdentifier,
         [tsm.SyntaxKind.PropertyAccessExpression]: processPropertyAccessExpression,
 
