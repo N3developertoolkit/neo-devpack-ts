@@ -231,6 +231,12 @@ function getComment(ins: Instruction, num: number, resolveTarget: (target: Targe
     }
 
     switch (ins.kind) {
+        case InstructionKind.PUSHDATA: {
+            const _ins = ins as PushDataInstruction;
+            const value = Buffer.from(_ins.value);
+            return '' + value;
+
+        }
         case InstructionKind.INITSLOT: {
             const _ins = ins as InitSlotInstruction;
             return `locals: ${_ins.localCount}, params: ${_ins.paramCount}`;
