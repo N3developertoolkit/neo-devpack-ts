@@ -13,7 +13,7 @@ export interface Scope {
 }
 
 export function resolveOrThrow(scope: Scope, node: tsm.Node): SymbolDef {
-    const symbol = getSymbolOrCompileError(node)
+    const symbol = getSymbolOrCompileError(node);
     const resolved = scope.resolve( symbol);
     if (!resolved) { throw new CompileError(`unresolved symbol ${symbol.getName()}`, node); }
     return resolved;

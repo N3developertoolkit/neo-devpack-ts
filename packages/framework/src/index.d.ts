@@ -5,7 +5,7 @@ export interface ByteString extends Omit<Uint8Array, TypedArrayMutableProperties
 }
 export declare const ByteString: ByteStringConstructor;
 export interface ByteStringConstructor {
-    from(...rest: number[]): ByteString;
+    from(arrayLike: ArrayLike<number>): ByteString;
 }
 
 export type StorageValue = boolean | bigint | ByteString;

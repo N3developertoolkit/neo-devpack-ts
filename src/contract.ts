@@ -15,36 +15,33 @@ export function decimals() { return 8; }
 // }
 
 const prefixTotalSupply = 0xA0;
-const prefixBalance = 0xA1;
-const prefixContractOwner = 0xFF;
+// const prefixBalance = 0xA1;
+// const prefixContractOwner = 0xFF;
 
-function updateBalance(account: ByteString, amount: bigint) {
-    const context = Storage.currentContext;
-    // TODO rework ByteString.from to handle more complex scenarios 
-    const key = ByteString.from(prefixBalance, ...account);
-    const value = Storage.get(context, key);
-    let balance = value ? value as bigint : 0n;
-    balance = balance + amount;
-    if (balance < 0n) return false;
-    if (balance === 0n) {
-        Storage.delete(context, key);
-    } else {
-        Storage.put(context, key, balance);
-    }
-    return true;
-}
+// function updateBalance(account: ByteString, amount: bigint) {
+//     const context = Storage.currentContext;
+//     // TODO rework ByteString.from to handle more complex scenarios 
+//     const key = ByteString.from(prefixBalance, ...account);
+//     const value = Storage.get(context, key);
+//     let balance = value ? value as bigint : 0n;
+//     balance = balance + amount;
+//     if (balance < 0n) return false;
+//     if (balance === 0n) {
+//         Storage.delete(context, key);
+//     } else {
+//         Storage.put(context, key, balance);
+//     }
+//     return true;
+// }
 
 function updateTotalSupply(amount: bigint) {
     const context = Storage.currentContext;
-    const key = ByteString.from(prefixTotalSupply);
+    const key = ByteString.from([prefixTotalSupply]);
     const value = Storage.get(context, key);
     let totalSupply = value ? value as bigint : 0n;
     totalSupply += amount;
     Storage.put(context, key, totalSupply);
 }
-
-
-    // let totalSupply = Storage.get(context, key)?.toBigInt() ?? 0n;
 
 // /** @safe */
 // export function getValue() { 
