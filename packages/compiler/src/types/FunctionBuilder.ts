@@ -5,14 +5,14 @@ import * as tsm from "ts-morph";
 // import { isJumpOpCode, JumpOpCode, OpCode, toString as opCodeToString, toString as printOpCode } from "./OpCode";
 // import { StackItemType } from "./StackItem";
 
-import { ConvertInstruction, InitSlotInstruction, Instruction, InstructionKind, JumpInstruction, JumpInstructionKind, LoadStoreInstruction, NeoService, PushBoolInstruction, PushDataInstruction, PushIntInstruction, specializedInstructionKinds, SysCallInstruction, TargetOffset } from "./Instruction";
+import { ConvertOperation, InitSlotOperation, Operation, OperationKind, JumpOperation, JumpOperationKind, LoadStoreOperation, NeoService, PushBoolOperation, PushDataOperation, PushIntOperation, specializedOperationKinds, SysCallOperation, TargetOffset } from "./Operation";
 import { StackItemType } from "./StackItem";
 
 export interface NodeSetter {
     set(node?: tsm.Node): void;
 }
 
-type NodeSetterWithInstruction = NodeSetter & { readonly instruction: Instruction };
+type NodeSetterWithInstruction = NodeSetter & { readonly instruction: Operation };
 
 export type SlotType = 'local' | 'static' | 'parameter';
 
@@ -122,9 +122,9 @@ export type SlotType = 'local' | 'static' | 'parameter';
 
 
 
-export class OperationBuilder {
+export class FunctionBuilder {
     private _localCount: number = 0;
-    private readonly _instructions = new Array<Instruction | tsm.Node>();
+    private readonly _instructions = new Array<Operation | tsm.Node>();
     private readonly _returnTarget: TargetOffset = { instruction: undefined }
 
     constructor(readonly paramCount: number) {}
@@ -133,11 +133,11 @@ export class OperationBuilder {
 
     addLocalSlot() { return this._localCount++; }
 
-    get instructions(): IterableIterator<Instruction | tsm.Node> { return this.getInstructions(); }
+    get instructions(): IterableIterator<Operation | tsm.Node> { return this.getInstructions(); }
     private *getInstructions() {
         if (this.paramCount > 0 || this._localCount > 0) {
-            const ins: InitSlotInstruction = {
-                kind: InstructionKind.INITSLOT,
+            const ins: InitSlotOperation = {
+                kind: OperationKind.INITSLOT,
                 localCount: this._localCount,
                 paramCount: this.paramCount,
             }
@@ -158,10 +158,10 @@ export class OperationBuilder {
         }
     }
 
-    push(ins: Instruction | InstructionKind): NodeSetterWithInstruction {
+    push(ins: Operation | OperationKind): NodeSetterWithInstruction {
         if (typeof ins !== 'object') {
-            if (specializedInstructionKinds.includes(ins)) {
-                throw new Error(`Invalid ${InstructionKind[ins]} instruction`)
+            if (specializedOperationKinds.includes(ins)) {
+                throw new Error(`Invalid ${OperationKind[ins]} instruction`)
             }
             ins = { kind: ins };
         }
@@ -177,12 +177,12 @@ export class OperationBuilder {
     }
 
     pushBool(value: boolean) {
-        const ins: PushBoolInstruction = { kind: InstructionKind.PUSHBOOL, value };
+        const ins: PushBoolOperation = { kind: OperationKind.PUSHBOOL, value };
         return this.push(ins);
     }
 
     pushConvert(type: StackItemType) {
-        const ins: ConvertInstruction = { kind: InstructionKind.CONVERT, type };
+        const ins: ConvertOperation = { kind: OperationKind.CONVERT, type };
         return this.push(ins);
     }
 
@@ -192,7 +192,7 @@ export class OperationBuilder {
             value = BigInt(value);
         }
 
-        const ins: PushIntInstruction = { kind: InstructionKind.PUSHINT, value };
+        const ins: PushIntOperation = { kind: OperationKind.PUSHINT, value };
         return this.push(ins);
     }
 
@@ -200,42 +200,42 @@ export class OperationBuilder {
         if (typeof value === 'string') {
             value = Buffer.from(value, 'utf8');
         }
-        const ins: PushDataInstruction = { kind: InstructionKind.PUSHDATA, value };
+        const ins: PushDataOperation = { kind: OperationKind.PUSHDATA, value };
         return this.push(ins);
     }
 
-    pushJump(kind: JumpInstructionKind, target: TargetOffset) {
-        const ins: JumpInstruction = { kind, target };
+    pushJump(kind: JumpOperationKind, target: TargetOffset) {
+        const ins: JumpOperation = { kind, target };
         return this.push(ins);
     }
 
     pushLoad(slot: SlotType, index: number) {
         const kind = slot === 'local'
-            ? InstructionKind.LDLOC
+            ? OperationKind.LDLOC
             : slot === 'parameter'
-                ? InstructionKind.LDARG
-                : InstructionKind.LDSFLD;
-        const ins: LoadStoreInstruction = { kind, index };
+                ? OperationKind.LDARG
+                : OperationKind.LDSFLD;
+        const ins: LoadStoreOperation = { kind, index };
         return this.push(ins);
     }
 
     pushStore(slot: SlotType, index: number) {
         const kind = slot === 'local'
-            ? InstructionKind.STLOC
+            ? OperationKind.STLOC
             : slot === 'parameter'
-                ? InstructionKind.STARG
-                : InstructionKind.STSFLD;
-        const ins: LoadStoreInstruction = { kind, index };
+                ? OperationKind.STARG
+                : OperationKind.STSFLD;
+        const ins: LoadStoreOperation = { kind, index };
         return this.push(ins);
     }
 
     pushReturn() {
         if (this._returnTarget.instruction) { throw new Error("returnTarget already set"); }
-        this._returnTarget.instruction = this.push(InstructionKind.RET).instruction;
+        this._returnTarget.instruction = this.push(OperationKind.RET).instruction;
     }
 
     pushSysCall(service: NeoService) {
-        const ins: SysCallInstruction = { kind: InstructionKind.SYSCALL, service };
+        const ins: SysCallOperation = { kind: OperationKind.SYSCALL, service };
         return this.push(ins);
     }
 }

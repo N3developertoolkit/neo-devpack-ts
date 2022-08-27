@@ -12,15 +12,15 @@ import * as tsm from "ts-morph";
 
 import { CompileContext, CompileError } from "../compiler";
 import { BlockScope, FunctionSymbolDef, ParameterSymbolDef, resolveOrThrow, Scope, SymbolDef, VariableSymbolDef } from "../scope";
-import { InstructionKind, TargetOffset } from "../types/Instruction";
-import { OperationBuilder } from "../types/OperationBuilder";
+import { OperationKind, TargetOffset } from "../types/Operation";
+import { FunctionBuilder } from "../types/FunctionBuilder";
 import { StackItemType } from "../types/StackItem";
 import { dispatch } from "../utility/nodeDispatch";
 import { getSymbolOrCompileError, isBigIntLike, isBooleanLike, isStringLike } from "../utils";
 import { ByteStringConstructor_from } from "./builtins";
 
 export interface ProcessOptions {
-    builder: OperationBuilder,
+    builder: FunctionBuilder,
     scope: Scope,
 }
 
@@ -30,11 +30,11 @@ function processBlock(node: tsm.Block, options: ProcessOptions): void {
         builder,
         scope: new BlockScope(node, scope),
     };
-    builder.push(InstructionKind.NOP)
+    builder.push(OperationKind.NOP)
         .set(node.getFirstChildByKind(tsm.SyntaxKind.OpenBraceToken));
     node.getStatements()
         .forEach(s => processStatement(s, blockOptions));
-    builder.push(InstructionKind.NOP)
+    builder.push(OperationKind.NOP)
         .set(node.getLastChildByKind(tsm.SyntaxKind.CloseBraceToken));
 }
 
@@ -53,17 +53,17 @@ function processIfStatement(node: tsm.IfStatement, options: ProcessOptions): voi
     const expr = node.getExpression();
     processExpression(expr, options);
     nodeSetter.set(expr);
-    builder.pushJump(InstructionKind.JMPIFNOT, elseTarget);
+    builder.pushJump(OperationKind.JMPIFNOT, elseTarget);
     processStatement(node.getThenStatement(), options);
     const elseStmt = node.getElseStatement();
     if (elseStmt) {
         const endTarget: TargetOffset = { instruction: undefined };
-        builder.pushJump(InstructionKind.JMP, endTarget);
-        elseTarget.instruction = builder.push(InstructionKind.NOP).instruction;
+        builder.pushJump(OperationKind.JMP, endTarget);
+        elseTarget.instruction = builder.push(OperationKind.NOP).instruction;
         processStatement(elseStmt, options);
-        endTarget.instruction = builder.push(InstructionKind.NOP).instruction;
+        endTarget.instruction = builder.push(OperationKind.NOP).instruction;
     } else {
-        elseTarget.instruction = builder.push(InstructionKind.NOP).instruction;
+        elseTarget.instruction = builder.push(OperationKind.NOP).instruction;
     }
 }
 
@@ -72,7 +72,7 @@ function processReturnStatement(node: tsm.ReturnStatement, options: ProcessOptio
     const nodeSetter = builder.getNodeSetter();
     const expr = node.getExpression();
     if (expr) { processExpression(expr, options); }
-    builder.pushJump(InstructionKind.JMP, builder.returnTarget);
+    builder.pushJump(OperationKind.JMP, builder.returnTarget);
     nodeSetter.set(node);
 }
 
@@ -90,7 +90,7 @@ function processThrowStatement(node: tsm.ThrowStatement, options: ProcessOptions
         } else {
             if (tsm.Node.isExpression(arg)) {
                 processExpression(arg, options);
-                builder.push(InstructionKind.THROW);
+                builder.push(OperationKind.THROW);
                 nodeSetter.set(node);
                 return;
             }
@@ -164,11 +164,11 @@ function processBinaryExpression(node: tsm.BinaryExpression, options: ProcessOpt
             const { builder } = options;
             processExpression(left, options);
             const endTarget: TargetOffset = { instruction: undefined };
-            builder.push(InstructionKind.DUP);
-            builder.push(InstructionKind.ISNULL);
-            builder.pushJump(InstructionKind.JMPIFNOT, endTarget);
+            builder.push(OperationKind.DUP);
+            builder.push(OperationKind.ISNULL);
+            builder.pushJump(OperationKind.JMPIFNOT, endTarget);
             processExpression(right, options)
-            endTarget.instruction = builder.push(InstructionKind.NOP).instruction;
+            endTarget.instruction = builder.push(OperationKind.NOP).instruction;
             return;
         }
         case tsm.SyntaxKind.FirstAssignment: {
@@ -183,7 +183,7 @@ function processBinaryExpression(node: tsm.BinaryExpression, options: ProcessOpt
             processExpression(right, options);
             if (isBigIntLike(left.getType()) && isBigIntLike(right.getType()))
             {
-                options.builder.push(InstructionKind.ADD);
+                options.builder.push(OperationKind.ADD);
                 storeSymbolDef(resolved, options);
                 return;
             }
@@ -193,7 +193,7 @@ function processBinaryExpression(node: tsm.BinaryExpression, options: ProcessOpt
             processExpression(right, options);
             if (isBigIntLike(left.getType()) && isBigIntLike(right.getType()))
             {
-                options.builder.push(InstructionKind.ADD);
+                options.builder.push(OperationKind.ADD);
                 return;
             }
         }
@@ -344,16 +344,16 @@ function processConditionalExpression(node: tsm.ConditionalExpression, options: 
     const cond = node.getCondition();
     processExpression(cond, options);
     if (!isBooleanLike(cond.getType())) {
-        builder.push(InstructionKind.ISNULL);
-        builder.pushJump(InstructionKind.JMPIF, falseTarget);
+        builder.push(OperationKind.ISNULL);
+        builder.pushJump(OperationKind.JMPIF, falseTarget);
     } else {
-        builder.pushJump(InstructionKind.JMPIFNOT, falseTarget);
+        builder.pushJump(OperationKind.JMPIFNOT, falseTarget);
     }
     processExpression(node.getWhenTrue(), options);
-    builder.pushJump(InstructionKind.JMP, endTarget);
-    falseTarget.instruction = builder.push(InstructionKind.NOP).instruction;
+    builder.pushJump(OperationKind.JMP, endTarget);
+    falseTarget.instruction = builder.push(OperationKind.NOP).instruction;
     processExpression(node.getWhenFalse(), options);
-    endTarget.instruction = builder.push(InstructionKind.NOP).instruction;
+    endTarget.instruction = builder.push(OperationKind.NOP).instruction;
 }
 
 function processIdentifier(node: tsm.Identifier, options: ProcessOptions) {
@@ -448,11 +448,11 @@ function processOptionalChain(hasQuestionDot: boolean, options: ProcessOptions, 
     const { builder } = options;
     if (hasQuestionDot) {
         const endTarget: TargetOffset = { instruction: undefined };
-        builder.push(InstructionKind.DUP); //.set(node.getOperatorToken());
-        builder.push(InstructionKind.ISNULL);
-        builder.pushJump(InstructionKind.JMPIF, endTarget);
+        builder.push(OperationKind.DUP); //.set(node.getOperatorToken());
+        builder.push(OperationKind.ISNULL);
+        builder.pushJump(OperationKind.JMPIF, endTarget);
         func(options);
-        endTarget.instruction = builder.push(InstructionKind.NOP).instruction;
+        endTarget.instruction = builder.push(OperationKind.NOP).instruction;
     } else {
         func(options);
     }
@@ -523,7 +523,7 @@ function processFunctionDeclaration(symbolDef: FunctionSymbolDef, context: Compi
     }
 
     const params = node.getParameters();
-    const builder = new OperationBuilder(params.length);
+    const builder = new FunctionBuilder(params.length);
     processStatement(body, { builder, scope: symbolDef, });
     builder.pushReturn();
     symbolDef.setInstructions(builder.instructions);

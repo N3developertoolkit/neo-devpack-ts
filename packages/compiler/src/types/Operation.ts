@@ -53,7 +53,7 @@ export type NeoService = typeof neoServices[number];
 //  * The PUSHDATA? opcodes are folded into a single Instruction Kind
 //  * All the opcode pairs with and without an _L variant have been folded into a single Instruction Kind
 //  * the hard coded index Load/Store opcodes have been folded into a single Instruction Kind 
-export enum InstructionKind {
+export enum OperationKind {
     PUSHBOOL,
     PUSHINT,
     // PUSHINT8,
@@ -251,130 +251,130 @@ export enum InstructionKind {
     CONVERT,
 }
 
-export interface Instruction {
-    readonly kind: InstructionKind
+export interface Operation {
+    readonly kind: OperationKind
 }
 
-export interface ConvertInstruction extends Instruction {
-    readonly kind: InstructionKind.CONVERT;
+export interface ConvertOperation extends Operation {
+    readonly kind: OperationKind.CONVERT;
     readonly type: StackItemType
 }
 
-export function isConvertInstruction(ins: Instruction): ins is ConvertInstruction {
-    return ins.kind === InstructionKind.CONVERT;    
+export function isConvertOperation(ins: Operation): ins is ConvertOperation {
+    return ins.kind === OperationKind.CONVERT;    
 }
 
-export interface InitSlotInstruction extends Instruction {
-    readonly kind: InstructionKind.INITSLOT;
+export interface InitSlotOperation extends Operation {
+    readonly kind: OperationKind.INITSLOT;
     readonly localCount: number,
     readonly paramCount: number,
 }
 
-export function isInitSlotInstruction(ins: Instruction): ins is InitSlotInstruction {
-    return ins.kind === InstructionKind.INITSLOT;    
+export function isInitSlotOperation(ins: Operation): ins is InitSlotOperation {
+    return ins.kind === OperationKind.INITSLOT;    
 }
 
-export interface PushBoolInstruction extends Instruction {
-    readonly kind: InstructionKind.PUSHBOOL;
+export interface PushBoolOperation extends Operation {
+    readonly kind: OperationKind.PUSHBOOL;
     readonly value: boolean
 }
 
-export function isPushBoolInstruction(ins: Instruction): ins is PushBoolInstruction {
-    return ins.kind === InstructionKind.PUSHBOOL;
+export function isPushBoolOperation(ins: Operation): ins is PushBoolOperation {
+    return ins.kind === OperationKind.PUSHBOOL;
 }
 
-export interface PushDataInstruction extends Instruction {
-    readonly kind: InstructionKind.PUSHDATA;
+export interface PushDataOperation extends Operation {
+    readonly kind: OperationKind.PUSHDATA;
     readonly value: Uint8Array
 }
 
-export function isPushDataInstruction(ins: Instruction): ins is PushDataInstruction {
-    return ins.kind === InstructionKind.PUSHDATA;
+export function isPushDataOperation(ins: Operation): ins is PushDataOperation {
+    return ins.kind === OperationKind.PUSHDATA;
 }
 
-export interface PushIntInstruction extends Instruction {
-    readonly kind: InstructionKind.PUSHINT;
+export interface PushIntOperation extends Operation {
+    readonly kind: OperationKind.PUSHINT;
     readonly value: bigint;
 }
 
-export function isPushIntInstruction(ins: Instruction): ins is PushIntInstruction {
-    return ins.kind === InstructionKind.PUSHINT;
+export function isPushIntOperation(ins: Operation): ins is PushIntOperation {
+    return ins.kind === OperationKind.PUSHINT;
 }
 
-export interface SysCallInstruction extends Instruction {
-    readonly kind: InstructionKind.SYSCALL,
+export interface SysCallOperation extends Operation {
+    readonly kind: OperationKind.SYSCALL,
     readonly service: NeoService
 }
 
-export function isSysCallInstruction(ins: Instruction): ins is SysCallInstruction {
-    return ins.kind === InstructionKind.SYSCALL;
+export function isSysCallOperation(ins: Operation): ins is SysCallOperation {
+    return ins.kind === OperationKind.SYSCALL;
 }
 
-export interface TryInstruction extends Instruction {
-    readonly kind: InstructionKind.TRY,
+export interface TryOperation extends Operation {
+    readonly kind: OperationKind.TRY,
     readonly catchTarget: TargetOffset,
     readonly finallyTarget: TargetOffset,
 }
 
-export function isTryInstruction(ins: Instruction): ins is TryInstruction {
-    return ins.kind === InstructionKind.TRY;
+export function isTryOperation(ins: Operation): ins is TryOperation {
+    return ins.kind === OperationKind.TRY;
 }
 
 
 export interface TargetOffset {
-    instruction: Instruction | undefined
+    instruction: Operation | undefined
 }
 
-const jumpInstructionKinds = [
-    InstructionKind.JMP ,
-    InstructionKind.JMPIF ,
-    InstructionKind.JMPIFNOT ,
-    InstructionKind.JMPEQ ,
-    InstructionKind.JMPNE ,
-    InstructionKind.JMPGT ,
-    InstructionKind.JMPGE ,
-    InstructionKind.JMPLT ,
-    InstructionKind.JMPLE,
+const jumpOperationKinds = [
+    OperationKind.JMP ,
+    OperationKind.JMPIF ,
+    OperationKind.JMPIFNOT ,
+    OperationKind.JMPEQ ,
+    OperationKind.JMPNE ,
+    OperationKind.JMPGT ,
+    OperationKind.JMPGE ,
+    OperationKind.JMPLT ,
+    OperationKind.JMPLE,
 ] as const;
 
-export type JumpInstructionKind = typeof jumpInstructionKinds[number];
+export type JumpOperationKind = typeof jumpOperationKinds[number];
 
-export interface JumpInstruction extends Instruction {
-    readonly kind: JumpInstructionKind;
+export interface JumpOperation extends Operation {
+    readonly kind: JumpOperationKind;
     readonly target: TargetOffset;
 }
 
-export function isJumpInstruction(ins: Instruction): ins is JumpInstruction {
-    return (jumpInstructionKinds as ReadonlyArray<InstructionKind>).includes(ins.kind);
+export function isJumpOperation(ins: Operation): ins is JumpOperation {
+    return (jumpOperationKinds as ReadonlyArray<OperationKind>).includes(ins.kind);
 }
 
-const loadStoreInstructionKinds = [
-    InstructionKind.LDARG,
-    InstructionKind.LDLOC,
-    InstructionKind.LDSFLD,
-    InstructionKind.STARG, 
-    InstructionKind.STLOC, 
-    InstructionKind.STSFLD,
+const loadStoreOperationKinds = [
+    OperationKind.LDARG,
+    OperationKind.LDLOC,
+    OperationKind.LDSFLD,
+    OperationKind.STARG, 
+    OperationKind.STLOC, 
+    OperationKind.STSFLD,
 ] as const;
 
-export type LoadStoreInstructionKind = typeof loadStoreInstructionKinds[number];
+export type LoadStoreOperationKind = typeof loadStoreOperationKinds[number];
 
-export interface LoadStoreInstruction extends Instruction {
-    readonly kind: LoadStoreInstructionKind
+export interface LoadStoreOperation extends Operation {
+    readonly kind: LoadStoreOperationKind
     readonly index: number
 }
 
-export function isLoadStoreInstruction(ins: Instruction): ins is LoadStoreInstruction {
-    return (loadStoreInstructionKinds as ReadonlyArray<InstructionKind>).includes(ins.kind);
+export function isLoadStoreOperation(ins: Operation): ins is LoadStoreOperation {
+    return (loadStoreOperationKinds as ReadonlyArray<OperationKind>).includes(ins.kind);
 }
 
-export const specializedInstructionKinds: ReadonlyArray<InstructionKind> = [
-    InstructionKind.CONVERT,
-    InstructionKind.INITSLOT,
-    InstructionKind.PUSHBOOL,
-    InstructionKind.PUSHDATA,
-    InstructionKind.PUSHINT,
-    InstructionKind.SYSCALL,
-    InstructionKind.TRY,
-    ...jumpInstructionKinds, 
-    ...loadStoreInstructionKinds];
+export const specializedOperationKinds: ReadonlyArray<OperationKind> = [
+    OperationKind.CONVERT,
+    OperationKind.INITSLOT,
+    OperationKind.PUSHBOOL,
+    OperationKind.PUSHDATA,
+    OperationKind.PUSHINT,
+    OperationKind.SYSCALL,
+    OperationKind.TRY,
+    ...jumpOperationKinds, 
+    ...loadStoreOperationKinds];

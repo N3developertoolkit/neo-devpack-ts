@@ -1,7 +1,7 @@
 import * as tsm from "ts-morph";
 import { CompileError } from "./compiler";
-import { Instruction } from "./types/Instruction";
-import { SlotType } from "./types/OperationBuilder";
+import { Operation } from "./types/Operation";
+import { SlotType } from "./types/FunctionBuilder";
 import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
 import { getConstantValue, getSymbolOrCompileError } from "./utils";
 
@@ -84,7 +84,7 @@ export class ParameterSymbolDef implements SymbolDef {
 }
 
 export class FunctionSymbolDef implements SymbolDef, Scope {
-    private _instructions: ReadonlyArray<Instruction | tsm.Node> | undefined;
+    private _instructions: ReadonlyArray<Operation | tsm.Node> | undefined;
     private readonly _map: SymbolMap;
     readonly symbol: tsm.Symbol;
 
@@ -102,7 +102,7 @@ export class FunctionSymbolDef implements SymbolDef, Scope {
         }
     }
 
-    get instructions(): IterableIterator<Instruction | tsm.Node> { return this.getInstructions(); }
+    get instructions(): IterableIterator<Operation | tsm.Node> { return this.getInstructions(); }
     private *getInstructions() {
         if (this._instructions) {
             yield *this._instructions;
@@ -110,7 +110,7 @@ export class FunctionSymbolDef implements SymbolDef, Scope {
     }
 
     // @internal
-    setInstructions(instructions: IterableIterator<Instruction | tsm.Node>) {
+    setInstructions(instructions: IterableIterator<Operation | tsm.Node>) {
         this._instructions = [...instructions];
     }
 

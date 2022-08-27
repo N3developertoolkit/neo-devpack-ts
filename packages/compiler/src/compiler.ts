@@ -1,5 +1,5 @@
 import * as tsm from "ts-morph";
-import { processFunctionDeclarationsPass } from "./passes/processOperations";
+import { processFunctionDeclarationsPass } from "./passes/processFunctionDeclarations";
 import { createGlobalScope, Scope } from "./scope";
 import { toDiagnostic } from "./utils";
 

@@ -4,7 +4,7 @@ import { CompileError } from "../compiler";
 import { ConstantSymbolDef, resolveOrThrow, VariableSymbolDef } from "../scope";
 import { dispatch } from "../utility/nodeDispatch";
 import { asExpressionOrCompileError, getConstantValue, getNumericLiteral, getSymbolOrCompileError } from "../utils";
-import { ProcessOptions } from "./processOperations";
+import { ProcessOptions } from "./processFunctionDeclarations";
 // import { CompileError } from "./compiler";
 // import { ProcessOptions, processExpression } from "./passes/processOperations";
 // import { StackItemType } from "./types/StackItem";

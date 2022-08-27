@@ -1,7 +1,7 @@
 import { join } from "path";
 import { readFile } from "fs/promises";
 import * as tsm from "ts-morph";
-import { compile, ConvertInstruction, createContractProject, FunctionSymbolDef, InitSlotInstruction, Instruction, InstructionKind, isJumpInstruction, isLoadStoreInstruction, LoadStoreInstruction, PushDataInstruction, PushIntInstruction, SysCallInstruction, TargetOffset, toDiagnostic } from '../packages/compiler/';
+import { compile, ConvertOperation, createContractProject, FunctionSymbolDef, InitSlotOperation, Operation, OperationKind, isJumpOperation, isLoadStoreOperation, LoadStoreOperation, PushDataOperation, PushIntOperation, SysCallOperation, TargetOffset, toDiagnostic } from '../packages/compiler/';
 import util from 'util';
 import { StackItemType } from "../packages/compiler/src/types/StackItem";
 
@@ -89,7 +89,7 @@ export function dumpFunctionDef(def: FunctionSymbolDef) {
     const safeStr = info.safe ? ' [safe]' : '';
     console.log(magenta, `${publicStr}${info.name}(${params})${safeStr}`);
 
-    const instructionMap = new Map<Instruction, number>();
+    const instructionMap = new Map<Operation, number>();
     let insNum = 0;
     for (const ins of def.instructions) {
         if (ins instanceof tsm.Node) {
@@ -111,7 +111,7 @@ export function dumpFunctionDef(def: FunctionSymbolDef) {
             console.log(cyan, `# ${ins.print({ removeComments: true })}`);
         } else {
             let msg = util.format(invert, `${(++insNum).toString().padStart(padding)}:`);
-            msg += " " + InstructionKind[ins.kind];
+            msg += " " + OperationKind[ins.kind];
 
             const operand = getOperand(ins, insNum, resolveTarget);
             msg += util.format(yellow, " " + operand);
@@ -173,21 +173,21 @@ function getOperationInfo(node: tsm.FunctionDeclaration) {
     }
 }
 
-function getOperand(ins: Instruction, num: number, resolveTarget: (target: TargetOffset) => number) {
+function getOperand(ins: Operation, num: number, resolveTarget: (target: TargetOffset) => number) {
 
-    if (isLoadStoreInstruction(ins)) {
+    if (isLoadStoreOperation(ins)) {
         return `${ins.index}`;
     }
 
-    if (isJumpInstruction(ins)) {
+    if (isJumpOperation(ins)) {
         const target = resolveTarget(ins.target);
         const relative = target - num;
         return `${relative}`;
     }
 
     switch (ins.kind) {
-        case InstructionKind.CONVERT: {
-            const _ins = ins as ConvertInstruction;
+        case OperationKind.CONVERT: {
+            const _ins = ins as ConvertOperation;
             switch (_ins.type) {
                 case StackItemType.Any: return "Any";
                 case StackItemType.Pointer: return "Pointer";
@@ -202,20 +202,20 @@ function getOperand(ins: Instruction, num: number, resolveTarget: (target: Targe
                 default: throw new Error(`Unexpected StackItemType ${_ins.type}`);
             }
         }
-        case InstructionKind.PUSHINT: {
-            const _ins = ins as PushIntInstruction;
+        case OperationKind.PUSHINT: {
+            const _ins = ins as PushIntOperation;
             return `${_ins.value}`;
         }
-        case InstructionKind.PUSHDATA: {
-            const _ins = ins as PushDataInstruction;
+        case OperationKind.PUSHDATA: {
+            const _ins = ins as PushDataOperation;
             return "0x" + Buffer.from(_ins.value).toString('hex');
         }
-        case InstructionKind.INITSLOT: {
-            const _ins = ins as InitSlotInstruction;
+        case OperationKind.INITSLOT: {
+            const _ins = ins as InitSlotOperation;
             return "0x" + Buffer.from([_ins.localCount, _ins.paramCount]).toString('hex');
         }
-        case InstructionKind.SYSCALL: {
-            const _ins = ins as SysCallInstruction;
+        case OperationKind.SYSCALL: {
+            const _ins = ins as SysCallOperation;
             return _ins.service;
         }
     }
@@ -223,22 +223,22 @@ function getOperand(ins: Instruction, num: number, resolveTarget: (target: Targe
     return "";
 }
 
-function getComment(ins: Instruction, num: number, resolveTarget: (target: TargetOffset) => number): string | undefined {
+function getComment(ins: Operation, num: number, resolveTarget: (target: TargetOffset) => number): string | undefined {
 
-    if (isJumpInstruction(ins)) {
+    if (isJumpOperation(ins)) {
         const target = resolveTarget(ins.target);
         return `target: ${target}`;
     }
 
     switch (ins.kind) {
-        case InstructionKind.PUSHDATA: {
-            const _ins = ins as PushDataInstruction;
+        case OperationKind.PUSHDATA: {
+            const _ins = ins as PushDataOperation;
             const value = Buffer.from(_ins.value);
             return '' + value;
 
         }
-        case InstructionKind.INITSLOT: {
-            const _ins = ins as InitSlotInstruction;
+        case OperationKind.INITSLOT: {
+            const _ins = ins as InitSlotOperation;
             return `locals: ${_ins.localCount}, params: ${_ins.paramCount}`;
         }
         // case InstructionKind.SYSCALL: {
