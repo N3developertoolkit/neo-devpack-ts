@@ -1,7 +1,7 @@
 import { join } from "path";
 import { readFile } from "fs/promises";
 import * as tsm from "ts-morph";
-import { compile, ConvertOperation, createContractProject, FunctionSymbolDef, InitSlotOperation, Operation, OperationKind, isJumpOperation, isLoadStoreOperation, LoadStoreOperation, PushDataOperation, PushIntOperation, SysCallOperation, TargetOffset, toDiagnostic } from '../packages/compiler/';
+import { compile, ConvertOperation, createContractProject, FunctionSymbolDef, InitSlotOperation, Operation, OperationKind, isJumpOperation, isLoadStoreOperation, LoadStoreOperation, PushDataOperation, PushIntOperation, SysCallOperation, toDiagnostic } from '../packages/compiler/';
 import util from 'util';
 import { StackItemType } from "../packages/compiler/src/types/StackItem";
 
@@ -89,71 +89,25 @@ export function dumpFunctionDef(def: FunctionSymbolDef) {
     const safeStr = info.safe ? ' [safe]' : '';
     console.log(magenta, `${publicStr}${info.name}(${params})${safeStr}`);
 
-    const instructionMap = new Map<Operation, number>();
-    let insNum = 0;
-    for (const ins of def.instructions) {
-        if (ins instanceof tsm.Node) {
-        } else {
-            instructionMap.set(ins, ++insNum);
-        }
-    }
-    const padding = `${instructionMap.size}`.length;
-    function resolveTarget(target: TargetOffset) {
-        if (!target.instruction) throw new Error(`Missing target`);
-        const value = instructionMap.get(target.instruction);
-        if (!value) throw new Error(`Invalid target`);
-        return value
-    }
+    const operations = [...def.operations];
+    const padding = `${operations.length}`.length;
 
-    insNum = 0;
-    for (const ins of def.instructions) {
-        if (ins instanceof tsm.Node) {
-            console.log(cyan, `# ${ins.print({ removeComments: true })}`);
+    for (let i = 0; i < operations.length; i++) {
+        const op = operations[i];
+        let msg = util.format(invert, `${(i).toString().padStart(padding)}:`);
+        if (op instanceof tsm.Node) {
+            msg += util.format(cyan, ` # ${op.print({ removeComments: true })}`);
         } else {
-            let msg = util.format(invert, `${(++insNum).toString().padStart(padding)}:`);
-            msg += " " + OperationKind[ins.kind];
-
-            const operand = getOperand(ins, insNum, resolveTarget);
+            msg += " " + OperationKind[op.kind];
+            const operand = getOperand(op);
             msg += util.format(yellow, " " + operand);
-            const comment = getComment(ins, insNum, resolveTarget);
+            const comment = getComment(op, i);
             if (comment) {
                 msg += util.format(green, ` # ${comment}`);
             }
-            console.log(msg);
         }
+        console.log(msg);
     }
-
-
-
-    //     for (const op of operations ?? []) {
-    //         const info = getOperationInfo(op.node);
-    //         
-
-    //         const [instructions, references] = separateInstructions(op.instructions);
-    //         const padding = `${instructions.length}`.length;
-    //         const findIndex = (ins:Instruction) => { return instructions.findIndex(v => v === ins); }
-
-    //         const instructionsLength = instructions.length;
-    //         for (let i = 0; i < instructionsLength; i++) {
-    //             const ins = instructions[i];
-    //             const ref = references.get(i);
-    //             if (ref) {
-    //                 console.log(cyan, `# ${ref.print({ removeComments: true })}`);
-    //             }
-
-    //             let msg = util.format(yellow, `${i.toString().padStart(padding)}: `);
-    //             msg += printOpCode(ins.opCode);
-    //             if (ins.operand) {
-    //                 msg += ` ${Buffer.from(ins.operand).toString('hex')}`;
-    //             }
-    //             const comment = getComment(ins, findIndex);
-    //             if (comment) {
-    //                 msg += util.format(green, ` # ${comment}`);
-    //             }
-
-    //             console.log(msg);
-    //         }
-    //     }
 }
 
 function getOperationInfo(node: tsm.FunctionDeclaration) {
@@ -173,21 +127,19 @@ function getOperationInfo(node: tsm.FunctionDeclaration) {
     }
 }
 
-function getOperand(ins: Operation, num: number, resolveTarget: (target: TargetOffset) => number) {
+function getOperand(op: Operation) {
 
-    if (isLoadStoreOperation(ins)) {
-        return `${ins.index}`;
+    if (isLoadStoreOperation(op)) {
+        return `${op.index}`;
     }
 
-    if (isJumpOperation(ins)) {
-        const target = resolveTarget(ins.target);
-        const relative = target - num;
-        return `${relative}`;
+    if (isJumpOperation(op)) {
+        return `${op.offset}`;
     }
 
-    switch (ins.kind) {
+    switch (op.kind) {
         case OperationKind.CONVERT: {
-            const _ins = ins as ConvertOperation;
+            const _ins = op as ConvertOperation;
             switch (_ins.type) {
                 case StackItemType.Any: return "Any";
                 case StackItemType.Pointer: return "Pointer";
@@ -203,19 +155,19 @@ function getOperand(ins: Operation, num: number, resolveTarget: (target: TargetO
             }
         }
         case OperationKind.PUSHINT: {
-            const _ins = ins as PushIntOperation;
+            const _ins = op as PushIntOperation;
             return `${_ins.value}`;
         }
         case OperationKind.PUSHDATA: {
-            const _ins = ins as PushDataOperation;
+            const _ins = op as PushDataOperation;
             return "0x" + Buffer.from(_ins.value).toString('hex');
         }
         case OperationKind.INITSLOT: {
-            const _ins = ins as InitSlotOperation;
+            const _ins = op as InitSlotOperation;
             return "0x" + Buffer.from([_ins.localCount, _ins.paramCount]).toString('hex');
         }
         case OperationKind.SYSCALL: {
-            const _ins = ins as SysCallOperation;
+            const _ins = op as SysCallOperation;
             return _ins.service;
         }
     }
@@ -223,75 +175,25 @@ function getOperand(ins: Operation, num: number, resolveTarget: (target: TargetO
     return "";
 }
 
-function getComment(ins: Operation, num: number, resolveTarget: (target: TargetOffset) => number): string | undefined {
+function getComment(op: Operation, curIndex: number): string | undefined {
 
-    if (isJumpOperation(ins)) {
-        const target = resolveTarget(ins.target);
+    if (isJumpOperation(op)) {
+        const target = curIndex + op.offset;
         return `target: ${target}`;
     }
 
-    switch (ins.kind) {
+    switch (op.kind) {
         case OperationKind.PUSHDATA: {
-            const _ins = ins as PushDataOperation;
+            const _ins = op as PushDataOperation;
             const value = Buffer.from(_ins.value);
             return '' + value;
 
         }
         case OperationKind.INITSLOT: {
-            const _ins = ins as InitSlotOperation;
+            const _ins = op as InitSlotOperation;
             return `locals: ${_ins.localCount}, params: ${_ins.paramCount}`;
         }
-        // case InstructionKind.SYSCALL: {
-        //     const _ins = ins as SysCallInstruction;
-        //     return `${_ins.service}`;
-        // }
     }
 
     return undefined;
-
-    // function resolveTarget(target: JumpTarget) {
-    //     if (!target.instruction) { return "offset target not set"; }
-    //     const index = findIndex(target.instruction);
-    //     return index < 0 ? "offset target not found" : `offset target ${index}`;
-    // }
-
-    // if (isJumpInstruction(ins)) { 
-    //     return resolveTarget(ins.target); 
-    // }
-    // if (isCallInstruction(ins)) {
-    //     return `call ${ins.operation.node.getNameOrThrow()}`;
-    // }
-    // if (isTryInstruction(ins)) {
-    //     const catchResolved = resolveTarget(ins.catchTarget);
-    //     const finallyResolved = resolveTarget(ins.finallyTarget);
-    //     return `catch ${catchResolved}, finally ${finallyResolved}`;
-    // }
-
-    // switch (ins.opCode) {
-    //     case OpCode.PUSHINT8:
-    //     case OpCode.PUSHINT16:
-    //     case OpCode.PUSHINT32:
-    //     case OpCode.PUSHINT64:
-    //     case OpCode.PUSHINT128:
-    //     case OpCode.PUSHINT256: {
-    //         let hex = Buffer.from(ins.operand!).reverse().toString('hex');
-    //         return `${BigInt(hex)}`
-    //     }
-    //     case OpCode.SYSCALL: {
-    //         const buffer = Buffer.from(ins.operand!);
-    //         const hash = buffer.readUint32LE();
-    //         const sysCall = Object.entries(sysCallHash).find(v => v[1] === hash);
-    //         if (sysCall) { return sysCall[0]; }
-    //     }
-    //     case OpCode.CONVERT: return printStackItemType(ins.operand![0]);
-    //     case OpCode.LDSFLD:
-    //     case OpCode.STSFLD:
-    //     case OpCode.LDLOC:
-    //     case OpCode.STLOC:
-    //     case OpCode.LDARG:
-    //     case OpCode.STARG:
-    //         return `Slot Index ${ins.operand![0]}`;
-    //     default:
-    //         return undefined;
-    // }
 }

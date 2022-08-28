@@ -1,4 +1,5 @@
 import * as tsm from "ts-morph";
+import { convertPass } from "./passes/convertPass";
 import { processFunctionDeclarationsPass } from "./passes/processFunctionDeclarations";
 import { createGlobalScope, Scope } from "./scope";
 import { toDiagnostic } from "./utils";
@@ -46,6 +47,7 @@ export function compile(options: CompileOptions) {
     // type CompilePass = (context: CompileContext) => void;
     const passes = [
         processFunctionDeclarationsPass,
+        convertPass,
         // optimizePass,
         // collectArtifactsPass,
     ] as const;

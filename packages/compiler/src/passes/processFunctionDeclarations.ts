@@ -12,8 +12,8 @@ import * as tsm from "ts-morph";
 
 import { CompileContext, CompileError } from "../compiler";
 import { BlockScope, FunctionSymbolDef, ParameterSymbolDef, resolveOrThrow, Scope, SymbolDef, VariableSymbolDef } from "../scope";
-import { OperationKind, TargetOffset } from "../types/Operation";
-import { FunctionBuilder } from "../types/FunctionBuilder";
+import { OperationKind } from "../types/Operation";
+import { FunctionBuilder, TargetOffset } from "../types/FunctionBuilder";
 import { StackItemType } from "../types/StackItem";
 import { dispatch } from "../utility/nodeDispatch";
 import { getSymbolOrCompileError, isBigIntLike, isBooleanLike, isStringLike } from "../utils";
@@ -48,7 +48,7 @@ function processExpressionStatement(node: tsm.ExpressionStatement, options: Proc
 
 function processIfStatement(node: tsm.IfStatement, options: ProcessOptions): void {
     const { builder } = options;
-    const elseTarget: TargetOffset = { instruction: undefined };
+    const elseTarget: TargetOffset = { operation: undefined };
     const nodeSetter = builder.getNodeSetter();
     const expr = node.getExpression();
     processExpression(expr, options);
@@ -57,13 +57,13 @@ function processIfStatement(node: tsm.IfStatement, options: ProcessOptions): voi
     processStatement(node.getThenStatement(), options);
     const elseStmt = node.getElseStatement();
     if (elseStmt) {
-        const endTarget: TargetOffset = { instruction: undefined };
+        const endTarget: TargetOffset = { operation: undefined };
         builder.pushJump(OperationKind.JMP, endTarget);
-        elseTarget.instruction = builder.push(OperationKind.NOP).instruction;
+        elseTarget.operation = builder.push(OperationKind.NOP).instruction;
         processStatement(elseStmt, options);
-        endTarget.instruction = builder.push(OperationKind.NOP).instruction;
+        endTarget.operation = builder.push(OperationKind.NOP).instruction;
     } else {
-        elseTarget.instruction = builder.push(OperationKind.NOP).instruction;
+        elseTarget.operation = builder.push(OperationKind.NOP).instruction;
     }
 }
 
@@ -163,12 +163,12 @@ function processBinaryExpression(node: tsm.BinaryExpression, options: ProcessOpt
         case tsm.SyntaxKind.QuestionQuestionToken: {
             const { builder } = options;
             processExpression(left, options);
-            const endTarget: TargetOffset = { instruction: undefined };
+            const endTarget: TargetOffset = { operation: undefined };
             builder.push(OperationKind.DUP);
             builder.push(OperationKind.ISNULL);
             builder.pushJump(OperationKind.JMPIFNOT, endTarget);
             processExpression(right, options)
-            endTarget.instruction = builder.push(OperationKind.NOP).instruction;
+            endTarget.operation = builder.push(OperationKind.NOP).instruction;
             return;
         }
         case tsm.SyntaxKind.FirstAssignment: {
@@ -339,8 +339,8 @@ function processConditionalExpression(node: tsm.ConditionalExpression, options: 
 
     const { builder } = options;
 
-    const falseTarget: TargetOffset = { instruction: undefined };
-    const endTarget: TargetOffset = { instruction: undefined };
+    const falseTarget: TargetOffset = { operation: undefined };
+    const endTarget: TargetOffset = { operation: undefined };
     const cond = node.getCondition();
     processExpression(cond, options);
     if (!isBooleanLike(cond.getType())) {
@@ -351,9 +351,9 @@ function processConditionalExpression(node: tsm.ConditionalExpression, options: 
     }
     processExpression(node.getWhenTrue(), options);
     builder.pushJump(OperationKind.JMP, endTarget);
-    falseTarget.instruction = builder.push(OperationKind.NOP).instruction;
+    falseTarget.operation = builder.push(OperationKind.NOP).instruction;
     processExpression(node.getWhenFalse(), options);
-    endTarget.instruction = builder.push(OperationKind.NOP).instruction;
+    endTarget.operation = builder.push(OperationKind.NOP).instruction;
 }
 
 function processIdentifier(node: tsm.Identifier, options: ProcessOptions) {
@@ -418,7 +418,7 @@ export function processExpression(node: tsm.Expression, options: ProcessOptions)
             options.builder.pushInt(node.getLiteralValue() as bigint);
         },
         [tsm.SyntaxKind.FalseKeyword]: (node, options) => {
-            options.builder.pushBool(node.getLiteralValue());
+            processBoolean(node.getLiteralValue(), options);
         },
         [tsm.SyntaxKind.NumericLiteral]: (node, options) => {
             options.builder.pushInt(node.getLiteralValue());
@@ -427,9 +427,14 @@ export function processExpression(node: tsm.Expression, options: ProcessOptions)
             options.builder.pushData(node.getLiteralValue());
         },
         [tsm.SyntaxKind.TrueKeyword]: (node, options) => {
-            options.builder.pushBool(node.getLiteralValue());
+            processBoolean(node.getLiteralValue(), options);
         },
     });
+}
+
+function processBoolean(value: boolean, options: ProcessOptions) {
+    options.builder.pushInt(value ? 1 : 0);
+    options.builder.pushConvert(StackItemType.Boolean);
 }
 
 export function processArguments(args: tsm.Node[], options: ProcessOptions) {
@@ -447,12 +452,12 @@ export function processArguments(args: tsm.Node[], options: ProcessOptions) {
 function processOptionalChain(hasQuestionDot: boolean, options: ProcessOptions, func: (options: ProcessOptions) => void) {
     const { builder } = options;
     if (hasQuestionDot) {
-        const endTarget: TargetOffset = { instruction: undefined };
+        const endTarget: TargetOffset = { operation: undefined };
         builder.push(OperationKind.DUP); //.set(node.getOperatorToken());
         builder.push(OperationKind.ISNULL);
         builder.pushJump(OperationKind.JMPIF, endTarget);
         func(options);
-        endTarget.instruction = builder.push(OperationKind.NOP).instruction;
+        endTarget.operation = builder.push(OperationKind.NOP).instruction;
     } else {
         func(options);
     }
@@ -526,7 +531,7 @@ function processFunctionDeclaration(symbolDef: FunctionSymbolDef, context: Compi
     const builder = new FunctionBuilder(params.length);
     processStatement(body, { builder, scope: symbolDef, });
     builder.pushReturn();
-    symbolDef.setInstructions(builder.instructions);
+    symbolDef.setOperations(builder.operations);
 }
 
 export function processFunctionDeclarationsPass(context: CompileContext): void {

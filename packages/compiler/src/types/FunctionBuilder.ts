@@ -1,12 +1,11 @@
 import * as tsm from "ts-morph";
-// import { FunctionSymbolDefinition } from "../symbolTable";
-// import { bigIntToByteArray, byteArrayToBigInt } from "../utils";
-// import { CallInstruction, Instruction, isJumpInstruction, isTryInstruction, JumpInstruction, JumpTarget, NeoService } from "./Instruction";
-// import { isJumpOpCode, JumpOpCode, OpCode, toString as opCodeToString, toString as printOpCode } from "./OpCode";
-// import { StackItemType } from "./StackItem";
-
-import { ConvertOperation, InitSlotOperation, Operation, OperationKind, JumpOperation, JumpOperationKind, LoadStoreOperation, NeoService, PushBoolOperation, PushDataOperation, PushIntOperation, specializedOperationKinds, SysCallOperation, TargetOffset } from "./Operation";
+import { isJumpOpCode } from "./OpCode";
+import { ConvertOperation, InitSlotOperation, Operation, OperationKind, JumpOperation, JumpOperationKind, LoadStoreOperation, NeoService, PushDataOperation, PushIntOperation, specializedOperationKinds, SysCallOperation, isJumpOperation } from "./Operation";
 import { StackItemType } from "./StackItem";
+
+export interface TargetOffset {
+    operation: Operation | undefined
+}
 
 export interface NodeSetter {
     set(node?: tsm.Node): void;
@@ -15,46 +14,6 @@ export interface NodeSetter {
 type NodeSetterWithInstruction = NodeSetter & { readonly instruction: Operation };
 
 export type SlotType = 'local' | 'static' | 'parameter';
-
-// const pushIntSizes = [1, 2, 4, 8, 16, 32] as const;
-
-// export const sysCallHash: Record<NeoService, number> = {
-//     ["System.Contract.Call"]: 1381727586,
-//     ["System.Contract.CallNative"]: 1736177434,
-//     ["System.Contract.CreateMultisigAccount"]: 166277994,
-//     ["System.Contract.CreateStandardAccount"]: 42441167,
-//     ["System.Contract.GetCallFlags"]: 2168117909,
-//     ["System.Contract.NativeOnPersist"]: 2478627630,
-//     ["System.Contract.NativePostPersist"]: 375234884,
-//     ["System.Crypto.CheckMultisig"]: 987549854,
-//     ["System.Crypto.CheckSig"]: 666101590,
-//     ["System.Iterator.Next"]: 2632779932,
-//     ["System.Iterator.Value"]: 499078387,
-//     ["System.Runtime.BurnGas"]: 3163314883,
-//     ["System.Runtime.CheckWitness"]: 2364286968,
-//     ["System.Runtime.GasLeft"]: 3470297108,
-//     ["System.Runtime.GetAddressVersion"]: 3700574540,
-//     ["System.Runtime.GetCallingScriptHash"]: 1013863225,
-//     ["System.Runtime.GetEntryScriptHash"]: 954381561,
-//     ["System.Runtime.GetExecutingScriptHash"]: 1957232347,
-//     ["System.Runtime.GetInvocationCounter"]: 1125197700,
-//     ["System.Runtime.GetNetwork"]: 3768646597,
-//     ["System.Runtime.GetNotifications"]: 4046799655,
-//     ["System.Runtime.GetRandom"]: 682221163,
-//     ["System.Runtime.GetScriptContainer"]: 805851437,
-//     ["System.Runtime.GetTime"]: 59294647,
-//     ["System.Runtime.GetTrigger"]: 2688056809,
-//     ["System.Runtime.Log"]: 2521294799,
-//     ["System.Runtime.Notify"]: 1634664853,
-//     ["System.Runtime.Platform"]: 4143741362,
-//     ["System.Storage.AsReadOnly"]: 3921628278,
-//     ["System.Storage.Delete"]: 3989133359,
-//     ["System.Storage.Find"]: 2595762399,
-//     ["System.Storage.Get"]: 837311890,
-//     ["System.Storage.GetContext"]: 3462919835,
-//     ["System.Storage.GetReadOnlyContext"]: 3798709494,
-//     ["System.Storage.Put"]: 2216181734,
-// }
 
 // export function isNode(input: Instruction | tsm.Node): input is tsm.Node {
 //     return input instanceof tsm.Node;
@@ -122,10 +81,19 @@ export type SlotType = 'local' | 'static' | 'parameter';
 
 
 
+export function isNode(input: Operation | tsm.Node): input is tsm.Node {
+    return input instanceof tsm.Node;
+}
+
+export function isOperation(input: Operation | tsm.Node): input is Operation {
+    return !isNode(input);
+}
+
 export class FunctionBuilder {
     private _localCount: number = 0;
-    private readonly _instructions = new Array<Operation | tsm.Node>();
-    private readonly _returnTarget: TargetOffset = { instruction: undefined }
+    private readonly _operations = new Array<Operation | tsm.Node>();
+    private readonly _returnTarget: TargetOffset = { operation: undefined }
+    private readonly _jumps = new Map<JumpOperation, TargetOffset>();
 
     constructor(readonly paramCount: number) {}
 
@@ -133,8 +101,8 @@ export class FunctionBuilder {
 
     addLocalSlot() { return this._localCount++; }
 
-    get instructions(): IterableIterator<Operation | tsm.Node> { return this.getInstructions(); }
-    private *getInstructions() {
+    get operations(): IterableIterator<Operation | tsm.Node> { return this.getOperations(); }
+    private *getOperations() {
         if (this.paramCount > 0 || this._localCount > 0) {
             const ins: InitSlotOperation = {
                 kind: OperationKind.INITSLOT,
@@ -144,15 +112,32 @@ export class FunctionBuilder {
             yield ins;
         }
 
-        yield *this._instructions;
+        const length = this._operations.length;
+        for (let i = 0; i < length; i++) {
+            const op = this._operations[i];
+            if (isOperation(op) && isJumpOperation(op)) {
+                const kind = op.kind;
+                let offset = 0;
+                const target = this._jumps.get(op);
+                if (target && target.operation) {
+                    const index = this._operations.indexOf(target.operation);
+                    if (index >= 0) {
+                        offset = index - i;
+                    }
+                }
+                yield { kind, offset};
+            } else {
+                yield op;
+            }
+        }
     }
 
     getNodeSetter(): NodeSetter {
-        const length = this._instructions.length;
+        const length = this._operations.length;
         return {
             set: (node?) => {
-                if (node && length < this._instructions.length) {
-                    this._instructions.splice(length, 0, node);
+                if (node && length < this._operations.length) {
+                    this._operations.splice(length, 0, node);
                 }
             }
         }
@@ -165,20 +150,15 @@ export class FunctionBuilder {
             }
             ins = { kind: ins };
         }
-        const index = this._instructions.push(ins) - 1;
+        const index = this._operations.push(ins) - 1;
         return {
             instruction: ins,
             set: (node?) => {
                 if (node) {
-                    this._instructions.splice(index, 0, node);
+                    this._operations.splice(index, 0, node);
                 }
             }
         }
-    }
-
-    pushBool(value: boolean) {
-        const ins: PushBoolOperation = { kind: OperationKind.PUSHBOOL, value };
-        return this.push(ins);
     }
 
     pushConvert(type: StackItemType) {
@@ -205,7 +185,8 @@ export class FunctionBuilder {
     }
 
     pushJump(kind: JumpOperationKind, target: TargetOffset) {
-        const ins: JumpOperation = { kind, target };
+        const ins: JumpOperation = { kind, offset: 0 };
+        this._jumps.set(ins, target);
         return this.push(ins);
     }
 
@@ -230,8 +211,8 @@ export class FunctionBuilder {
     }
 
     pushReturn() {
-        if (this._returnTarget.instruction) { throw new Error("returnTarget already set"); }
-        this._returnTarget.instruction = this.push(OperationKind.RET).instruction;
+        if (this._returnTarget.operation) { throw new Error("returnTarget already set"); }
+        this._returnTarget.operation = this.push(OperationKind.RET).instruction;
     }
 
     pushSysCall(service: NeoService) {
