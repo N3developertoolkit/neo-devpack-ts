@@ -4,6 +4,11 @@ import { join } from "path";
 import { readFile } from "fs/promises";
 import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
 
+
+export function isNotNullOrUndefined<T extends Object>(input: null | undefined | T): input is T {
+    return input != null;
+}
+
 export function toDiagnostic(error: unknown): tsm.ts.Diagnostic {
     const messageText = error instanceof Error
         ? error.message

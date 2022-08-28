@@ -4,6 +4,7 @@ import { collectArtifacts } from "./collectArtifacts";
 import { processFunctionDeclarationsPass } from "./passes/processFunctionDeclarations";
 import { createGlobalScope, Scope } from "./scope";
 import { Operation } from "./types";
+import { DebugInfo } from "./types/DebugInfo";
 import { toDiagnostic } from "./utils";
 
 // https://github.com/CityOfZion/neon-js/issues/858
@@ -33,7 +34,7 @@ export interface FunctionContext {
 export interface CompileArtifacts {
     nef: sc.NEF;
     manifest: sc.ContractManifest;
-    // debug info
+    debugInfo: DebugInfo;
 }
 
 export interface CompileContext {

@@ -1,8 +1,10 @@
 import * as tsm from "ts-morph";
 import { CompileContext, CompileError, FunctionContext } from "./compiler";
 import { ConvertOperation, InitSlotOperation, isJumpOperation, isTryOperation, LoadStoreOperation, Operation, OperationKind, PushDataOperation, PushIntOperation, SysCallOperation } from "./types";
-import { bigIntToByteArray, isBigIntLike, isBooleanLike, isNumberLike, isStringLike, isVoidLike } from "./utils";
-import { sc } from '@cityofzion/neon-core'
+import { bigIntToByteArray, isBigIntLike, isBooleanLike, isNotNullOrUndefined, isNumberLike, isStringLike, isVoidLike } from "./utils";
+import { sc, u } from '@cityofzion/neon-core'
+import { DebugInfo, Method as DebugInfoMethod, SequencePoint } from "./types/DebugInfo";
+import { ContractType, ContractTypeKind, PrimitiveContractType, PrimitiveType } from "./types/ContractType";
 
 interface Instruction {
     readonly address: number
@@ -147,14 +149,16 @@ function convertOperation(operation: Operation, address: number): Instruction {
 
 export function collectArtifacts(context: CompileContext) {
     let address = 0;
-    let methods = new Map<FunctionContext, number>();
+    let methods = new Map<FunctionContext, Array<Instruction>>();
     let instructions = new Array<Instruction>();
     for (const func of context.functions) {
         if (!func.operations) continue;
-        methods.set(func, address);
+        const funcInstructions = new Array<Instruction>();
+        methods.set(func, funcInstructions);
         for (const op of func.operations) {
             const ins = convertOperation(op, address);
             instructions.push(ins);
+            funcInstructions.push(ins);
             address += 1 + (ins.operand?.length ?? 0);
         }
     }
@@ -186,9 +190,11 @@ export function collectArtifacts(context: CompileContext) {
     })
 
     const methodDefs = new Array<sc.ContractMethodDefinition>();
-    for (const [ctx, offset] of methods) {
-        const methodDef = toContractMethodDefinition(ctx.node, offset);
+    const debugMethods = new Array<DebugInfoMethod>()
+    for (const [ctx, funcIns] of methods) {
+        const methodDef = toContractMethodDefinition(ctx.node, funcIns[0].address);
         if (methodDef) methodDefs.push(methodDef);
+        debugMethods.push(toDebugMethodInfo(ctx, funcIns));
     }
 
     const manifest = new sc.ContractManifest({
@@ -196,7 +202,13 @@ export function collectArtifacts(context: CompileContext) {
         abi: new sc.ContractAbi({ methods: methodDefs })
     });
 
-    return { nef, manifest };
+    const debugInfo:DebugInfo = {
+        checksum: nef.checksum,
+        contractHash: u.hash160(nef.script),
+        methods: debugMethods,
+    }
+
+    return { nef, manifest, debugInfo };
 }
 
 function toContractMethodDefinition(node: tsm.FunctionDeclaration, offset: number): sc.ContractMethodDefinition | undefined {
@@ -207,18 +219,103 @@ function toContractMethodDefinition(node: tsm.FunctionDeclaration, offset: numbe
         offset,
         parameters: node.getParameters().map(p => ({
             name: p.getName(),
-            type: convertContractType(p.getType())
+            type: convertToContractParamType(p.getType())
         })),
         returnType: isVoidLike(returnType)
             ? sc.ContractParamType.Void
-            : convertContractType(returnType)
+            : convertToContractParamType(returnType)
     });
-
 }
 
-function convertContractType(type: tsm.Type): sc.ContractParamType {
-    if (isStringLike(type)) return sc.ContractParamType.String;
-    if (isBigIntLike(type) || isNumberLike(type)) return sc.ContractParamType.Integer;
-    if (isBooleanLike(type)) return sc.ContractParamType.Boolean;
-    throw new Error(`not supported ${type.getText()}`);
+function toDebugMethodInfo(ctx: FunctionContext, funcIns: Array<Instruction>): DebugInfoMethod {
+    const node = ctx.node;
+    const parameters = node.getParameters().map((p, index) => ({
+        name: p.getName(),
+        index,
+        type: convertToContractType(p.getType()),
+    }));
+    const returnType = isVoidLike(node.getReturnType())
+        ? undefined
+        : convertToContractType(node.getReturnType());
+
+    return {
+        name: node.getNameOrThrow(),
+        range: { 
+            start: funcIns[0].address, 
+            end: funcIns[funcIns.length - 1].address
+        },
+        parameters,
+        returnType,
+        sequencePoints: funcIns
+            .map(toSequencePoint)
+            .filter(isNotNullOrUndefined)
+    };
+}
+
+function toSequencePoint(ins: Instruction): SequencePoint | undefined {
+    if (!ins.location) return undefined;
+    const node = ins.location;
+    const src = node.getSourceFile();
+    return {
+        address: ins.address,
+        document: src.getFilePath(),
+        start: src.getLineAndColumnAtPos(node.getStart()),
+        end: src.getLineAndColumnAtPos(node.getEnd())
+    }
+}
+
+export function convertToContractType(type: tsm.Type): ContractType {
+
+    if (isStringLike(type)) return {
+        kind: ContractTypeKind.Primitive,
+        type: PrimitiveType.String,
+    } as PrimitiveContractType;
+
+    if (isBigIntLike(type) || isNumberLike(type)) return {
+        kind: ContractTypeKind.Primitive,
+        type: PrimitiveType.Integer
+    } as PrimitiveContractType;
+
+    if (isBooleanLike(type)) return {
+        kind: ContractTypeKind.Primitive,
+        type: PrimitiveType.Boolean
+    } as PrimitiveContractType;
+
+    const typeSymbol = type.getSymbolOrThrow();
+    const typeFQN = typeSymbol.getFullyQualifiedName();
+    if (typeFQN === '"/node_modules/@neo-project/neo-contract-framework/index".ByteString') {
+        return {
+            kind: ContractTypeKind.Primitive,
+            type: PrimitiveType.Boolean
+        } as PrimitiveContractType;
+    }
+
+    throw new Error(`convertTypeScriptType ${type.getText()} not implemented`);
+}
+
+function convertToContractParamType(type: ContractType | tsm.Type): sc.ContractParamType {
+    if (type instanceof tsm.Type) { type = convertToContractType(type); }
+    switch (type.kind) {
+        case ContractTypeKind.Array: return sc.ContractParamType.Array;
+        case ContractTypeKind.Interop: return sc.ContractParamType.InteropInterface;
+        case ContractTypeKind.Map: return sc.ContractParamType.Map;
+        case ContractTypeKind.Struct: return sc.ContractParamType.Array;
+        case ContractTypeKind.Unspecified: return sc.ContractParamType.Any;
+        case ContractTypeKind.Primitive: {
+            const primitive = type as PrimitiveContractType;
+            switch (primitive.type) {
+                case PrimitiveType.Address: return sc.ContractParamType.Hash160;
+                case PrimitiveType.Boolean: return sc.ContractParamType.Boolean;
+                case PrimitiveType.ByteArray: return sc.ContractParamType.ByteArray;
+                case PrimitiveType.Hash160: return sc.ContractParamType.Hash160;
+                case PrimitiveType.Hash256: return sc.ContractParamType.Hash256;
+                case PrimitiveType.Integer: return sc.ContractParamType.Integer;
+                case PrimitiveType.PublicKey: return sc.ContractParamType.PublicKey;
+                case PrimitiveType.Signature: return sc.ContractParamType.Signature;
+                case PrimitiveType.String: return sc.ContractParamType.String;
+                default: throw new Error(`Unrecognized PrimitiveType ${primitive.type}`);
+            }
+        }
+        default: throw new Error(`Unrecognized ContractTypeKind ${type.kind}`);
+    }
 }
