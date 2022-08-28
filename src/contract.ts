@@ -1,10 +1,10 @@
 import { Storage, ByteString } from '@neo-project/neo-contract-framework';
 
 /** @safe */
-// export function symbol() { return "TOKEN"; }
+export function symbol() { return "TOKEN"; }
 
 /** @safe */
-// export function decimals() { return 8; }
+export function decimals() { return 8; }
 
 // export function mint(account: neo.Address, amount: bigint): void {
 //     if (amount === 0n) return;

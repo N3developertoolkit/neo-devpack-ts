@@ -1,5 +1,6 @@
+import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
-import { convertPass, Instruction } from "./passes/convertPass";
+import { collectArtifacts } from "./collectArtifacts";
 import { processFunctionDeclarationsPass } from "./passes/processFunctionDeclarations";
 import { createGlobalScope, Scope } from "./scope";
 import { Operation } from "./types";
@@ -27,7 +28,12 @@ export interface CompileOptions {
 export interface FunctionContext {
     readonly node: tsm.FunctionDeclaration;
     operations?: ReadonlyArray<Operation>;
-    instructions?: ReadonlyArray<Instruction>;
+}
+
+export interface CompileArtifacts {
+    nef: sc.NEF;
+    manifest: sc.ContractManifest;
+    // debug info
 }
 
 export interface CompileContext {
@@ -56,9 +62,6 @@ export function compile(options: CompileOptions) {
     // type CompilePass = (context: CompileContext) => void;
     const passes = [
         processFunctionDeclarationsPass,
-        convertPass,
-        // optimizePass,
-        // collectArtifactsPass,
     ] as const;
 
     for (const pass of passes) {
@@ -73,9 +76,16 @@ export function compile(options: CompileOptions) {
         }
     }
 
+    let artifacts: CompileArtifacts | undefined; 
+    try {
+        artifacts = collectArtifacts(context);
+    } catch (error) {
+        context.diagnostics.push(toDiagnostic(error));
+    }
+
     return {
         diagnostics: context.diagnostics,
-        // artifacts: context.artifacts,
+        artifacts,
         context
     };
 }
