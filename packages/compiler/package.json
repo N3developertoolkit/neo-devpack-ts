@@ -12,11 +12,8 @@
     "test": "mocha"
   },
   "dependencies": {
-    "@cityofzion/neon-core": "^5.0.0",
-    "crypto-js": "^4.1.1",
     "ts-morph": "^15.1.0"
   },
   "devDependencies": {
-    "@types/crypto-js": "^4.1.1"
   }
 }

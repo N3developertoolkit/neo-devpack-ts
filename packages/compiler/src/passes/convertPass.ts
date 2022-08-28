@@ -1,61 +1,22 @@
 import * as tsm from "ts-morph";
 import { CompileContext } from "../compiler";
-import { FunctionSymbolDef } from "../scope";
-import { ConvertOperation, InitSlotOperation, isJumpOperation, isTryOperation, JumpOperation, LoadStoreOperation, NeoService, Operation, OperationKind, PushDataOperation, PushIntOperation, SysCallOperation } from "../types";
-import { isNode, isOperation, TargetOffset } from "../types/FunctionBuilder";
-import { OpCode } from "../types/OpCode";
+import { ConvertOperation, InitSlotOperation, isJumpOperation, isTryOperation, LoadStoreOperation, Operation, OperationKind, PushDataOperation, PushIntOperation, SysCallOperation } from "../types";
+import { isOperation } from "../types/FunctionBuilder";
 import { bigIntToByteArray } from "../utils";
+import { sc } from '@cityofzion/neon-core'
 
 export interface Instruction {
-    readonly opCode: OpCode;
+    readonly opCode: sc.OpCode;
     readonly operand?: Uint8Array;
     readonly location?: tsm.Node;
 }
 
 const pushIntSizes = [1, 2, 4, 8, 16, 32] as const;
 
-const sysCallHash: Record<NeoService, number> = {
-    ["System.Contract.Call"]: 1381727586,
-    ["System.Contract.CallNative"]: 1736177434,
-    ["System.Contract.CreateMultisigAccount"]: 166277994,
-    ["System.Contract.CreateStandardAccount"]: 42441167,
-    ["System.Contract.GetCallFlags"]: 2168117909,
-    ["System.Contract.NativeOnPersist"]: 2478627630,
-    ["System.Contract.NativePostPersist"]: 375234884,
-    ["System.Crypto.CheckMultisig"]: 987549854,
-    ["System.Crypto.CheckSig"]: 666101590,
-    ["System.Iterator.Next"]: 2632779932,
-    ["System.Iterator.Value"]: 499078387,
-    ["System.Runtime.BurnGas"]: 3163314883,
-    ["System.Runtime.CheckWitness"]: 2364286968,
-    ["System.Runtime.GasLeft"]: 3470297108,
-    ["System.Runtime.GetAddressVersion"]: 3700574540,
-    ["System.Runtime.GetCallingScriptHash"]: 1013863225,
-    ["System.Runtime.GetEntryScriptHash"]: 954381561,
-    ["System.Runtime.GetExecutingScriptHash"]: 1957232347,
-    ["System.Runtime.GetInvocationCounter"]: 1125197700,
-    ["System.Runtime.GetNetwork"]: 3768646597,
-    ["System.Runtime.GetNotifications"]: 4046799655,
-    ["System.Runtime.GetRandom"]: 682221163,
-    ["System.Runtime.GetScriptContainer"]: 805851437,
-    ["System.Runtime.GetTime"]: 59294647,
-    ["System.Runtime.GetTrigger"]: 2688056809,
-    ["System.Runtime.Log"]: 2521294799,
-    ["System.Runtime.Notify"]: 1634664853,
-    ["System.Runtime.Platform"]: 4143741362,
-    ["System.Storage.AsReadOnly"]: 3921628278,
-    ["System.Storage.Delete"]: 3989133359,
-    ["System.Storage.Find"]: 2595762399,
-    ["System.Storage.Get"]: 837311890,
-    ["System.Storage.GetContext"]: 3462919835,
-    ["System.Storage.GetReadOnlyContext"]: 3798709494,
-    ["System.Storage.Put"]: 2216181734,
-}
-
 function convertOperation(operation: Operation): Instruction {
     if (isJumpOperation(operation)) {
         const ins: OffsetInstruction = {
-            opCode: <OpCode>(operation.kind + 1),
+            opCode: <sc.OpCode>(operation.kind + 1),
             operand: new Uint8Array(4),
             offset1: operation.offset,
         }
@@ -64,7 +25,7 @@ function convertOperation(operation: Operation): Instruction {
 
     if (isTryOperation(operation)) {
         const ins: OffsetInstruction = {
-            opCode: <OpCode>(operation.kind + 1),
+            opCode: <sc.OpCode>(operation.kind + 1),
             operand: new Uint8Array(4),
             offset1: operation.catchOffset,
             offset2: operation.finallyOffset,
@@ -75,13 +36,13 @@ function convertOperation(operation: Operation): Instruction {
     switch (operation.kind) {
         case OperationKind.CONVERT: {
             const { type } = operation as ConvertOperation;
-            const opCode = OpCode.CONVERT;
+            const opCode = sc.OpCode.CONVERT;
             const operand = Uint8Array.from([type]);
             return { opCode, operand };
         }
         case OperationKind.INITSLOT: {
             const { localCount, paramCount } = operation as InitSlotOperation;
-            const opCode = OpCode.INITSLOT;
+            const opCode = sc.OpCode.INITSLOT;
             const operand = Uint8Array.from([localCount, paramCount])
             return { opCode, operand };
         }
@@ -89,12 +50,12 @@ function convertOperation(operation: Operation): Instruction {
             const { value } = operation as PushDataOperation;
 
             if (value.length <= 255) /* byte.MaxValue */ {
-                const opCode = OpCode.PUSHDATA1;
+                const opCode = sc.OpCode.PUSHDATA1;
                 const operand = Uint8Array.from([value.length, ...value]);
                 return { opCode, operand };
             }
             if (value.length <= 65535) /* ushort.MaxValue */ {
-                const opCode = OpCode.PUSHDATA2;
+                const opCode = sc.OpCode.PUSHDATA2;
                 const buffer = new ArrayBuffer(2 + value.length);
                 new DataView(buffer).setUint16(0, value.length, true);
                 const operand = new Uint8Array(buffer);
@@ -102,7 +63,7 @@ function convertOperation(operation: Operation): Instruction {
                 return { opCode, operand };
             }
             if (value.length <= 4294967295) /* uint.MaxValue */ {
-                const opCode = OpCode.PUSHDATA4;
+                const opCode = sc.OpCode.PUSHDATA4;
                 const buffer = new ArrayBuffer(4 + value.length);
                 new DataView(buffer).setUint32(0, value.length, true);
                 const operand = new Uint8Array(buffer);
@@ -114,7 +75,7 @@ function convertOperation(operation: Operation): Instruction {
         case OperationKind.PUSHINT: {
             const { value } = operation as PushIntOperation;
             if (-1n <= value && value <= 16n) {
-                const opCode: OpCode = OpCode.PUSH0 + Number(value);
+                const opCode: sc.OpCode = sc.OpCode.PUSH0 + Number(value);
                 return { opCode };
             }
 
@@ -125,7 +86,7 @@ function convertOperation(operation: Operation): Instruction {
                 const pushIntSize = pushIntSizes[index];
                 if (bufferLength <= pushIntSize) {
                     const padding = pushIntSize - bufferLength;
-                    const opCode: OpCode = OpCode.PUSHINT8 + index;
+                    const opCode: sc.OpCode = sc.OpCode.PUSHINT8 + index;
                     const operand = padding == 0
                         ? buffer
                         : Uint8Array.from([
@@ -139,12 +100,9 @@ function convertOperation(operation: Operation): Instruction {
         }
         case OperationKind.SYSCALL: {
             const { service } = operation as SysCallOperation;
-            const hash = sysCallHash[service];
-            const buffer = new ArrayBuffer(4);
-            new DataView(buffer).setUint32(0, hash, true);
             return {
-                opCode: OpCode.SYSCALL,
-                operand: new Uint8Array(buffer)
+                opCode: sc.OpCode.SYSCALL,
+                operand: Buffer.from(service, 'hex')
             };
         }
         case OperationKind.LDARG:
@@ -154,7 +112,7 @@ function convertOperation(operation: Operation): Instruction {
         case OperationKind.STLOC:
         case OperationKind.STSFLD: {
             const { kind, index } = operation as LoadStoreOperation;
-            const opCode = <OpCode>(kind - 7);
+            const opCode = <sc.OpCode>(kind - 7);
             if (index <= 6) {
                 return { opCode: opCode + index }
             }
@@ -173,7 +131,7 @@ function convertOperation(operation: Operation): Instruction {
         case OperationKind.JMPLE:
         case OperationKind.TRY:
             throw new Error("handled before switch");
-        default: return { opCode: (operation.kind as number) as OpCode };
+        default: return { opCode: (operation.kind as number) as sc.OpCode };
     }
 
 }

@@ -3,7 +3,7 @@ import { readFile } from "fs/promises";
 import * as tsm from "ts-morph";
 import { compile, ConvertOperation, createContractProject, FunctionSymbolDef, InitSlotOperation, Operation, OperationKind, isJumpOperation, isLoadStoreOperation, LoadStoreOperation, PushDataOperation, PushIntOperation, SysCallOperation, toDiagnostic, FunctionContext } from '../packages/compiler/';
 import util from 'util';
-import { StackItemType } from "../packages/compiler/src/types/StackItem";
+import { sc } from '@cityofzion/neon-core'
 
 function printDiagnostics(diags: ReadonlyArray<tsm.ts.Diagnostic>) {
     const formatHost: tsm.ts.FormatDiagnosticsHost = {
@@ -138,19 +138,8 @@ function getOperand(op: Operation) {
     switch (op.kind) {
         case OperationKind.CONVERT: {
             const _ins = op as ConvertOperation;
-            switch (_ins.type) {
-                case StackItemType.Any: return "Any";
-                case StackItemType.Pointer: return "Pointer";
-                case StackItemType.Boolean: return "Boolean";
-                case StackItemType.Integer: return "Integer";
-                case StackItemType.ByteString: return "ByteString";
-                case StackItemType.Buffer: return "Buffer";
-                case StackItemType.Array: return "Array";
-                case StackItemType.Struct: return "Struct";
-                case StackItemType.Map: return "Map";
-                case StackItemType.InteropInterface: return "InteropInterface";
-                default: throw new Error(`Unexpected StackItemType ${_ins.type}`);
-            }
+            return `${_ins.type}`;
+            // return sc.StackItemType[_ins.type];
         }
         case OperationKind.PUSHINT: {
             const _ins = op as PushIntOperation;
@@ -181,17 +170,97 @@ function getComment(op: Operation, curIndex: number): string | undefined {
     }
 
     switch (op.kind) {
+        case OperationKind.CONVERT: {
+            const _ins = op as ConvertOperation;
+            return sc.StackItemType[_ins.type];
+        }
         case OperationKind.PUSHDATA: {
             const _ins = op as PushDataOperation;
             const value = Buffer.from(_ins.value);
             return '' + value;
-
         }
         case OperationKind.INITSLOT: {
             const _ins = op as InitSlotOperation;
             return `locals: ${_ins.localCount}, params: ${_ins.paramCount}`;
         }
+        case OperationKind.SYSCALL: {
+            const _ins = op as SysCallOperation;
+            switch (_ins.service) {
+                case sc.InteropServiceCode.SYSTEM_CONTRACT_CALL:
+                    return "SYSTEM_CONTRACT_CALL";
+                case sc.InteropServiceCode.SYSTEM_CONTRACT_CALLNATIVE:
+                    return "SYSTEM_CONTRACT_CALLNATIVE";
+                case sc.InteropServiceCode.SYSTEM_CONTRACT_CREATEMULTISIGACCOUNT:
+                    return "SYSTEM_CONTRACT_CREATEMULTISIGACCOUNT";
+                case sc.InteropServiceCode.SYSTEM_CONTRACT_CREATESTANDARDACCOUNT:
+                    return "SYSTEM_CONTRACT_CREATESTANDARDACCOUNT";
+                case sc.InteropServiceCode.SYSTEM_CONTRACT_GETCALLFLAGS:
+                    return "SYSTEM_CONTRACT_GETCALLFLAGS";
+                case sc.InteropServiceCode.SYSTEM_CONTRACT_NATIVEONPERSIST:
+                    return "SYSTEM_CONTRACT_NATIVEONPERSIST";
+                case sc.InteropServiceCode.SYSTEM_CONTRACT_NATIVEPOSTPERSIST:
+                    return "SYSTEM_CONTRACT_NATIVEPOSTPERSIST";
+                case sc.InteropServiceCode.SYSTEM_CRYPTO_CHECKMULTISIG:
+                    return "SYSTEM_CRYPTO_CHECKMULTISIG";
+                case sc.InteropServiceCode.SYSTEM_CRYPTO_CHECKSIG:
+                    return "SYSTEM_CRYPTO_CHECKSIG";
+                case sc.InteropServiceCode.SYSTEM_ITERATOR_NEXT:
+                    return "SYSTEM_ITERATOR_NEXT";
+                case sc.InteropServiceCode.SYSTEM_ITERATOR_VALUE:
+                    return "SYSTEM_ITERATOR_VALUE";
+                case sc.InteropServiceCode.SYSTEM_RUNTIME_BURNGAS:
+                    return "SYSTEM_RUNTIME_BURNGAS";
+                case sc.InteropServiceCode.SYSTEM_RUNTIME_CHECKWITNESS:
+                    return "SYSTEM_RUNTIME_CHECKWITNESS";
+                case sc.InteropServiceCode.SYSTEM_RUNTIME_GASLEFT:
+                    return "SYSTEM_RUNTIME_GASLEFT";
+                case sc.InteropServiceCode.SYSTEM_RUNTIME_GETADDRESSVERSION:
+                    return "SYSTEM_RUNTIME_GETADDRESSVERSION";
+                case sc.InteropServiceCode.SYSTEM_RUNTIME_GETCALLINGSCRIPTHASH:
+                    return "SYSTEM_RUNTIME_GETCALLINGSCRIPTHASH";
+                case sc.InteropServiceCode.SYSTEM_RUNTIME_GETENTRYSCRIPTHASH:
+                    return "SYSTEM_RUNTIME_GETENTRYSCRIPTHASH";
+                case sc.InteropServiceCode.SYSTEM_RUNTIME_GETEXECUTINGSCRIPTHASH:
+                    return "SYSTEM_RUNTIME_GETEXECUTINGSCRIPTHASH";
+                case sc.InteropServiceCode.SYSTEM_RUNTIME_GETINVOCATIONCOUNTER:
+                    return "SYSTEM_RUNTIME_GETINVOCATIONCOUNTER";
+                case sc.InteropServiceCode.SYSTEM_RUNTIME_GETNETWORK:
+                    return "SYSTEM_RUNTIME_GETNETWORK";
+                case sc.InteropServiceCode.SYSTEM_RUNTIME_GETNOTIFICATIONS:
+                    return "SYSTEM_RUNTIME_GETNOTIFICATIONS";
+                case sc.InteropServiceCode.SYSTEM_RUNTIME_GETRANDOM:
+                    return "SYSTEM_RUNTIME_GETRANDOM";
+                case sc.InteropServiceCode.SYSTEM_RUNTIME_GETSCRIPTCONTAINER:
+                    return "SYSTEM_RUNTIME_GETSCRIPTCONTAINER";
+                case sc.InteropServiceCode.SYSTEM_RUNTIME_GETTIME:
+                    return "SYSTEM_RUNTIME_GETTIME";
+                case sc.InteropServiceCode.SYSTEM_RUNTIME_GETTRIGGER:
+                    return "SYSTEM_RUNTIME_GETTRIGGER";
+                case sc.InteropServiceCode.SYSTEM_RUNTIME_LOG:
+                    return "SYSTEM_RUNTIME_LOG";
+                case sc.InteropServiceCode.SYSTEM_RUNTIME_NOTIFY:
+                    return "SYSTEM_RUNTIME_NOTIFY";
+                case sc.InteropServiceCode.SYSTEM_RUNTIME_PLATFORM:
+                    return "SYSTEM_RUNTIME_PLATFORM";
+                case sc.InteropServiceCode.SYSTEM_STORAGE_ASREADONLY:
+                    return "SYSTEM_STORAGE_ASREADONLY";
+                case sc.InteropServiceCode.SYSTEM_STORAGE_DELETE:
+                    return "SYSTEM_STORAGE_DELETE";
+                case sc.InteropServiceCode.SYSTEM_STORAGE_FIND:
+                    return "SYSTEM_STORAGE_FIND";
+                case sc.InteropServiceCode.SYSTEM_STORAGE_GET:
+                    return "SYSTEM_STORAGE_GET";
+                case sc.InteropServiceCode.SYSTEM_STORAGE_GETCONTEXT:
+                    return "SYSTEM_STORAGE_GETCONTEXT";
+                case sc.InteropServiceCode.SYSTEM_STORAGE_GETREADONLYCONTEXT:
+                    return "SYSTEM_STORAGE_GETREADONLYCONTEXT";
+                case sc.InteropServiceCode.SYSTEM_STORAGE_PUT:
+                    return "SYSTEM_STORAGE_PUT";
+            }
+        }
     }
 
     return undefined;
 }
+
+

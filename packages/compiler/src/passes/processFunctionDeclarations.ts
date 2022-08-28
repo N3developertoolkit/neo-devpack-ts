@@ -14,7 +14,7 @@ import { CompileContext, CompileError } from "../compiler";
 import { BlockScope, FunctionSymbolDef, ParameterSymbolDef, resolveOrThrow, Scope, SymbolDef, VariableSymbolDef } from "../scope";
 import { OperationKind } from "../types/Operation";
 import { FunctionBuilder, TargetOffset } from "../types/FunctionBuilder";
-import { StackItemType } from "../types/StackItem";
+import { sc } from '@cityofzion/neon-core'
 import { dispatch } from "../utility/nodeDispatch";
 import { getSymbolOrCompileError, isBigIntLike, isBooleanLike, isStringLike } from "../utils";
 import { ByteStringConstructor_from } from "./builtins";
@@ -144,9 +144,9 @@ function processAsExpression(node: tsm.AsExpression, options: ProcessOptions) {
     processExpression(node.getExpression(), options);
     const type = node.getTypeNodeOrThrow().getType();
     if (isBigIntLike(type)) {
-        options.builder.pushConvert(StackItemType.Integer);
+        options.builder.pushConvert(sc.StackItemType.Integer);
     } else if (isBooleanLike(type)) {
-        options.builder.pushConvert(StackItemType.Boolean);
+        options.builder.pushConvert(sc.StackItemType.Boolean);
     } else {
         throw new CompileError(`not supported`, node);
     }
@@ -292,13 +292,13 @@ function processCallExpression(node: tsm.CallExpression, options: ProcessOptions
 
         switch (prop.getName()) {
             case "get":
-                options.builder.pushSysCall("System.Storage.Get");
+                options.builder.pushSysCall(sc.InteropServiceCode.SYSTEM_STORAGE_GET);
                 break;
             case "put":
-                options.builder.pushSysCall("System.Storage.Put");
+                options.builder.pushSysCall(sc.InteropServiceCode.SYSTEM_STORAGE_PUT);
                 break;
             case "delete":
-                options.builder.pushSysCall("System.Storage.Delete");
+                options.builder.pushSysCall(sc.InteropServiceCode.SYSTEM_STORAGE_DELETE);
                 break;
             default: throw new CompileError(`not supported`, prop);
         }
@@ -310,7 +310,7 @@ function processCallExpression(node: tsm.CallExpression, options: ProcessOptions
         processExpression(prop.getExpression(), options);
         
         processOptionalChain(prop.hasQuestionDotToken(), options, (options) => {
-            options.builder.pushConvert(StackItemType.Integer);
+            options.builder.pushConvert(sc.StackItemType.Integer);
         })
         return;
     }
@@ -376,7 +376,7 @@ function processPropertyAccessExpression(node: tsm.PropertyAccessExpression, opt
     ) {
         switch (node.getName()) {
             case "currentContext":
-                options.builder.pushSysCall("System.Storage.GetContext");
+                options.builder.pushSysCall(sc.InteropServiceCode.SYSTEM_STORAGE_GETCONTEXT);
                 return;
             // case "get":
             //     options.builder.pushSysCall("System.Storage.Get");
@@ -434,7 +434,7 @@ export function processExpression(node: tsm.Expression, options: ProcessOptions)
 
 function processBoolean(value: boolean, options: ProcessOptions) {
     options.builder.pushInt(value ? 1 : 0);
-    options.builder.pushConvert(StackItemType.Boolean);
+    options.builder.pushConvert(sc.StackItemType.Boolean);
 }
 
 export function processArguments(args: tsm.Node[], options: ProcessOptions) {

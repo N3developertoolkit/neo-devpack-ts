@@ -1,7 +1,6 @@
 import * as tsm from "ts-morph";
-import { isJumpOpCode } from "./OpCode";
-import { ConvertOperation, InitSlotOperation, Operation, OperationKind, JumpOperation, JumpOperationKind, LoadStoreOperation, NeoService, PushDataOperation, PushIntOperation, specializedOperationKinds, SysCallOperation, isJumpOperation } from "./Operation";
-import { StackItemType } from "./StackItem";
+import { ConvertOperation, InitSlotOperation, Operation, OperationKind, JumpOperation, JumpOperationKind, LoadStoreOperation, PushDataOperation, PushIntOperation, specializedOperationKinds, SysCallOperation, isJumpOperation } from "./Operation";
+import { sc } from '@cityofzion/neon-core'
 
 export interface TargetOffset {
     operation: Operation | undefined
@@ -161,7 +160,7 @@ export class FunctionBuilder {
         }
     }
 
-    pushConvert(type: StackItemType) {
+    pushConvert(type: sc.StackItemType) {
         const ins: ConvertOperation = { kind: OperationKind.CONVERT, type };
         return this.push(ins);
     }
@@ -215,7 +214,7 @@ export class FunctionBuilder {
         this._returnTarget.operation = this.push(OperationKind.RET).instruction;
     }
 
-    pushSysCall(service: NeoService) {
+    pushSysCall(service: sc.InteropServiceCode) {
         const ins: SysCallOperation = { kind: OperationKind.SYSCALL, service };
         return this.push(ins);
     }
