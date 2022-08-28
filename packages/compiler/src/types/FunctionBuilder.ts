@@ -75,22 +75,9 @@ export type SlotType = 'local' | 'static' | 'parameter';
 //     }
 
 
-
-
-
-
-
-export function isNode(input: Operation | tsm.Node): input is tsm.Node {
-    return input instanceof tsm.Node;
-}
-
-export function isOperation(input: Operation | tsm.Node): input is Operation {
-    return !isNode(input);
-}
-
 export class FunctionBuilder {
     private _localCount: number = 0;
-    private readonly _operations = new Array<Operation | tsm.Node>();
+    private readonly _operations = new Array<Operation>();
     private readonly _returnTarget: TargetOffset = { operation: undefined }
     private readonly _jumps = new Map<JumpOperation, TargetOffset>();
 
@@ -100,7 +87,7 @@ export class FunctionBuilder {
 
     addLocalSlot() { return this._localCount++; }
 
-    get operations(): IterableIterator<Operation | tsm.Node> { return this.getOperations(); }
+    get operations(): IterableIterator<Operation> { return this.getOperations(); }
     private *getOperations() {
         if (this.paramCount > 0 || this._localCount > 0) {
             const ins: InitSlotOperation = {
@@ -114,7 +101,7 @@ export class FunctionBuilder {
         const length = this._operations.length;
         for (let i = 0; i < length; i++) {
             const op = this._operations[i];
-            if (isOperation(op) && isJumpOperation(op)) {
+            if (isJumpOperation(op)) {
                 const kind = op.kind;
                 let offset = 0;
                 const target = this._jumps.get(op);
@@ -136,7 +123,7 @@ export class FunctionBuilder {
         return {
             set: (node?) => {
                 if (node && length < this._operations.length) {
-                    this._operations.splice(length, 0, node);
+                    this._operations[length].location = node;
                 }
             }
         }
@@ -154,7 +141,7 @@ export class FunctionBuilder {
             instruction: ins,
             set: (node?) => {
                 if (node) {
-                    this._operations.splice(index, 0, node);
+                    this._operations[index].location = node;
                 }
             }
         }

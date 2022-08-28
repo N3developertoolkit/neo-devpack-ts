@@ -1,4 +1,5 @@
 import { sc } from '@cityofzion/neon-core'
+import * as tsm from "ts-morph";
 
 // Instruction Kind is slightly simplified version of NeoVM OpCode enum
 //  * All the PUSHINT* opcodes are folded into a single Instruction Kind
@@ -202,7 +203,8 @@ export enum OperationKind {
     CONVERT = 0xdb,
 } 
 export interface Operation {
-    readonly kind: OperationKind
+    readonly kind: OperationKind,
+    location?: tsm.Node,
 }
 
 export interface ConvertOperation extends Operation {

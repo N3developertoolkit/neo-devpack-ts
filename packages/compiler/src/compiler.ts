@@ -26,7 +26,7 @@ export interface CompileOptions {
 
 export interface FunctionContext {
     readonly node: tsm.FunctionDeclaration;
-    operations?: ReadonlyArray<Operation | tsm.Node>;
+    operations?: ReadonlyArray<Operation>;
     instructions?: ReadonlyArray<Instruction>;
 }
 

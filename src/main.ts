@@ -92,17 +92,16 @@ export function dumpFunctionOperations(ctx: FunctionContext) {
 
     for (let i = 0; i < operations.length; i++) {
         const op = operations[i];
+        if (op.location) {
+            console.log(cyan, ` # ${op.location.print({ removeComments: true })}`);
+        }
         let msg = util.format(invert, `${(i).toString().padStart(padding)}:`);
-        if (op instanceof tsm.Node) {
-            msg += util.format(cyan, ` # ${op.print({ removeComments: true })}`);
-        } else {
-            msg += " " + OperationKind[op.kind];
-            const operand = getOperand(op);
-            msg += util.format(yellow, " " + operand);
-            const comment = getComment(op, i);
-            if (comment) {
-                msg += util.format(green, ` # ${comment}`);
-            }
+        msg += " " + OperationKind[op.kind];
+        const operand = getOperand(op);
+        msg += util.format(yellow, " " + operand);
+        const comment = getComment(op, i);
+        if (comment) {
+            msg += util.format(green, ` # ${comment}`);
         }
         console.log(msg);
     }
@@ -132,14 +131,13 @@ function getOperand(op: Operation) {
     }
 
     if (isJumpOperation(op)) {
-        return `${op.offset}`;
+        return op.offset > 0 ? `+${op.offset}` : `${op.offset}`;
     }
 
     switch (op.kind) {
         case OperationKind.CONVERT: {
             const _ins = op as ConvertOperation;
             return `${_ins.type}`;
-            // return sc.StackItemType[_ins.type];
         }
         case OperationKind.PUSHINT: {
             const _ins = op as PushIntOperation;
