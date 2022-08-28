@@ -131,26 +131,8 @@ function processStatement(node: tsm.Statement, options: ProcessOptions): void {
     });
 }
 
-// function processArrayLiteralExpression(node: tsm.ArrayLiteralExpression, options: ProcessOptions) {
-//     const elements = node.getElements();
-//     const length = elements.length;
-//     for (let i = 0; i < length; i++) {
-//         processExpression(elements[i], options);
-//     }
-//     options.builder.pushInt(length);
-//     options.builder.push(OpCode.PACK);
-// }
-
 function processAsExpression(node: tsm.AsExpression, options: ProcessOptions) {
     processExpression(node.getExpression(), options);
-    const type = node.getTypeNodeOrThrow().getType();
-    if (isBigIntLike(type)) {
-        options.builder.pushConvert(sc.StackItemType.Integer);
-    } else if (isBooleanLike(type)) {
-        options.builder.pushConvert(sc.StackItemType.Boolean);
-    } else {
-        throw new CompileError(`not supported`, node);
-    }
 }
 
 function processBinaryExpression(node: tsm.BinaryExpression, options: ProcessOptions) {
@@ -237,42 +219,7 @@ function processBinaryExpression(node: tsm.BinaryExpression, options: ProcessOpt
     }
 }
 
-// function binaryOperatorTokenToOpCode(
-//     op: tsm.Node<tsm.ts.BinaryOperatorToken>,
-//     left: tsm.Type,
-//     right: tsm.Type
-// ): OpCode {
-//     switch (op.getKind()) {
-//         case tsm.SyntaxKind.EqualsEqualsToken:
-//         case tsm.SyntaxKind.EqualsEqualsEqualsToken: {
-//             if (isBigIntLike(left) && isBigIntLike(right)) {
-//                 return OpCode.NUMEQUAL;
-//             }
-//             throw new Error(`getBinaryOperator.${op.getKindName()} not implemented for ${left.getText()} and ${right.getText()}`);
-//         }
-//         case tsm.SyntaxKind.LessThanToken:
-//             return OpCode.LT;
-//         case tsm.SyntaxKind.PlusToken:
-//         case tsm.SyntaxKind.PlusEqualsToken: {
-//             if (isStringLike(left) && isStringLike(right)) {
-//                 return OpCode.CAT;
-//             }
-//             if (isBigIntLike(left) && isBigIntLike(right)) {
-//                 return OpCode.ADD;
-//             }
-//             throw new Error(`getBinaryOperator.PlusToken not implemented for ${left.getText()} and ${right.getText()}`);
-//         }
-//         default:
-//             throw new Error(`getBinaryOperator ${op.getKindName()} not implemented`);
-//     }
-// }
-
 function processCallExpression(node: tsm.CallExpression, options: ProcessOptions) {
-
-    const nodeSymbol = node.getSymbol();
-    const nodeType = node.getType();
-    const nodeTypeSymbol = nodeType.getAliasSymbol() ?? nodeType.getSymbol();
-    const nodeTypeFQN = nodeTypeSymbol?.getFullyQualifiedName();
 
     const expr = node.getExpression();
     const exprType = expr.getType();
@@ -319,25 +266,18 @@ function processCallExpression(node: tsm.CallExpression, options: ProcessOptions
         return;
     }
 
-    throw new CompileError(`processCallExpression not implemented ${node.getExpression().print()}`, node);
+    if (tsm.Node.isIdentifier(expr)) {
+        const symbol = expr.getSymbolOrThrow();
+        const item = options.scope.resolve(symbol);
+        if (item instanceof FunctionSymbolDef) {
+            processArguments(node.getArguments(), options);
+            options.builder.pushCall(item);
+            return;
+        }
+    }
+
+    throw new CompileError(`processCallExpression not implemented ${expr.print()}`, node);
 }
-// const elseTarget: TargetOffset = { instruction: undefined };
-// const nodeSetter = builder.getNodeSetter();
-// const expr = node.getExpression();
-// processExpression(expr, options);
-// nodeSetter.set(expr);
-// builder.pushJump(InstructionKind.JMPIFNOT, elseTarget);
-// processStatement(node.getThenStatement(), options);
-// const elseStmt = node.getElseStatement();
-// if (elseStmt) {
-//     const endTarget: TargetOffset = { instruction: undefined };
-//     builder.pushJump(InstructionKind.JMP, endTarget);
-//     elseTarget.instruction = builder.push(InstructionKind.NOP).instruction;
-//     processStatement(elseStmt, options);
-//     endTarget.instruction = builder.push(InstructionKind.NOP).instruction;
-// } else {
-//     elseTarget.instruction = builder.push(InstructionKind.NOP).instruction;
-// }
 
 function processConditionalExpression(node: tsm.ConditionalExpression, options: ProcessOptions) {
 

@@ -1,10 +1,12 @@
 import * as tsm from "ts-morph";
 import { CompileContext, CompileError, FunctionContext } from "./compiler";
-import { ConvertOperation, InitSlotOperation, isJumpOperation, isTryOperation, LoadStoreOperation, Operation, OperationKind, PushDataOperation, PushIntOperation, SysCallOperation } from "./types";
+import { ConvertOperation, InitSlotOperation, isCallOperation, isJumpOperation, isTryOperation, LoadStoreOperation, Operation, OperationKind, PushDataOperation, PushIntOperation, SysCallOperation } from "./types";
 import { bigIntToByteArray, isBigIntLike, isBooleanLike, isNotNullOrUndefined, isNumberLike, isStringLike, isVoidLike } from "./utils";
 import { sc, u } from '@cityofzion/neon-core'
 import { DebugInfo, Method as DebugInfoMethod, SequencePoint } from "./types/DebugInfo";
 import { ContractType, ContractTypeKind, PrimitiveContractType, PrimitiveType } from "./types/ContractType";
+import { FunctionSymbolDef } from "./scope";
+import { INSPECT_MAX_BYTES } from "buffer";
 
 interface Instruction {
     readonly address: number
@@ -20,6 +22,14 @@ interface OffsetInstruction extends Instruction {
 
 function isOffsetInstruction(ins: Instruction): ins is OffsetInstruction {
     return 'offset1' in ins;
+}
+
+interface CallInstruction extends Instruction {
+    readonly symbol: tsm.Symbol
+}
+
+function isCallInstruction(ins: Instruction): ins is CallInstruction {
+    return 'symbol' in ins;
 }
 
 const pushIntSizes = [1, 2, 4, 8, 16, 32] as const;
@@ -48,6 +58,17 @@ function convertOperation(operation: Operation, address: number): Instruction {
             location: operation.location,
             offset1: operation.catchOffset,
             offset2: operation.finallyOffset,
+        }
+        return ins;
+    }
+
+    if (isCallOperation(operation)) {
+        const ins: CallInstruction = {
+            address,
+            opCode: sc.OpCode.CALL_L,
+            operand: new Uint8Array(4),
+            location: operation.location,
+            symbol: operation.symbol,
         }
         return ins;
     }
@@ -149,12 +170,14 @@ function convertOperation(operation: Operation, address: number): Instruction {
 
 export function collectArtifacts(context: CompileContext) {
     let address = 0;
-    let methods = new Map<FunctionContext, Array<Instruction>>();
+    let methodInstructions = new Map<FunctionContext, Array<Instruction>>();
+    let methodAddressMap = new Map<tsm.Symbol, number>();
     let instructions = new Array<Instruction>();
     for (const func of context.functions) {
         if (!func.operations) continue;
+        methodAddressMap.set(func.node.getSymbolOrThrow(), address);
         const funcInstructions = new Array<Instruction>();
-        methods.set(func, funcInstructions);
+        methodInstructions.set(func, funcInstructions);
         for (const op of func.operations) {
             const ins = convertOperation(op, address);
             instructions.push(ins);
@@ -175,6 +198,14 @@ export function collectArtifacts(context: CompileContext) {
                 dataview.setInt32(4, offset2, true);
             }
         }
+
+        if (isCallInstruction(ins)) {
+            const dataview = new DataView(ins.operand!.buffer);
+            const targetAddress = methodAddressMap.get(ins.symbol);
+            if (!targetAddress) throw new Error(`failed to resolve ${ins.symbol.getName()}`);
+            const offset = targetAddress - ins.address;
+            dataview.setInt32(0, offset, true);
+        }
     })
 
     const script = new Array<number>();
@@ -191,7 +222,7 @@ export function collectArtifacts(context: CompileContext) {
 
     const methodDefs = new Array<sc.ContractMethodDefinition>();
     const debugMethods = new Array<DebugInfoMethod>()
-    for (const [ctx, funcIns] of methods) {
+    for (const [ctx, funcIns] of methodInstructions) {
         const methodDef = toContractMethodDefinition(ctx.node, funcIns[0].address);
         if (methodDef) methodDefs.push(methodDef);
         debugMethods.push(toDebugMethodInfo(ctx, funcIns));

@@ -1,5 +1,6 @@
 import { sc } from '@cityofzion/neon-core'
 import * as tsm from "ts-morph";
+import { FunctionSymbolDef } from '../scope';
 
 // Instruction Kind is slightly simplified version of NeoVM OpCode enum
 //  * All the PUSHINT* opcodes are folded into a single Instruction Kind
@@ -7,7 +8,7 @@ import * as tsm from "ts-morph";
 //  * All the opcode pairs with and without an _L variant have been folded into a single Instruction Kind
 //  * the hard coded index Load/Store opcodes have been folded into a single Instruction Kind 
 export enum OperationKind {
-    PUSHINT,
+    PUSHINT = 0x00,
     // PUSHINT8 = 0x00,
     // PUSHINT16 = 0x01,
     // PUSHINT32 = 0x02,
@@ -16,7 +17,7 @@ export enum OperationKind {
     // PUSHINT256 = 0x05,
     PUSHA = 0x0a,
     PUSHNULL = 0x0b,
-    PUSHDATA,
+    PUSHDATA = 0x0c,
     // PUSHDATA1 = 0x0c,
     // PUSHDATA2 = 0x0d,
     // PUSHDATA4 = 0x0e,
@@ -207,6 +208,15 @@ export interface Operation {
     location?: tsm.Node,
 }
 
+export interface CallOperation extends Operation {
+    readonly kind: OperationKind.CALL;
+    readonly symbol: tsm.Symbol;
+}
+
+export function isCallOperation(ins: Operation): ins is CallOperation {
+    return ins.kind === OperationKind.CALL;
+}
+
 export interface ConvertOperation extends Operation {
     readonly kind: OperationKind.CONVERT;
     readonly type: sc.StackItemType
@@ -307,6 +317,7 @@ export function isLoadStoreOperation(ins: Operation): ins is LoadStoreOperation 
 }
 
 export const specializedOperationKinds: ReadonlyArray<OperationKind> = [
+    OperationKind.CALL,
     OperationKind.CONVERT,
     OperationKind.INITSLOT,
     OperationKind.PUSHDATA,

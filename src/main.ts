@@ -1,7 +1,7 @@
 import { join } from "path";
 import { readFile } from "fs/promises";
 import * as tsm from "ts-morph";
-import { compile, ConvertOperation, createContractProject, FunctionSymbolDef, InitSlotOperation, Operation, OperationKind, isJumpOperation, isLoadStoreOperation, LoadStoreOperation, PushDataOperation, PushIntOperation, SysCallOperation, toDiagnostic, FunctionContext } from '../packages/compiler/';
+import { compile, ConvertOperation, createContractProject, FunctionSymbolDef, InitSlotOperation, Operation, OperationKind, isJumpOperation, isLoadStoreOperation, LoadStoreOperation, PushDataOperation, PushIntOperation, SysCallOperation, toDiagnostic, FunctionContext, CallOperation, CompileArtifacts } from '../packages/compiler/';
 import util from 'util';
 import { sc } from '@cityofzion/neon-core'
 
@@ -43,8 +43,12 @@ async function main() {
             return;
         }
 
-        for (const func of results.context.functions) {
-            dumpFunctionOperations(func);
+        if (results.artifacts) {
+            dumpArtifacts(results.artifacts);
+        } else {
+            for (const func of results.context.functions) {
+                dumpFunctionContext(func);
+            }
         }
     } catch (error) {
         printDiagnostics([toDiagnostic(error)]);
@@ -80,7 +84,7 @@ const magenta = `${AnsiEscapeSequences.BrightMagenta}%s${AnsiEscapeSequences.Res
 const yellow = `${AnsiEscapeSequences.BrightYellow}%s${AnsiEscapeSequences.Reset}`;
 const invert = `${AnsiEscapeSequences.Invert}%s${AnsiEscapeSequences.Reset}`;
 
-export function dumpFunctionOperations(ctx: FunctionContext) {
+export function dumpFunctionContext(ctx: FunctionContext) {
     const info = getFunctionInfo(ctx.node);
     const params = info.parameters.map(p => `${p.name}: ${p.type.getText()}`).join(', ');
     const publicStr = info.isPublic ? 'public ' : '';
@@ -135,6 +139,10 @@ function getOperand(op: Operation) {
     }
 
     switch (op.kind) {
+        case OperationKind.CALL: {
+            const _ins = op as CallOperation;
+            return _ins.symbol.getName();
+        }
         case OperationKind.CONVERT: {
             const _ins = op as ConvertOperation;
             return `${_ins.type}`;
@@ -261,4 +269,40 @@ function getComment(op: Operation, curIndex: number): string | undefined {
     return undefined;
 }
 
+function dumpArtifacts({ nef, debugInfo }: CompileArtifacts) {
+    const starts = new Map(debugInfo.methods?.map(m => [m.range.start, m]))
+    const ends = new Map(debugInfo.methods?.map(m => [m.range.end, m]));
+    const opTokens = sc.OpToken.fromScript(nef.script);
+    const padding = `${opTokens.length}`.length;
+    let address = 0;
+    for (const token of opTokens) {
+        const s = starts.get(address);
+        if (s) { console.log(magenta, `# Method Start ${s.name}`); }
+        let msg = util.format(invert, `${(address).toString().padStart(padding)}:`);
+        msg += ` ${token.prettyPrint()}`;
+        const comment = getOpTokenComment(token, address);
+        if (comment) {
+            msg += util.format(green, ` # ${comment}`);
+        }
+        console.log(msg);
+        const e = ends.get(address);
+        if (e) { console.log(magenta, `# Method End ${e.name}`); }
 
+        const size = token.toScript().length / 2
+        address += size;
+    }
+}
+
+function getOpTokenComment(token: sc.OpToken, address: number): string | undefined {
+    if (!token.params) return undefined;
+    const operand = Buffer.from(token.params, 'hex');
+
+
+    if (sc.OpCode.JMP <= token.code && token.code <= sc.OpCode.CALL_L) {
+        const offset = operand.length === 1
+            ? operand.readInt8() : operand.readInt32LE();
+        return `offset: ${offset}, target: ${address + offset}`;
+    }
+    
+    return undefined;
+}

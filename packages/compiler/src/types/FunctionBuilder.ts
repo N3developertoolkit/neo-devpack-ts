@@ -1,6 +1,7 @@
 import * as tsm from "ts-morph";
-import { ConvertOperation, InitSlotOperation, Operation, OperationKind, JumpOperation, JumpOperationKind, LoadStoreOperation, PushDataOperation, PushIntOperation, specializedOperationKinds, SysCallOperation, isJumpOperation } from "./Operation";
+import { ConvertOperation, InitSlotOperation, Operation, OperationKind, JumpOperation, JumpOperationKind, LoadStoreOperation, PushDataOperation, PushIntOperation, specializedOperationKinds, SysCallOperation, isJumpOperation, CallOperation } from "./Operation";
 import { sc } from '@cityofzion/neon-core'
+import { FunctionSymbolDef } from "../scope";
 
 export interface TargetOffset {
     operation: Operation | undefined
@@ -13,68 +14,6 @@ export interface NodeSetter {
 type NodeSetterWithInstruction = NodeSetter & { readonly instruction: Operation };
 
 export type SlotType = 'local' | 'static' | 'parameter';
-
-// export function isNode(input: Instruction | tsm.Node): input is tsm.Node {
-//     return input instanceof tsm.Node;
-// }
-
-// export function isInstruction(input: Instruction | tsm.Node): input is Instruction {
-//     return !isNode(input);
-// }
-
-// function readInt(ins: Instruction): bigint {
-//     if (OpCode.PUSHM1 <= ins.opCode && ins.opCode <= OpCode.PUSH16) {
-//         return BigInt(ins.opCode - OpCode.PUSH0);
-//     }
-
-//     if (OpCode.PUSHINT8 <= ins.opCode && ins.opCode <= OpCode.PUSHINT256) {
-//         return byteArrayToBigInt(ins.operand!);
-//     }
-
-//     throw new Error(`invalid integer opcode ${printOpCode(ins.opCode)}`);
-// }
-
-// export class OperationBuilder {
-
-//     private localCount: number = 0;
-//     private readonly _instructions = new Array<Instruction | tsm.Node>();
-//     private readonly _returnTarget: JumpTarget = { instruction: undefined }
-
-//     constructor(readonly paramCount: number = 0) { }
-
-//     get returnTarget(): Readonly<JumpTarget> { return this._returnTarget; }
-
-//     compile() {
-//         const instructions = [...this._instructions];
-
-//         if (this.localCount > 0 || this.paramCount > 0) {
-//             instructions.unshift({
-//                 opCode: OpCode.INITSLOT,
-//                 operand: Uint8Array.from([this.localCount, this.paramCount])
-//             });
-//         }
-
-//         for (const ins of this._instructions) {
-//             if (isInstruction(ins)) {
-//                 if (isJumpInstruction(ins)) {
-//                     validateTarget(ins.target);
-//                 }
-//                 if (isTryInstruction(ins)) {
-//                     validateTarget(ins.catchTarget);
-//                     validateTarget(ins.finallyTarget);
-//                 }
-//             }
-//         }
-
-//         return instructions;
-
-//         function validateTarget(target: JumpTarget) {
-//             if (!target.instruction) throw new Error("missing target instruction");
-//             if (!instructions.includes(target.instruction)) throw new Error("invalid target instruction");
-//         }
-//     }
-
-
 export class FunctionBuilder {
     private _localCount: number = 0;
     private readonly _operations = new Array<Operation>();
@@ -145,6 +84,11 @@ export class FunctionBuilder {
                 }
             }
         }
+    }
+
+    pushCall(symbolDef: FunctionSymbolDef) {
+        const ins: CallOperation = { kind: OperationKind.CALL, symbol: symbolDef.symbol };
+        return this.push(ins);
     }
 
     pushConvert(type: sc.StackItemType) {

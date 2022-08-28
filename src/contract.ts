@@ -6,13 +6,13 @@ export function symbol() { return "TOKEN"; }
 /** @safe */
 export function decimals() { return 8; }
 
-// export function mint(account: neo.Address, amount: bigint): void {
-//     if (amount === 0n) return;
-//     if (amount < 0n) throw new Error("amount must be greater than zero");
+export function mint(account: ByteString, amount: bigint): void {
+    if (amount === 0n) return;
+    if (amount < 0n) throw new Error("amount must be greater than zero");
 
-//     updateBalance(account, amount);
-//     updateTotalSupply(amount);
-// }
+    updateBalance(account, amount);
+    updateTotalSupply(amount);
+}
 
 const prefixTotalSupply = 0xA0;
 const prefixBalance = 0xA1;
@@ -35,14 +35,14 @@ function updateBalance(account: ByteString, amount: bigint) {
     return true;
 }
 
-// function updateTotalSupply(amount: bigint) {
-//     const context = Storage.currentContext;
-//     const key = ByteString.from([prefixTotalSupply]);
-//     const value = Storage.get(context, key);
-//     let totalSupply = value ? value as bigint : 0n;
-//     totalSupply += amount;
-//     Storage.put(context, key, totalSupply);
-// }
+function updateTotalSupply(amount: bigint) {
+    const context = Storage.currentContext;
+    const key = ByteString.from([prefixTotalSupply]);
+    const value = Storage.get(context, key);
+    let totalSupply = value ? value as bigint : 0n;
+    totalSupply += amount;
+    Storage.put(context, key, totalSupply);
+}
 
 // /** @safe */
 // export function getValue() { 
