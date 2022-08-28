@@ -5,6 +5,7 @@ export interface ByteString extends Omit<Uint8Array, TypedArrayMutableProperties
 }
 export declare const ByteString: ByteStringConstructor;
 export interface ByteStringConstructor {
+    concat(one: ByteString, two: ByteString): ByteString;
     from(arrayLike: ArrayLike<number>): ByteString;
 }
 

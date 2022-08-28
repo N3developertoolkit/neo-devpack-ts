@@ -18,6 +18,7 @@ import { sc } from '@cityofzion/neon-core'
 import { dispatch } from "../utility/nodeDispatch";
 import { getSymbolOrCompileError, isBigIntLike, isBooleanLike, isStringLike } from "../utils";
 import { ByteStringConstructor_from } from "./builtins";
+import { timeStamp } from "console";
 
 export interface ProcessOptions {
     builder: FunctionBuilder,
@@ -160,6 +161,48 @@ function processBinaryExpression(node: tsm.BinaryExpression, options: ProcessOpt
     const right = node.getRight();
 
     switch (opTokenKind) {
+        case tsm.SyntaxKind.LessThanToken: {
+            processExpression(left, options);
+            processExpression(right, options);
+            options.builder.push(OperationKind.LT);
+            break;
+        }
+        case tsm.SyntaxKind.GreaterThanToken: {
+            processExpression(left, options);
+            processExpression(right, options);
+            options.builder.push(OperationKind.LT);
+            break;
+        }
+        case tsm.SyntaxKind.LessThanEqualsToken: {
+            processExpression(left, options);
+            processExpression(right, options);
+            options.builder.push(OperationKind.LE);
+            break;
+        }
+        case tsm.SyntaxKind.GreaterThanEqualsToken: {
+            processExpression(left, options);
+            processExpression(right, options);
+            options.builder.push(OperationKind.GE);
+            break;
+        }
+        case tsm.SyntaxKind.EqualsEqualsToken:
+        case tsm.SyntaxKind.EqualsEqualsEqualsToken: {
+            processExpression(left, options);
+            processExpression(right, options);
+            options.builder.push(OperationKind.NUMEQUAL);
+            break;
+        }
+        case tsm.SyntaxKind.PlusToken: {
+            processExpression(left, options);
+            processExpression(right, options);
+            if (isBigIntLike(left.getType()) && isBigIntLike(right.getType())) {
+                options.builder.push(OperationKind.ADD);
+            }
+            else {
+                throw new CompileError('not supported', opToken);
+            }
+            break;
+        }
         case tsm.SyntaxKind.QuestionQuestionToken: {
             const { builder } = options;
             processExpression(left, options);
@@ -169,74 +212,29 @@ function processBinaryExpression(node: tsm.BinaryExpression, options: ProcessOpt
             builder.pushJump(OperationKind.JMPIFNOT, endTarget);
             processExpression(right, options)
             endTarget.operation = builder.push(OperationKind.NOP).instruction;
-            return;
+            break;
         }
-        case tsm.SyntaxKind.FirstAssignment: {
+        case tsm.SyntaxKind.EqualsToken: {
             const resolved = resolveOrThrow(options.scope, left);
             processExpression(right, options);
             storeSymbolDef(resolved, options);
-            return;
+            break;
         }
         case tsm.SyntaxKind.PlusEqualsToken: {
             const resolved = resolveOrThrow(options.scope, left);
             processExpression(left, options);
             processExpression(right, options);
-            if (isBigIntLike(left.getType()) && isBigIntLike(right.getType()))
-            {
+            if (isBigIntLike(left.getType()) && isBigIntLike(right.getType())) {
                 options.builder.push(OperationKind.ADD);
                 storeSymbolDef(resolved, options);
-                return;
+            } else {
+                throw new CompileError('not supported', opToken);
             }
+            break;
         }
-        case tsm.SyntaxKind.PlusToken: {
-            processExpression(left, options);
-            processExpression(right, options);
-            if (isBigIntLike(left.getType()) && isBigIntLike(right.getType()))
-            {
-                options.builder.push(OperationKind.ADD);
-                return;
-            }
-        }
+        default:
+            throw new CompileError(`not implemented ${tsm.SyntaxKind[opTokenKind]}`, node);
     }
-
-    throw new CompileError(`not implemented ${tsm.SyntaxKind[opTokenKind]}`, node);
-
-    // if (opTokenKind === tsm.SyntaxKind.QuestionQuestionToken) {
-    //     processExpression(node.getLeft(), options);
-    //     processNullCoalesce(options, (options) => {
-    //         processExpression(node.getRight(), options);
-    //     })
-    //     return;
-    // }
-    // if (opTokenKind === tsm.SyntaxKind.EqualsToken) {
-    //     processExpression(right, options);
-    //     const s = left.getSymbol();
-    //     const r = s ? options.scope.resolve(s) : undefined;
-
-    //     if (r instanceof VariableSymbolDefinition) {
-    //         options.builder.pushStore(SlotType.Local, r.index);
-    //     }
-    //     return;
-    // }
-
-    // const opCode = binaryOperatorTokenToOpCode(
-    //     node.getOperatorToken(),
-    //     left.getType(),
-    //     right.getType()
-    // );
-
-    processExpression(left, options);
-    processExpression(right, options);
-    // options.builder.push(opCode);
-
-    // if (isCompoundAssignment(opTokenKind)) {
-    //     const s = left.getSymbol();
-    //     const r = s ? options.scope.resolve(s) : undefined;
-
-    //     if (r instanceof VariableSymbolDefinition) {
-    //         options.builder.pushStore(SlotType.Local, r.index);
-    //     }
-    // }
 }
 
 // function binaryOperatorTokenToOpCode(
@@ -283,6 +281,12 @@ function processCallExpression(node: tsm.CallExpression, options: ProcessOptions
 
     if (exprTypeFQN === '"/node_modules/@neo-project/neo-contract-framework/index".ByteStringConstructor.from') {
         ByteStringConstructor_from(node, options);
+        return;
+    }
+
+    if (exprTypeFQN === '"/node_modules/@neo-project/neo-contract-framework/index".ByteStringConstructor.concat') {
+        processArguments(node.getArguments(), options);
+        options.builder.push(OperationKind.CAT)
         return;
     }
 
