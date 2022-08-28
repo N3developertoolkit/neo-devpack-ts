@@ -84,7 +84,6 @@ export class ParameterSymbolDef implements SymbolDef {
 }
 
 export class FunctionSymbolDef implements SymbolDef, Scope {
-    private _operations: ReadonlyArray<Operation | tsm.Node> | undefined;
     private readonly _map: SymbolMap;
     readonly symbol: tsm.Symbol;
 
@@ -100,18 +99,6 @@ export class FunctionSymbolDef implements SymbolDef, Scope {
         for (let index = 0; index < paramsLength; index++) {
             this.define(s => new ParameterSymbolDef(params[index], s, index))
         }
-    }
-
-    get operations(): IterableIterator<Operation | tsm.Node> { return this.getOperations(); }
-    private *getOperations() {
-        if (this._operations) {
-            yield *this._operations;
-        }
-    }
-
-    // @internal
-    setOperations(instructions: IterableIterator<Operation | tsm.Node>) {
-        this._operations = [...instructions];
     }
 
     get symbolDefs() { return this._map.symbolDefs; }

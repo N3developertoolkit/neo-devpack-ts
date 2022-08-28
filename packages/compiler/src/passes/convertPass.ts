@@ -54,7 +54,7 @@ const sysCallHash: Record<NeoService, number> = {
 
 function convertOperation(operation: Operation): Instruction {
     if (isJumpOperation(operation)) {
-        const ins: OffsetInstruction = { 
+        const ins: OffsetInstruction = {
             opCode: <OpCode>(operation.kind + 1),
             operand: new Uint8Array(4),
             offset1: operation.offset,
@@ -63,7 +63,7 @@ function convertOperation(operation: Operation): Instruction {
     }
 
     if (isTryOperation(operation)) {
-        const ins: OffsetInstruction = { 
+        const ins: OffsetInstruction = {
             opCode: <OpCode>(operation.kind + 1),
             operand: new Uint8Array(4),
             offset1: operation.catchOffset,
@@ -84,7 +84,7 @@ function convertOperation(operation: Operation): Instruction {
             const opCode = OpCode.INITSLOT;
             const operand = Uint8Array.from([localCount, paramCount])
             return { opCode, operand };
-        } 
+        }
         case OperationKind.PUSHDATA: {
             const { value } = operation as PushDataOperation;
 
@@ -142,7 +142,7 @@ function convertOperation(operation: Operation): Instruction {
             const hash = sysCallHash[service];
             const buffer = new ArrayBuffer(4);
             new DataView(buffer).setUint32(0, hash, true);
-            return { 
+            return {
                 opCode: OpCode.SYSCALL,
                 operand: new Uint8Array(buffer)
             };
@@ -160,20 +160,20 @@ function convertOperation(operation: Operation): Instruction {
             }
             const operand = Uint8Array.from([index]);
             return { opCode: opCode + 7, operand };
-        
+
         }
-        case OperationKind.JMP: 
-        case OperationKind.JMPIF: 
+        case OperationKind.JMP:
+        case OperationKind.JMPIF:
         case OperationKind.JMPIFNOT:
-        case OperationKind.JMPEQ: 
+        case OperationKind.JMPEQ:
         case OperationKind.JMPNE:
         case OperationKind.JMPGT:
         case OperationKind.JMPGE:
         case OperationKind.JMPLT:
         case OperationKind.JMPLE:
-        case OperationKind.TRY: 
+        case OperationKind.TRY:
             throw new Error("handled before switch");
-        default: return { opCode: (operation.kind as number) as OpCode } ;
+        default: return { opCode: (operation.kind as number) as OpCode };
     }
 
 }
@@ -188,113 +188,60 @@ function isOffsetInstruction(ins: Instruction): ins is OffsetInstruction {
 }
 
 export function convertPass(context: CompileContext): void {
-    for (const symbolDef of context.globals.symbolDefs) {
+    for (const func of context.functions) {
+        if (!func.operations) continue;
 
-        if (symbolDef instanceof FunctionSymbolDef) {
-            const passOne = new Array<Instruction | tsm.Node>();
-            const addressMap = new Map<Instruction, number>();
+        const passOne = new Array<Instruction | tsm.Node>();
+        const addressMap = new Map<Instruction, number>();
 
-            function getOffsetAddress(index: number, offset: number) {
-                const sourceAddress = addressMap.get(passOne[index] as Instruction);
-                if (!sourceAddress) throw new Error("invalid source")
-                const targetAddress = addressMap.get(passOne[index + offset] as Instruction);
-                if (!targetAddress) throw new Error("invalid target");
-                return targetAddress - sourceAddress;
-            }
-
-            let address = 0;
-            for (const opOrNode of symbolDef.operations) {
-                if (isOperation(opOrNode)) {
-                    const ins = convertOperation(opOrNode);
-                    addressMap.set(ins, address);
-                    address += 1 + (ins.operand?.length ?? 0);
-                    passOne.push(ins);
-                } else {
-                    passOne.push(opOrNode);
-                }
-            }
-
-            const passTwo = new Array<Instruction>();
-            let location: tsm.Node | undefined = undefined;
-            for (let index = 0; index < passOne.length; index++) {
-                const insOrNode = passOne[index];
-                if (insOrNode instanceof tsm.Node) {
-                    location = insOrNode;
-                } else {
-                    if (isOffsetInstruction(insOrNode)) {
-                        const offset1 = getOffsetAddress(index, insOrNode.offset1);
-                        const offset2 = insOrNode.offset2 ? getOffsetAddress(index, insOrNode.offset2) : undefined;
-                        const buffer = new ArrayBuffer(offset2 ? 8 : 4);
-                        const dataview = new DataView(buffer);
-                        dataview.setInt32(0, offset1, true);
-                        if (offset2) { dataview.setInt32(4, offset2, true); }
-                        passTwo.push({
-                            opCode: insOrNode.opCode,
-                            operand: new Uint8Array(buffer),
-                            location
-                        })
-                    } else {
-                        passTwo.push({
-                            opCode: insOrNode.opCode,
-                            operand: insOrNode.operand,
-                            location
-                        })
-                    }
-                }
-
-            }
-
-
-
-            
-    //         const operations = [...symbolDef.operations].filter(isOperation);
-    //         const locationMap = new Map(iterateLocations(symbolDef.operations));
-    //         const instructions = new Array<Instruction>();
-
-    //         const operationsLength = operations.length;
-    //         let address = 0;
-    //         for (let i = 0; i < operationsLength; i++) {
-    //             function resolveTarget(target: TargetOffset): number {
-    //                 if (!target.operation) throw new Error(`Missing target`);
-    //                 const value = operations.indexOf(target.operation);
-    //                 if (value < 0) throw new Error(`Invalid target`);
-    //                 return value - i;
-    //             }
-
-    //             const operation = operations[i];
-    //             const ins = convertOperation(operation, resolveTarget);
-    //             ins.address = address;
-    //             ins.location = locationMap.get(operation);
-    //             instructions.push(ins)
-                
-    //             address += (1 + (ins.operand?.length ?? 0));
-    //         }
-
-            
-
-    //         for (let i = 0; i < operationsLength; i++) {
-    //             const ins = instructions[i];
-    //             if (ins.target) {
-
-    //                 ins.target = undefined;
-    //             }
-
-    //         }
-
+        function getOffsetAddress(index: number, offset: number) {
+            const sourceAddress = addressMap.get(passOne[index] as Instruction);
+            if (!sourceAddress) throw new Error("invalid source")
+            const targetAddress = addressMap.get(passOne[index + offset] as Instruction);
+            if (!targetAddress) throw new Error("invalid target");
+            return targetAddress - sourceAddress;
         }
-    }
-}
 
-function *iterateLocations(operations: IterableIterator<Operation | tsm.Node>): IterableIterator<[Operation, tsm.Node]>  {
-    let node: tsm.Node | undefined = undefined;
-    for (const op of operations) {
-        if (isNode(op)) {
-            node = op;
-        } else {
-            if (node) {
-                yield [op, node];
-                node = undefined;
+        let address = 0;
+        for (const opOrNode of func.operations) {
+            if (isOperation(opOrNode)) {
+                const ins = convertOperation(opOrNode);
+                addressMap.set(ins, address);
+                address += 1 + (ins.operand?.length ?? 0);
+                passOne.push(ins);
+            } else {
+                passOne.push(opOrNode);
             }
         }
+
+        const instructions = new Array<Instruction>();
+        let location: tsm.Node | undefined = undefined;
+        for (let index = 0; index < passOne.length; index++) {
+            const insOrNode = passOne[index];
+            if (insOrNode instanceof tsm.Node) {
+                location = insOrNode;
+            } else {
+                if (isOffsetInstruction(insOrNode)) {
+                    const offset1 = getOffsetAddress(index, insOrNode.offset1);
+                    const offset2 = insOrNode.offset2 ? getOffsetAddress(index, insOrNode.offset2) : undefined;
+                    const buffer = new ArrayBuffer(offset2 ? 8 : 4);
+                    const dataview = new DataView(buffer);
+                    dataview.setInt32(0, offset1, true);
+                    if (offset2) { dataview.setInt32(4, offset2, true); }
+                    instructions.push({
+                        opCode: insOrNode.opCode,
+                        operand: new Uint8Array(buffer),
+                        location
+                    })
+                } else {
+                    instructions.push({
+                        opCode: insOrNode.opCode,
+                        operand: insOrNode.operand,
+                        location
+                    })
+                }
+            }
+        }
+        func.instructions = instructions;
     }
 }

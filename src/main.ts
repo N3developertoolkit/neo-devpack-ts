@@ -1,7 +1,7 @@
 import { join } from "path";
 import { readFile } from "fs/promises";
 import * as tsm from "ts-morph";
-import { compile, ConvertOperation, createContractProject, FunctionSymbolDef, InitSlotOperation, Operation, OperationKind, isJumpOperation, isLoadStoreOperation, LoadStoreOperation, PushDataOperation, PushIntOperation, SysCallOperation, toDiagnostic } from '../packages/compiler/';
+import { compile, ConvertOperation, createContractProject, FunctionSymbolDef, InitSlotOperation, Operation, OperationKind, isJumpOperation, isLoadStoreOperation, LoadStoreOperation, PushDataOperation, PushIntOperation, SysCallOperation, toDiagnostic, FunctionContext } from '../packages/compiler/';
 import util from 'util';
 import { StackItemType } from "../packages/compiler/src/types/StackItem";
 
@@ -43,10 +43,8 @@ async function main() {
             return;
         }
 
-        for (const def of results.context.globals.symbolDefs) {
-            if (def instanceof FunctionSymbolDef) {
-                dumpFunctionDef(def);
-            }
+        for (const func of results.context.functions) {
+            dumpFunctionOperations(func);
         }
     } catch (error) {
         printDiagnostics([toDiagnostic(error)]);
@@ -82,14 +80,14 @@ const magenta = `${AnsiEscapeSequences.BrightMagenta}%s${AnsiEscapeSequences.Res
 const yellow = `${AnsiEscapeSequences.BrightYellow}%s${AnsiEscapeSequences.Reset}`;
 const invert = `${AnsiEscapeSequences.Invert}%s${AnsiEscapeSequences.Reset}`;
 
-export function dumpFunctionDef(def: FunctionSymbolDef) {
-    const info = getOperationInfo(def.node);
+export function dumpFunctionOperations(ctx: FunctionContext) {
+    const info = getFunctionInfo(ctx.node);
     const params = info.parameters.map(p => `${p.name}: ${p.type.getText()}`).join(', ');
     const publicStr = info.isPublic ? 'public ' : '';
     const safeStr = info.safe ? ' [safe]' : '';
     console.log(magenta, `${publicStr}${info.name}(${params})${safeStr}`);
 
-    const operations = [...def.operations];
+    const operations = ctx.operations ?? [];
     const padding = `${operations.length}`.length;
 
     for (let i = 0; i < operations.length; i++) {
@@ -110,7 +108,7 @@ export function dumpFunctionDef(def: FunctionSymbolDef) {
     }
 }
 
-function getOperationInfo(node: tsm.FunctionDeclaration) {
+function getFunctionInfo(node: tsm.FunctionDeclaration) {
     return {
         name: node.getNameOrThrow(),
         safe: node.getJsDocs()

@@ -1,7 +1,8 @@
 import * as tsm from "ts-morph";
-import { convertPass } from "./passes/convertPass";
+import { convertPass, Instruction } from "./passes/convertPass";
 import { processFunctionDeclarationsPass } from "./passes/processFunctionDeclarations";
 import { createGlobalScope, Scope } from "./scope";
+import { Operation } from "./types";
 import { toDiagnostic } from "./utils";
 
 // https://github.com/CityOfZion/neon-js/issues/858
@@ -17,17 +18,24 @@ export class CompileError extends Error {
 }
 
 export interface CompileOptions {
-    project: tsm.Project;
-    addressVersion?: number;
-    inline?: boolean;
-    optimize?: boolean;
+    readonly project: tsm.Project;
+    readonly addressVersion?: number;
+    readonly inline?: boolean;
+    readonly optimize?: boolean;
+}
+
+export interface FunctionContext {
+    readonly node: tsm.FunctionDeclaration;
+    operations?: ReadonlyArray<Operation | tsm.Node>;
+    instructions?: ReadonlyArray<Instruction>;
 }
 
 export interface CompileContext {
-    readonly diagnostics: Array<tsm.ts.Diagnostic>,
-    readonly globals: Scope,
-    readonly options: Readonly<Required<Omit<CompileOptions, 'project'>>>
-    readonly project: tsm.Project,
+    readonly diagnostics: Array<tsm.ts.Diagnostic>;
+    readonly globals: Scope;
+    readonly options: Readonly<Required<Omit<CompileOptions, 'project'>>>;
+    readonly project: tsm.Project;
+    readonly functions: Array<FunctionContext>;
 }
 
 export function compile(options: CompileOptions) {
@@ -42,6 +50,7 @@ export function compile(options: CompileOptions) {
             optimize: options.optimize ?? false,
         },
         project: options.project,
+        functions: []
     };
 
     // type CompilePass = (context: CompileContext) => void;

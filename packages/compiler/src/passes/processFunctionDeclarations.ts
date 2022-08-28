@@ -531,14 +531,23 @@ function processFunctionDeclaration(symbolDef: FunctionSymbolDef, context: Compi
     const builder = new FunctionBuilder(params.length);
     processStatement(body, { builder, scope: symbolDef, });
     builder.pushReturn();
-    symbolDef.setOperations(builder.operations);
+    context.functions.push({
+        node,
+        operations: [...builder.operations]
+    })
 }
 
 export function processFunctionDeclarationsPass(context: CompileContext): void {
-    for (const symbolDef of context.globals.symbolDefs) {
-        if (symbolDef instanceof FunctionSymbolDef) {
-            processFunctionDeclaration(symbolDef, context);
-        }
+    const { project, globals } = context;
+
+    for (const src of project.getSourceFiles()) {
+        if (src.isDeclarationFile()) continue;
+        src.forEachChild(node => {
+            if (tsm.Node.isFunctionDeclaration(node)) {
+                const symbolDef = resolveOrThrow(globals, node) as FunctionSymbolDef;
+                processFunctionDeclaration(symbolDef, context);
+            }
+        });
     }
 }
 
