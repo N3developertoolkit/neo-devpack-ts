@@ -4,8 +4,11 @@ import { collectArtifacts } from "./collectArtifacts";
 import { processFunctionDeclarationsPass } from "./passes/processFunctionDeclarations";
 import { createGlobalScope, Scope } from "./scope";
 import { Operation } from "./types";
-import { DebugInfo } from "./types/DebugInfo";
+import { DebugInfo, toJson as debugInfoToJson } from "./types/DebugInfo";
 import { toDiagnostic } from "./utils";
+import * as fs from 'fs';
+import * as fsp from 'fs/promises';
+import * as path from 'path';
 
 // https://github.com/CityOfZion/neon-js/issues/858
 const DEFAULT_ADDRESS_VALUE = 53;
@@ -90,6 +93,48 @@ export function compile(options: CompileOptions) {
         context
     };
 }
+
+async function exists(rootPath: fs.PathLike) {
+    try {
+        await fsp.access(rootPath);
+        return true;
+    } catch {
+        return false;
+    }
+}
+export async function saveArtifacts(artifacts: CompileArtifacts, rootPath: string, baseName: string = "contract") {
+    if (await exists(rootPath) === false) { await fsp.mkdir(rootPath); }
+
+    const nefPath = path.join(rootPath, baseName + ".nef")
+    const manifestPath = path.join(rootPath, baseName + ".manifest.json");
+    const debugInfoPath = path.join(rootPath, baseName + ".debug.json");
+
+    const nef = Buffer.from(artifacts.nef.serialize(), 'hex');
+    const manifest = JSON.stringify(artifacts.manifest.toJson(), null, 4);
+    const debugInfo = JSON.stringify(debugInfoToJson(artifacts.debugInfo), null, 4);
+
+    await Promise.all([
+        fsp.writeFile(nefPath, nef), 
+        fsp.writeFile(manifestPath, manifest),
+        fsp.writeFile(debugInfoPath, debugInfo)]);
+}
+
+// function saveArtifacts(
+//     rootPath: string,
+//     filename: string,
+//     source: string,
+//     artifacts: CompileArtifacts
+// ) {
+//     if (!fs.existsSync(rootPath)) { fs.mkdirSync(rootPath); }
+//     const basename = path.parse(filename).name;
+//     const nefPath = path.join(rootPath, basename + ".nef");
+//     const manifestPath = path.join(rootPath, basename + ".manifest.json");
+//     const tsPath = path.join(artifactPath, filename);
+
+//     fs.writeFileSync(nefPath, Buffer.from(artifacts.nef.serialize(), 'hex'));
+//     fs.writeFileSync(manifestPath, JSON.stringify(artifacts.manifest.toJson(), null, 4));
+//     fs.writeFileSync(tsPath, source);
+// }
 
 // function optimizePass(context: CompileContext): void {
 //     // if (!context.options.optimize) { return; }

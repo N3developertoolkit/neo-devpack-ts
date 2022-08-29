@@ -21,8 +21,8 @@ export function isUnspecified(type: ContractType) {
     return type.kind === ContractTypeKind.Unspecified;
 }
 
-export const unspecified: ContractType = { 
-    kind: ContractTypeKind.Unspecified 
+export const unspecified: ContractType = {
+    kind: ContractTypeKind.Unspecified
 }
 
 export const enum PrimitiveType {
@@ -74,8 +74,9 @@ export interface StructContractType extends ContractType {
     kind: ContractTypeKind.Struct,
     readonly name: string,
     readonly fields: ReadonlyArray<{
-        readonly name: string, 
-        readonly type: ContractType}>,
+        readonly name: string,
+        readonly type: ContractType
+    }>,
 }
 
 export function isStruct(type: ContractType): type is StructContractType {
@@ -108,4 +109,40 @@ export interface InteropContractType extends ContractType {
 
 export function isInterop(type: ContractType): type is InteropContractType {
     return type.kind === ContractTypeKind.Interop;
+}
+
+export function toString(type: ContractType | PrimitiveType): string {
+    if (typeof type !== 'object') {
+        switch (type) {
+            case PrimitiveType.Address: return "#Address";
+            case PrimitiveType.Boolean: return "#Boolean";
+            case PrimitiveType.ByteArray: return "#ByteArray";
+            case PrimitiveType.Hash160: return "#Hash160";
+            case PrimitiveType.Hash256: return "#Hash256";
+            case PrimitiveType.Integer: return "#Integer";
+            case PrimitiveType.PublicKey: return "#PublicKey";
+            case PrimitiveType.Signature: return "#Signature";
+            case PrimitiveType.String: return "#String";
+            default: throw new Error(`unknown PrimitiveType ${type}`);
+        }
+    } else {
+        switch (type.kind) {
+            case ContractTypeKind.Array: {
+                const aType = type as ArrayContractType;
+                return `#Array<${toString(aType.type)}>`;
+            }
+            // case ContractTypeKind.Interop: return "";
+            case ContractTypeKind.Map: {
+                const mType = type as MapContractType;
+                return `#Map<${toString(mType.keyType)}:${toString(mType.valueType)}>`;
+            }
+            case ContractTypeKind.Primitive: {
+                return toString((type as PrimitiveContractType).type);
+            }
+            // case ContractTypeKind.Struct: return "";
+            case ContractTypeKind.Unspecified: return "#Unspecified";
+            default: throw new Error(`${type.kind} not supported`);
+        }
+    }
+
 }

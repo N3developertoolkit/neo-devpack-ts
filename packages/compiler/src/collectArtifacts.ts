@@ -317,7 +317,7 @@ export function convertToContractType(type: tsm.Type): ContractType {
     if (typeFQN === '"/node_modules/@neo-project/neo-contract-framework/index".ByteString') {
         return {
             kind: ContractTypeKind.Primitive,
-            type: PrimitiveType.Boolean
+            type: PrimitiveType.ByteArray
         } as PrimitiveContractType;
     }
 
