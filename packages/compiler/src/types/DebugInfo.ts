@@ -1,8 +1,10 @@
+import path from "path";
 import { ContractType, PrimitiveType, StructContractType, toString as contractTypeToString } from "./ContractType";
+import { join } from 'path';
+import { sc, u } from "@cityofzion/neon-core";
+import * as tsm from "ts-morph";
 
 export interface DebugInfo {
-    contractHash: string,
-    checksum: number,
     methods?: Method[];
     events?: Event[];
     staticVariables?: SlotVariable[];
@@ -50,13 +52,13 @@ export interface StorageGroupDef {
 
 export interface SequencePoint {
     address: number;
-    document: string;
-    start: { line: number, column: number };
-    end: { line: number, column: number };
+    location: tsm.Node,
 }
 
 export interface DebugInfoJson {
+    version: undefined | 2,
     hash: string; // hex-encoded UInt160
+    checksum: number;
     documents?: string[]; // file paths
     events?: {
         id: string;
@@ -75,30 +77,45 @@ export interface DebugInfoJson {
     "static-variables"?: string[];
 }
 
-export function toJson(info: DebugInfo): DebugInfoJson {
-    const documents = [...new Set(info.methods
+export function toJson(info: DebugInfo, nef: sc.NEF, sourceDir?: string): DebugInfoJson {
+    const documentSet = [...new Set(info.methods
         ?.flatMap(m => m.sequencePoints ?? [])
-        .map(sp => sp.document) ?? [])];
-    const documentMap = new Map(documents.map((v,i) => [v, i]));
+        .map(sp => sp.location.getSourceFile()) ?? [])
+        .values()];
+
+    const documentMap = new Map(documentSet.map((v, i) => [v, i]));
+    const documents = documentSet
+        .map(d => {
+            const path = d.getFilePath();
+            return sourceDir 
+                ? join(sourceDir, path) 
+                : path
+        });
 
     const methods = info.methods?.map(m => {
         return {
-            name: m.name,
+            name: `,${m.name}`,
             range: `${m.range.start}-${m.range.end}`,
-            params: m.parameters?.map((p,i) => `${p.name},${contractTypeToString(p.type)},${i}`),
+            params: m.parameters?.map((p, i) => `${p.name},${contractTypeToString(p.type)},${i}`),
             "return": m.returnType ? contractTypeToString(m.returnType) : undefined,
             "sequence-points": m.sequencePoints?.map(sp => {
-                const index = documentMap.get(sp.document)!;
-                return `${sp.address}[${index}]${sp.start.line}:${sp.start.column}-${sp.end.line}:${sp.end.column}`
+                const { address, location: node } = sp;
+                const src = node.getSourceFile();
+                const start = src.getLineAndColumnAtPos(node.getStart());
+                const end = src.getLineAndColumnAtPos(node.getEnd());
+                const index = documentMap.get(src)!;
+                return `${address}[${index}]${start.line}:${start.column}-${end.line}:${end.column}`
             })
         }
     })
 
+    const hash = Buffer.from(u.hash160(nef.script), 'hex').reverse();
     const json: DebugInfoJson = {
-        hash: info.contractHash,
+        version: 2,
+        hash: `0x${hash.toString('hex')}`,
+        checksum: nef.checksum,
         documents,
         methods
     }
     return json;
 }
-

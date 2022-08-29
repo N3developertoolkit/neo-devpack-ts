@@ -1,12 +1,10 @@
 import * as tsm from "ts-morph";
-import { CompileContext, CompileError, FunctionContext } from "./compiler";
+import { CompileContext, FunctionContext } from "./compiler";
 import { ConvertOperation, InitSlotOperation, isCallOperation, isJumpOperation, isTryOperation, LoadStoreOperation, Operation, OperationKind, PushDataOperation, PushIntOperation, SysCallOperation } from "./types";
 import { bigIntToByteArray, isBigIntLike, isBooleanLike, isNotNullOrUndefined, isNumberLike, isStringLike, isVoidLike } from "./utils";
-import { sc, u } from '@cityofzion/neon-core'
+import { sc } from '@cityofzion/neon-core'
 import { DebugInfo, Method as DebugInfoMethod, SequencePoint } from "./types/DebugInfo";
 import { ContractType, ContractTypeKind, PrimitiveContractType, PrimitiveType } from "./types/ContractType";
-import { FunctionSymbolDef } from "./scope";
-import { INSPECT_MAX_BYTES } from "buffer";
 
 interface Instruction {
     readonly address: number
@@ -234,8 +232,6 @@ export function collectArtifacts(context: CompileContext) {
     });
 
     const debugInfo:DebugInfo = {
-        checksum: nef.checksum,
-        contractHash: u.hash160(nef.script),
         methods: debugMethods,
     }
 
@@ -286,12 +282,9 @@ function toDebugMethodInfo(ctx: FunctionContext, funcIns: Array<Instruction>): D
 function toSequencePoint(ins: Instruction): SequencePoint | undefined {
     if (!ins.location) return undefined;
     const node = ins.location;
-    const src = node.getSourceFile();
     return {
         address: ins.address,
-        document: src.getFilePath(),
-        start: src.getLineAndColumnAtPos(node.getStart()),
-        end: src.getLineAndColumnAtPos(node.getEnd())
+        location: ins.location,
     }
 }
 

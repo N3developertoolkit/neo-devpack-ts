@@ -2,6 +2,8 @@ import { FunctionContext, OperationKind, Operation, isLoadStoreOperation, isJump
 import util from 'util';
 import { FunctionDeclaration } from "ts-morph";
 import { sc } from '@cityofzion/neon-core'
+import { OpCode } from '@cityofzion/neon-core/lib/sc';
+import { debug } from 'console';
 
 export function dumpFunctionContext(ctx: FunctionContext) {
     const info = getFunctionInfo(ctx.node);
@@ -218,12 +220,19 @@ export function getComment(op: Operation, curIndex: number): string | undefined 
 export function dumpArtifacts({ nef, debugInfo }: CompileArtifacts) {
     const starts = new Map(debugInfo.methods?.map(m => [m.range.start, m]))
     const ends = new Map(debugInfo.methods?.map(m => [m.range.end, m]));
+    const locationMap = new Map(debugInfo.methods
+        ?.flatMap(m => m.sequencePoints ?? [])
+        .map(sp => [sp.address, sp.location]) ?? []);
     const opTokens = sc.OpToken.fromScript(nef.script);
     const padding = `${opTokens.length}`.length;
     let address = 0;
     for (const token of opTokens) {
         const s = starts.get(address);
         if (s) { console.log(magenta, `# Method Start ${s.name}`); }
+        const loc = locationMap.get(address);
+        if (loc) {
+            console.log(cyan, loc.print({ removeComments: true }));
+        }
         let msg = util.format(invert, `${(address).toString().padStart(padding)}:`);
         msg += ` ${token.prettyPrint()}`;
         const comment = getOpTokenComment(token, address);
@@ -249,6 +258,32 @@ function getOpTokenComment(token: sc.OpToken, address: number): string | undefin
             ? operand.readInt8() : operand.readInt32LE();
         return `offset: ${offset}, target: ${address + offset}`;
     }
-    
+
+    switch (token.code) {
+        case sc.OpCode.PUSHINT8:
+        case sc.OpCode.PUSHINT16:
+        case sc.OpCode.PUSHINT32:
+        case sc.OpCode.PUSHINT64:
+        case sc.OpCode.PUSHINT128:
+        case sc.OpCode.PUSHINT256: {
+            let hex = Buffer.from(operand!).reverse().toString('hex');
+            return `${BigInt(hex)}`
+        }
+        case sc.OpCode.SYSCALL: {
+            const entries = Object.entries(sc.InteropServiceCode);
+            const entry = entries.find(t => t[1] === token.params!);
+            return entry ? entry[0] : undefined;
+        }
+        case sc.OpCode.CONVERT: {
+            return sc.StackItemType[operand![0]];
+        }
+        case sc.OpCode.INITSLOT: {
+            const localCount = operand[0];
+            const paramCount = operand[1];
+            return `locals: ${localCount}, params: ${paramCount}`;
+        }
+    }
+
+
     return undefined;
 }
