@@ -131,7 +131,10 @@ export function toString(type: ContractType | PrimitiveType): string {
                 const aType = type as ArrayContractType;
                 return `#Array<${toString(aType.type)}>`;
             }
-            // case ContractTypeKind.Interop: return "";
+            case ContractTypeKind.Interop: {
+                const iType = type as InteropContractType;
+                return `#Interop<${iType.type}>`;
+            }
             case ContractTypeKind.Map: {
                 const mType = type as MapContractType;
                 return `#Map<${toString(mType.keyType)}:${toString(mType.valueType)}>`;

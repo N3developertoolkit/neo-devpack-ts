@@ -105,7 +105,7 @@ function processVariableStatement(node: tsm.VariableStatement, options: ProcessO
     const { builder, scope } = options;
 
     for (const decl of node.getDeclarations()) {
-        const slotIndex = builder.addLocalSlot();
+        const slotIndex = builder.addLocal(decl);
         const symbolDef = scope.define(s => new VariableSymbolDef(decl, s, 'local', slotIndex));
         const init = decl.getInitializer();
         if (init) {
@@ -477,7 +477,8 @@ function processFunctionDeclaration(symbolDef: FunctionSymbolDef, context: Compi
     builder.pushReturn();
     context.functions.push({
         node,
-        operations: [...builder.operations]
+        operations: [...builder.operations],
+        locals: builder.locals,
     })
 }
 

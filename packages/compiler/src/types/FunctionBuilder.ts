@@ -14,9 +14,16 @@ export interface NodeSetter {
 type NodeSetterWithInstruction = NodeSetter & { readonly instruction: Operation };
 
 export type SlotType = 'local' | 'static' | 'parameter';
+
+export interface LocalVariable {
+    name: string,
+    index: number,
+    type: tsm.Type,
+}
+
 export class FunctionBuilder {
-    private _localCount: number = 0;
     private readonly _operations = new Array<Operation>();
+    private readonly _locals = new Array<tsm.VariableDeclaration>();
     private readonly _returnTarget: TargetOffset = { operation: undefined }
     private readonly _jumps = new Map<JumpOperation, TargetOffset>();
 
@@ -24,14 +31,27 @@ export class FunctionBuilder {
 
     get returnTarget(): Readonly<TargetOffset> { return this._returnTarget; }
 
-    addLocalSlot() { return this._localCount++; }
+    addLocal(decl: tsm.VariableDeclaration) {
+        const length = this._locals.push(decl);
+        return length - 1;
+    }
+
+    get locals(): ReadonlyArray<LocalVariable> {
+        return this._locals.map((v, i) => ({
+            name: v.getName(),
+            index: i,
+            type: v.getType()
+
+        }));
+    }
 
     get operations(): IterableIterator<Operation> { return this.getOperations(); }
     private *getOperations() {
-        if (this.paramCount > 0 || this._localCount > 0) {
+        const localCount = this._locals.length;
+        if (this.paramCount > 0 || localCount > 0) {
             const ins: InitSlotOperation = {
                 kind: OperationKind.INITSLOT,
-                localCount: this._localCount,
+                localCount: localCount,
                 paramCount: this.paramCount,
             }
             yield ins;

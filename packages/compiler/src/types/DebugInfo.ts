@@ -98,6 +98,7 @@ export function toJson(info: DebugInfo, nef: sc.NEF, sourceDir?: string): DebugI
             range: `${m.range.start}-${m.range.end}`,
             params: m.parameters?.map((p, i) => `${p.name},${contractTypeToString(p.type)},${i}`),
             "return": m.returnType ? contractTypeToString(m.returnType) : undefined,
+            variables: m.variables?.map(v => `${v.name},${contractTypeToString(v.type)},${v.index!}`),
             "sequence-points": m.sequencePoints?.map(sp => {
                 const { address, location: node } = sp;
                 const src = node.getSourceFile();

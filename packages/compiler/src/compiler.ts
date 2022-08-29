@@ -9,6 +9,7 @@ import { toDiagnostic } from "./utils";
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
+import { LocalVariable } from "./types/FunctionBuilder";
 
 // https://github.com/CityOfZion/neon-js/issues/858
 const DEFAULT_ADDRESS_VALUE = 53;
@@ -32,6 +33,7 @@ export interface CompileOptions {
 export interface FunctionContext {
     readonly node: tsm.FunctionDeclaration;
     operations?: ReadonlyArray<Operation>;
+    locals?: ReadonlyArray<LocalVariable>;
 }
 
 export interface CompileArtifacts {

@@ -3,8 +3,8 @@ import { CompileContext, FunctionContext } from "./compiler";
 import { ConvertOperation, InitSlotOperation, isCallOperation, isJumpOperation, isTryOperation, LoadStoreOperation, Operation, OperationKind, PushDataOperation, PushIntOperation, SysCallOperation } from "./types";
 import { bigIntToByteArray, isBigIntLike, isBooleanLike, isNotNullOrUndefined, isNumberLike, isStringLike, isVoidLike } from "./utils";
 import { sc } from '@cityofzion/neon-core'
-import { DebugInfo, Method as DebugInfoMethod, SequencePoint } from "./types/DebugInfo";
-import { ContractType, ContractTypeKind, PrimitiveContractType, PrimitiveType } from "./types/ContractType";
+import { DebugInfo, Method as DebugInfoMethod, SequencePoint, SlotVariable } from "./types/DebugInfo";
+import { ContractType, ContractTypeKind, InteropContractType, PrimitiveContractType, PrimitiveType } from "./types/ContractType";
 
 interface Instruction {
     readonly address: number
@@ -265,6 +265,12 @@ function toDebugMethodInfo(ctx: FunctionContext, funcIns: Array<Instruction>): D
         ? undefined
         : convertToContractType(node.getReturnType());
 
+    const variables = ctx.locals?.map(l => ({
+        name: l.name,
+        index: l.index,
+        type: convertToContractType(l.type),
+    })) ?? [];
+
     return {
         name: node.getNameOrThrow(),
         range: { 
@@ -273,6 +279,7 @@ function toDebugMethodInfo(ctx: FunctionContext, funcIns: Array<Instruction>): D
         },
         parameters,
         returnType,
+        variables,
         sequencePoints: funcIns
             .map(toSequencePoint)
             .filter(isNotNullOrUndefined)
@@ -305,13 +312,20 @@ export function convertToContractType(type: tsm.Type): ContractType {
         type: PrimitiveType.Boolean
     } as PrimitiveContractType;
 
-    const typeSymbol = type.getSymbolOrThrow();
+    const typeSymbol = type.getAliasSymbol() ?? type.getSymbolOrThrow();
     const typeFQN = typeSymbol.getFullyQualifiedName();
-    if (typeFQN === '"/node_modules/@neo-project/neo-contract-framework/index".ByteString') {
+    if (typeFQN === '"/node_modules/@neo-project/neo-contract-framework/index".ByteString'
+        || typeFQN === '"/node_modules/@neo-project/neo-contract-framework/index".StorageValue') {
         return {
             kind: ContractTypeKind.Primitive,
             type: PrimitiveType.ByteArray
         } as PrimitiveContractType;
+    }
+    if (typeFQN === '"/node_modules/@neo-project/neo-contract-framework/index".StorageContext') {
+        return {
+            kind: ContractTypeKind.Interop,
+            type: "neo.StorageContext"
+        } as InteropContractType;
     }
 
     throw new Error(`convertTypeScriptType ${type.getText()} not implemented`);
