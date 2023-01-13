@@ -1,6 +1,6 @@
 import * as tsm from "ts-morph";
 import { CompileContext } from "./compiler";
-import { ConvertOperation, InitSlotOperation, isCallOperation, isJumpOperation, isTryOperation, LoadStoreOperation, Operation, OperationKind, PushDataOperation, PushIntOperation, SysCallOperation } from "./types";
+// import { ConvertOperation, InitSlotOperation, isCallOperation, isJumpOperation, isTryOperation, LoadStoreOperation, Operation, OperationKind, PushDataOperation, PushIntOperation, SysCallOperation } from "./types";
 import { bigIntToByteArray, isBigIntLike, isBooleanLike, isNotNullOrUndefined, isNumberLike, isStringLike, isVoidLike } from "./utils";
 import { sc } from '@cityofzion/neon-core'
 import { DebugInfo, Method as DebugInfoMethod, SequencePoint, SlotVariable } from "./types/DebugInfo";
@@ -32,139 +32,139 @@ function isCallInstruction(ins: Instruction): ins is CallInstruction {
 
 const pushIntSizes = [1, 2, 4, 8, 16, 32] as const;
 
-function convertOperation(operation: Operation, address: number): Instruction {
-    function makeInstruction(opCode: sc.OpCode, operand?: Uint8Array): Instruction {
-        return { address, opCode, operand, location: operation.location };
-    }
+// function convertOperation(operation: Operation, address: number): Instruction {
+//     function makeInstruction(opCode: sc.OpCode, operand?: Uint8Array): Instruction {
+//         return { address, opCode, operand, location: operation.location };
+//     }
 
-    if (isJumpOperation(operation)) {
-        const ins: OffsetInstruction = {
-            address,
-            opCode: <sc.OpCode>(operation.kind + 1),
-            operand: new Uint8Array(4),
-            location: operation.location,
-            offset1: operation.offset,
-        }
-        return ins;
-    }
+//     if (isJumpOperation(operation)) {
+//         const ins: OffsetInstruction = {
+//             address,
+//             opCode: <sc.OpCode>(operation.kind + 1),
+//             operand: new Uint8Array(4),
+//             location: operation.location,
+//             offset1: operation.offset,
+//         }
+//         return ins;
+//     }
 
-    if (isTryOperation(operation)) {
-        const ins: OffsetInstruction = {
-            address,
-            opCode: <sc.OpCode>(operation.kind + 1),
-            operand: new Uint8Array(8),
-            location: operation.location,
-            offset1: operation.catchOffset,
-            offset2: operation.finallyOffset,
-        }
-        return ins;
-    }
+//     if (isTryOperation(operation)) {
+//         const ins: OffsetInstruction = {
+//             address,
+//             opCode: <sc.OpCode>(operation.kind + 1),
+//             operand: new Uint8Array(8),
+//             location: operation.location,
+//             offset1: operation.catchOffset,
+//             offset2: operation.finallyOffset,
+//         }
+//         return ins;
+//     }
 
-    if (isCallOperation(operation)) {
-        const ins: CallInstruction = {
-            address,
-            opCode: sc.OpCode.CALL_L,
-            operand: new Uint8Array(4),
-            location: operation.location,
-            symbol: operation.symbol,
-        }
-        return ins;
-    }
+//     if (isCallOperation(operation)) {
+//         const ins: CallInstruction = {
+//             address,
+//             opCode: sc.OpCode.CALL_L,
+//             operand: new Uint8Array(4),
+//             location: operation.location,
+//             symbol: operation.symbol,
+//         }
+//         return ins;
+//     }
 
-    switch (operation.kind) {
-        case OperationKind.CONVERT: {
-            const { type } = operation as ConvertOperation;
-            const operand = Uint8Array.from([type]);
-            return makeInstruction(sc.OpCode.CONVERT, operand);
-        }
-        case OperationKind.INITSLOT: {
-            const { localCount, paramCount } = operation as InitSlotOperation;
-            const operand = Uint8Array.from([localCount, paramCount])
-            return makeInstruction(sc.OpCode.INITSLOT, operand);
-        }
-        case OperationKind.PUSHDATA: {
-            const { value } = operation as PushDataOperation;
+//     switch (operation.kind) {
+//         case OperationKind.CONVERT: {
+//             const { type } = operation as ConvertOperation;
+//             const operand = Uint8Array.from([type]);
+//             return makeInstruction(sc.OpCode.CONVERT, operand);
+//         }
+//         case OperationKind.INITSLOT: {
+//             const { localCount, paramCount } = operation as InitSlotOperation;
+//             const operand = Uint8Array.from([localCount, paramCount])
+//             return makeInstruction(sc.OpCode.INITSLOT, operand);
+//         }
+//         case OperationKind.PUSHDATA: {
+//             const { value } = operation as PushDataOperation;
 
-            if (value.length <= 255) /* byte.MaxValue */ {
-                const operand = Uint8Array.from([value.length, ...value]);
-                return makeInstruction(sc.OpCode.PUSHDATA1, operand);
-            }
-            if (value.length <= 65535) /* ushort.MaxValue */ {
-                const buffer = new ArrayBuffer(2 + value.length);
-                new DataView(buffer).setUint16(0, value.length, true);
-                const operand = new Uint8Array(buffer);
-                operand.set(value, 2);
-                return makeInstruction(sc.OpCode.PUSHDATA2, operand);
-            }
-            if (value.length <= 4294967295) /* uint.MaxValue */ {
-                const buffer = new ArrayBuffer(4 + value.length);
-                new DataView(buffer).setUint32(0, value.length, true);
-                const operand = new Uint8Array(buffer);
-                operand.set(value, 4);
-                return makeInstruction(sc.OpCode.PUSHDATA4, operand);
-            }
-            throw new Error(`pushData length ${value.length} too long`);
-        }
-        case OperationKind.PUSHINT: {
-            const { value } = operation as PushIntOperation;
-            if (-1n <= value && value <= 16n) {
-                const opCode: sc.OpCode = sc.OpCode.PUSH0 + Number(value);
-                return makeInstruction(opCode);
-            }
+//             if (value.length <= 255) /* byte.MaxValue */ {
+//                 const operand = Uint8Array.from([value.length, ...value]);
+//                 return makeInstruction(sc.OpCode.PUSHDATA1, operand);
+//             }
+//             if (value.length <= 65535) /* ushort.MaxValue */ {
+//                 const buffer = new ArrayBuffer(2 + value.length);
+//                 new DataView(buffer).setUint16(0, value.length, true);
+//                 const operand = new Uint8Array(buffer);
+//                 operand.set(value, 2);
+//                 return makeInstruction(sc.OpCode.PUSHDATA2, operand);
+//             }
+//             if (value.length <= 4294967295) /* uint.MaxValue */ {
+//                 const buffer = new ArrayBuffer(4 + value.length);
+//                 new DataView(buffer).setUint32(0, value.length, true);
+//                 const operand = new Uint8Array(buffer);
+//                 operand.set(value, 4);
+//                 return makeInstruction(sc.OpCode.PUSHDATA4, operand);
+//             }
+//             throw new Error(`pushData length ${value.length} too long`);
+//         }
+//         case OperationKind.PUSHINT: {
+//             const { value } = operation as PushIntOperation;
+//             if (-1n <= value && value <= 16n) {
+//                 const opCode: sc.OpCode = sc.OpCode.PUSH0 + Number(value);
+//                 return makeInstruction(opCode);
+//             }
 
-            const buffer = bigIntToByteArray(value);
-            const bufferLength = buffer.length;
-            const pushIntSizesLength = pushIntSizes.length;
-            for (let index = 0; index < pushIntSizesLength; index++) {
-                const pushIntSize = pushIntSizes[index];
-                if (bufferLength <= pushIntSize) {
-                    const padding = pushIntSize - bufferLength;
-                    const opCode: sc.OpCode = sc.OpCode.PUSHINT8 + index;
-                    const operand = padding == 0
-                        ? buffer
-                        : Uint8Array.from([
-                            ...buffer,
-                            ...Buffer.alloc(padding, value < 0 ? 0xff : 0x00)]);
-                    return makeInstruction(opCode, operand);
-                }
-            }
+//             const buffer = bigIntToByteArray(value);
+//             const bufferLength = buffer.length;
+//             const pushIntSizesLength = pushIntSizes.length;
+//             for (let index = 0; index < pushIntSizesLength; index++) {
+//                 const pushIntSize = pushIntSizes[index];
+//                 if (bufferLength <= pushIntSize) {
+//                     const padding = pushIntSize - bufferLength;
+//                     const opCode: sc.OpCode = sc.OpCode.PUSHINT8 + index;
+//                     const operand = padding == 0
+//                         ? buffer
+//                         : Uint8Array.from([
+//                             ...buffer,
+//                             ...Buffer.alloc(padding, value < 0 ? 0xff : 0x00)]);
+//                     return makeInstruction(opCode, operand);
+//                 }
+//             }
 
-            throw new Error("convert PUSHINT failed");
-        }
-        case OperationKind.SYSCALL: {
-            const { service } = operation as SysCallOperation;
-            const operand = Buffer.from(service, 'hex');
-            return makeInstruction(sc.OpCode.SYSCALL, operand);
-        }
-        case OperationKind.LDARG:
-        case OperationKind.LDLOC:
-        case OperationKind.LDSFLD:
-        case OperationKind.STARG:
-        case OperationKind.STLOC:
-        case OperationKind.STSFLD: {
-            const { kind, index } = operation as LoadStoreOperation;
-            const opCode = <sc.OpCode>(kind - 7);
-            if (index <= 6) {
-                return makeInstruction(opCode + index);
-            }
-            const operand = Uint8Array.from([index]);
-            return makeInstruction(opCode + 7, operand);
-        }
-        case OperationKind.JMP:
-        case OperationKind.JMPIF:
-        case OperationKind.JMPIFNOT:
-        case OperationKind.JMPEQ:
-        case OperationKind.JMPNE:
-        case OperationKind.JMPGT:
-        case OperationKind.JMPGE:
-        case OperationKind.JMPLT:
-        case OperationKind.JMPLE:
-        case OperationKind.TRY:
-            throw new Error("handled before switch");
-        default:
-            return makeInstruction(<sc.OpCode>(operation.kind as number));
-    }
-}
+//             throw new Error("convert PUSHINT failed");
+//         }
+//         case OperationKind.SYSCALL: {
+//             const { service } = operation as SysCallOperation;
+//             const operand = Buffer.from(service, 'hex');
+//             return makeInstruction(sc.OpCode.SYSCALL, operand);
+//         }
+//         case OperationKind.LDARG:
+//         case OperationKind.LDLOC:
+//         case OperationKind.LDSFLD:
+//         case OperationKind.STARG:
+//         case OperationKind.STLOC:
+//         case OperationKind.STSFLD: {
+//             const { kind, index } = operation as LoadStoreOperation;
+//             const opCode = <sc.OpCode>(kind - 7);
+//             if (index <= 6) {
+//                 return makeInstruction(opCode + index);
+//             }
+//             const operand = Uint8Array.from([index]);
+//             return makeInstruction(opCode + 7, operand);
+//         }
+//         case OperationKind.JMP:
+//         case OperationKind.JMPIF:
+//         case OperationKind.JMPIFNOT:
+//         case OperationKind.JMPEQ:
+//         case OperationKind.JMPNE:
+//         case OperationKind.JMPGT:
+//         case OperationKind.JMPGE:
+//         case OperationKind.JMPLT:
+//         case OperationKind.JMPLE:
+//         case OperationKind.TRY:
+//             throw new Error("handled before switch");
+//         default:
+//             return makeInstruction(<sc.OpCode>(operation.kind as number));
+//     }
+// }
 
 export function collectArtifacts(context: CompileContext) {
     let address = 0;

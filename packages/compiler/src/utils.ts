@@ -92,11 +92,11 @@ export function isCompoundAssignment(kind: tsm.SyntaxKind) {
     }
 }
 
-export function getNumericLiteral(node: tsm.NumericLiteral) {
-    const literal = node.getLiteralValue();
-    if (!Number.isInteger(literal)) throw new CompileError(`invalid non-integer numeric literal`, node);
-    return literal;
-}
+// export function getNumericLiteral(node: tsm.NumericLiteral) {
+//     const literal = node.getLiteralValue();
+//     if (!Number.isInteger(literal)) throw new CompileError(`invalid non-integer numeric literal`, node);
+//     return literal;
+// }
 
 // @internal
 export function getConstantValue(node: tsm.Expression) {
@@ -106,7 +106,8 @@ export function getConstantValue(node: tsm.Expression) {
         case tsm.SyntaxKind.BigIntLiteral: 
             return (node as tsm.BigIntLiteral).getLiteralValue() as bigint;
         case tsm.SyntaxKind.NumericLiteral: {
-            const literal = getNumericLiteral(node as tsm.NumericLiteral);
+            const literal = (node as tsm.NumericLiteral).getLiteralValue();
+            if (!Number.isInteger(literal)) throw new CompileError(`invalid non-integer numeric literal`, node);
             return BigInt(literal);
         }
         case tsm.SyntaxKind.FalseKeyword:

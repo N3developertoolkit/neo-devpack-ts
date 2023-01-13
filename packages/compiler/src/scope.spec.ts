@@ -6,6 +6,7 @@ import { ConstantSymbolDef, createGlobalScope, FunctionSymbolDef } from './scope
 import path from 'path';
 import fs from 'fs/promises';
 import { AsyncLazy } from './utility/Lazy';
+import { CompileContext, DEFAULT_ADDRESS_VALUE } from './compiler';
 
 const scfx = new AsyncLazy(async () => {
     const scfxPath = path.join(__dirname, "../../framework/src/index.d.ts");
@@ -17,6 +18,22 @@ export async function createTestProject(source: string) {
     const project = await createContractProject(scfxSrc);
     const sourceFile = project.createSourceFile("contract.ts", source);
     return { project, sourceFile };
+}
+
+export async function createTestProjectContext(source: string) {
+    const { project, sourceFile } = await createTestProject(source);
+    const globals = createGlobalScope(project);
+    const context: CompileContext = {
+        diagnostics: [],
+        globals,
+        options: {
+            addressVersion: DEFAULT_ADDRESS_VALUE,
+            inline: false,
+            optimize:  false,
+        },
+        project,
+    };
+    return {context, sourceFile};
 }
 
 // note, this function will only save the last symbol with a given name

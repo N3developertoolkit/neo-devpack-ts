@@ -1,7 +1,7 @@
 import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
 import { collectArtifacts } from "./collectArtifacts";
-import { processFunctionDeclarationsPass } from "./passes/processFunctionDeclarations";
+// import { processFunctionDeclarationsPass } from "./passes/processFunctionDeclarations";
 import { createGlobalScope, Scope } from "./scope";
 // import { Operation } from "./types";
 import { DebugInfo, toJson as debugInfoToJson } from "./types/DebugInfo";
@@ -9,8 +9,9 @@ import { toDiagnostic } from "./utils";
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
-import { LocalVariable } from "./types/FunctionBuilder";
+// import { LocalVariable } from "./types/FunctionBuilder";
 import { Console } from "console";
+import { create } from "domain";
 
 // @internal
 export const DEFAULT_ADDRESS_VALUE = 53;
@@ -39,7 +40,7 @@ export interface CompileArtifacts {
 
 export interface CompileContext {
     readonly diagnostics: Array<tsm.ts.Diagnostic>;
-    // readonly globals: Scope;
+    readonly globals: Scope;
     readonly options: Readonly<Required<Omit<CompileOptions, 'project'>>>;
     readonly project: tsm.Project;
     // readonly functions: Array<FunctionContext>;
@@ -55,32 +56,10 @@ export interface CompileContext {
 export function compile(options: CompileOptions) {
 
     const { project } = options;
-
-    for (const src of project.getSourceFiles()) {
-        if (src.isDeclarationFile()) continue;
-        src.forEachChild(node => {
-            if (tsm.Node.isJSDocable(node)) {
-                for (const doc of node.getJsDocs()) {
-                    for (const tag of doc.getTags()) {
-                        console.log(JSON.stringify(tag.getStructure(), null, 4));
-                    }
-                }
-            }
-        })
-
-        // src.
-        // src.forEachChild(node => {
-        //     if (tsm.Node.isFunctionDeclaration(node)) {
-        //         // const symbolDef = resolveOrThrow(globals, node) as FunctionSymbolDef;
-        //         // processFunctionDeclaration(symbolDef, context);
-        //     }
-        // });
-    }
-
-
+    const globals = createGlobalScope(project);
     const context: CompileContext = {
         diagnostics: [],
-        // globals,
+        globals,
         options: {
             addressVersion: options.addressVersion ?? DEFAULT_ADDRESS_VALUE,
             inline: options.inline ?? false,

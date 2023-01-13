@@ -1,21 +1,11 @@
 import * as tsm from "ts-morph";
 import { CompileError } from "./compiler";
-import { SlotType } from "./types/FunctionBuilder";
 import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
-import { getConstantValue, getSymbolOrCompileError } from "./utils";
+import { getConstantValue } from "./utils";
 
 export interface Scope {
     readonly parentScope: Scope | undefined;
-    readonly symbolDefs: IterableIterator<SymbolDef>;
-    define<T extends SymbolDef>(factory: T | ((scope: Scope) => T)): T;
     resolve(symbol: tsm.Symbol): SymbolDef | undefined;
-}
-
-export function resolveOrThrow(scope: Scope, node: tsm.Node): SymbolDef {
-    const symbol = getSymbolOrCompileError(node);
-    const resolved = scope.resolve( symbol);
-    if (!resolved) { throw new CompileError(`unresolved symbol ${symbol.getName()}`, node); }
-    return resolved;
 }
 
 export interface SymbolDef {
@@ -23,29 +13,33 @@ export interface SymbolDef {
     readonly parentScope: Scope;
 }
 
-// @internal
-export class SymbolMap {
-    private readonly map = new Map<tsm.Symbol, SymbolDef>();
+function resolve(map: ReadonlyMap<tsm.Symbol, SymbolDef>, symbol: tsm.Symbol, parent?: Scope) {
+    const symbolDef = map.get(symbol);
+    return symbolDef ?? parent?.resolve(symbol);
+}
 
-    constructor(readonly scope: Scope) { }
-
-    get symbolDefs() { return this.map.values(); }
-
-    define<T extends SymbolDef>(factory: T | ((scope: Scope) => T)): T {
-        const instance = typeof factory === 'function' ? factory(this.scope) : factory;
-        if (instance.parentScope !== this.scope) {
-            throw new Error(`Invalid scope for ${instance.symbol.getName()}`);
-        }
-        if (this.map.has(instance.symbol)) {
-            throw new Error(`${instance.symbol.getName()} already defined in this scope`);
-        }
-        this.map.set(instance.symbol, instance);
-        return instance;
+function define<T extends SymbolDef>(scope: Scope, map: Map<tsm.Symbol, SymbolDef>, factory: T | ((scope: Scope) => T)): T {
+    const instance = typeof factory === 'function' ? factory(scope) : factory;
+    if (instance.parentScope !== scope) {
+        throw new Error(`Invalid scope for ${instance.symbol.getName()}`);
     }
+    if (map.has(instance.symbol)) {
+        throw new Error(`${instance.symbol.getName()} already defined in this scope`);
+    }
+    map.set(instance.symbol, instance);
+    return instance;
+}
+
+export class GlobalScope implements Scope {
+    private readonly map = new Map<tsm.Symbol, SymbolDef>();
+    readonly parentScope = undefined;
 
     resolve(symbol: tsm.Symbol): SymbolDef | undefined {
-        const symbolDef = this.map.get(symbol);
-        return symbolDef ?? this.scope.parentScope?.resolve(symbol);
+        return resolve(this.map, symbol);
+    }
+
+    define<T extends SymbolDef>(factory: T | ((scope: Scope) => T)): T {
+        return define(this, this.map, factory);
     }
 }
 
@@ -58,19 +52,6 @@ export class ConstantSymbolDef implements SymbolDef {
     }
 }
 
-export class VariableSymbolDef implements SymbolDef {
-    readonly symbol: tsm.Symbol;
-
-    constructor(
-        readonly node: tsm.VariableDeclaration,
-        readonly parentScope: Scope,
-        readonly slotType: Exclude<SlotType, 'parameter'>,
-        readonly index: number,
-    ) {
-        this.symbol = getSymbolOrCompileError(node);
-    }
-}
-
 export class ParameterSymbolDef implements SymbolDef {
     readonly symbol: tsm.Symbol;
     constructor(
@@ -78,73 +59,65 @@ export class ParameterSymbolDef implements SymbolDef {
         readonly parentScope: Scope,
         readonly index: number
     ) {
-        this.symbol = getSymbolOrCompileError(node);
+        this.symbol = node.getSymbolOrThrow();
     }
 }
 
 export class FunctionSymbolDef implements SymbolDef, Scope {
-    private readonly _map: SymbolMap;
+    private readonly map = new Map<tsm.Symbol, SymbolDef>();
     readonly symbol: tsm.Symbol;
 
     constructor(
         readonly node: tsm.FunctionDeclaration,
         readonly parentScope: Scope,
     ) {
-        this._map = new SymbolMap(this);
-        this.symbol = getSymbolOrCompileError(node);
+        this.symbol = node.getSymbolOrThrow();
 
         const params = node.getParameters();
         const paramsLength = params.length;
         for (let index = 0; index < paramsLength; index++) {
-            this.define(s => new ParameterSymbolDef(params[index], s, index))
+            define(this, this.map, s => new ParameterSymbolDef(params[index], s, index));
         }
     }
 
-    get symbolDefs() { return this._map.symbolDefs; }
-    define<T extends SymbolDef>(factory: T | ((scope: Scope) => T)): T {
-        return this._map.define(factory);
-    }
     resolve(symbol: tsm.Symbol): SymbolDef | undefined {
-        return this._map.resolve(symbol);
+        return resolve(this.map, symbol, this.parentScope);
     }
 }
 
-export class BlockScope implements Scope {
-    private readonly map: SymbolMap;
+// export class VariableSymbolDef implements SymbolDef {
+//     readonly symbol: tsm.Symbol;
 
-    constructor(
-        readonly node: tsm.Block,
-        readonly parentScope: Scope,
-    ) {
-        this.map = new SymbolMap(this);
-    }
-    get symbolDefs() { return this.map.symbolDefs; }
-    define<T extends SymbolDef>(factory: T | ((scope: Scope) => T)): T {
-        return this.map.define(factory);
-    }
-    resolve(symbol: tsm.Symbol): SymbolDef | undefined {
-        return this.map.resolve(symbol);
-    }
-}
+//     constructor(
+//         readonly node: tsm.VariableDeclaration,
+//         readonly parentScope: Scope,
+//         readonly slotType: Exclude<SlotType, 'parameter'>,
+//         readonly index: number,
+//     ) {
+//         this.symbol = getSymbolOrCompileError(node);
+//     }
+// }
 
-export class GlobalScope implements Scope {
-    private readonly map: SymbolMap;
-    readonly parentScope = undefined;
+// export class BlockScope implements Scope {
+//     private readonly map: SymbolMap;
 
-    constructor() {
-        this.map = new SymbolMap(this);
-    }
-
-    get symbolDefs() { return this.map.symbolDefs; }
-    define<T extends SymbolDef>(factory: T | ((scope: Scope) => T)): T {
-        return this.map.define(factory);
-    }
-    resolve(symbol: tsm.Symbol): SymbolDef | undefined {
-        return this.map.resolve(symbol);
-    }
-}
+//     constructor(
+//         readonly node: tsm.Block,
+//         readonly parentScope: Scope,
+//     ) {
+//         this.map = new SymbolMap(this);
+//     }
+//     get symbolDefs() { return this.map.symbolDefs; }
+//     define<T extends SymbolDef>(factory: T | ((scope: Scope) => T)): T {
+//         return this.map.define(factory);
+//     }
+//     resolve(symbol: tsm.Symbol): SymbolDef | undefined {
+//         return this.map.resolve(symbol);
+//     }
+// }
 
 // @internal
+
 export function createGlobalScope(project: tsm.Project) {
     const globals = new GlobalScope();
     for (const src of project.getSourceFiles()) {
@@ -157,12 +130,12 @@ export function createGlobalScope(project: tsm.Project) {
                 && node.getDeclarationKind() === tsm.VariableDeclarationKind.Const
             ) {
                 for (const decl of node.getDeclarations()) {
-                    const value = getConstantValue(decl.getInitializerOrThrow());
-                    if (value !== undefined) {
-                        const symbol = decl.getSymbol();
-                        if (symbol) {
-                            globals.define(s => new ConstantSymbolDef(symbol, s, value));
-                        }
+                    const symbol = decl.getSymbol();
+                    if (symbol) {
+                        const init = decl.getInitializer();
+                        if (!init) throw new CompileError("Invalid const initializer", decl);
+                        const value = getConstantValue(init);
+                        globals.define(s => new ConstantSymbolDef(symbol, s, value));
                     }
                 }
             }

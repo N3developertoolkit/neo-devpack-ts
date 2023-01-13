@@ -12,6 +12,7 @@ import fs from 'fs/promises';
 import { AsyncLazy } from './utility/Lazy';
 import { createContractProject } from './utils';
 import { CompileContext, DEFAULT_ADDRESS_VALUE } from './compiler';
+import { createGlobalScope } from './scope';
 
 const scfx = new AsyncLazy(async () => {
     const scfxPath = path.join(__dirname, "../../framework/src/index.d.ts");
@@ -25,19 +26,7 @@ export async function createTestProject(source: string) {
     return { project, sourceFile };
 }
 
-export async function createTestProjectContext(source: string) {
-    const { project, sourceFile } = await createTestProject(source);
-    const context: CompileContext = {
-        diagnostics: [],
-        options: {
-            addressVersion: DEFAULT_ADDRESS_VALUE,
-            inline: false,
-            optimize:  false,
-        },
-        project,
-    };
-    return {context, sourceFile};
-}
+
 
 // export enum AnsiEscapeSequences {
 //     Black = "\u001b[30m",
