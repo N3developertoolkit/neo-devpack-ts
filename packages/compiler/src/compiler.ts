@@ -3,16 +3,17 @@ import * as tsm from "ts-morph";
 import { collectArtifacts } from "./collectArtifacts";
 import { processFunctionDeclarationsPass } from "./passes/processFunctionDeclarations";
 import { createGlobalScope, Scope } from "./scope";
-import { Operation } from "./types";
+// import { Operation } from "./types";
 import { DebugInfo, toJson as debugInfoToJson } from "./types/DebugInfo";
 import { toDiagnostic } from "./utils";
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
 import { LocalVariable } from "./types/FunctionBuilder";
+import { Console } from "console";
 
-// https://github.com/CityOfZion/neon-js/issues/858
-const DEFAULT_ADDRESS_VALUE = 53;
+// @internal
+export const DEFAULT_ADDRESS_VALUE = 53;
 
 export class CompileError extends Error {
     constructor(
@@ -30,12 +31,6 @@ export interface CompileOptions {
     readonly optimize?: boolean;
 }
 
-export interface FunctionContext {
-    readonly node: tsm.FunctionDeclaration;
-    operations?: ReadonlyArray<Operation>;
-    locals?: ReadonlyArray<LocalVariable>;
-}
-
 export interface CompileArtifacts {
     nef: sc.NEF;
     manifest: sc.ContractManifest;
@@ -44,56 +39,90 @@ export interface CompileArtifacts {
 
 export interface CompileContext {
     readonly diagnostics: Array<tsm.ts.Diagnostic>;
-    readonly globals: Scope;
+    // readonly globals: Scope;
     readonly options: Readonly<Required<Omit<CompileOptions, 'project'>>>;
     readonly project: tsm.Project;
-    readonly functions: Array<FunctionContext>;
+    // readonly functions: Array<FunctionContext>;
 }
+
+// export interface FunctionContext {
+//     readonly node: tsm.FunctionDeclaration;
+//     operations?: ReadonlyArray<Operation>;
+//     locals?: ReadonlyArray<LocalVariable>;
+// }
+
 
 export function compile(options: CompileOptions) {
 
-    const globals = createGlobalScope(options.project);
+    const { project } = options;
+
+    for (const src of project.getSourceFiles()) {
+        if (src.isDeclarationFile()) continue;
+        src.forEachChild(node => {
+            if (tsm.Node.isJSDocable(node)) {
+                for (const doc of node.getJsDocs()) {
+                    for (const tag of doc.getTags()) {
+                        console.log(JSON.stringify(tag.getStructure(), null, 4));
+                    }
+                }
+            }
+        })
+
+        // src.
+        // src.forEachChild(node => {
+        //     if (tsm.Node.isFunctionDeclaration(node)) {
+        //         // const symbolDef = resolveOrThrow(globals, node) as FunctionSymbolDef;
+        //         // processFunctionDeclaration(symbolDef, context);
+        //     }
+        // });
+    }
+
+
     const context: CompileContext = {
         diagnostics: [],
-        globals,
+        // globals,
         options: {
             addressVersion: options.addressVersion ?? DEFAULT_ADDRESS_VALUE,
             inline: options.inline ?? false,
             optimize: options.optimize ?? false,
         },
         project: options.project,
-        functions: []
+        // functions: []
     };
 
-    // type CompilePass = (context: CompileContext) => void;
-    const passes = [
-        processFunctionDeclarationsPass,
-    ] as const;
 
-    for (const pass of passes) {
-        try {
-            pass(context);
-        } catch (error) {
-            context.diagnostics.push(toDiagnostic(error));
-        }
+    throw new Error("Not Implemented")
+    // const globals = createGlobalScope(options.project);
 
-        if (context.diagnostics.some(d => d.category == tsm.ts.DiagnosticCategory.Error)) {
-            break;
-        }
-    }
+    // // type CompilePass = (context: CompileContext) => void;
+    // const passes = [
+    //     processFunctionDeclarationsPass,
+    // ] as const;
 
-    let artifacts: CompileArtifacts | undefined; 
-    try {
-        artifacts = collectArtifacts(context);
-    } catch (error) {
-        context.diagnostics.push(toDiagnostic(error));
-    }
+    // for (const pass of passes) {
+    //     try {
+    //         pass(context);
+    //     } catch (error) {
+    //         context.diagnostics.push(toDiagnostic(error));
+    //     }
 
-    return {
-        diagnostics: context.diagnostics,
-        artifacts,
-        context
-    };
+    //     if (context.diagnostics.some(d => d.category == tsm.ts.DiagnosticCategory.Error)) {
+    //         break;
+    //     }
+    // }
+
+    // let artifacts: CompileArtifacts | undefined; 
+    // try {
+    //     artifacts = collectArtifacts(context);
+    // } catch (error) {
+    //     context.diagnostics.push(toDiagnostic(error));
+    // }
+
+    // return {
+    //     diagnostics: context.diagnostics,
+    //     artifacts,
+    //     context
+    // };
 }
 
 async function exists(rootPath: fs.PathLike) {

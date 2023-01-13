@@ -1,36 +1,36 @@
-import { FunctionContext, OperationKind, Operation, isLoadStoreOperation, isJumpOperation, CallOperation, ConvertOperation, PushIntOperation, PushDataOperation, InitSlotOperation, SysCallOperation, CompileArtifacts } from '../packages/compiler';
+import { OperationKind, Operation, isLoadStoreOperation, isJumpOperation, CallOperation, ConvertOperation, PushIntOperation, PushDataOperation, InitSlotOperation, SysCallOperation, CompileArtifacts } from '../packages/compiler';
 import util from 'util';
 import { FunctionDeclaration } from "ts-morph";
 import { sc } from '@cityofzion/neon-core'
 import { OpCode } from '@cityofzion/neon-core/lib/sc';
 import { debug } from 'console';
 
-export function dumpFunctionContext(ctx: FunctionContext) {
-    const info = getFunctionInfo(ctx.node);
-    const params = info.parameters.map(p => `${p.name}: ${p.type.getText()}`).join(', ');
-    const publicStr = info.isPublic ? 'public ' : '';
-    const safeStr = info.safe ? ' [safe]' : '';
-    console.log(magenta, `${publicStr}${info.name}(${params})${safeStr}`);
+// export function dumpFunctionContext(ctx: FunctionContext) {
+//     const info = getFunctionInfo(ctx.node);
+//     const params = info.parameters.map(p => `${p.name}: ${p.type.getText()}`).join(', ');
+//     const publicStr = info.isPublic ? 'public ' : '';
+//     const safeStr = info.safe ? ' [safe]' : '';
+//     console.log(magenta, `${publicStr}${info.name}(${params})${safeStr}`);
 
-    const operations = ctx.operations ?? [];
-    const padding = `${operations.length}`.length;
+//     const operations = ctx.operations ?? [];
+//     const padding = `${operations.length}`.length;
 
-    for (let i = 0; i < operations.length; i++) {
-        const op = operations[i];
-        if (op.location) {
-            console.log(cyan, ` # ${op.location.print({ removeComments: true })}`);
-        }
-        let msg = util.format(invert, `${(i).toString().padStart(padding)}:`);
-        msg += " " + OperationKind[op.kind];
-        const operand = getOperand(op);
-        msg += util.format(yellow, " " + operand);
-        const comment = getComment(op, i);
-        if (comment) {
-            msg += util.format(green, ` # ${comment}`);
-        }
-        console.log(msg);
-    }
-}
+//     for (let i = 0; i < operations.length; i++) {
+//         const op = operations[i];
+//         if (op.location) {
+//             console.log(cyan, ` # ${op.location.print({ removeComments: true })}`);
+//         }
+//         let msg = util.format(invert, `${(i).toString().padStart(padding)}:`);
+//         msg += " " + OperationKind[op.kind];
+//         const operand = getOperand(op);
+//         msg += util.format(yellow, " " + operand);
+//         const comment = getComment(op, i);
+//         if (comment) {
+//             msg += util.format(green, ` # ${comment}`);
+//         }
+//         console.log(msg);
+//     }
+// }
 
 enum AnsiEscapeSequences {
     Black = "\u001b[30m",

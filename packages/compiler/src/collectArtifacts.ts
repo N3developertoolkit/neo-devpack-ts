@@ -1,5 +1,5 @@
 import * as tsm from "ts-morph";
-import { CompileContext, FunctionContext } from "./compiler";
+import { CompileContext } from "./compiler";
 import { ConvertOperation, InitSlotOperation, isCallOperation, isJumpOperation, isTryOperation, LoadStoreOperation, Operation, OperationKind, PushDataOperation, PushIntOperation, SysCallOperation } from "./types";
 import { bigIntToByteArray, isBigIntLike, isBooleanLike, isNotNullOrUndefined, isNumberLike, isStringLike, isVoidLike } from "./utils";
 import { sc } from '@cityofzion/neon-core'
@@ -168,21 +168,21 @@ function convertOperation(operation: Operation, address: number): Instruction {
 
 export function collectArtifacts(context: CompileContext) {
     let address = 0;
-    let methodInstructions = new Map<FunctionContext, Array<Instruction>>();
+    // let methodInstructions = new Map<FunctionContext, Array<Instruction>>();
     let methodAddressMap = new Map<tsm.Symbol, number>();
     let instructions = new Array<Instruction>();
-    for (const func of context.functions) {
-        if (!func.operations) continue;
-        methodAddressMap.set(func.node.getSymbolOrThrow(), address);
-        const funcInstructions = new Array<Instruction>();
-        methodInstructions.set(func, funcInstructions);
-        for (const op of func.operations) {
-            const ins = convertOperation(op, address);
-            instructions.push(ins);
-            funcInstructions.push(ins);
-            address += 1 + (ins.operand?.length ?? 0);
-        }
-    }
+    // for (const func of context.functions) {
+    //     if (!func.operations) continue;
+    //     methodAddressMap.set(func.node.getSymbolOrThrow(), address);
+    //     const funcInstructions = new Array<Instruction>();
+    //     methodInstructions.set(func, funcInstructions);
+    //     for (const op of func.operations) {
+    //         const ins = convertOperation(op, address);
+    //         instructions.push(ins);
+    //         funcInstructions.push(ins);
+    //         address += 1 + (ins.operand?.length ?? 0);
+    //     }
+    // }
 
     instructions.forEach((ins, index) => {
         if (isOffsetInstruction(ins)) {
@@ -220,11 +220,11 @@ export function collectArtifacts(context: CompileContext) {
 
     const methodDefs = new Array<sc.ContractMethodDefinition>();
     const debugMethods = new Array<DebugInfoMethod>()
-    for (const [ctx, funcIns] of methodInstructions) {
-        const methodDef = toContractMethodDefinition(ctx.node, funcIns[0].address);
-        if (methodDef) methodDefs.push(methodDef);
-        debugMethods.push(toDebugMethodInfo(ctx, funcIns));
-    }
+    // for (const [ctx, funcIns] of methodInstructions) {
+    //     const methodDef = toContractMethodDefinition(ctx.node, funcIns[0].address);
+    //     if (methodDef) methodDefs.push(methodDef);
+    //     debugMethods.push(toDebugMethodInfo(ctx, funcIns));
+    // }
 
     const manifest = new sc.ContractManifest({
         name: "test-contract",
@@ -254,37 +254,37 @@ function toContractMethodDefinition(node: tsm.FunctionDeclaration, offset: numbe
     });
 }
 
-function toDebugMethodInfo(ctx: FunctionContext, funcIns: Array<Instruction>): DebugInfoMethod {
-    const node = ctx.node;
-    const parameters = node.getParameters().map((p, index) => ({
-        name: p.getName(),
-        index,
-        type: convertToContractType(p.getType()),
-    }));
-    const returnType = isVoidLike(node.getReturnType())
-        ? undefined
-        : convertToContractType(node.getReturnType());
+// function toDebugMethodInfo(ctx: FunctionContext, funcIns: Array<Instruction>): DebugInfoMethod {
+//     const node = ctx.node;
+//     const parameters = node.getParameters().map((p, index) => ({
+//         name: p.getName(),
+//         index,
+//         type: convertToContractType(p.getType()),
+//     }));
+//     const returnType = isVoidLike(node.getReturnType())
+//         ? undefined
+//         : convertToContractType(node.getReturnType());
 
-    const variables = ctx.locals?.map(l => ({
-        name: l.name,
-        index: l.index,
-        type: convertToContractType(l.type),
-    })) ?? [];
+//     const variables = ctx.locals?.map(l => ({
+//         name: l.name,
+//         index: l.index,
+//         type: convertToContractType(l.type),
+//     })) ?? [];
 
-    return {
-        name: node.getNameOrThrow(),
-        range: { 
-            start: funcIns[0].address, 
-            end: funcIns[funcIns.length - 1].address
-        },
-        parameters,
-        returnType,
-        variables,
-        sequencePoints: funcIns
-            .map(toSequencePoint)
-            .filter(isNotNullOrUndefined)
-    };
-}
+//     return {
+//         name: node.getNameOrThrow(),
+//         range: { 
+//             start: funcIns[0].address, 
+//             end: funcIns[funcIns.length - 1].address
+//         },
+//         parameters,
+//         returnType,
+//         variables,
+//         sequencePoints: funcIns
+//             .map(toSequencePoint)
+//             .filter(isNotNullOrUndefined)
+//     };
+// }
 
 function toSequencePoint(ins: Instruction): SequencePoint | undefined {
     if (!ins.location) return undefined;

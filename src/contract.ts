@@ -1,6 +1,19 @@
 import { ByteString, Storage, Address, Runtime, ContractManagement, Contract, Transaction } from '@neo-project/neo-contract-framework';
 
-// this is a prototype NEP-17 contract written in TypeScript.
+/**
+ * @contract ApocToken
+ * @extra Author "Harry Pierson"
+ * @extra Email "harrypierson@hotmail.com"
+ * @extra Description "this is a prototype NEP-17 contract written in TypeScript"
+ * @standard "NEP-17"
+ */
+
+/**
+ * @event Transfer
+ * @param {UInt160} from
+ * @param {UInt160} to
+ * @param {BigInteger} amount
+ */
 
 const SYMBOL = "APOC";
 const DECIMALS = 8n;
@@ -18,7 +31,7 @@ export function decimals() { return DECIMALS; }
 
 /** @safe */
 export function totalSupply() { 
-    const key = ByteString.from([prefixTotalSupply]);
+    const key = new ByteString(prefixTotalSupply);
     return Storage.get(Storage.currentContext, key) as bigint;
 }
 
@@ -26,7 +39,7 @@ export function totalSupply() {
 export function balanceOf(account: Address) { 
     if (!ByteString.isValidAddress(account)) throw new Error();
     const context = Storage.currentContext;
-    const key = ByteString.concat(ByteString.from([prefixBalance]), account);
+    const key = ByteString.concat(new ByteString(prefixBalance), account);
     const value = Storage.get(context, key);
     return value ? value as bigint : 0n;
 }
@@ -76,7 +89,7 @@ function postTransfer(from: Address | null, to: Address | null, amount: bigint, 
 
 function updateTotalSupply(amount: bigint) {
     const context = Storage.currentContext;
-    const key = ByteString.from([prefixTotalSupply]);
+    const key = new ByteString(prefixTotalSupply);
     const value = Storage.get(context, key);
     let totalSupply = value ? value as bigint : 0n;
     totalSupply += amount;
@@ -85,9 +98,7 @@ function updateTotalSupply(amount: bigint) {
 
 function updateBalance(account: Address, amount: bigint) {
     const context = Storage.currentContext;
-    const key = ByteString.concat(
-        ByteString.from([prefixBalance]),
-        account);
+    const key = ByteString.concat(new ByteString(prefixBalance), account);
     const value = Storage.get(context, key);
     let balance = value ? value as bigint : 0n;
     balance = balance + amount;
@@ -100,10 +111,8 @@ function updateBalance(account: Address, amount: bigint) {
     return true;
 }
 
-/** @deploy */
-export function deploy(data: any, update: boolean) { 
+export function _deploy(data: any, update: boolean) { 
     if (update) return;
-
     const key = ByteString.from([prefixContractOwner]);
     var sender = (Runtime.scriptContainer as Transaction).sender;
     Storage.put(Storage.currentContext, key, sender);
@@ -125,6 +134,6 @@ function createTokens(account: Address, amount: bigint) {
 }
 
 function getOwner(): ByteString {
-    const key = ByteString.from([prefixContractOwner]);
+    const key = new ByteString(prefixContractOwner);
     return Storage.get(Storage.currentContext, key) as Address;
 }

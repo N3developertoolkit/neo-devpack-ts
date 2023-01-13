@@ -2,7 +2,7 @@ import { join } from "path";
 import { readFile, writeFile } from "fs/promises";
 import { ts } from "ts-morph";
 import { compile, createContractProject, saveArtifacts, toDiagnostic } from '../packages/compiler/';
-import { dumpArtifacts, dumpFunctionContext } from "./utils";
+import { dumpArtifacts } from "./utils";
 
 
 function printDiagnostics(diags: ReadonlyArray<ts.Diagnostic>) {
@@ -21,8 +21,7 @@ async function main() {
     const project = await createContractProject();
 
     // load test contract
-    const contractPath = join(__dirname, "contract.ts");
-    const contractSource = await readFile(contractPath, 'utf8');
+    const contractSource = await readFile(join(__dirname, "contract.ts"), 'utf8');
 
     project.createSourceFile("contract.ts", contractSource);
     project.resolveSourceFileDependencies();
@@ -33,35 +32,35 @@ async function main() {
 
     if (diagnostics.length > 0) {
         printDiagnostics(diagnostics.map(d => d.compilerObject));
-        return;
-    }
+    } else {
+        try {
+            // const { artifacts, context, diagnostics } = 
+            compile({ project });
 
-    try {
-        const {artifacts, context, diagnostics} = compile({ project });
+            // if (diagnostics.length > 0) {
+            //     printDiagnostics(diagnostics);
+            //     return;
+            // }
+            // if (artifacts) {
+            //     dumpArtifacts(artifacts);
+            //     const rootPath = join(__dirname, "../express/out");
+            //     const sourceDir = join(rootPath, "..");
+            //     await saveArtifacts({
+            //         artifacts,
+            //         rootPath,
+            //         sourceDir,
+            //     })
 
-        if (diagnostics.length > 0) {
-            printDiagnostics(diagnostics);
-            return;
+            //     await writeFile(join(sourceDir, "contract.ts"), contractSource)
+
+            // } else {
+            //     for (const func of context.functions) {
+            //         dumpFunctionContext(func);
+            //     }
+            // }
+        } catch (error) {
+            printDiagnostics([toDiagnostic(error)]);
         }
-        if (artifacts) {
-            dumpArtifacts(artifacts);
-            const rootPath = join(__dirname, "../express/out");
-            const sourceDir = join(rootPath, "..");
-            await saveArtifacts({
-                artifacts, 
-                rootPath,
-                sourceDir,
-            })
-
-            await writeFile(join(sourceDir, "contract.ts"), contractSource)
-
-        } else {
-            for (const func of context.functions) {
-                dumpFunctionContext(func);
-            }
-        }
-    } catch (error) {
-        printDiagnostics([toDiagnostic(error)]);
     }
 }
 

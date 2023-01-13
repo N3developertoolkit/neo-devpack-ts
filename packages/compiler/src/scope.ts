@@ -1,6 +1,5 @@
 import * as tsm from "ts-morph";
 import { CompileError } from "./compiler";
-import { Operation } from "./types/Operation";
 import { SlotType } from "./types/FunctionBuilder";
 import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
 import { getConstantValue, getSymbolOrCompileError } from "./utils";

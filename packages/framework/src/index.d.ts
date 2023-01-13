@@ -6,6 +6,8 @@ export interface ByteString extends Omit<Uint8Array, TypedArrayMutableProperties
 
 export declare const ByteString: ByteStringConstructor;
 export interface ByteStringConstructor {
+    new(array: ArrayLike<number>): ByteString;
+    new(value: number): ByteString;
     concat(one: ByteString, two: ByteString): ByteString;
     from(arrayLike: ArrayLike<number>): ByteString;
     isValidAddress(account: ByteString): boolean;
@@ -27,7 +29,7 @@ export interface StorageConstructor {
 }
 
 export type Address = ByteString;
-
+ 
 // export interface Address {
 //     [Symbol.iterator](): Iterator<number>;
 //  }

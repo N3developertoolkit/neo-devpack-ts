@@ -129,7 +129,7 @@ export function getConstantValue(node: tsm.Expression) {
         //     return Uint8Array.from(buffer);
         // }
         default:
-            return undefined;
+            throw new CompileError(`Unsupported const type ${node.getKindName()}`, node);
     }
 }
 
