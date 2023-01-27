@@ -5,7 +5,7 @@ import { collectArtifacts } from "./collectArtifacts";
 import { ConstantSymbolDef, createGlobalScope, FunctionSymbolDef, ReadonlyScope, Scope } from "./scope";
 // import { Operation } from "./types";
 import { DebugInfo, toJson as debugInfoToJson } from "./types/DebugInfo";
-import { toDiagnostic } from "./utils";
+import { createDiagnostic, toDiagnostic } from "./utils";
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
@@ -53,24 +53,138 @@ export interface CompileContext {
 //     locals?: ReadonlyArray<LocalVariable>;
 // }
 
+function parse(node: tsm.JSDocableNode) {
+    for (const doc of node.getJsDocs()) {
+        const st = doc.getStructure();
+        var i = 0;
+    }
+}
+
+function parseExtraTag() {
+
+}
+
+const CONTRACT_TAG = "contract";
+const EVENT_TAG = "event";
+const SAFE_TAG = "safe";
+
+function parseContractTag(st: tsm.JSDocStructure, options: ProcessMetadataOptions) {
+
+    const initialTag = st.tags![0];
+    if (initialTag.tagName !== CONTRACT_TAG) throw new Error(`parseContractTag ${initialTag.tagName}`);
+    const contractName = st.tags![0].text; 
+    if (typeof contractName !== 'string' || contractName.length === 0) {
+        throw new Error('contract tag must contain a non-empty string');
+    } 
+
+    var length = st.tags!.length;
+    for (var i = 1; i < length; i++) {
+        const tag = st.tags![i];
+        const d = tag.tagName;
+        const q = tag.text;
+
+
+    }
+
+
+}
+
+function parseEventTag(st: tsm.JSDocStructure, options: ProcessMetadataOptions) {
+    const initialTag = st.tags![0];
+    if (initialTag.tagName !== EVENT_TAG) throw new Error(`parseEventTag ${initialTag.tagName}`);
+    const eventName = st.tags![0].text; 
+    if (typeof eventName !== 'string' || eventName.length === 0) {
+        throw new Error(`${EVENT_TAG} tag must contain a non-empty string`);
+    }
+
+    var length = st.tags!.length;
+    for (var i = 1; i < length; i++) {
+        const tag = st.tags![i];
+        const d = tag.tagName;
+        const q = tag.text;
+
+
+    }
+
+
+}
+
+
+interface ProcessMetadataOptions {
+    diagnostics: Array<tsm.ts.Diagnostic> 
+}
+
+function processMetadataNode(node: tsm.JSDoc, options: ProcessMetadataOptions) {
+    const st = node.getStructure();
+    if (st.tags && st.tags.length > 0) {
+        const tag = st.tags[0];
+        switch (tag.tagName) {
+            case CONTRACT_TAG:
+                parseContractTag(st, options);
+                break;
+            case EVENT_TAG:
+                parseEventTag(st, options);
+                break;
+            case SAFE_TAG: {
+                const parent = node.getParentOrThrow();
+                if (!tsm.Node.isFunctionDeclaration(parent)) {
+                    options.diagnostics.push(createDiagnostic(
+                        `"safe" JSDoc tag on ${parent.getKindName()} node`, 
+                        { 
+                            node, 
+                            category: tsm.ts.DiagnosticCategory.Warning
+                        }));
+                }
+                break;
+            }
+            default:
+                options.diagnostics.push(createDiagnostic(
+                    `unrecognized JSDoc tag ${tag.tagName}`, 
+                    { 
+                        node, 
+                        category: tsm.ts.DiagnosticCategory.Warning
+                    }));
+                break;
+        }
+    }
+}
+
+function processMetadata(project: tsm.Project, options: ProcessMetadataOptions) {
+    for (const src of project.getSourceFiles()) {
+        if (src.isDeclarationFile()) continue;
+        src.forEachChild(node => {
+            if (tsm.Node.isJSDocable(node)) {
+                for (const doc of node.getJsDocs()) {
+                    processMetadataNode(doc, options);
+                }
+            }
+        });
+    }
+
+}
 
 export function compile(options: CompileOptions) {
 
     const { project } = options;
-    const globals = createGlobalScope(project);
-    const context: CompileContext = {
-        diagnostics: [],
-        globals,
-        options: {
-            addressVersion: options.addressVersion ?? DEFAULT_ADDRESS_VALUE,
-            inline: options.inline ?? false,
-            optimize: options.optimize ?? false,
-        },
-        project: options.project,
-        // functions: []
-    };
 
-    for (const sym of globals.symbols) {
+    const diagnostics: Array<tsm.ts.Diagnostic> = [];
+
+    processMetadata(project, { diagnostics });
+    
+    // const context: CompileContext = {
+    //     diagnostics: [],
+    //     globals,
+    //     options: {
+    //         addressVersion: options.addressVersion ?? DEFAULT_ADDRESS_VALUE,
+    //         inline: options.inline ?? false,
+    //         optimize: options.optimize ?? false,
+    //     },
+    //     project: options.project,
+    //     // functions: []
+    // };
+
+    const globals = createGlobalScope(project);
+     for (const sym of globals.symbols) {
         if (sym instanceof FunctionSymbolDef) {
             processFunctionDeclaration(sym);
         }

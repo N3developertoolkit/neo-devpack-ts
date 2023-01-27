@@ -121,11 +121,9 @@ export interface ProcessOptions {
 // }
 
 function isSafe(node: tsm.JSDocableNode): boolean {
-    const docs = node.getJsDocs();
-    for (var i = 0; i <= docs.length; i++) {
-        const tags = docs[i].getTags();
-        for (var j = 0; j <= tags.length; j++) {
-            const { tagName, text } = tags[j].getStructure();
+    for (const doc of node.getJsDocs()) {
+        for (const tag of doc.getTags()) {
+            const { tagName, text } = tag.getStructure();
             if (tagName === "safe" && !text) {
                 return true;
             }

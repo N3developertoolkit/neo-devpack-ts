@@ -8,16 +8,18 @@ export function isNotNullOrUndefined<T extends Object>(input: null | undefined |
     return input != null;
 }
 
-export function toDiagnostic(error: unknown): tsm.ts.Diagnostic {
-    const messageText = error instanceof Error
-        ? error.message
-        : "unknown error";
-    const node = error instanceof CompileError
-        ? error.node
-        : undefined;
+export function createDiagnostic(messageText: string, options: {
+    code?: number,
+    node?: tsm.Node,
+    category?: tsm.ts.DiagnosticCategory
+}
+): tsm.ts.Diagnostic {
+    const { node } = options;
+    const category = options.category ?? tsm.ts.DiagnosticCategory.Error;
+    const code = options.code ?? 0;
     return {
-        category: tsm.ts.DiagnosticCategory.Error,
-        code: 0,
+        category,
+        code,
         file: node?.getSourceFile().compilerNode,
         length: node
             ? node.getEnd() - node.getPos()
@@ -26,6 +28,16 @@ export function toDiagnostic(error: unknown): tsm.ts.Diagnostic {
         start: node?.getPos(),
         source: node?.print()
     };
+}
+
+export function toDiagnostic(error: unknown): tsm.ts.Diagnostic {
+    const message = error instanceof Error
+        ? error.message
+        : "unknown error";
+    const node = error instanceof CompileError
+        ? error.node
+        : undefined;
+    return createDiagnostic(message, { node });
 }
 
 export async function createContractProject(scfxSource?: string) {
@@ -102,7 +114,7 @@ export function getConstantValue(node: tsm.Expression) {
     switch (node.getKind()) {
         case tsm.SyntaxKind.NullKeyword:
             return null;
-        case tsm.SyntaxKind.BigIntLiteral: 
+        case tsm.SyntaxKind.BigIntLiteral:
             return (node as tsm.BigIntLiteral).getLiteralValue() as bigint;
         case tsm.SyntaxKind.NumericLiteral: {
             const literal = (node as tsm.NumericLiteral).getLiteralValue();
