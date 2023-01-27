@@ -1,7 +1,7 @@
 import * as tsm from "ts-morph";
 import { CompileError } from "./compiler";
 import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
-import { getConstantValue } from "./utils";
+import { getConstantValue, getSymbolOrCompileError } from "./utils";
 
 export interface ReadonlyScope {
     readonly parentScope: ReadonlyScope | undefined;
@@ -65,17 +65,6 @@ export class ConstantSymbolDef implements SymbolDef {
     }
 }
 
-export class ParameterSymbolDef implements SymbolDef {
-    readonly symbol: tsm.Symbol;
-    constructor(
-        readonly node: tsm.ParameterDeclaration,
-        readonly parentScope: ReadonlyScope,
-        readonly index: number
-    ) {
-        this.symbol = node.getSymbolOrThrow();
-    }
-}
-
 export class FunctionSymbolDef implements SymbolDef, ReadonlyScope {
     private readonly map = new Map<tsm.Symbol, SymbolDef>();
     readonly symbol: tsm.Symbol;
@@ -101,19 +90,27 @@ export class FunctionSymbolDef implements SymbolDef, ReadonlyScope {
     }
 }
 
-// export class VariableSymbolDef implements SymbolDef {
-//     readonly symbol: tsm.Symbol;
+export class ParameterSymbolDef implements SymbolDef {
+    readonly symbol: tsm.Symbol;
+    constructor(
+        readonly node: tsm.ParameterDeclaration,
+        readonly parentScope: ReadonlyScope,
+        readonly index: number
+    ) {
+        this.symbol = node.getSymbolOrThrow();
+    }
+}
 
-//     constructor(
-//         readonly node: tsm.VariableDeclaration,
-//         readonly parentScope: Scope,
-//         readonly slotType: Exclude<SlotType, 'parameter'>,
-//         readonly index: number,
-//     ) {
-//         this.symbol = getSymbolOrCompileError(node);
-//     }
-// }
-
+export class VariableSymbolDef implements SymbolDef {
+    readonly symbol: tsm.Symbol;
+    constructor(
+        readonly node: tsm.VariableDeclaration,
+        readonly parentScope: ReadonlyScope,
+        readonly index: number
+    ) {
+        this.symbol = node.getSymbolOrThrow();
+    }
+}
 export class BlockScope implements Scope {
     private readonly map = new Map<tsm.Symbol, SymbolDef>();
 
@@ -134,24 +131,20 @@ export class BlockScope implements Scope {
     resolve(symbol: tsm.Symbol): SymbolDef | undefined {
         return resolve(this.map, symbol, this.parentScope);
     }
-    // get symbolDefs() { return this.map.symbolDefs; }
-    // define<T extends SymbolDef>(factory: T | ((scope: Scope) => T)): T {
-    //     return this.map.define(factory);
-    // }
-    // resolve(symbol: tsm.Symbol): SymbolDef | undefined {
-    //     return this.map.resolve(symbol);
-    // }
 }
 
 // @internal
-
 export function createGlobalScope(project: tsm.Project): ReadonlyScope {
     const globals = new GlobalScope();
     for (const src of project.getSourceFiles()) {
         if (src.isDeclarationFile()) continue;
         src.forEachChild(node => {
+            const kind = node.getKindName();
             if (tsm.Node.isFunctionDeclaration(node)) {
-                globals.define(s => new FunctionSymbolDef(node, s));
+                // TODO: if node.hasDeclareKeyword() == true then look for an @event JSDoc tag 
+                if (!node.hasDeclareKeyword()) {
+                    globals.define(s => new FunctionSymbolDef(node, s));
+                }
             }
             else if (tsm.Node.isVariableStatement(node)
                 && node.getDeclarationKind() === tsm.VariableDeclarationKind.Const

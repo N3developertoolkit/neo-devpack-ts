@@ -8,60 +8,15 @@ import { ReadonlyUint8Array } from '../utility/ReadonlyArrays';
 //  * The PUSHDATA? opcodes are folded into a single Instruction Kind
 //  * All the opcode pairs with and without an _L variant have been folded into a single Instruction Kind
 //  * the hard coded index Load/Store opcodes have been folded into a single Instruction Kind 
-export enum OperationKind {
-    PUSHINT,
-    // PUSHINT8 = 0,
-    // PUSHINT16 = 1,
-    // PUSHINT32 = 2,
-    // PUSHINT64 = 3,
-    // PUSHINT128 = 4,
-    // PUSHINT256 = 5,
-    PUSHBOOL,
-    // PUSHT = 8,
-    // PUSHF = 9,
-    // PUSHA = 10,
-    PUSHNULL, // = 11,
-    PUSHDATA,
-    // PUSHDATA1 = 12,
-    // PUSHDATA2 = 13,
-    // PUSHDATA4 = 14,
-    // PUSHM1 = 15,
-    // PUSH0 = 16,
-    // PUSH1 = 17,
-    // PUSH2 = 18,
-    // PUSH3 = 19,
-    // PUSH4 = 20,
-    // PUSH5 = 21,
-    // PUSH6 = 22,
-    // PUSH7 = 23,
-    // PUSH8 = 24,
-    // PUSH9 = 25,
-    // PUSH10 = 26,
-    // PUSH11 = 27,
-    // PUSH12 = 28,
-    // PUSH13 = 29,
-    // PUSH14 = 30,
-    // PUSH15 = 31,
-    // PUSH16 = 32,
-    NOP, // = 33,
-    JMP, // = 34,
-    // JMP_L = 35,
-    JMPIF, // = 36,
-    // JMPIF_L = 37,
-    JMPIFNOT, // = 38,
-    // JMPIFNOT_L = 39,
-    JMPEQ, // = 40,
-    // JMPEQ_L = 41,
-    JMPNE, // = 42,
-    // JMPNE_L = 43,
-    JMPGT, // = 44,
-    // JMPGT_L = 45,
-    JMPGE, // = 46,
-    // JMPGE_L = 47,
-    JMPLT, // = 48,
-    // JMPLT_L = 49,
-    JMPLE, // = 50,
-    // JMPLE_L = 51,
+
+export type OperationKind = 'pushbool' | 'pushint' | 'pushdata' | 'pushnull' |
+    'jump' | 'jumpif' | 'jumpifnot' | 'jumpeq' | 'jumpne' | 'jumpgt' | 'jumpge' | 'jumplt' | 'jumple' |
+    'loadarg' | 'storearg' | 'loadvar' | 'storevar' | 'loadsvar' | 'storesvar' |
+    'noop' | 'return';
+
+
+export enum oldOperationKind {
+
     CALL, // = 52,
     // CALL_L = 53,
     // CALLA = 54,
@@ -217,14 +172,14 @@ export interface Operation {
     location?: tsm.Node,
 }
 
-export interface CallOperation extends Operation {
-    readonly kind: OperationKind.CALL;
-    readonly symbol: tsm.Symbol;
-}
+// export interface CallOperation extends Operation {
+//     readonly kind: OperationKind.CALL;
+//     readonly symbol: tsm.Symbol;
+// }
 
-export function isCallOperation(ins: Operation): ins is CallOperation {
-    return ins.kind === OperationKind.CALL;
-}
+// export function isCallOperation(ins: Operation): ins is CallOperation {
+//     return ins.kind === OperationKind.CALL;
+// }
 
 // export interface ConvertOperation extends Operation {
 //     readonly kind: OperationKind.CONVERT;
@@ -246,33 +201,31 @@ export function isCallOperation(ins: Operation): ins is CallOperation {
 // }
 
 export interface PushDataOperation extends Operation {
-    readonly kind: OperationKind.PUSHDATA;
+    readonly kind: 'pushdata';
     readonly value: ReadonlyUint8Array
 }
 
 export function isPushDataOperation(ins: Operation): ins is PushDataOperation {
-    return ins.kind === OperationKind.PUSHDATA;
+    return ins.kind === 'pushdata';
 }
 
 export interface PushIntOperation extends Operation {
-    readonly kind: OperationKind.PUSHINT;
+    readonly kind: 'pushint';
     readonly value: bigint;
 }
 
 export function isPushIntOperation(ins: Operation): ins is PushIntOperation {
-    return ins.kind === OperationKind.PUSHINT;
+    return ins.kind === 'pushint';
 }
 
 export interface PushBoolOperation extends Operation {
-    readonly kind: OperationKind.PUSHBOOL;
+    readonly kind: 'pushbool';
     readonly value: boolean;
 }
 
 export function isPushBoolOperation(ins: Operation): ins is PushBoolOperation {
-    return ins.kind === OperationKind.PUSHBOOL;
+    return ins.kind === 'pushbool';
 }
-
-
 
 // export interface SysCallOperation extends Operation {
 //     readonly kind: OperationKind.SYSCALL,
@@ -294,15 +247,7 @@ export function isPushBoolOperation(ins: Operation): ins is PushBoolOperation {
 // }
 
 const jumpOperationKinds = [
-    OperationKind.JMP ,
-    OperationKind.JMPIF ,
-    OperationKind.JMPIFNOT ,
-    OperationKind.JMPEQ ,
-    OperationKind.JMPNE ,
-    OperationKind.JMPGT ,
-    OperationKind.JMPGE ,
-    OperationKind.JMPLT ,
-    OperationKind.JMPLE,
+    'jump', 'jumpif', 'jumpifnot', 'jumpeq', 'jumpne', 'jumpgt', 'jumpge', 'jumplt', 'jumple'
 ] as const as ReadonlyArray<OperationKind>;
 
 export type JumpOperationKind = typeof jumpOperationKinds[number];
@@ -316,25 +261,20 @@ export function isJumpOperation(ins: Operation): ins is JumpOperation {
     return jumpOperationKinds.includes(ins.kind);
 }
 
-// const loadStoreOperationKinds = [
-//     OperationKind.LDARG,
-//     OperationKind.LDLOC,
-//     OperationKind.LDSFLD,
-//     OperationKind.STARG, 
-//     OperationKind.STLOC, 
-//     OperationKind.STSFLD,
-// ] as const;
+const loadStoreOperationKinds = [
+    'loadarg', 'storearg', 'loadvar', 'storevar', 'loadsvar', 'storesvar'
+] as const as ReadonlyArray<OperationKind>;
 
-// export type LoadStoreOperationKind = typeof loadStoreOperationKinds[number];
+export type LoadStoreOperationKind = typeof loadStoreOperationKinds[number];
 
-// export interface LoadStoreOperation extends Operation {
-//     readonly kind: LoadStoreOperationKind
-//     readonly index: number
-// }
+export interface LoadStoreOperation extends Operation {
+    readonly kind: LoadStoreOperationKind
+    readonly index: number
+}
 
-// export function isLoadStoreOperation(ins: Operation): ins is LoadStoreOperation {
-//     return (loadStoreOperationKinds as ReadonlyArray<OperationKind>).includes(ins.kind);
-// }
+export function isLoadStoreOperation(ins: Operation): ins is LoadStoreOperation {
+    return loadStoreOperationKinds.includes(ins.kind);
+}
 
 // export const specializedOperationKinds: ReadonlyArray<OperationKind> = [
 //     OperationKind.CALL,

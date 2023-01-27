@@ -8,13 +8,6 @@ import { ByteString, Storage, Address, Runtime, ContractManagement, Contract, Tr
  * @standard "NEP-17"
  */
 
-// /**
-//  * @event Transfer
-//  * @param {UInt160} from
-//  * @param {UInt160} to
-//  * @param {BigInteger} amount
-//  */
-
 const SYMBOL = "APOC";
 const DECIMALS = 8n;
 const INITIAL_SUPPLY = 1_000_000n;
@@ -22,6 +15,9 @@ const INITIAL_SUPPLY = 1_000_000n;
 const prefixTotalSupply = 0xA0;
 const prefixBalance = 0xA1;
 const prefixContractOwner = 0xFF;
+
+// /** @event Transfer */
+// declare function OnTransfer(from: Address | null, to: Address | null, amount: bigint): void;
 
 /** @safe */
 export function symbol() { return SYMBOL; }
@@ -31,6 +27,7 @@ export function decimals() { return DECIMALS; }
 
 /** @safe */
 export function totalSupply() { 
+    const symbol = "APOC";
     // const key = new ByteString(prefixTotalSupply);
     // return Storage.get(Storage.currentContext, key) as bigint;
 }
@@ -78,22 +75,22 @@ export function burn(account: Address, amount: bigint): void {
 }
 
 function postTransfer(from: Address | null, to: Address | null, amount: bigint, data: any) {
-//     Runtime.notify("Transfer", from, to, amount);
-//     if (to) {
-//         const contract = ContractManagement.getContract(to);
-//         if (contract) {
-//             Contract.call(to, "onNEP17Payment", from, amount, data);
-//         }
-//     }
+    // OnTransfer(from, to, amount);
+    // if (to) {
+    //     const contract = ContractManagement.getContract(to);
+    //     if (contract) {
+    //         Contract.call(to, "onNEP17Payment", from, amount, data);
+    //     }
+    // }
 }
 
 function updateTotalSupply(amount: bigint) {
-//     const context = Storage.currentContext;
-//     const key = new ByteString(prefixTotalSupply);
-//     const value = Storage.get(context, key);
-//     let totalSupply = value ? value as bigint : 0n;
-//     totalSupply += amount;
-//     Storage.put(context, key, totalSupply);
+    // const context = Storage.currentContext;
+    // const key = new ByteString(prefixTotalSupply);
+    // const value = Storage.get(context, key);
+    // let totalSupply = value ? value as bigint : 0n;
+    // totalSupply += amount;
+    // Storage.put(context, key, totalSupply);
 }
 
 function updateBalance(account: Address, amount: bigint) {

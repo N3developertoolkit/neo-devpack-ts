@@ -1,6 +1,6 @@
 import * as tsm from "ts-morph";
 import { CompileError } from "../compiler";
-import { BlockScope, FunctionSymbolDef, isScope, ReadonlyScope } from "../scope";
+import { BlockScope, FunctionSymbolDef, isScope as isWritableScope, ReadonlyScope, VariableSymbolDef } from "../scope";
 import { OperationKind } from "../types/Operation";
 import { dispatch } from "../utility/nodeDispatch";
 import { processExpression } from "./expressionProcessor";
@@ -8,7 +8,7 @@ import { ProcessOptions } from "./processFunctionDeclarations";
 
 export function processBlock(node: tsm.Block, { builder, scope }: ProcessOptions): void {
     var open = node.getFirstChildByKind(tsm.SyntaxKind.OpenBraceToken);
-    builder.operation(OperationKind.NOP, open);
+    builder.operation('noop', open);
 
     const blockScope = new BlockScope(node, scope);
     node.getStatements().forEach(
@@ -16,7 +16,7 @@ export function processBlock(node: tsm.Block, { builder, scope }: ProcessOptions
     );
 
     var close = node.getLastChildByKind(tsm.SyntaxKind.CloseBraceToken);
-    builder.operation(OperationKind.NOP, close);
+    builder.operation('noop', close);
 }
 
 // // function processExpressionStatement(node: tsm.ExpressionStatement, options: ProcessOptions): void {
@@ -57,7 +57,7 @@ export function processReturnStatement(node: tsm.ReturnStatement, options: Proce
         processExpression(expr, options);
     }
     builder.jump(builder.returnTarget);
-    locSetter.set(node);
+    locSetter(node);
 }
 
 // // function processThrowStatement(node: tsm.ThrowStatement, options: ProcessOptions) {
@@ -84,33 +84,36 @@ export function processReturnStatement(node: tsm.ReturnStatement, options: Proce
 // //     throw new CompileError(`processThrowStatement not implemented`, node)
 // // }
 
-// // function processVariableStatement(node: tsm.VariableStatement, options: ProcessOptions): void {
-// //     const { builder, scope } = options;
+export function processVariableStatement(node: tsm.VariableStatement, options: ProcessOptions): void {
+    const { builder, scope } = options;
 
-// //     for (const decl of node.getDeclarations()) {
-// //         const slotIndex = builder.addLocal(decl);
-// //         const symbolDef = scope.define(s => new VariableSymbolDef(decl, s, 'local', slotIndex));
-// //         const init = decl.getInitializer();
-// //         if (init) {
-// //             const nodeSetter = builder.getNodeSetter();
-// //             processExpression(init, options);
-// //             storeSymbolDef(symbolDef, options);
-// //             nodeSetter.set(decl);
-// //         }
-// //         return;
-// //     }
+    if (!isWritableScope(scope)) {
+        throw new CompileError(`can't declare variables in read only scope`, node);
+    }
 
-// //     throw new CompileError(`processVariableStatement not implemented`, node);
-// // }
+    for (const decl of node.getDeclarations()) {
+        const index = builder.addLocal(decl);
+        scope.define(s => new VariableSymbolDef(decl, s, index));
+
+        const init = decl.getInitializer();
+        if (init) {
+            const locSetter = builder.getLocationSetter();
+            processExpression(init, options);
+            builder.store('local', index);
+            locSetter(decl);
+        } 
+    }
+}
 
 export function processStatement(node: tsm.Statement, options: ProcessOptions): void {
     dispatch(node, options, {
         // [tsm.SyntaxKind.ExpressionStatement]: processExpressionStatement,
         // [tsm.SyntaxKind.IfStatement]: processIfStatement,
         // [tsm.SyntaxKind.ThrowStatement]: processThrowStatement,
-        // [tsm.SyntaxKind.VariableStatement]: processVariableStatement,
+        
 
         [tsm.SyntaxKind.Block]: processBlock,
         [tsm.SyntaxKind.ReturnStatement]: processReturnStatement,
+        [tsm.SyntaxKind.VariableStatement]: processVariableStatement,
     });
 }

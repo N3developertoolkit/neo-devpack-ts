@@ -65,9 +65,12 @@ function parseExtraTag() {
 }
 
 const CONTRACT_TAG = "contract";
+const EXTRA_TAG = "extra";
+const STANDARD_TAG = "standard";
 const EVENT_TAG = "event";
 const SAFE_TAG = "safe";
 
+// TODO: finish parsing contract tags
 function parseContractTag(st: tsm.JSDocStructure, options: ProcessMetadataOptions) {
 
     const initialTag = st.tags![0];
@@ -89,6 +92,7 @@ function parseContractTag(st: tsm.JSDocStructure, options: ProcessMetadataOption
 
 }
 
+// not sure yet if I need event tags or if I can just generate these from Runtime.notify calls
 function parseEventTag(st: tsm.JSDocStructure, options: ProcessMetadataOptions) {
     const initialTag = st.tags![0];
     if (initialTag.tagName !== EVENT_TAG) throw new Error(`parseEventTag ${initialTag.tagName}`);
@@ -169,7 +173,7 @@ export function compile(options: CompileOptions) {
 
     const diagnostics: Array<tsm.ts.Diagnostic> = [];
 
-    processMetadata(project, { diagnostics });
+    // processMetadata(project, { diagnostics });
     
     // const context: CompileContext = {
     //     diagnostics: [],

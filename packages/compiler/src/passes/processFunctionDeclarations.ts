@@ -143,7 +143,7 @@ export function processFunctionDeclaration(def: FunctionSymbolDef) {
         throw new CompileError(`Unexpected body kind ${body.getKindName()}`, body);
     }
 
-    const builder = new MethodBuilder();
+    const builder = new MethodBuilder(node.getParameters().length);
     const options = { builder, scope: def }
     processStatement(body, options);
 
