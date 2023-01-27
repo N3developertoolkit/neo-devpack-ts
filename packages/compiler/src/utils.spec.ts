@@ -7,6 +7,16 @@ import { bigIntToByteArray, byteArrayToBigInt, getConstantValue } from './utils'
 import { negativeValueTests, positiveValueTests } from './utils.bigIntToByteArray.spec';
 
 describe("utils", () => {
+    describe("toHexString", () => {
+        function test({ value, expected }: { value: bigint, expected: string}) {
+            it(`${value}`, () => {
+            });
+        }
+
+        positiveValueTests.forEach(test);
+        negativeValueTests.forEach(test);
+
+    })
     describe('bigIntToByteArray', () => {
 
         function testConvertInt({ value, expected }: { value: bigint, expected: string}) {

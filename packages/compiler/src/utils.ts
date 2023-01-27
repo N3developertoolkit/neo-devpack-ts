@@ -133,16 +133,6 @@ export function getConstantValue(node: tsm.Expression) {
     }
 }
 
-function toBigInt(buffer: Buffer): bigint {
-    return BigInt(`0x${buffer.toString('hex')}`);
-}
-
-function toBuffer(value: bigint): Buffer {
-    let str = value.toString(16);
-    if (str.length % 2 == 1) { str = '0' + str }
-    return Buffer.from(str, 'hex');
-}
-
 function allBitsSet(buffer: Uint8Array): boolean {
     const length = buffer.length;
     for (let i = 0; i < length; i++) {
@@ -150,6 +140,44 @@ function allBitsSet(buffer: Uint8Array): boolean {
     }
     return true;
 }
+
+function bigIntToHexString(value: bigint): string {
+    const str = value.toString(16);
+    return str.length % 2 === 1 
+        ? '0' + str 
+        : str
+}
+
+
+
+
+
+
+
+
+
+function toBigInt(buffer: Buffer): bigint {
+    return BigInt(`0x${buffer.toString('hex')}`);
+}
+
+function toBuffer(value: bigint): Buffer {
+    let  str = value.toString(16);
+    if (str.length % 2 == 1) { str = '0' + str }
+    return Buffer.from(str, 'hex');
+}
+
+// function toByteArray(value: bigint): Uint8Array {
+//     const str = value.toString(16);
+//     const buf = new Uint8Array(str.length + 1 >> 1);
+//     const odd = str.length % 2 === 1;
+    
+// }
+
+
+
+
+
+
 
 export function byteArrayToBigInt(value: Uint8Array): bigint {
     const buffer = Buffer.from(value);
@@ -162,9 +190,14 @@ export function byteArrayToBigInt(value: Uint8Array): bigint {
     throw new Error("Not Implemented");
 }
 
+
+
 // convert JS BigInt to C# BigInt byte array encoding
 export function bigIntToByteArray(value: bigint): Uint8Array {
     if (value >= 0n) {
+
+        const str = value.toString(16);
+
         // convert value to buffer
         let buffer = toBuffer(value);
         // if the most significant bit is 1, prepend a 0x00 byte to 
