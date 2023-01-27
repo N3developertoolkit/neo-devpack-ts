@@ -1,12 +1,11 @@
 import { expect } from 'chai';
 import 'mocha';
 import * as tsm from "ts-morph";
-import { createContractProject, getConstantValue } from './utils';
-import { ConstantSymbolDef, createGlobalScope, FunctionSymbolDef } from './scope';
+import { createContractProject } from './utils';
+import { ConstantSymbolDef, createGlobalScope, FunctionSymbolDef, ParameterSymbolDef, ReadonlyScope, SymbolDef } from './scope';
 import path from 'path';
 import fs from 'fs/promises';
 import { AsyncLazy } from './utility/Lazy';
-import { CompileContext, DEFAULT_ADDRESS_VALUE } from './compiler';
 
 const scfx = new AsyncLazy(async () => {
     const scfxPath = path.join(__dirname, "../../framework/src/index.d.ts");
@@ -17,65 +16,56 @@ export async function createTestProject(source: string) {
     const scfxSrc = await scfx.get();
     const project = await createContractProject(scfxSrc);
     const sourceFile = project.createSourceFile("contract.ts", source);
+    project.resolveSourceFileDependencies();
     return { project, sourceFile };
 }
 
-export async function createTestProjectContext(source: string) {
-    const { project, sourceFile } = await createTestProject(source);
-    const globals = createGlobalScope(project);
-    const context: CompileContext = {
-        diagnostics: [],
-        globals,
-        options: {
-            addressVersion: DEFAULT_ADDRESS_VALUE,
-            inline: false,
-            optimize:  false,
-        },
-        project,
-    };
-    return {context, sourceFile};
+export function getSymbol(node: tsm.Node, name: string) {
+    const symbol = node.forEachDescendant(n => {
+        const symbol = n.getSymbol();
+        if (symbol && symbol.getName() === name) {
+            return symbol;
+        }
+    });
+    if (symbol) { return symbol; }
+    else { throw new Error(`Failed to find ${name} symbol`) }
 }
 
-// note, this function will only save the last symbol with a given name
-export function getSymbols(node: tsm.Node): ReadonlyMap<string, tsm.Symbol> {
-    const map = new Map<string, tsm.Symbol>();
-    add(node);
-    node.forEachDescendant((n,t) => add(n));
-    return map;
+function testScope<T extends SymbolDef>(scope: ReadonlyScope, symbol: tsm.Symbol, ctor: new (...args: any) => T): T {
+    const resolved = scope.resolve(symbol);
 
-    function add(node: tsm.Node) {
-        const symbol = node.getSymbol();
-        if (symbol) {
-            map.set(symbol.getName(), symbol);
-        }
-    }
+    expect(resolved).not.undefined;
+    expect(resolved).instanceOf(ctor);
+    expect(resolved!.symbol).eq(symbol)
+    expect(resolved!.parentScope).eq(scope);
+
+    return resolved as T;
 }
 
 describe("createGlobalScope", () => {
-    it("const int", async () => {
-        const src = `const intValue = 0x01;`;
+    it("const variable statement", async () => {
+        const src = `const intValue = 42;`;
 
         const { project, sourceFile } = await createTestProject(src)
-        const symbolMap = getSymbols(sourceFile);
-
         const globals = createGlobalScope(project);
 
-        const actual = globals.resolve(symbolMap.get("intValue")!);
-        expect(actual).not.undefined;
-        expect(actual).instanceof(ConstantSymbolDef);
-        expect((actual as ConstantSymbolDef).value).eq(1n);
+        const constDef = testScope(globals, getSymbol(sourceFile, "intValue"), ConstantSymbolDef);
+        expect(constDef.value).eq(42n);
     });
 
+
     it ("function def", async () => {
-        const src = `function test() { return "hello world"; }`;
+        const src = `function test(a: bigint, b: boolean) { return "hello world"; }`;
 
         const { project, sourceFile } = await createTestProject(src)
-        const symbolMap = getSymbols(sourceFile);
 
         const globals = createGlobalScope(project);
+        const funcDef = testScope(globals, getSymbol(sourceFile, "test"), FunctionSymbolDef);
 
-        const actual = globals.resolve(symbolMap.get("test")!);
-        expect(actual).not.undefined;
-        expect(actual).instanceof(FunctionSymbolDef);
+        const p1Def = testScope(funcDef, getSymbol(funcDef.node, "a"), ParameterSymbolDef);
+        expect(p1Def.index).eq(0);
+
+        const p2Def = testScope(funcDef, getSymbol(funcDef.node, "b"), ParameterSymbolDef);
+        expect(p2Def.index).eq(1);
     })
 })

@@ -7,25 +7,25 @@
 // import * as util from 'util';
 // import { getOperationInfo } from "./passes/processOperations";
 
-import path from 'path';
-import fs from 'fs/promises';
-import { AsyncLazy } from './utility/Lazy';
-import { createContractProject } from './utils';
-import { CompileContext, DEFAULT_ADDRESS_VALUE } from './compiler';
-import { createGlobalScope } from './scope';
+// import path from 'path';
+// import fs from 'fs/promises';
+// import { AsyncLazy } from './utility/Lazy';
+// import { createContractProject } from './utils';
+// import { CompileContext, DEFAULT_ADDRESS_VALUE } from './compiler';
+// import { createGlobalScope } from './scope';
 
-const scfx = new AsyncLazy(async () => {
-    const scfxPath = path.join(__dirname, "../../framework/src/index.d.ts");
-    return await fs.readFile(scfxPath, 'utf8');
-})
+// const scfx = new AsyncLazy(async () => {
+//     const scfxPath = path.join(__dirname, "../../framework/src/index.d.ts");
+//     return await fs.readFile(scfxPath, 'utf8');
+// })
 
-export async function createTestProject(source: string) {
-    const scfxSrc = await scfx.get();
-    const project = await createContractProject(scfxSrc);
-    const sourceFile = project.createSourceFile("contract.ts", source);
-    project.resolveSourceFileDependencies();
-    return { project, sourceFile };
-}
+// export async function createTestProject(source: string) {
+//     const scfxSrc = await scfx.get();
+//     const project = await createContractProject(scfxSrc);
+//     const sourceFile = project.createSourceFile("contract.ts", source);
+//     project.resolveSourceFileDependencies();
+//     return { project, sourceFile };
+// }
 
 
 
