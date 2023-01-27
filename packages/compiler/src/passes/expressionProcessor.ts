@@ -208,6 +208,26 @@ export function processIdentifier(node: tsm.Identifier, options: ProcessOptions)
     processSymbolDef(resolved, options);
 }
 
+export function processBooleanLiteral(node: tsm.FalseLiteral | tsm.TrueLiteral, { builder }: ProcessOptions) {
+    const value = node.getLiteralValue();
+    builder.pushBoolean(value);
+}
+
+export function processNumericLiteral(node: tsm.NumericLiteral, { builder }: ProcessOptions) {
+    const value = node.getLiteralValue();
+    if (!Number.isInteger(value)) throw new CompileError(`invalid non-integer numeric literal`, node);
+    builder.pushInt(BigInt(value));
+}
+
+export function processBigIntLiteral(node: tsm.BigIntLiteral, { builder }: ProcessOptions) {
+    const value = node.getLiteralValue() as bigint;
+    builder.pushInt(BigInt(value));
+}
+
+export function processStringLiteral(node: tsm.StringLiteral, { builder }: ProcessOptions) {
+    const value = Buffer.from(node.getLiteralValue(), 'utf8');
+    builder.pushData(value);
+}
 
 // // function processPropertyAccessExpression(node: tsm.PropertyAccessExpression, options: ProcessOptions) {
 
@@ -250,28 +270,18 @@ export function processIdentifier(node: tsm.Identifier, options: ProcessOptions)
 export function processExpression(node: tsm.Expression, options: ProcessOptions) {
 
     dispatch(node, options, {
-// //         // [tsm.SyntaxKind.ArrayLiteralExpression]: processArrayLiteralExpression,
-// //         [tsm.SyntaxKind.AsExpression]: processAsExpression,
-// //         [tsm.SyntaxKind.BinaryExpression]: processBinaryExpression,
-// //         [tsm.SyntaxKind.CallExpression]: processCallExpression,
-// //         [tsm.SyntaxKind.ConditionalExpression]: processConditionalExpression,
-        [tsm.SyntaxKind.Identifier]: processIdentifier,
-// //         [tsm.SyntaxKind.PropertyAccessExpression]: processPropertyAccessExpression,
+        // [tsm.SyntaxKind.ArrayLiteralExpression]: processArrayLiteralExpression,
+        // [tsm.SyntaxKind.AsExpression]: processAsExpression,
+        // [tsm.SyntaxKind.BinaryExpression]: processBinaryExpression,
+        // [tsm.SyntaxKind.CallExpression]: processCallExpression,
+        // [tsm.SyntaxKind.ConditionalExpression]: processConditionalExpression,
+        // [tsm.SyntaxKind.PropertyAccessExpression]: processPropertyAccessExpression,
 
-// //         [tsm.SyntaxKind.BigIntLiteral]: (node, options) => {
-// //             options.builder.pushInt(node.getLiteralValue() as bigint);
-// //         },
-// //         [tsm.SyntaxKind.FalseKeyword]: (node, options) => {
-// //             processBoolean(node.getLiteralValue(), options);
-// //         },
-// //         [tsm.SyntaxKind.NumericLiteral]: (node, options) => {
-// //             options.builder.pushInt(node.getLiteralValue());
-// //         },
-// //         [tsm.SyntaxKind.StringLiteral]: (node, options) => {
-// //             options.builder.pushData(node.getLiteralValue());
-// //         },
-// //         [tsm.SyntaxKind.TrueKeyword]: (node, options) => {
-// //             processBoolean(node.getLiteralValue(), options);
-// //         },
+        [tsm.SyntaxKind.BigIntLiteral]: processBigIntLiteral,
+        [tsm.SyntaxKind.FalseKeyword]: processBooleanLiteral,
+        [tsm.SyntaxKind.Identifier]: processIdentifier,
+        [tsm.SyntaxKind.NumericLiteral]: processNumericLiteral,
+        [tsm.SyntaxKind.StringLiteral]: processStringLiteral,
+        [tsm.SyntaxKind.TrueKeyword]: processBooleanLiteral,
     });
 }

@@ -105,11 +105,12 @@ export function processReturnStatement(node: tsm.ReturnStatement, options: Proce
 
 export function processStatement(node: tsm.Statement, options: ProcessOptions): void {
     dispatch(node, options, {
-        [tsm.SyntaxKind.Block]: processBlock,
         // [tsm.SyntaxKind.ExpressionStatement]: processExpressionStatement,
         // [tsm.SyntaxKind.IfStatement]: processIfStatement,
-        [tsm.SyntaxKind.ReturnStatement]: processReturnStatement,
         // [tsm.SyntaxKind.ThrowStatement]: processThrowStatement,
         // [tsm.SyntaxKind.VariableStatement]: processVariableStatement,
+
+        [tsm.SyntaxKind.Block]: processBlock,
+        [tsm.SyntaxKind.ReturnStatement]: processReturnStatement,
     });
 }
