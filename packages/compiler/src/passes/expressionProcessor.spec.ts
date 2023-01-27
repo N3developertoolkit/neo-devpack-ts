@@ -6,13 +6,13 @@ import { ConstantSymbolDef, ReadonlyScope, SymbolDef } from '../scope';
 import { processIdentifier, processSymbolDef } from './expressionProcessor';
 import { ProcessOptions } from './processFunctionDeclarations';
 
-function testScope(def: SymbolDef): ReadonlyScope {
+export function testScope(def: SymbolDef): ReadonlyScope {
     const scope = mock<ReadonlyScope>();
     when(scope.resolve(def.symbol)).thenReturn(def);
     return instance(scope);
 }
 
-function testOptions(builder: MethodBuilder, def: SymbolDef): ProcessOptions {
+export function testOptions(builder: MethodBuilder, def: SymbolDef): ProcessOptions {
     return { builder, scope: testScope(def) }
 }
 

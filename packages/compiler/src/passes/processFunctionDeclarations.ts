@@ -139,6 +139,7 @@ export function processFunctionDeclaration(def: FunctionSymbolDef) {
 
     const { node } = def;
 
+    const name = node.getNameOrThrow();
     const body = node.getBodyOrThrow();
     if (!tsm.Node.isStatement(body)) {
         throw new CompileError(`Unexpected body kind ${body.getKindName()}`, body);
@@ -156,7 +157,7 @@ export function processFunctionDeclaration(def: FunctionSymbolDef) {
     }));
 
     return {
-        name: node.getNameOrThrow(),
+        name,
         safe: isSafe(node),
         public: !!node.getExportKeyword(),
         return: node.getReturnType(),

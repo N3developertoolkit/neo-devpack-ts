@@ -6,7 +6,7 @@ import { dispatch } from "../utility/nodeDispatch";
 import { processExpression } from "./expressionProcessor";
 import { ProcessOptions } from "./processFunctionDeclarations";
 
-function processBlock(node: tsm.Block, { builder, scope }: ProcessOptions): void {
+export function processBlock(node: tsm.Block, { builder, scope }: ProcessOptions): void {
     var open = node.getFirstChildByKind(tsm.SyntaxKind.OpenBraceToken);
     builder.operation(OperationKind.NOP, open);
 
@@ -48,7 +48,7 @@ function processBlock(node: tsm.Block, { builder, scope }: ProcessOptions): void
 // //     }
 // // }
 
-function processReturnStatement(node: tsm.ReturnStatement, options: ProcessOptions): void {
+export function processReturnStatement(node: tsm.ReturnStatement, options: ProcessOptions): void {
 
     const builder = options.builder;
     const locSetter = builder.getLocationSetter();

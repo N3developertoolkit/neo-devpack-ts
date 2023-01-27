@@ -29,11 +29,11 @@ export function symbol() { return SYMBOL; }
 /** @safe */
 export function decimals() { return DECIMALS; }
 
-// /** @safe */
-// export function totalSupply() { 
-//     const key = new ByteString(prefixTotalSupply);
-//     return Storage.get(Storage.currentContext, key) as bigint;
-// }
+/** @safe */
+export function totalSupply() { 
+    // const key = new ByteString(prefixTotalSupply);
+    // return Storage.get(Storage.currentContext, key) as bigint;
+}
 
 // /** @safe */
 // export function balanceOf(account: Address) { 
