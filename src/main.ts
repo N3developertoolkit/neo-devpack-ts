@@ -2,7 +2,7 @@ import { join } from "path";
 import { readFile, writeFile } from "fs/promises";
 import { ts } from "ts-morph";
 import { compile, createContractProject, saveArtifacts, toDiagnostic } from '../packages/compiler/';
-import { dumpArtifacts } from "./utils";
+// import { dumpArtifacts } from "./utils";
 
 
 function printDiagnostics(diags: ReadonlyArray<ts.Diagnostic>) {

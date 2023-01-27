@@ -1,221 +1,230 @@
-// import { sc } from '@cityofzion/neon-core'
-// import * as tsm from "ts-morph";
+import { sc } from '@cityofzion/neon-core'
+import * as tsm from "ts-morph";
+import { ReadonlyUint8Array } from '../utility/ReadonlyArrays';
 // import { FunctionSymbolDef } from '../scope';
 
-// // Instruction Kind is slightly simplified version of NeoVM OpCode enum
-// //  * All the PUSHINT* opcodes are folded into a single Instruction Kind
-// //  * The PUSHDATA? opcodes are folded into a single Instruction Kind
-// //  * All the opcode pairs with and without an _L variant have been folded into a single Instruction Kind
-// //  * the hard coded index Load/Store opcodes have been folded into a single Instruction Kind 
-// export enum OperationKind {
-//     PUSHINT = 0x00,
-//     // PUSHINT8 = 0x00,
-//     // PUSHINT16 = 0x01,
-//     // PUSHINT32 = 0x02,
-//     // PUSHINT64 = 0x03,
-//     // PUSHINT128 = 0x04,
-//     // PUSHINT256 = 0x05,
-//     PUSHA = 0x0a,
-//     PUSHNULL = 0x0b,
-//     PUSHDATA = 0x0c,
-//     // PUSHDATA1 = 0x0c,
-//     // PUSHDATA2 = 0x0d,
-//     // PUSHDATA4 = 0x0e,
-//     // PUSHM1 = 0x0f,
-//     // PUSH0 = 0x10,
-//     // PUSH1 = 0x11,
-//     // PUSH2 = 0x12,
-//     // PUSH3 = 0x13,
-//     // PUSH4 = 0x14,
-//     // PUSH5 = 0x15,
-//     // PUSH6 = 0x16,
-//     // PUSH7 = 0x17,
-//     // PUSH8 = 0x18,
-//     // PUSH9 = 0x19,
-//     // PUSH10 = 0x1a,
-//     // PUSH11 = 0x1b,
-//     // PUSH12 = 0x1c,
-//     // PUSH13 = 0x1d,
-//     // PUSH14 = 0x1e,
-//     // PUSH15 = 0x1f,
-//     // PUSH16 = 0x20,
-//     NOP = 0x21,
-//     JMP = 0x22,
-//     // JMP_L = 0x23,
-//     JMPIF = 0x24,
-//     // JMPIF_L = 0x25,
-//     JMPIFNOT = 0x26,
-//     // JMPIFNOT_L = 0x27,
-//     JMPEQ = 0x28,
-//     // JMPEQ_L = 0x29,
-//     JMPNE = 0x2a,
-//     // JMPNE_L = 0x2b,
-//     JMPGT = 0x2c,
-//     // JMPGT_L = 0x2d,
-//     JMPGE = 0x2e,
-//     // JMPGE_L = 0x2f,
-//     JMPLT = 0x30,
-//     // JMPLT_L = 0x31,
-//     JMPLE = 0x32,
-//     // JMPLE_L = 0x33,
-//     CALL = 0x34,
-//     // CALL_L = 0x35,
-//     CALLA = 0x36,
-//     CALLT = 0x37,
-//     ABORT = 0x38,
-//     ASSERT = 0x39,
-//     THROW = 0x3a,
-//     TRY = 0x3b,
-//     // TRY_L = 0x3c,
-//     ENDTRY = 0x3d,
-//     // ENDTRY_L = 0x3e,
-//     ENDFINALLY = 0x3f,
-//     RET = 0x40,
-//     SYSCALL = 0x41,
-//     DEPTH = 0x43,
-//     DROP = 0x45,
-//     NIP = 0x46,
-//     XDROP = 0x48,
-//     CLEAR = 0x49,
-//     DUP = 0x4a,
-//     OVER = 0x4b,
-//     PICK = 0x4d,
-//     TUCK = 0x4e,
-//     SWAP = 0x50,
-//     ROT = 0x51,
-//     ROLL = 0x52,
-//     REVERSE3 = 0x53,
-//     REVERSE4 = 0x54,
-//     REVERSEN = 0x55,
-//     INITSSLOT = 0x56,
-//     INITSLOT = 0x57,
-//     // LDSFLD0 = 0x58,
-//     // LDSFLD1 = 0x59,
-//     // LDSFLD2 = 0x5a,
-//     // LDSFLD3 = 0x5b,
-//     // LDSFLD4 = 0x5c,
-//     // LDSFLD5 = 0x5d,
-//     // LDSFLD6 = 0x5e,
-//     LDSFLD = 0x5f,
-//     // STSFLD0 = 0x60,
-//     // STSFLD1 = 0x61,
-//     // STSFLD2 = 0x62,
-//     // STSFLD3 = 0x63,
-//     // STSFLD4 = 0x64,
-//     // STSFLD5 = 0x65,
-//     // STSFLD6 = 0x66,
-//     STSFLD = 0x67,
-//     // LDLOC0 = 0x68,
-//     // LDLOC1 = 0x69,
-//     // LDLOC2 = 0x6a,
-//     // LDLOC3 = 0x6b,
-//     // LDLOC4 = 0x6c,
-//     // LDLOC5 = 0x6d,
-//     // LDLOC6 = 0x6e,
-//     LDLOC = 0x6f,
-//     // STLOC0 = 0x70,
-//     // STLOC1 = 0x71,
-//     // STLOC2 = 0x72,
-//     // STLOC3 = 0x73,
-//     // STLOC4 = 0x74,
-//     // STLOC5 = 0x75,
-//     // STLOC6 = 0x76,
-//     STLOC = 0x77,
-//     // LDARG0 = 0x78,
-//     // LDARG1 = 0x79,
-//     // LDARG2 = 0x7a,
-//     // LDARG3 = 0x7b,
-//     // LDARG4 = 0x7c,
-//     // LDARG5 = 0x7d,
-//     // LDARG6 = 0x7e,
-//     LDARG = 0x7f,
-//     // STARG0 = 0x80,
-//     // STARG1 = 0x81,
-//     // STARG2 = 0x82,
-//     // STARG3 = 0x83,
-//     // STARG4 = 0x84,
-//     // STARG5 = 0x85,
-//     // STARG6 = 0x86,
-//     STARG = 0x87,
-//     NEWBUFFER = 0x88,
-//     MEMCPY = 0x89,
-//     CAT = 0x8b,
-//     SUBSTR = 0x8c,
-//     LEFT = 0x8d,
-//     RIGHT = 0x8e,
-//     INVERT = 0x90,
-//     AND = 0x91,
-//     OR = 0x92,
-//     XOR = 0x93,
-//     EQUAL = 0x97,
-//     NOTEQUAL = 0x98,
-//     SIGN = 0x99,
-//     ABS = 0x9a,
-//     NEGATE = 0x9b,
-//     INC = 0x9c,
-//     DEC = 0x9d,
-//     ADD = 0x9e,
-//     SUB = 0x9f,
-//     MUL = 0xa0,
-//     DIV = 0xa1,
-//     MOD = 0xa2,
-//     POW = 0xa3,
-//     SQRT = 0xa4,
-//     MODMUL = 0xa5,
-//     MODPOW = 0xa6,
-//     SHL = 0xa8,
-//     SHR = 0xa9,
-//     NOT = 0xaa,
-//     BOOLAND = 0xab,
-//     BOOLOR = 0xac,
-//     NZ = 0xb1,
-//     NUMEQUAL = 0xb3,
-//     NUMNOTEQUAL = 0xb4,
-//     LT = 0xb5,
-//     LE = 0xb6,
-//     GT = 0xb7,
-//     GE = 0xb8,
-//     MIN = 0xb9,
-//     MAX = 0xba,
-//     WITHIN = 0xbb,
-//     PACKMAP = 0xbe,
-//     PACKSTRUCT = 0xbf,
-//     PACK = 0xc0,
-//     UNPACK = 0xc1,
-//     NEWARRAY0 = 0xc2,
-//     NEWARRAY = 0xc3,
-//     NEWARRAY_T = 0xc4,
-//     NEWSTRUCT0 = 0xc5,
-//     NEWSTRUCT = 0xc6,
-//     NEWMAP = 0xc8,
-//     SIZE = 0xca,
-//     HASKEY = 0xcb,
-//     KEYS = 0xcc,
-//     VALUES = 0xcd,
-//     PICKITEM = 0xce,
-//     APPEND = 0xcf,
-//     SETITEM = 0xd0,
-//     REVERSEITEMS = 0xd1,
-//     REMOVE = 0xd2,
-//     CLEARITEMS = 0xd3,
-//     POPITEM = 0xd4,
-//     ISNULL = 0xd8,
-//     ISTYPE = 0xd9,
-//     CONVERT = 0xdb,
-// } 
-// export interface Operation {
-//     readonly kind: OperationKind,
-//     location?: tsm.Node,
-// }
+// Instruction Kind is slightly simplified version of NeoVM OpCode enum
+//  * All the PUSHINT* opcodes are folded into a single Instruction Kind
+//  * The PUSHDATA? opcodes are folded into a single Instruction Kind
+//  * All the opcode pairs with and without an _L variant have been folded into a single Instruction Kind
+//  * the hard coded index Load/Store opcodes have been folded into a single Instruction Kind 
+export enum OperationKind {
+    PUSHINT,
+    // PUSHINT8 = 0,
+    // PUSHINT16 = 1,
+    // PUSHINT32 = 2,
+    // PUSHINT64 = 3,
+    // PUSHINT128 = 4,
+    // PUSHINT256 = 5,
+    PUSHBOOL,
+    // PUSHT = 8,
+    // PUSHF = 9,
+    // PUSHA = 10,
+    PUSHNULL, // = 11,
+    PUSHDATA,
+    // PUSHDATA1 = 12,
+    // PUSHDATA2 = 13,
+    // PUSHDATA4 = 14,
+    // PUSHM1 = 15,
+    // PUSH0 = 16,
+    // PUSH1 = 17,
+    // PUSH2 = 18,
+    // PUSH3 = 19,
+    // PUSH4 = 20,
+    // PUSH5 = 21,
+    // PUSH6 = 22,
+    // PUSH7 = 23,
+    // PUSH8 = 24,
+    // PUSH9 = 25,
+    // PUSH10 = 26,
+    // PUSH11 = 27,
+    // PUSH12 = 28,
+    // PUSH13 = 29,
+    // PUSH14 = 30,
+    // PUSH15 = 31,
+    // PUSH16 = 32,
+    NOP, // = 33,
+    JMP, // = 34,
+    // JMP_L = 35,
+    JMPIF, // = 36,
+    // JMPIF_L = 37,
+    JMPIFNOT, // = 38,
+    // JMPIFNOT_L = 39,
+    JMPEQ, // = 40,
+    // JMPEQ_L = 41,
+    JMPNE, // = 42,
+    // JMPNE_L = 43,
+    JMPGT, // = 44,
+    // JMPGT_L = 45,
+    JMPGE, // = 46,
+    // JMPGE_L = 47,
+    JMPLT, // = 48,
+    // JMPLT_L = 49,
+    JMPLE, // = 50,
+    // JMPLE_L = 51,
+    CALL, // = 52,
+    // CALL_L = 53,
+    // CALLA = 54,
+    // CALLT = 55,
+    // ABORT = 56,
+    // ASSERT = 57,
+    // THROW = 58,
+    TRY, // = 59,
+    // TRY_L = 60,
+    ENDTRY, // = 61,
+    // ENDTRY_L = 62,
+    // ENDFINALLY = 63,
+    // RET = 64,
+    // SYSCALL = 65,
+    // DEPTH = 67,
+    // DROP = 69,
+    // NIP = 70,
+    // XDROP = 72,
+    // CLEAR = 73,
+    // DUP = 74,
+    // OVER = 75,
+    // PICK = 77,
+    // TUCK = 78,
+    // SWAP = 80,
+    // ROT = 81,
+    // ROLL = 82,
+    // REVERSE3 = 83,
+    // REVERSE4 = 84,
+    // REVERSEN = 85,
+    // INITSSLOT = 86,
+    // INITSLOT = 87,
+    LDSFLD,
+    // LDSFLD0 = 88,
+    // LDSFLD1 = 89,
+    // LDSFLD2 = 90,
+    // LDSFLD3 = 91,
+    // LDSFLD4 = 92,
+    // LDSFLD5 = 93,
+    // LDSFLD6 = 94,
+    // LDSFLD = 95,
+    STSFLD,
+    // STSFLD0 = 96,
+    // STSFLD1 = 97,
+    // STSFLD2 = 98,
+    // STSFLD3 = 99,
+    // STSFLD4 = 100,
+    // STSFLD5 = 101,
+    // STSFLD6 = 102,
+    // STSFLD = 103,
+    LDLOC,
+    // LDLOC0 = 104,
+    // LDLOC1 = 105,
+    // LDLOC2 = 106,
+    // LDLOC3 = 107,
+    // LDLOC4 = 108,
+    // LDLOC5 = 109,
+    // LDLOC6 = 110,
+    // LDLOC = 111,
+    STLOC,
+    // STLOC0 = 112,
+    // STLOC1 = 113,
+    // STLOC2 = 114,
+    // STLOC3 = 115,
+    // STLOC4 = 116,
+    // STLOC5 = 117,
+    // STLOC6 = 118,
+    // STLOC = 119,
+    LDARG,
+    // LDARG0 = 120,
+    // LDARG1 = 121,
+    // LDARG2 = 122,
+    // LDARG3 = 123,
+    // LDARG4 = 124,
+    // LDARG5 = 125,
+    // LDARG6 = 126,
+    // LDARG = 127,
+    STARG,
+    // STARG0 = 128,
+    // STARG1 = 129,
+    // STARG2 = 130,
+    // STARG3 = 131,
+    // STARG4 = 132,
+    // STARG5 = 133,
+    // STARG6 = 134,
+    // STARG = 135,
+    // NEWBUFFER = 136,
+    // MEMCPY = 137,
+    // CAT = 139,
+    // SUBSTR = 140,
+    // LEFT = 141,
+    // RIGHT = 142,
+    // INVERT = 144,
+    // AND = 145,
+    // OR = 146,
+    // XOR = 147,
+    // EQUAL = 151,
+    // NOTEQUAL = 152,
+    // SIGN = 153,
+    // ABS = 154,
+    // NEGATE = 155,
+    // INC = 156,
+    // DEC = 157,
+    // ADD = 158,
+    // SUB = 159,
+    // MUL = 160,
+    // DIV = 161,
+    // MOD = 162,
+    // POW = 163,
+    // SQRT = 164,
+    // SHL = 168,
+    // SHR = 169,
+    // NOT = 170,
+    // BOOLAND = 171,
+    // BOOLOR = 172,
+    // NZ = 177,
+    // NUMEQUAL = 179,
+    // NUMNOTEQUAL = 180,
+    // LT = 181,
+    // LE = 182,
+    // GT = 183,
+    // GE = 184,
+    // MIN = 185,
+    // MAX = 186,
+    // WITHIN = 187,
+    // PACKMAP = 190,
+    // PACKSTRUCT = 191,
+    // PACK = 192,
+    // UNPACK = 193,
+    // NEWARRAY0 = 194,
+    // NEWARRAY = 195,
+    // NEWARRAY_T = 196,
+    // NEWSTRUCT0 = 197,
+    // NEWSTRUCT = 198,
+    // NEWMAP = 200,
+    // SIZE = 202,
+    // HASKEY = 203,
+    // KEYS = 204,
+    // VALUES = 205,
+    // PICKITEM = 206,
+    // APPEND = 207,
+    // SETITEM = 208,
+    // REVERSEITEMS = 209,
+    // REMOVE = 210,
+    // CLEARITEMS = 211,
+    // POPITEM = 212,
+    // ISNULL = 216,
+    // ISTYPE = 217,
+    // CONVERT = 219
+} 
 
-// export interface CallOperation extends Operation {
-//     readonly kind: OperationKind.CALL;
-//     readonly symbol: tsm.Symbol;
-// }
+export interface Operation {
+    readonly kind: OperationKind,
+    location?: tsm.Node,
+}
 
-// export function isCallOperation(ins: Operation): ins is CallOperation {
-//     return ins.kind === OperationKind.CALL;
-// }
+export interface CallOperation extends Operation {
+    readonly kind: OperationKind.CALL;
+    readonly symbol: tsm.Symbol;
+}
+
+export function isCallOperation(ins: Operation): ins is CallOperation {
+    return ins.kind === OperationKind.CALL;
+}
 
 // export interface ConvertOperation extends Operation {
 //     readonly kind: OperationKind.CONVERT;
@@ -236,23 +245,34 @@
 //     return ins.kind === OperationKind.INITSLOT;    
 // }
 
-// export interface PushDataOperation extends Operation {
-//     readonly kind: OperationKind.PUSHDATA;
-//     readonly value: Uint8Array
-// }
+export interface PushDataOperation extends Operation {
+    readonly kind: OperationKind.PUSHDATA;
+    readonly value: ReadonlyUint8Array
+}
 
-// export function isPushDataOperation(ins: Operation): ins is PushDataOperation {
-//     return ins.kind === OperationKind.PUSHDATA;
-// }
+export function isPushDataOperation(ins: Operation): ins is PushDataOperation {
+    return ins.kind === OperationKind.PUSHDATA;
+}
 
-// export interface PushIntOperation extends Operation {
-//     readonly kind: OperationKind.PUSHINT;
-//     readonly value: bigint;
-// }
+export interface PushIntOperation extends Operation {
+    readonly kind: OperationKind.PUSHINT;
+    readonly value: bigint;
+}
 
-// export function isPushIntOperation(ins: Operation): ins is PushIntOperation {
-//     return ins.kind === OperationKind.PUSHINT;
-// }
+export function isPushIntOperation(ins: Operation): ins is PushIntOperation {
+    return ins.kind === OperationKind.PUSHINT;
+}
+
+export interface PushBoolOperation extends Operation {
+    readonly kind: OperationKind.PUSHBOOL;
+    readonly value: boolean;
+}
+
+export function isPushBoolOperation(ins: Operation): ins is PushBoolOperation {
+    return ins.kind === OperationKind.PUSHBOOL;
+}
+
+
 
 // export interface SysCallOperation extends Operation {
 //     readonly kind: OperationKind.SYSCALL,
@@ -273,28 +293,28 @@
 //     return ins.kind === OperationKind.TRY;
 // }
 
-// const jumpOperationKinds = [
-//     OperationKind.JMP ,
-//     OperationKind.JMPIF ,
-//     OperationKind.JMPIFNOT ,
-//     OperationKind.JMPEQ ,
-//     OperationKind.JMPNE ,
-//     OperationKind.JMPGT ,
-//     OperationKind.JMPGE ,
-//     OperationKind.JMPLT ,
-//     OperationKind.JMPLE,
-// ] as const;
+const jumpOperationKinds = [
+    OperationKind.JMP ,
+    OperationKind.JMPIF ,
+    OperationKind.JMPIFNOT ,
+    OperationKind.JMPEQ ,
+    OperationKind.JMPNE ,
+    OperationKind.JMPGT ,
+    OperationKind.JMPGE ,
+    OperationKind.JMPLT ,
+    OperationKind.JMPLE,
+] as const as ReadonlyArray<OperationKind>;
 
-// export type JumpOperationKind = typeof jumpOperationKinds[number];
+export type JumpOperationKind = typeof jumpOperationKinds[number];
 
-// export interface JumpOperation extends Operation {
-//     readonly kind: JumpOperationKind;
-//     readonly offset: number;
-// }
+export interface JumpOperation extends Operation {
+    readonly kind: JumpOperationKind;
+    readonly offset: number;
+}
 
-// export function isJumpOperation(ins: Operation): ins is JumpOperation {
-//     return (jumpOperationKinds as ReadonlyArray<OperationKind>).includes(ins.kind);
-// }
+export function isJumpOperation(ins: Operation): ins is JumpOperation {
+    return jumpOperationKinds.includes(ins.kind);
+}
 
 // const loadStoreOperationKinds = [
 //     OperationKind.LDARG,

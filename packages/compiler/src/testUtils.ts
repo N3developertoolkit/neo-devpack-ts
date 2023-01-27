@@ -23,6 +23,7 @@ export async function createTestProject(source: string) {
     const scfxSrc = await scfx.get();
     const project = await createContractProject(scfxSrc);
     const sourceFile = project.createSourceFile("contract.ts", source);
+    project.resolveSourceFileDependencies();
     return { project, sourceFile };
 }
 

@@ -15,5 +15,6 @@
     "ts-morph": "^17.0.1"
   },
   "devDependencies": {
+    "ts-mockito": "^2.6.1"
   }
 }

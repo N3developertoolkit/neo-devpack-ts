@@ -3,22 +3,31 @@ import { CompileError } from "./compiler";
 import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
 import { getConstantValue } from "./utils";
 
-export interface Scope {
-    readonly parentScope: Scope | undefined;
+export interface ReadonlyScope {
+    readonly parentScope: ReadonlyScope | undefined;
+    readonly symbols: IterableIterator<SymbolDef>;
     resolve(symbol: tsm.Symbol): SymbolDef | undefined;
+}
+
+export interface Scope extends ReadonlyScope {
+    define<T extends SymbolDef>(factory: T | ((scope: Scope) => T)): T;
+}
+
+export function isScope(scope: ReadonlyScope): scope is Scope {
+    return 'define' in scope;
 }
 
 export interface SymbolDef {
     readonly symbol: tsm.Symbol;
-    readonly parentScope: Scope;
+    readonly parentScope: ReadonlyScope;
 }
 
-function resolve(map: ReadonlyMap<tsm.Symbol, SymbolDef>, symbol: tsm.Symbol, parent?: Scope) {
+function resolve(map: ReadonlyMap<tsm.Symbol, SymbolDef>, symbol: tsm.Symbol, parent?: ReadonlyScope) {
     const symbolDef = map.get(symbol);
     return symbolDef ?? parent?.resolve(symbol);
 }
 
-function define<T extends SymbolDef>(scope: Scope, map: Map<tsm.Symbol, SymbolDef>, factory: T | ((scope: Scope) => T)): T {
+function define<T extends SymbolDef>(scope: ReadonlyScope, map: Map<tsm.Symbol, SymbolDef>, factory: T | ((scope: ReadonlyScope) => T)): T {
     const instance = typeof factory === 'function' ? factory(scope) : factory;
     if (instance.parentScope !== scope) {
         throw new Error(`Invalid scope for ${instance.symbol.getName()}`);
@@ -30,7 +39,7 @@ function define<T extends SymbolDef>(scope: Scope, map: Map<tsm.Symbol, SymbolDe
     return instance;
 }
 
-export class GlobalScope implements Scope {
+export class GlobalScope implements ReadonlyScope {
     private readonly map = new Map<tsm.Symbol, SymbolDef>();
     readonly parentScope = undefined;
 
@@ -38,15 +47,19 @@ export class GlobalScope implements Scope {
         return resolve(this.map, symbol);
     }
 
-    define<T extends SymbolDef>(factory: T | ((scope: Scope) => T)): T {
+    define<T extends SymbolDef>(factory: T | ((scope: ReadonlyScope) => T)): T {
         return define(this, this.map, factory);
+    }
+
+    get symbols(): IterableIterator<SymbolDef> {
+        return this.map.values();
     }
 }
 
 export class ConstantSymbolDef implements SymbolDef {
     constructor(
         readonly symbol: tsm.Symbol,
-        readonly parentScope: Scope,
+        readonly parentScope: ReadonlyScope,
         readonly value: boolean | bigint | null | ReadonlyUint8Array,
     ) {
     }
@@ -56,28 +69,31 @@ export class ParameterSymbolDef implements SymbolDef {
     readonly symbol: tsm.Symbol;
     constructor(
         readonly node: tsm.ParameterDeclaration,
-        readonly parentScope: Scope,
+        readonly parentScope: ReadonlyScope,
         readonly index: number
     ) {
         this.symbol = node.getSymbolOrThrow();
     }
 }
 
-export class FunctionSymbolDef implements SymbolDef, Scope {
+export class FunctionSymbolDef implements SymbolDef, ReadonlyScope {
     private readonly map = new Map<tsm.Symbol, SymbolDef>();
     readonly symbol: tsm.Symbol;
 
     constructor(
         readonly node: tsm.FunctionDeclaration,
-        readonly parentScope: Scope,
+        readonly parentScope: ReadonlyScope,
     ) {
         this.symbol = node.getSymbolOrThrow();
 
         const params = node.getParameters();
-        const paramsLength = params.length;
-        for (let index = 0; index < paramsLength; index++) {
+        for (let index = 0; index < params.length; index++) {
             define(this, this.map, s => new ParameterSymbolDef(params[index], s, index));
         }
+    }
+
+    get symbols(): IterableIterator<SymbolDef> {
+        return this.map.values();
     }
 
     resolve(symbol: tsm.Symbol): SymbolDef | undefined {
@@ -98,27 +114,38 @@ export class FunctionSymbolDef implements SymbolDef, Scope {
 //     }
 // }
 
-// export class BlockScope implements Scope {
-//     private readonly map: SymbolMap;
+export class BlockScope implements Scope {
+    private readonly map = new Map<tsm.Symbol, SymbolDef>();
 
-//     constructor(
-//         readonly node: tsm.Block,
-//         readonly parentScope: Scope,
-//     ) {
-//         this.map = new SymbolMap(this);
-//     }
-//     get symbolDefs() { return this.map.symbolDefs; }
-//     define<T extends SymbolDef>(factory: T | ((scope: Scope) => T)): T {
-//         return this.map.define(factory);
-//     }
-//     resolve(symbol: tsm.Symbol): SymbolDef | undefined {
-//         return this.map.resolve(symbol);
-//     }
-// }
+    constructor(
+        readonly node: tsm.Block,
+        readonly parentScope: ReadonlyScope,
+    ) {
+    }
+
+    define<T extends SymbolDef>(factory: T | ((scope: ReadonlyScope) => T)): T {
+        return define(this, this.map, factory);
+    }
+
+    get symbols(): IterableIterator<SymbolDef> {
+        return this.map.values();
+    }
+
+    resolve(symbol: tsm.Symbol): SymbolDef | undefined {
+        return resolve(this.map, symbol, this.parentScope);
+    }
+    // get symbolDefs() { return this.map.symbolDefs; }
+    // define<T extends SymbolDef>(factory: T | ((scope: Scope) => T)): T {
+    //     return this.map.define(factory);
+    // }
+    // resolve(symbol: tsm.Symbol): SymbolDef | undefined {
+    //     return this.map.resolve(symbol);
+    // }
+}
 
 // @internal
 
-export function createGlobalScope(project: tsm.Project) {
+export function createGlobalScope(project: tsm.Project): ReadonlyScope {
     const globals = new GlobalScope();
     for (const src of project.getSourceFiles()) {
         if (src.isDeclarationFile()) continue;

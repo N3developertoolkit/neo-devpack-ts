@@ -2,7 +2,7 @@ import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
 import { collectArtifacts } from "./collectArtifacts";
 // import { processFunctionDeclarationsPass } from "./passes/processFunctionDeclarations";
-import { createGlobalScope, Scope } from "./scope";
+import { ConstantSymbolDef, createGlobalScope, FunctionSymbolDef, ReadonlyScope, Scope } from "./scope";
 // import { Operation } from "./types";
 import { DebugInfo, toJson as debugInfoToJson } from "./types/DebugInfo";
 import { toDiagnostic } from "./utils";
@@ -12,6 +12,7 @@ import * as path from 'path';
 // import { LocalVariable } from "./types/FunctionBuilder";
 import { Console } from "console";
 import { create } from "domain";
+import { processFunctionDeclaration } from "./passes/processFunctionDeclarations";
 
 // @internal
 export const DEFAULT_ADDRESS_VALUE = 53;
@@ -40,7 +41,7 @@ export interface CompileArtifacts {
 
 export interface CompileContext {
     readonly diagnostics: Array<tsm.ts.Diagnostic>;
-    readonly globals: Scope;
+    readonly globals: ReadonlyScope;
     readonly options: Readonly<Required<Omit<CompileOptions, 'project'>>>;
     readonly project: tsm.Project;
     // readonly functions: Array<FunctionContext>;
@@ -69,8 +70,30 @@ export function compile(options: CompileOptions) {
         // functions: []
     };
 
+    for (const sym of globals.symbols) {
+        if (sym instanceof FunctionSymbolDef) {
+            processFunctionDeclaration(sym);
+        }
+    }
 
-    throw new Error("Not Implemented")
+    // for (const src of project.getSourceFiles()) {
+    //     if (src.isDeclarationFile()) continue;
+    //     src.forEachChild(node => {
+    //         if (tsm.Node.isJSDocable(node)) {
+    //             for (const jsDoc of node.getJsDocs()) {
+    //                 const ss = jsDoc.getStructure();
+    //                 for (const tag of jsDoc.getTags()) {
+    //                     const s = tag.getStructure()
+    //                     var i = 0;
+    //                 }
+    //             }
+    //         }
+    //     });
+    // }
+
+
+
+    // throw new Error("Not Implemented")
     // const globals = createGlobalScope(options.project);
 
     // // type CompilePass = (context: CompileContext) => void;
