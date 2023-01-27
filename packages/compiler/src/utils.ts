@@ -4,7 +4,6 @@ import { join } from "path";
 import { readFile } from "fs/promises";
 import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
 
-
 export function isNotNullOrUndefined<T extends Object>(input: null | undefined | T): input is T {
     return input != null;
 }
@@ -138,6 +137,20 @@ function toBigInt(buffer: Buffer): bigint {
     return BigInt(`0x${buffer.toString('hex')}`);
 }
 
+function toBuffer(value: bigint): Buffer {
+    let str = value.toString(16);
+    if (str.length % 2 == 1) { str = '0' + str }
+    return Buffer.from(str, 'hex');
+}
+
+function allBitsSet(buffer: Uint8Array): boolean {
+    const length = buffer.length;
+    for (let i = 0; i < length; i++) {
+        if (buffer[i] !== 0xff) return false;
+    }
+    return true;
+}
+
 export function byteArrayToBigInt(value: Uint8Array): bigint {
     const buffer = Buffer.from(value);
     buffer.reverse();
@@ -185,20 +198,6 @@ export function bigIntToByteArray(value: bigint): Uint8Array {
         }
         // reverse endianess
         return buffer2.reverse();
-    }
-
-    function allBitsSet(buffer: Buffer): boolean {
-        const length = buffer.length;
-        for (let i = 0; i < length; i++) {
-            if (buffer[i] !== 0xff) return false;
-        }
-        return true;
-    }
-
-    function toBuffer(value: bigint): Buffer {
-        let str = value.toString(16);
-        if (str.length % 2 == 1) { str = '0' + str }
-        return Buffer.from(str, 'hex');
     }
 }
 

@@ -65,6 +65,5 @@ describe("expressionProcessor", () => {
             processSymbolDef(def, options);
             verify(builder.pushData(value)).once();
         });
-    
     });
 })

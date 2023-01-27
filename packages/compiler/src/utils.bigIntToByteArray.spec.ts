@@ -3,7 +3,7 @@ import 'mocha';
 import { bigIntToByteArray, byteArrayToBigInt } from './utils'
 
 // tables generated via powershell in order to ensure .NET BigInteger compat
-const positiveValueTests = [
+export const positiveValueTests = [
     { value: 0n, expected: "00" },
     { value: 1n, expected: "01" },
     { value: 2n, expected: "02" },
@@ -198,7 +198,7 @@ const positiveValueTests = [
     { value: 18446744073709551617n, expected: "010000000000000001" },
 ];
 
-const negativeValueTests = [
+export const negativeValueTests = [
     { value: -1n, expected: "FF" },
     { value: -2n, expected: "FE" },
     { value: -3n, expected: "FD" },
@@ -392,31 +392,32 @@ const negativeValueTests = [
     { value: -18446744073709551617n, expected: "FFFFFFFFFFFFFFFFFE" },
 ]
 
-describe('bigIntToByteArray', () => {
 
-    function testConvertInt(value: bigint, expected: string) {
-        it(`${value}`, () => {
+    // describe('bigIntToByteArray', () => {
 
-            const bufferExpected = Buffer.from(expected, 'hex');
-            expect(bigIntToByteArray(value)).to.deep.equal(bufferExpected);
-        })
-    }
+    //     function testConvertInt(value: bigint, expected: string) {
+    //         it(`${value}`, () => {
 
-    positiveValueTests.forEach(v => testConvertInt(v.value, v.expected));
-    negativeValueTests.forEach(v => testConvertInt(v.value, v.expected));
-});
+    //             const bufferExpected = Buffer.from(expected, 'hex');
+    //             expect(bigIntToByteArray(value)).to.deep.equal(bufferExpected);
+    //         })
+    //     }
 
-describe('byteArrayToBigInt', () => {
+    //     positiveValueTests.forEach(v => testConvertInt(v.value, v.expected));
+    //     negativeValueTests.forEach(v => testConvertInt(v.value, v.expected));
+    // });
 
-    function testConvertBuffer(value: bigint, expected: string) {
-        it(`0x${expected} -> ${value}`, () => {
+    // describe('byteArrayToBigInt', () => {
 
-            const buffer = Buffer.from(expected, 'hex');
-            expect(byteArrayToBigInt(buffer)).to.equal(value);
-        })
-    }
+    //     function testConvertBuffer(value: bigint, expected: string) {
+    //         it(`0x${expected} -> ${value}`, () => {
 
-    positiveValueTests.forEach(v => testConvertBuffer(v.value, v.expected));
-    // negativeValueTests.forEach(v => testConvertBuffer(v.value, v.expected));
-});
+    //             const buffer = Buffer.from(expected, 'hex');
+    //             expect(byteArrayToBigInt(buffer)).to.equal(value);
+    //         })
+    //     }
+
+    //     positiveValueTests.forEach(v => testConvertBuffer(v.value, v.expected));
+    //     // negativeValueTests.forEach(v => testConvertBuffer(v.value, v.expected));
+    // });
 

@@ -42,30 +42,33 @@ function testScope<T extends SymbolDef>(scope: ReadonlyScope, symbol: tsm.Symbol
     return resolved as T;
 }
 
-describe("createGlobalScope", () => {
-    it("const variable statement", async () => {
-        const src = `const intValue = 42;`;
+describe("scope", () => {
 
-        const { project, sourceFile } = await createTestProject(src)
-        const globals = createGlobalScope(project);
+    describe("createGlobalScope", () => {
+        it("const variable statement", async () => {
+            const src = `const intValue = 42;`;
 
-        const constDef = testScope(globals, getSymbol(sourceFile, "intValue"), ConstantSymbolDef);
-        expect(constDef.value).eq(42n);
+            const { project, sourceFile } = await createTestProject(src)
+            const globals = createGlobalScope(project);
+
+            const constDef = testScope(globals, getSymbol(sourceFile, "intValue"), ConstantSymbolDef);
+            expect(constDef.value).eq(42n);
+        });
+
+
+        it("function def", async () => {
+            const src = `function test(a: bigint, b: boolean) { return "hello world"; }`;
+
+            const { project, sourceFile } = await createTestProject(src)
+
+            const globals = createGlobalScope(project);
+            const funcDef = testScope(globals, getSymbol(sourceFile, "test"), FunctionSymbolDef);
+
+            const p1Def = testScope(funcDef, getSymbol(funcDef.node, "a"), ParameterSymbolDef);
+            expect(p1Def.index).eq(0);
+
+            const p2Def = testScope(funcDef, getSymbol(funcDef.node, "b"), ParameterSymbolDef);
+            expect(p2Def.index).eq(1);
+        })
     });
-
-
-    it ("function def", async () => {
-        const src = `function test(a: bigint, b: boolean) { return "hello world"; }`;
-
-        const { project, sourceFile } = await createTestProject(src)
-
-        const globals = createGlobalScope(project);
-        const funcDef = testScope(globals, getSymbol(sourceFile, "test"), FunctionSymbolDef);
-
-        const p1Def = testScope(funcDef, getSymbol(funcDef.node, "a"), ParameterSymbolDef);
-        expect(p1Def.index).eq(0);
-
-        const p2Def = testScope(funcDef, getSymbol(funcDef.node, "b"), ParameterSymbolDef);
-        expect(p2Def.index).eq(1);
-    })
-})
+});
