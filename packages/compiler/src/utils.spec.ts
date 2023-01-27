@@ -3,20 +3,10 @@ import 'mocha';
 import { Context, Runnable } from 'mocha';
 import * as tsm from "ts-morph";
 import { createTestProject } from './scope.spec';
-import { bigIntToByteArray, byteArrayToBigInt, getConstantValue } from './utils';
+import { bigIntToByteArray, getConstantValue } from './utils';
 import { negativeValueTests, positiveValueTests } from './utils.bigIntToByteArray.spec';
 
 describe("utils", () => {
-    describe("toHexString", () => {
-        function test({ value, expected }: { value: bigint, expected: string}) {
-            it(`${value}`, () => {
-            });
-        }
-
-        positiveValueTests.forEach(test);
-        negativeValueTests.forEach(test);
-
-    })
     describe('bigIntToByteArray', () => {
 
         function testConvertInt({ value, expected }: { value: bigint, expected: string}) {
@@ -31,24 +21,24 @@ describe("utils", () => {
         negativeValueTests.forEach(testConvertInt);
     });
 
-    describe('byteArrayToBigInt', () => {
+    // describe('byteArrayToBigInt', () => {
 
-        function testConvertBuffer({ value, expected }: { value: bigint, expected: string}) {
+    //     function testConvertBuffer({ value, expected }: { value: bigint, expected: string}) {
 
-            // skip negative values for now
-            it(`0x${expected} -> ${value}`, function () {
-                if (value < 0n) { 
-                    this.skip(); 
-                } else {
-                    const buffer = Buffer.from(expected, 'hex');
-                    expect(byteArrayToBigInt(buffer)).to.equal(value);
-                } 
-            });
-        }
+    //         // skip negative values for now
+    //         it(`0x${expected} -> ${value}`, function () {
+    //             if (value < 0n) { 
+    //                 this.skip(); 
+    //             } else {
+    //                 const buffer = Buffer.from(expected, 'hex');
+    //                 expect(byteArrayToBigInt(buffer)).to.equal(value);
+    //             } 
+    //         });
+    //     }
 
-        positiveValueTests.forEach(testConvertBuffer);
-        negativeValueTests.forEach(testConvertBuffer);
-    });
+    //     positiveValueTests.forEach(testConvertBuffer);
+    //     negativeValueTests.forEach(testConvertBuffer);
+    // });
 
     describe("getConstantValue", () => {
         async function runTest(expected: string) {

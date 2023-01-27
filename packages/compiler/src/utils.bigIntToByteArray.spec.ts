@@ -1,7 +1,3 @@
-import { expect } from 'chai';
-import 'mocha';
-import { bigIntToByteArray, byteArrayToBigInt } from './utils'
-
 // tables generated via powershell in order to ensure .NET BigInteger compat
 export const positiveValueTests = [
     { value: 0n, expected: "00" },
@@ -391,33 +387,3 @@ export const negativeValueTests = [
     { value: -18446744073709551616n, expected: "0000000000000000FF" },
     { value: -18446744073709551617n, expected: "FFFFFFFFFFFFFFFFFE" },
 ]
-
-
-    // describe('bigIntToByteArray', () => {
-
-    //     function testConvertInt(value: bigint, expected: string) {
-    //         it(`${value}`, () => {
-
-    //             const bufferExpected = Buffer.from(expected, 'hex');
-    //             expect(bigIntToByteArray(value)).to.deep.equal(bufferExpected);
-    //         })
-    //     }
-
-    //     positiveValueTests.forEach(v => testConvertInt(v.value, v.expected));
-    //     negativeValueTests.forEach(v => testConvertInt(v.value, v.expected));
-    // });
-
-    // describe('byteArrayToBigInt', () => {
-
-    //     function testConvertBuffer(value: bigint, expected: string) {
-    //         it(`0x${expected} -> ${value}`, () => {
-
-    //             const buffer = Buffer.from(expected, 'hex');
-    //             expect(byteArrayToBigInt(buffer)).to.equal(value);
-    //         })
-    //     }
-
-    //     positiveValueTests.forEach(v => testConvertBuffer(v.value, v.expected));
-    //     // negativeValueTests.forEach(v => testConvertBuffer(v.value, v.expected));
-    // });
-
