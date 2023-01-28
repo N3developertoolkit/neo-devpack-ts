@@ -229,8 +229,22 @@ export function processStringLiteral(node: tsm.StringLiteral, { builder }: Proce
     builder.pushData(value);
 }
 
-// // function processPropertyAccessExpression(node: tsm.PropertyAccessExpression, options: ProcessOptions) {
+function processPropertyAccessExpression(node: tsm.PropertyAccessExpression, options: ProcessOptions) {
 
+    // TODO: left off here
+    const expr = node.getExpression();
+    processExpression(expr, options);
+
+    const exprType = expr.getType();
+    if (tsm.Node.isIdentifier(expr)) {
+        const defs = expr.getDefinitions();
+        const impl = expr.getImplementations();
+        console.log([defs, impl])
+
+    }
+    // const et = expr.print();
+    // const foo = node.getName();
+    // console.log([et, foo]);
 // //     const expr = node.getExpression();
 // //     const exprType = expr.getType();
 // //     const exprTypeSymbol = exprType.getAliasSymbol() ?? exprType.getSymbolOrThrow();
@@ -264,8 +278,8 @@ export function processStringLiteral(node: tsm.StringLiteral, { builder }: Proce
 // //     //     return;
 // //     // }
 
-// //     throw new CompileError("processPropertyAccessExpression not implemented", node);
-// // }
+    throw new CompileError("processPropertyAccessExpression not implemented", node);
+}
 
 export function processExpression(node: tsm.Expression, options: ProcessOptions) {
 
@@ -275,12 +289,12 @@ export function processExpression(node: tsm.Expression, options: ProcessOptions)
         // [tsm.SyntaxKind.BinaryExpression]: processBinaryExpression,
         // [tsm.SyntaxKind.CallExpression]: processCallExpression,
         // [tsm.SyntaxKind.ConditionalExpression]: processConditionalExpression,
-        // [tsm.SyntaxKind.PropertyAccessExpression]: processPropertyAccessExpression,
 
         [tsm.SyntaxKind.BigIntLiteral]: processBigIntLiteral,
         [tsm.SyntaxKind.FalseKeyword]: processBooleanLiteral,
         [tsm.SyntaxKind.Identifier]: processIdentifier,
         [tsm.SyntaxKind.NumericLiteral]: processNumericLiteral,
+        [tsm.SyntaxKind.PropertyAccessExpression]: processPropertyAccessExpression,
         [tsm.SyntaxKind.StringLiteral]: processStringLiteral,
         [tsm.SyntaxKind.TrueKeyword]: processBooleanLiteral,
     });

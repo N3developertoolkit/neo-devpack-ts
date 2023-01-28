@@ -22,7 +22,6 @@ async function main() {
 
     // load test contract
     const contractSource = await readFile(join(__dirname, "contract.ts"), 'utf8');
-
     project.createSourceFile("contract.ts", contractSource);
     project.resolveSourceFileDependencies();
 

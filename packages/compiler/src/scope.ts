@@ -111,6 +111,7 @@ export class VariableSymbolDef implements SymbolDef {
         this.symbol = node.getSymbolOrThrow();
     }
 }
+
 export class BlockScope implements Scope {
     private readonly map = new Map<tsm.Symbol, SymbolDef>();
 
@@ -133,16 +134,54 @@ export class BlockScope implements Scope {
     }
 }
 
+export class EventSymbolDef implements SymbolDef {
+    readonly symbol: tsm.Symbol;
+    readonly name: string;
+
+    constructor(
+        readonly node: tsm.FunctionDeclaration,
+        readonly parentScope: ReadonlyScope,
+        tag: tsm.JSDocTag
+    ) {
+        if (!node.hasDeclareKeyword()) throw new CompileError("Invalid EventSymbolDef", node);
+        this.symbol = node.getSymbolOrThrow();
+        this.name = tag.getCommentText() ?? node.getNameOrThrow();
+    }
+}
+
+function getEventTag(node: tsm.FunctionDeclaration): tsm.JSDocTag | undefined {
+    for (const doc of node.getJsDocs()) {
+        for (const tag of doc.getTags()) {
+            if (tag.getTagName() === "event") return tag;
+        }
+    }
+    return undefined
+}
+
 // @internal
 export function createGlobalScope(project: tsm.Project): ReadonlyScope {
     const globals = new GlobalScope();
+    
     for (const src of project.getSourceFiles()) {
         if (src.isDeclarationFile()) continue;
         src.forEachChild(node => {
             const kind = node.getKindName();
+            if (tsm.Node.isImportDeclaration(node)
+                && node.getModuleSpecifierValue() === '@neo-project/neo-contract-framework'
+            ) {
+                for (const namedImport of node.getNamedImports()){
+                    const sym = namedImport.getSymbolOrThrow();
+                    const n = sym.getName();
+                    const a = sym.getAliasedSymbol()?.getName();
+                    const e = sym.getExportSymbol().getName();
+                    // console.log([n,a,e]);
+                } 
+            }
             if (tsm.Node.isFunctionDeclaration(node)) {
-                // TODO: if node.hasDeclareKeyword() == true then look for an @event JSDoc tag 
-                if (!node.hasDeclareKeyword()) {
+                if (node.hasDeclareKeyword()) {
+                    const tag = getEventTag(node);
+                    if (tag) globals.define(s => new EventSymbolDef(node, s, tag));
+                } else {
                     globals.define(s => new FunctionSymbolDef(node, s));
                 }
             }

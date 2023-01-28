@@ -1,4 +1,4 @@
-import { ByteString, Storage, Address, Runtime, ContractManagement, Contract, Transaction } from '@neo-project/neo-contract-framework';
+import { ByteString, Storage } from '@neo-project/neo-contract-framework';
 
 /**
  * @contract ApocToken
@@ -16,8 +16,8 @@ const prefixTotalSupply = 0xA0;
 const prefixBalance = 0xA1;
 const prefixContractOwner = 0xFF;
 
-// /** @event Transfer */
-// declare function OnTransfer(from: Address | null, to: Address | null, amount: bigint): void;
+// /** @event */
+// declare function Transfer(from: Address | undefined, to: Address | undefined, amount: bigint): void;
 
 /** @safe */
 export function symbol() { return SYMBOL; }
@@ -27,21 +27,21 @@ export function decimals() { return DECIMALS; }
 
 /** @safe */
 export function totalSupply() { 
-    const symbol = "APOC";
-    // const key = new ByteString(prefixTotalSupply);
-    // return Storage.get(Storage.currentContext, key) as bigint;
+    const ctx = Storage.currentContext;
+    const key = new ByteString(prefixTotalSupply);
+    return Storage.get(ctx, key) as bigint;
 }
 
-/** @safe */
-export function balanceOf(account: Address) { 
+// /** @safe */
+// export function balanceOf(account: Address) { 
     // if (!ByteString.isValidAddress(account)) throw new Error();
     // const context = Storage.currentContext;
     // const key = ByteString.concat(new ByteString(prefixBalance), account);
     // const value = Storage.get(context, key);
     // return value ? value as bigint : 0n;
-}
+// }
 
-export function transfer(from: Address, to: Address, amount: bigint, data: any) {
+// export function transfer(from: Address, to: Address, amount: bigint, data: any) {
 //     if (!ByteString.isValidAddress(from)) throw new Error();
 //     if (!ByteString.isValidAddress(to)) throw new Error();
 //     if (amount < 0n) throw new Error("The amount must be a positive number");
@@ -52,18 +52,18 @@ export function transfer(from: Address, to: Address, amount: bigint, data: any) 
 //     }
 //     postTransfer(from, to, amount, data);
 //     return true;
-}
+// }
 
-export function mint(account: Address, amount: bigint): void {
+// export function mint(account: Address, amount: bigint): void {
 //     if (amount === 0n) return;
 //     if (amount < 0n) throw new Error("amount must be greater than zero");
 //     var owner = getOwner();
 //     if (!Runtime.checkWitness(owner)) throw new Error();
 
 //     createTokens(account, amount);
-}
+// }
 
-export function burn(account: Address, amount: bigint): void {
+// export function burn(account: Address, amount: bigint): void {
 //     if (amount === 0n) return;
 //     if (amount < 0n) throw new Error("amount must be greater than zero");
 //     var owner = getOwner();
@@ -72,17 +72,17 @@ export function burn(account: Address, amount: bigint): void {
 //     if (!updateBalance(account, -amount)) throw new Error();
 //     updateTotalSupply(-amount);
 //     postTransfer(account, null, amount, null);
-}
+// }
 
-function postTransfer(from: Address | null, to: Address | null, amount: bigint, data: any) {
-    // OnTransfer(from, to, amount);
-    // if (to) {
-    //     const contract = ContractManagement.getContract(to);
-    //     if (contract) {
-    //         Contract.call(to, "onNEP17Payment", from, amount, data);
-    //     }
-    // }
-}
+// function postTransfer(from: Address | null, to: Address | null, amount: bigint, data: any) {
+//     OnTransfer(from, to, amount);
+//     if (to) {
+//         const contract = ContractManagement.getContract(to);
+//         if (contract) {
+//             Contract.call(to, "onNEP17Payment", from, amount, data);
+//         }
+//     }
+// }
 
 function updateTotalSupply(amount: bigint) {
     // const context = Storage.currentContext;
@@ -93,7 +93,7 @@ function updateTotalSupply(amount: bigint) {
     // Storage.put(context, key, totalSupply);
 }
 
-function updateBalance(account: Address, amount: bigint) {
+// function updateBalance(account: Address, amount: bigint) {
 //     const context = Storage.currentContext;
 //     const key = ByteString.concat(new ByteString(prefixBalance), account);
 //     const value = Storage.get(context, key);
@@ -106,7 +106,7 @@ function updateBalance(account: Address, amount: bigint) {
 //         Storage.put(context, key, balance);
 //     }
 //     return true;
-}
+// }
 
 export function _deploy(data: any, update: boolean) { 
 //     if (update) return;
@@ -117,18 +117,18 @@ export function _deploy(data: any, update: boolean) {
 //     createTokens(sender, amount);
 }
 
-export function update(nefFile: ByteString, manifest: string) {
+// export function update(nefFile: ByteString, manifest: string) {
 //     var owner = getOwner();
 //     if (!Runtime.checkWitness(owner)) throw new Error();
 //     ContractManagement.update(nefFile, manifest);
-}
+// }
 
-function createTokens(account: Address, amount: bigint) {
+// function createTokens(account: Address, amount: bigint) {
 //     if (amount < 0n) throw new Error("The amount must be a positive number");
 //     updateBalance(account, amount);
 //     updateTotalSupply(amount);
 //     postTransfer(null, account, amount, null);
-}
+// }
 
 function getOwner() {
 //     const key = new ByteString(prefixContractOwner);
