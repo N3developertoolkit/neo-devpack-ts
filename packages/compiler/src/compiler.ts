@@ -187,12 +187,21 @@ export function compile(options: CompileOptions) {
     //     // functions: []
     // };
 
-    const globals = createGlobalScope(project);
-     for (const sym of globals.symbols) {
-        if (sym instanceof FunctionSymbolDef) {
-            processFunctionDeclaration(sym);
-        }
+    for (const src of project.getSourceFiles()) {
+        if (src.isDeclarationFile()) continue;
+
+        const globals = createGlobalScope(src);
+
+        // src.forEachChild(node => processScopeNode(node, globals));
     }
+
+
+    
+    //  for (const sym of globals.symbols) {
+    //     if (sym instanceof FunctionSymbolDef) {
+    //         processFunctionDeclaration(sym);
+    //     }
+    // }
 
     // for (const src of project.getSourceFiles()) {
     //     if (src.isDeclarationFile()) continue;

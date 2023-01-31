@@ -1,4 +1,4 @@
-import { ByteString, Storage } from '@neo-project/neo-contract-framework';
+import { Storage as STG } from '@neo-project/neo-contract-framework';
 
 /**
  * @contract ApocToken
@@ -27,9 +27,9 @@ export function decimals() { return DECIMALS; }
 
 /** @safe */
 export function totalSupply() { 
-    const ctx = Storage.currentContext;
-    const key = new ByteString(prefixTotalSupply);
-    return Storage.get(ctx, key) as bigint;
+    const ctx = STG.currentContext;
+    // const key = new ByteString(prefixTotalSupply);
+    // return Storage.get(ctx, key) as bigint;
 }
 
 // /** @safe */
@@ -84,14 +84,14 @@ export function totalSupply() {
 //     }
 // }
 
-function updateTotalSupply(amount: bigint) {
+// function updateTotalSupply(amount: bigint) {
     // const context = Storage.currentContext;
     // const key = new ByteString(prefixTotalSupply);
     // const value = Storage.get(context, key);
     // let totalSupply = value ? value as bigint : 0n;
     // totalSupply += amount;
     // Storage.put(context, key, totalSupply);
-}
+// }
 
 // function updateBalance(account: Address, amount: bigint) {
 //     const context = Storage.currentContext;
@@ -108,14 +108,14 @@ function updateTotalSupply(amount: bigint) {
 //     return true;
 // }
 
-export function _deploy(data: any, update: boolean) { 
+// export function _deploy(data: any, update: boolean) { 
 //     if (update) return;
 //     const key = ByteString.from([prefixContractOwner]);
 //     var sender = (Runtime.scriptContainer as Transaction).sender;
 //     Storage.put(Storage.currentContext, key, sender);
 //     var amount = INITIAL_SUPPLY * (10n ** DECIMALS);
 //     createTokens(sender, amount);
-}
+// }
 
 // export function update(nefFile: ByteString, manifest: string) {
 //     var owner = getOwner();
@@ -130,7 +130,7 @@ export function _deploy(data: any, update: boolean) {
 //     postTransfer(null, account, amount, null);
 // }
 
-function getOwner() {
+// function getOwner() {
 //     const key = new ByteString(prefixContractOwner);
 //     return Storage.get(Storage.currentContext, key) as Address;
-}
+// }

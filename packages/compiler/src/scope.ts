@@ -1,5 +1,7 @@
+import nodeTest from "node:test";
 import * as tsm from "ts-morph";
 import { CompileError } from "./compiler";
+import { dispatch } from "./utility/nodeDispatch";
 import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
 import { getConstantValue, getSymbolOrCompileError } from "./utils";
 
@@ -39,15 +41,19 @@ function define<T extends SymbolDef>(scope: ReadonlyScope, map: Map<tsm.Symbol, 
     return instance;
 }
 
-export class GlobalScope implements ReadonlyScope {
+
+
+
+
+export class GlobalScope implements Scope {
     private readonly map = new Map<tsm.Symbol, SymbolDef>();
     readonly parentScope = undefined;
 
-    resolve(symbol: tsm.Symbol): SymbolDef | undefined {
+    resolve(symbol: tsm.Symbol) {
         return resolve(this.map, symbol);
     }
 
-    define<T extends SymbolDef>(factory: T | ((scope: ReadonlyScope) => T)): T {
+    define<T extends SymbolDef>(factory: T | ((scope: ReadonlyScope) => T)) {
         return define(this, this.map, factory);
     }
 
@@ -56,13 +62,46 @@ export class GlobalScope implements ReadonlyScope {
     }
 }
 
+export class BlockScope implements Scope {
+    private readonly map = new Map<tsm.Symbol, SymbolDef>();
+
+    constructor(
+        readonly node: tsm.Block,
+        readonly parentScope: ReadonlyScope,
+    ) {
+    }
+
+    define<T extends SymbolDef>(factory: T | ((scope: ReadonlyScope) => T)) {
+        return define(this, this.map, factory);
+    }
+
+    get symbols() {
+        return this.map.values();
+    }
+
+    resolve(symbol: tsm.Symbol) {
+        return resolve(this.map, symbol, this.parentScope);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 export class ConstantSymbolDef implements SymbolDef {
     constructor(
         readonly symbol: tsm.Symbol,
         readonly parentScope: ReadonlyScope,
         readonly value: boolean | bigint | null | ReadonlyUint8Array,
-    ) {
-    }
+    ) { }
 }
 
 export class FunctionSymbolDef implements SymbolDef, ReadonlyScope {
@@ -72,8 +111,9 @@ export class FunctionSymbolDef implements SymbolDef, ReadonlyScope {
     constructor(
         readonly node: tsm.FunctionDeclaration,
         readonly parentScope: ReadonlyScope,
+        symbol?: tsm.Symbol,
     ) {
-        this.symbol = node.getSymbolOrThrow();
+        this.symbol = symbol ?? node.getSymbolOrThrow();
 
         const params = node.getParameters();
         for (let index = 0; index < params.length; index++) {
@@ -95,7 +135,7 @@ export class ParameterSymbolDef implements SymbolDef {
     constructor(
         readonly node: tsm.ParameterDeclaration,
         readonly parentScope: ReadonlyScope,
-        readonly index: number
+        readonly index: number,
     ) {
         this.symbol = node.getSymbolOrThrow();
     }
@@ -109,28 +149,6 @@ export class VariableSymbolDef implements SymbolDef {
         readonly index: number
     ) {
         this.symbol = node.getSymbolOrThrow();
-    }
-}
-
-export class BlockScope implements Scope {
-    private readonly map = new Map<tsm.Symbol, SymbolDef>();
-
-    constructor(
-        readonly node: tsm.Block,
-        readonly parentScope: ReadonlyScope,
-    ) {
-    }
-
-    define<T extends SymbolDef>(factory: T | ((scope: ReadonlyScope) => T)): T {
-        return define(this, this.map, factory);
-    }
-
-    get symbols(): IterableIterator<SymbolDef> {
-        return this.map.values();
-    }
-
-    resolve(symbol: tsm.Symbol): SymbolDef | undefined {
-        return resolve(this.map, symbol, this.parentScope);
     }
 }
 
@@ -149,7 +167,48 @@ export class EventSymbolDef implements SymbolDef {
     }
 }
 
-function getEventTag(node: tsm.FunctionDeclaration): tsm.JSDocTag | undefined {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+interface ScopeOptions {
+    scope: Scope,
+    symbol?: tsm.Symbol
+}
+
+function getEventTag(node: tsm.JSDocableNode): tsm.JSDocTag | undefined {
     for (const doc of node.getJsDocs()) {
         for (const tag of doc.getTags()) {
             if (tag.getTagName() === "event") return tag;
@@ -158,47 +217,99 @@ function getEventTag(node: tsm.FunctionDeclaration): tsm.JSDocTag | undefined {
     return undefined
 }
 
-// @internal
-export function createGlobalScope(project: tsm.Project): ReadonlyScope {
-    const globals = new GlobalScope();
-    
-    for (const src of project.getSourceFiles()) {
-        if (src.isDeclarationFile()) continue;
-        src.forEachChild(node => {
-            const kind = node.getKindName();
-            if (tsm.Node.isImportDeclaration(node)
-                && node.getModuleSpecifierValue() === '@neo-project/neo-contract-framework'
-            ) {
-                for (const namedImport of node.getNamedImports()){
-                    const sym = namedImport.getSymbolOrThrow();
-                    const n = sym.getName();
-                    const a = sym.getAliasedSymbol()?.getName();
-                    const e = sym.getExportSymbol().getName();
-                    // console.log([n,a,e]);
-                } 
-            }
-            if (tsm.Node.isFunctionDeclaration(node)) {
-                if (node.hasDeclareKeyword()) {
-                    const tag = getEventTag(node);
-                    if (tag) globals.define(s => new EventSymbolDef(node, s, tag));
-                } else {
-                    globals.define(s => new FunctionSymbolDef(node, s));
-                }
-            }
-            else if (tsm.Node.isVariableStatement(node)
-                && node.getDeclarationKind() === tsm.VariableDeclarationKind.Const
-            ) {
-                for (const decl of node.getDeclarations()) {
-                    const symbol = decl.getSymbol();
-                    if (symbol) {
-                        const init = decl.getInitializer();
-                        if (!init) throw new CompileError("Invalid const initializer", decl);
-                        const value = getConstantValue(init);
-                        globals.define(s => new ConstantSymbolDef(symbol, s, value));
-                    }
-                }
-            }
-        });
+function processFunctionDeclaration(node: tsm.FunctionDeclaration, { scope, symbol }: ScopeOptions) {
+    if (node.hasDeclareKeyword()) {
+        const tag = getEventTag(node);
+        if (tag) {
+            scope.define(s => new EventSymbolDef(node, s, tag));
+        } else {
+            throw new CompileError("not implemented", node);
+        }
+    } else {
+        scope.define(s => new FunctionSymbolDef(node, s, symbol));
     }
-    return globals;
+}
+
+// function processScFxImport(decls: tsm.ExportedDeclarations[], options: ScopeOptions) {
+//     if (decls.length !== 1) throw new Error('Multiple ExportedDeclarations not implemented');
+//     const decl = decls[0];
+//     const foo = decl.getType();
+
+
+
+
+//     const i = 0;
+
+
+// }
+
+function processSCFXImportSpecifier(decls: tsm.ExportedDeclarations[], options: ScopeOptions) {
+    if (decls.length !== 1) throw new Error('not implemented');
+    const decl = decls[0];
+    if (tsm.Node.isVariableDeclaration(decl)) {
+        processVariableDeclaration(decl, options);
+    }
+}
+
+function processImportDeclaration(node: tsm.ImportDeclaration, { scope }: ScopeOptions) {
+    const isSCFX = node.getModuleSpecifierValue() === '@neo-project/neo-contract-framework';
+    const exportMap = node.getModuleSpecifierSourceFileOrThrow().getExportedDeclarations();
+
+    if (isSCFX) {
+        for (const $import of node.getNamedImports()) {
+            const symbol = $import.getSymbolOrThrow();
+            const name = (symbol.getAliasedSymbol() ?? symbol).getName();
+            const $export = exportMap.get(name);
+            if (!$export || $export.length === 0) { throw new CompileError('not found', $import); }
+            if ($export.length > 1) { throw new CompileError('not implemented', $import); }
+            processSCFXImportSpecifier($export, { scope, symbol });
+        }
+    } else {
+        throw new CompileError("not implemented", node);
+    }
+
+}
+
+function processVariableDeclaration(node: tsm.VariableDeclaration, options: ScopeOptions) {
+    const stmt = node.getVariableStatementOrThrow();
+    const declKind = stmt.getDeclarationKind();
+    if (declKind !== tsm.VariableDeclarationKind.Const) {
+        throw new CompileError(`${declKind} not implemented`, stmt);
+    }
+
+    const symbol = options.symbol ?? node.getSymbol();
+    if (symbol) {
+        const init = node.getInitializer();
+        if (init) {
+            const value = getConstantValue(init);
+            options.scope.define(s => new ConstantSymbolDef(symbol, s, value));
+        } else {
+            throw new CompileError("not implemented", node);
+        }
+    }
+}
+
+function processVariableStatement(node: tsm.VariableStatement, options: ScopeOptions) {
+    for (const decl of node.getDeclarations()) {
+        processVariableDeclaration(decl, options);
+    }
+}
+
+function processScopeNode(node: tsm.Node, options: ScopeOptions) {
+    dispatch(node, options, {
+        [tsm.SyntaxKind.FunctionDeclaration]: processFunctionDeclaration,
+        [tsm.SyntaxKind.ImportDeclaration]: processImportDeclaration,
+        [tsm.SyntaxKind.VariableStatement]: processVariableStatement,
+        [tsm.SyntaxKind.EndOfFileToken]: () => { },
+    });
+}
+
+// @internal
+export function createGlobalScope(src: tsm.SourceFile): ReadonlyScope {
+    if (src.isDeclarationFile()) throw new CompileError(`can't createGlobalScope for declaration file`, src);
+
+    const scope = new GlobalScope();
+    src.forEachChild(node => processScopeNode(node, { scope }));
+    const symbols = [...scope.symbols].map(s => s.symbol.getName());
+    return scope;
 }

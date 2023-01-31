@@ -1,27 +1,30 @@
 
-type TypedArrayMutableProperties = 'copyWithin' | 'fill' | 'reverse' | 'set' | 'sort';
-export interface ByteString extends Omit<Uint8Array, TypedArrayMutableProperties> { 
-    readonly [n: number]: number;
-}
+// type TypedArrayMutableProperties = 'copyWithin' | 'fill' | 'reverse' | 'set' | 'sort';
+// export interface ByteString extends Omit<Uint8Array, TypedArrayMutableProperties> { 
+//     readonly [n: number]: number;
+// }
 
-export declare const ByteString: ByteStringConstructor;
-export interface ByteStringConstructor {
+// export declare const ByteString: ByteStringConstructor;
+// export interface ByteStringConstructor {
 //     new(array: ArrayLike<number>): ByteString;
-    new(value: number): ByteString;
+//     new(value: number): ByteString;
 //     concat(one: ByteString, two: ByteString): ByteString;
 //     from(arrayLike: ArrayLike<number>): ByteString;
 //     isValidAddress(account: ByteString): boolean;
-}
+// }
 
-export type StorageValue = boolean | bigint | ByteString;
+// export type StorageValue = boolean | bigint | ByteString;
 
 export interface StorageContext { }
+
 export declare const Storage: StorageConstructor;
+
 export interface StorageConstructor {
     /** @syscall System.Storage.GetContext */ 
     readonly currentContext: StorageContext;
-    /** @syscall System.Storage.Get */ 
-    get(context: StorageContext, key: ByteString): StorageValue | undefined;
+
+    // /** @syscall System.Storage.Get */ 
+    // get(context: StorageContext, key: ByteString): StorageValue | undefined;
     // /** @syscall System.Storage.Put */ 
     // put(context: StorageContext, key: ByteString, value: StorageValue): void;
     // /** @syscall System.Storage.Delete */
