@@ -69,11 +69,20 @@ export class MethodBuilder {
         this._jumps.set(op, target);
     }
 
+    load(kind: LoadStoreKind, index: number, location?: tsm.Node): void {
+        if (!Number.isInteger(index)) throw new Error(`Invalid load index ${index}`);
+        const opKind = kind === 'arg' 
+            ? "loadarg"
+            : kind === 'local' ? 'loadlocal' : 'loadstatic';
+            const op: LoadStoreOperation = { kind: opKind, index, location };
+            this._operations.push(op);
+    }
+
     store(kind: LoadStoreKind, index: number, location?: tsm.Node): void {
         if (!Number.isInteger(index)) throw new Error(`Invalid store index ${index}`);
         const opKind = kind === 'arg' 
             ? "storearg"
-            : kind === 'local' ? 'storevar' : 'storesvar'
+            : kind === 'local' ? 'storelocal' : 'storestatic';
         const op: LoadStoreOperation = { kind: opKind, index, location };
         this._operations.push(op);
     }

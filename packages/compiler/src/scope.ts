@@ -1,6 +1,7 @@
 import nodeTest from "node:test";
 import * as tsm from "ts-morph";
 import { CompileError } from "./compiler";
+import { MethodBuilder } from "./passes/MethodBuilder";
 import { dispatch } from "./utility/nodeDispatch";
 import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
 import { getConstantValue, getSymbolOrCompileError } from "./utils";
@@ -16,7 +17,7 @@ export interface Scope extends ReadonlyScope {
 }
 
 export function isScope(scope: ReadonlyScope): scope is Scope {
-    return 'define' in scope;
+    return 'define' in scope && typeof scope.define === 'function';
 }
 
 export interface SymbolDef {
@@ -40,6 +41,11 @@ function define<T extends SymbolDef>(scope: ReadonlyScope, map: Map<tsm.Symbol, 
     map.set(instance.symbol, instance);
     return instance;
 }
+
+
+
+
+
 
 
 
@@ -84,7 +90,33 @@ export class BlockScope implements Scope {
     }
 }
 
+export class MethodSymbolDef implements SymbolDef, ReadonlyScope {
+    private readonly map: ReadonlyMap<tsm.Symbol, SymbolDef>;
+    readonly symbol: tsm.Symbol;
 
+    constructor(
+        readonly node: tsm.FunctionDeclaration,
+        readonly parentScope: ReadonlyScope,
+        symbol?: tsm.Symbol,
+    ) {
+        this.symbol = symbol ?? node.getSymbolOrThrow();
+
+        const params = node.getParameters();
+        const map = new Map<tsm.Symbol, SymbolDef>();
+        for (let index = 0; index < params.length; index++) {
+            define(this, map, new ArgumentSymbolDef(params[index], this, index));
+        }
+        this.map = map;
+    }
+
+    get symbols(): IterableIterator<SymbolDef> {
+        return this.map.values();
+    }
+
+    resolve(symbol: tsm.Symbol): SymbolDef | undefined {
+        return resolve(this.map, symbol, this.parentScope);
+    }
+}
 
 
 
@@ -102,35 +134,29 @@ export class ConstantSymbolDef implements SymbolDef {
         readonly parentScope: ReadonlyScope,
         readonly value: boolean | bigint | null | ReadonlyUint8Array,
     ) { }
-}
 
-export class FunctionSymbolDef implements SymbolDef, ReadonlyScope {
-    private readonly map = new Map<tsm.Symbol, SymbolDef>();
-    readonly symbol: tsm.Symbol;
-
-    constructor(
-        readonly node: tsm.FunctionDeclaration,
-        readonly parentScope: ReadonlyScope,
-        symbol?: tsm.Symbol,
-    ) {
-        this.symbol = symbol ?? node.getSymbolOrThrow();
-
-        const params = node.getParameters();
-        for (let index = 0; index < params.length; index++) {
-            define(this, this.map, s => new ParameterSymbolDef(params[index], s, index));
+    load(builder: MethodBuilder) {
+        if (this.value === null) {
+            builder.pushNull();
+        } else if (this.value instanceof Uint8Array) {
+            builder.pushData(this.value);
+        } else {
+            switch (typeof this.value)
+            {
+                case 'boolean':
+                    builder.pushBoolean(this.value as boolean);
+                    break;
+                case 'bigint':
+                    builder.pushInt(this.value as bigint);
+                    break;
+                default:
+                    throw new Error(`ConstantSymbolDef load ${this.value}`)
+            }
         }
     }
-
-    get symbols(): IterableIterator<SymbolDef> {
-        return this.map.values();
-    }
-
-    resolve(symbol: tsm.Symbol): SymbolDef | undefined {
-        return resolve(this.map, symbol, this.parentScope);
-    }
 }
 
-export class ParameterSymbolDef implements SymbolDef {
+export class ArgumentSymbolDef implements SymbolDef {
     readonly symbol: tsm.Symbol;
     constructor(
         readonly node: tsm.ParameterDeclaration,
@@ -139,9 +165,17 @@ export class ParameterSymbolDef implements SymbolDef {
     ) {
         this.symbol = node.getSymbolOrThrow();
     }
+
+    load(builder: MethodBuilder) {
+        builder.load('arg', this.index);
+    }
+
+    store(builder: MethodBuilder) {
+        builder.store('arg', this.index);
+    }
 }
 
-export class VariableSymbolDef implements SymbolDef {
+export class LocalVariableSymbolDef implements SymbolDef {
     readonly symbol: tsm.Symbol;
     constructor(
         readonly node: tsm.VariableDeclaration,
@@ -149,6 +183,33 @@ export class VariableSymbolDef implements SymbolDef {
         readonly index: number
     ) {
         this.symbol = node.getSymbolOrThrow();
+    }
+
+    load(builder: MethodBuilder) {
+        builder.load('local', this.index);
+    }
+
+    store(builder: MethodBuilder) {
+        builder.store('local', this.index);
+    }
+}
+
+export class StaticVariableSymbolDef implements SymbolDef {
+    readonly symbol: tsm.Symbol;
+    constructor(
+        readonly node: tsm.VariableDeclaration,
+        readonly parentScope: ReadonlyScope,
+        readonly index: number
+    ) {
+        this.symbol = node.getSymbolOrThrow();
+    }
+
+    load(builder: MethodBuilder) {
+        builder.load('static', this.index);
+    }
+
+    store(builder: MethodBuilder) {
+        builder.store('static', this.index);
     }
 }
 
@@ -203,6 +264,7 @@ export class EventSymbolDef implements SymbolDef {
 
 
 
+
 interface ScopeOptions {
     scope: Scope,
     symbol?: tsm.Symbol
@@ -218,30 +280,20 @@ function getEventTag(node: tsm.JSDocableNode): tsm.JSDocTag | undefined {
 }
 
 function processFunctionDeclaration(node: tsm.FunctionDeclaration, { scope, symbol }: ScopeOptions) {
+    // Defining a strongly typed event by declaring a function with an @event JsDoc tag. 
+    //      /** @event */
+    //      declare function Transfer(from: Address | undefined, to: Address | undefined, amount: bigint): void;
     if (node.hasDeclareKeyword()) {
         const tag = getEventTag(node);
         if (tag) {
             scope.define(s => new EventSymbolDef(node, s, tag));
         } else {
-            throw new CompileError("not implemented", node);
+            throw new CompileError("not supported", node);
         }
     } else {
-        scope.define(s => new FunctionSymbolDef(node, s, symbol));
+        scope.define(s => new MethodSymbolDef(node, s, symbol));
     }
 }
-
-// function processScFxImport(decls: tsm.ExportedDeclarations[], options: ScopeOptions) {
-//     if (decls.length !== 1) throw new Error('Multiple ExportedDeclarations not implemented');
-//     const decl = decls[0];
-//     const foo = decl.getType();
-
-
-
-
-//     const i = 0;
-
-
-// }
 
 function processSCFXImportSpecifier(decls: tsm.ExportedDeclarations[], options: ScopeOptions) {
     if (decls.length !== 1) throw new Error('not implemented');
@@ -311,5 +363,6 @@ export function createGlobalScope(src: tsm.SourceFile): ReadonlyScope {
     const scope = new GlobalScope();
     src.forEachChild(node => processScopeNode(node, { scope }));
     const symbols = [...scope.symbols].map(s => s.symbol.getName());
+    console.log(JSON.stringify(symbols, null, 4));
     return scope;
 }

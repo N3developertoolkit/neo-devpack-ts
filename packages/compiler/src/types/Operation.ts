@@ -11,7 +11,7 @@ import { ReadonlyUint8Array } from '../utility/ReadonlyArrays';
 
 export type OperationKind = 'pushbool' | 'pushint' | 'pushdata' | 'pushnull' |
     'jump' | 'jumpif' | 'jumpifnot' | 'jumpeq' | 'jumpne' | 'jumpgt' | 'jumpge' | 'jumplt' | 'jumple' |
-    'loadarg' | 'storearg' | 'loadvar' | 'storevar' | 'loadsvar' | 'storesvar' |
+    'loadarg' | 'storearg' | 'loadlocal' | 'storelocal' | 'loadstatic' | 'storestatic' |
     'noop' | 'return';
 
 
@@ -262,7 +262,7 @@ export function isJumpOperation(ins: Operation): ins is JumpOperation {
 }
 
 const loadStoreOperationKinds = [
-    'loadarg', 'storearg', 'loadvar', 'storevar', 'loadsvar', 'storesvar'
+    'loadarg', 'storearg', 'loadlocal', 'storelocal', 'loadstatic', 'storestatic'
 ] as const as ReadonlyArray<OperationKind>;
 
 export type LoadStoreOperationKind = typeof loadStoreOperationKinds[number];

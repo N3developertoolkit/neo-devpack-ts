@@ -2,7 +2,7 @@ import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
 import { collectArtifacts } from "./collectArtifacts";
 // import { processFunctionDeclarationsPass } from "./passes/processFunctionDeclarations";
-import { ConstantSymbolDef, createGlobalScope, FunctionSymbolDef, ReadonlyScope, Scope } from "./scope";
+import { ConstantSymbolDef, createGlobalScope, MethodSymbolDef, ReadonlyScope, Scope } from "./scope";
 // import { Operation } from "./types";
 import { DebugInfo, toJson as debugInfoToJson } from "./types/DebugInfo";
 import { createDiagnostic, toDiagnostic } from "./utils";
@@ -189,9 +189,7 @@ export function compile(options: CompileOptions) {
 
     for (const src of project.getSourceFiles()) {
         if (src.isDeclarationFile()) continue;
-
         const globals = createGlobalScope(src);
-
         // src.forEachChild(node => processScopeNode(node, globals));
     }
 

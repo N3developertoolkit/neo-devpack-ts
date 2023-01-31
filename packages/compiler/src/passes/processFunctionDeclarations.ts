@@ -1,6 +1,6 @@
 import * as tsm from "ts-morph";
 import { CompileError } from "../compiler";
-import { FunctionSymbolDef, ReadonlyScope } from "../scope";
+import { MethodSymbolDef, ReadonlyScope } from "../scope";
 import { Operation } from "../types/Operation";
 import { MethodBuilder } from "./MethodBuilder";
 import { processStatement } from "./statementProcessor"
@@ -133,7 +133,7 @@ function isSafe(node: tsm.JSDocableNode): boolean {
 }
 
 // @internal
-export function processFunctionDeclaration(def: FunctionSymbolDef) {
+export function processFunctionDeclaration(def: MethodSymbolDef) {
 
     const { node } = def;
 
