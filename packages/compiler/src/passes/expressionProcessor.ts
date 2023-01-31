@@ -3,12 +3,13 @@
 // //     processExpression(node.getExpression(), options);
 // // }
 
+
+import './ext';
 import * as tsm from "ts-morph";
 import { CompileError } from "../compiler";
 import { ConstantSymbolDef, SymbolDef } from "../scope";
 import { dispatch } from "../utility/nodeDispatch";
 import { ReadonlyUint8Array } from "../utility/ReadonlyArrays";
-import { getSymbolOrCompileError } from "../utils";
 import { ProcessOptions } from "./processFunctionDeclarations";
 
 // // function processBinaryExpression(node: tsm.BinaryExpression, options: ProcessOptions) {
@@ -202,7 +203,7 @@ export function processSymbolDef(def: SymbolDef, options: ProcessOptions) {
 
 // @internal
 export function processIdentifier(node: tsm.Identifier, options: ProcessOptions) {
-    const symbol = getSymbolOrCompileError(node);
+    const symbol = node.getSymbolOrThrow();
     const resolved = options.scope.resolve(symbol);
     if (!resolved) throw new CompileError(`unresolved symbol ${symbol.getName()}`, node);
     processSymbolDef(resolved, options);

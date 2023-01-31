@@ -109,11 +109,17 @@ export function isCompoundAssignment(kind: tsm.SyntaxKind) {
 //     return literal;
 // }
 
+
+
 // @internal
 export function getConstantValue(node: tsm.Expression) {
     switch (node.getKind()) {
         case tsm.SyntaxKind.NullKeyword:
             return null;
+        case tsm.SyntaxKind.FalseKeyword:
+            return false;
+        case tsm.SyntaxKind.TrueKeyword:
+            return true;
         case tsm.SyntaxKind.BigIntLiteral:
             return (node as tsm.BigIntLiteral).getLiteralValue() as bigint;
         case tsm.SyntaxKind.NumericLiteral: {
@@ -121,28 +127,27 @@ export function getConstantValue(node: tsm.Expression) {
             if (!Number.isInteger(literal)) throw new CompileError(`invalid non-integer numeric literal`, node);
             return BigInt(literal);
         }
-        case tsm.SyntaxKind.FalseKeyword:
-            return false;
-        case tsm.SyntaxKind.TrueKeyword:
-            return true;
         case tsm.SyntaxKind.StringLiteral: {
             const literal = (node as tsm.StringLiteral).getLiteralValue();
             return <ReadonlyUint8Array>Buffer.from(literal, 'utf8');
         }
-        // case tsm.SyntaxKind.ArrayLiteralExpression: {
-        //     const buffer = new Array<number>();
-        //     for (const e of (node as tsm.ArrayLiteralExpression).getElements()) {
-        //         if (tsm.Node.isNumericLiteral(e)) {
-        //             buffer.push(getNumericLiteral(e) % 256);
-        //         } else {
-        //             return undefined;
-        //         }
-        //     }
-        //     return Uint8Array.from(buffer);
-        // }
+        case tsm.SyntaxKind.ArrayLiteralExpression: 
+            throw new CompileError('not implemented', node);
+        case tsm.SyntaxKind.ObjectLiteralExpression:
+            throw new CompileError('not implemented', node);
         default:
-            throw new CompileError(`Unsupported const type ${node.getKindName()}`, node);
+            return undefined;
+            // throw new CompileError(`Unsupported const type ${node.getKindName()}`, node);
     }
+}
+
+export function getJSDocTag(node: tsm.JSDocableNode, tagName: string): tsm.JSDocTag | undefined {
+    for (const doc of node.getJsDocs()) {
+        for (const tag of doc.getTags()) {
+            if (tag.getTagName() === tagName) return tag;
+        }
+    }
+    return undefined
 }
 
 // export function byteArrayToBigInt(value: Uint8Array): bigint {
@@ -214,18 +219,6 @@ export function bigIntToByteArray(value: bigint): Uint8Array {
         // reverse endianess
         return buffer2.reverse();
     }
-}
-
-export function getSymbolOrCompileError(node: tsm.Node) {
-    const symbol = node.getSymbol();
-    if (!symbol) throw new CompileError("undefined symbol", node);
-    return symbol;
-}
-
-export function asKindOrCompileError<TKind extends tsm.SyntaxKind>(node: tsm.Node, kind: TKind): tsm.KindToNodeMappings[TKind] {
-    const node2 = node.asKind(kind);
-    if (node2) { return node2; }
-    throw new CompileError(`Invalid node kind. Expected ${tsm.SyntaxKind[kind]}, received ${node.getKindName()}`, node);
 }
 
 export function asExpressionOrCompileError(node: tsm.Node): tsm.Expression {

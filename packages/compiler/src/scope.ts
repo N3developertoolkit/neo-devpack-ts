@@ -1,10 +1,10 @@
-import nodeTest from "node:test";
+import './ext';
 import * as tsm from "ts-morph";
 import { CompileError } from "./compiler";
 import { MethodBuilder } from "./passes/MethodBuilder";
 import { dispatch } from "./utility/nodeDispatch";
 import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
-import { getConstantValue, getSymbolOrCompileError } from "./utils";
+import { getConstantValue, getJSDocTag } from "./utils";
 
 export interface ReadonlyScope {
     readonly parentScope: ReadonlyScope | undefined;
@@ -270,21 +270,13 @@ interface ScopeOptions {
     symbol?: tsm.Symbol
 }
 
-function getEventTag(node: tsm.JSDocableNode): tsm.JSDocTag | undefined {
-    for (const doc of node.getJsDocs()) {
-        for (const tag of doc.getTags()) {
-            if (tag.getTagName() === "event") return tag;
-        }
-    }
-    return undefined
-}
 
+// Defining a strongly typed event by declaring a function with an @event JsDoc tag. 
+//  /** @event */
+//  declare function Transfer(from: Address | undefined, to: Address | undefined, amount: bigint): void;
 function processFunctionDeclaration(node: tsm.FunctionDeclaration, { scope, symbol }: ScopeOptions) {
-    // Defining a strongly typed event by declaring a function with an @event JsDoc tag. 
-    //      /** @event */
-    //      declare function Transfer(from: Address | undefined, to: Address | undefined, amount: bigint): void;
     if (node.hasDeclareKeyword()) {
-        const tag = getEventTag(node);
+        const tag = getJSDocTag(node, "event");
         if (tag) {
             scope.define(s => new EventSymbolDef(node, s, tag));
         } else {
@@ -319,25 +311,28 @@ function processImportDeclaration(node: tsm.ImportDeclaration, { scope }: ScopeO
     } else {
         throw new CompileError("not implemented", node);
     }
-
 }
+
+
+
 
 function processVariableDeclaration(node: tsm.VariableDeclaration, options: ScopeOptions) {
     const stmt = node.getVariableStatementOrThrow();
     const declKind = stmt.getDeclarationKind();
-    if (declKind !== tsm.VariableDeclarationKind.Const) {
-        throw new CompileError(`${declKind} not implemented`, stmt);
-    }
 
-    const symbol = options.symbol ?? node.getSymbol();
-    if (symbol) {
+    if (declKind === tsm.VariableDeclarationKind.Const) {
+        const symbol = options.symbol ?? node.getSymbolOrThrow();
         const init = node.getInitializer();
         if (init) {
             const value = getConstantValue(init);
-            options.scope.define(s => new ConstantSymbolDef(symbol, s, value));
+            if (value !== undefined) {
+                options.scope.define(s => new ConstantSymbolDef(symbol, s, value));
+            }
         } else {
             throw new CompileError("not implemented", node);
         }
+    } else {
+        throw new CompileError(`not implemented`, stmt);
     }
 }
 
@@ -362,7 +357,9 @@ export function createGlobalScope(src: tsm.SourceFile): ReadonlyScope {
 
     const scope = new GlobalScope();
     src.forEachChild(node => processScopeNode(node, { scope }));
+
     const symbols = [...scope.symbols].map(s => s.symbol.getName());
     console.log(JSON.stringify(symbols, null, 4));
+    
     return scope;
 }
