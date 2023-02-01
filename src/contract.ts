@@ -1,4 +1,4 @@
-// import { Storage as STG } from '@neo-project/neo-contract-framework';
+import { Storage } from '@neo-project/neo-contract-framework';
 
 /**
  * @contract ApocToken
@@ -26,11 +26,10 @@ export function symbol() { return SYMBOL; }
 export function decimals() { return DECIMALS; }
 
 /** @safe */
-// export function totalSupply() { 
-//     const ctx = STG.currentContext;
-    // const key = new ByteString(prefixTotalSupply);
-    // return Storage.get(ctx, key) as bigint;
-// }
+export function totalSupply() { 
+    const key = [prefixTotalSupply];
+    return Storage.context.get(key) as bigint;
+}
 
 // /** @safe */
 // export function balanceOf(account: Address) { 

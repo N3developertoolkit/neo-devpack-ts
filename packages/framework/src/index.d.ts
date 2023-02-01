@@ -13,15 +13,52 @@
 //     isValidAddress(account: ByteString): boolean;
 // }
 
+
+// There are 7 interop Contract service
+// three are internal use only: CallNative, NativeOnPersist and NativePostPersist
+// one has no params: GetCallFlags
+// The rest are static methods: Call, CreateStandardAccount, CreateMultisigAccount
+
+// There are 2 interop Crypto services
+// both are static methods: CheckSig and CheckMultisig
+
+// There are 2 interop Iterator services
+// both take a single IIterator parameter: Next and Value
+
+// There are 18 interop Runtime services
+// 12 have no params:
+//      GetTrigger, Platform, GetScriptContainer, GetExecutingScriptHash, GetCallingScriptHash, 
+//      GetEntryScriptHash, GetTime, GetInvocationCounter, GasLeft, GetAddressVersion
+//      GetNetwork, GetRandom
+// 6 static methods: 
+//      GetNotifications, CheckWitness, Log, Notify, LoadScript, BurnGas
+
 // export type StorageValue = boolean | bigint | ByteString;
 
-export interface StorageContext { }
+// There are 7 interop Storage services
+// two have no params: GetContext and GetReadOnlyContext
+// five have an initial StorageContext param: AsReadOnly, Get, Find, Put, Delete
+
+export interface StorageContext {
+    /** @syscall System.Storage.AsReadOnly */ 
+    asReadOnly(): StorageContext;
+    /** @syscall System.Storage.Get */ 
+    get(key: any): any;
+    /** @syscall System.Storage.Find */ 
+    find(prefix: any, options: any): any;
+    /** @syscall System.Storage.Put */ 
+    put(key: any, value: any): void;
+    /** @syscall System.Storage.Delete */ 
+    delete(key: any):void;
+}
 
 export declare const Storage: StorageConstructor;
 
 export interface StorageConstructor {
     /** @syscall System.Storage.GetContext */ 
-    readonly currentContext: StorageContext;
+    readonly context: StorageContext;
+    /** @syscall System.Storage.GetReadOnlyContext */ 
+    readonly readOnlyContext: StorageContext;
 
     // /** @syscall System.Storage.Get */ 
     // get(context: StorageContext, key: ByteString): StorageValue | undefined;
