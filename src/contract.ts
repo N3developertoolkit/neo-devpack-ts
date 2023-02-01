@@ -1,4 +1,4 @@
-import { Storage } from '@neo-project/neo-contract-framework';
+import { storageGet as get, storageGetContext as getContext } from '@neo-project/neo-contract-framework';
 
 /**
  * @contract ApocToken
@@ -26,9 +26,10 @@ export function symbol() { return SYMBOL; }
 export function decimals() { return DECIMALS; }
 
 /** @safe */
-export function totalSupply() { 
-    const key = [prefixTotalSupply];
-    return Storage.context.get(key) as bigint;
+export function totalSupply( ) { 
+    const ctx = getContext();
+    const key = Uint8Array.from([prefixTotalSupply]);
+    return get(ctx, key);
 }
 
 // /** @safe */

@@ -1,18 +1,10 @@
 
-// type TypedArrayMutableProperties = 'copyWithin' | 'fill' | 'reverse' | 'set' | 'sort';
-// export interface ByteString extends Omit<Uint8Array, TypedArrayMutableProperties> { 
-//     readonly [n: number]: number;
-// }
+// There are 9 NeoVM Types: Pointer, Boolean, Integer, ByteString, Buffer, Array, Struct, Map, InteropInterface
+//  * five types have direct TS equivalents: Boolean/boolean, Integer/bigint, Buffer/Uint8Array, Array/Array, Map/Map
+//  * ByteString is defined as ReadonlyUint8Array as per https://www.growingwiththeweb.com/2020/10/typescript-readonly-typed-arrays.html
+//  * Pointer, Struct and InteropInterface are all TBD
 
-// export declare const ByteString: ByteStringConstructor;
-// export interface ByteStringConstructor {
-//     new(array: ArrayLike<number>): ByteString;
-//     new(value: number): ByteString;
-//     concat(one: ByteString, two: ByteString): ByteString;
-//     from(arrayLike: ArrayLike<number>): ByteString;
-//     isValidAddress(account: ByteString): boolean;
-// }
-
+export interface ByteString extends Omit<Uint8Array, 'copyWithin' | 'fill' | 'reverse' | 'set' | 'sort'> { }
 
 // There are 7 interop Contract service
 // three are internal use only: CallNative, NativeOnPersist and NativePostPersist
@@ -33,83 +25,23 @@
 // 6 static methods: 
 //      GetNotifications, CheckWitness, Log, Notify, LoadScript, BurnGas
 
-// export type StorageValue = boolean | bigint | ByteString;
-
 // There are 7 interop Storage services
 // two have no params: GetContext and GetReadOnlyContext
 // five have an initial StorageContext param: AsReadOnly, Get, Find, Put, Delete
 
-export interface StorageContext {
-    /** @syscall System.Storage.AsReadOnly */ 
-    asReadOnly(): StorageContext;
-    /** @syscall System.Storage.Get */ 
-    get(key: any): any;
-    /** @syscall System.Storage.Find */ 
-    find(prefix: any, options: any): any;
-    /** @syscall System.Storage.Put */ 
-    put(key: any, value: any): void;
-    /** @syscall System.Storage.Delete */ 
-    delete(key: any):void;
-}
+export interface StorageContext {}
 
-export declare const Storage: StorageConstructor;
-
-export interface StorageConstructor {
-    /** @syscall System.Storage.GetContext */ 
-    readonly context: StorageContext;
-    /** @syscall System.Storage.GetReadOnlyContext */ 
-    readonly readOnlyContext: StorageContext;
-
-    // /** @syscall System.Storage.Get */ 
-    // get(context: StorageContext, key: ByteString): StorageValue | undefined;
-    // /** @syscall System.Storage.Put */ 
-    // put(context: StorageContext, key: ByteString, value: StorageValue): void;
-    // /** @syscall System.Storage.Delete */
-    // delete(context: StorageContext, key: ByteString): void;
-}
-
-// export type Address = ByteString;
- 
-// // export interface Address {
-// //     [Symbol.iterator](): Iterator<number>;
-// //  }
-// // export const Address: AddressConstructor;
-// // export interface AddressConstructor { }
-
-// export declare const Runtime: RuntimeConstructor;
-// export interface RuntimeConstructor {
-//     checkWitness(account: Address): boolean;
-//     notify(eventName: string, ...params: any[]);
-//     readonly scriptContainer: Transaction;
-// }
-
-// export interface Transaction {
-//     readonly hash: ByteString;
-//     readonly version: number;
-//     readonly nonce: number;
-//     readonly sender: Address;
-//     readonly systemFee: bigint;
-//     readonly networkFee: bigint;
-//     readonly validUntilBlock: bigint;
-//     readonly script: ByteString
-// }
-
-// export declare const Contract: ContractConstructor;
-
-// export interface Contract {
-//     readonly id: number;
-//     readonly updateCounter: number;
-//     readonly hash: Address;
-//     readonly nef: ByteString;
-//     readonly manifest: string;
-// }
-
-// export interface ContractConstructor {
-//     call(hash: Address, method: string, ...params: any[])
-// }
-
-// export declare const ContractManagement: ContractManagementConstructor;
-// export interface ContractManagementConstructor {
-//     update(nefFile: ByteString, manifest: string, data?: any): void;
-//     getContract(hash: Address): Contract | undefined;
-// }
+/** @syscall System.Storage.GetContext */ 
+export declare function storageGetContext(): StorageContext;
+/** @syscall System.Storage.GetReadOnlyContext */ 
+export declare function storageGetReadOnlyContext(): StorageContext;
+/** @syscall System.Storage.AsReadOnly */ 
+export declare function storageAsReadOnly(context:StorageContext): StorageContext;
+/** @syscall System.Storage.Get */ 
+export declare function storageGet(context:StorageContext, key: ByteString): ByteString;
+/** @syscall System.Storage.Put */ 
+export declare function storagePut(context:StorageContext, key: ByteString, value: ByteString): void;
+/** @syscall System.Storage.Delete */ 
+export declare function storageDelete(context:StorageContext, key: ByteString):void;
+// /** @syscall System.Storage.Find */ 
+// export declare function storageFind(context:StorageContext, prefix: any, options: any): any;

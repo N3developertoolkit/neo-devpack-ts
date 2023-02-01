@@ -131,13 +131,10 @@ export function getConstantValue(node: tsm.Expression) {
             const literal = (node as tsm.StringLiteral).getLiteralValue();
             return <ReadonlyUint8Array>Buffer.from(literal, 'utf8');
         }
-        case tsm.SyntaxKind.ArrayLiteralExpression: 
-            throw new CompileError('not implemented', node);
-        case tsm.SyntaxKind.ObjectLiteralExpression:
-            throw new CompileError('not implemented', node);
+        // case tsm.SyntaxKind.ArrayLiteralExpression: 
+        // case tsm.SyntaxKind.ObjectLiteralExpression:
         default:
-            return undefined;
-            // throw new CompileError(`Unsupported const type ${node.getKindName()}`, node);
+            throw new CompileError(`Unsupported const type ${node.getKindName()}`, node);
     }
 }
 

@@ -1,6 +1,6 @@
 import * as tsm from "ts-morph";
 import { CompileError } from "../compiler";
-import { BlockScope, MethodSymbolDef, isScope as isWritableScope, ReadonlyScope, LocalVariableSymbolDef } from "../scope";
+import { BlockScope, MethodSymbolDef, isScope as isWritableScope, ReadonlyScope,  VariableSymbolDef } from "../scope";
 import { OperationKind } from "../types/Operation";
 import { dispatch } from "../utility/nodeDispatch";
 import { processExpression } from "./expressionProcessor";
@@ -92,16 +92,16 @@ export function processVariableStatement(node: tsm.VariableStatement, options: P
     }
 
     for (const decl of node.getDeclarations()) {
-        const index = builder.addLocal(decl);
-        scope.define(s => new LocalVariableSymbolDef(decl, s, index));
+        // const index = builder.addLocal(decl);
+        // scope.define(s => new VariableSymbolDef(decl, s, 'local', index));
 
-        const init = decl.getInitializer();
-        if (init) {
-            const locSetter = builder.getLocationSetter();
-            processExpression(init, options);
-            builder.store('local', index);
-            locSetter(decl);
-        } 
+        // const init = decl.getInitializer();
+        // if (init) {
+        //     const locSetter = builder.getLocationSetter();
+        //     processExpression(init, options);
+        //     builder.store('local', index);
+        //     locSetter(decl);
+        // } 
     }
 }
 

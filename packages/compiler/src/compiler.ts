@@ -190,6 +190,7 @@ export function compile(options: CompileOptions) {
     for (const src of project.getSourceFiles()) {
         if (src.isDeclarationFile()) continue;
         const globals = createGlobalScope(src);
+        console.log([...globals.symbols].map(s => s.symbol.getName()));
         // src.forEachChild(node => processScopeNode(node, globals));
     }
 

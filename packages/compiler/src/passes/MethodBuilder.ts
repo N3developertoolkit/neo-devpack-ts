@@ -8,7 +8,7 @@ export interface TargetOffset {
 }
 
 
-type LoadStoreKind = 'arg' | 'local' | 'static';
+export type LoadStoreKind = 'arg' | 'local' | 'static';
 
 export class MethodBuilder {
     private readonly _operations = new Array<Operation>();
