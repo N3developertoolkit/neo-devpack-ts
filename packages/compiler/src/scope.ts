@@ -323,13 +323,14 @@ function processVariableStatement(node: tsm.VariableStatement, { diagnostics, sc
 function processScopeNode(node: tsm.Node, options: ScopeOptions) {
     dispatch(node, options, {
         [tsm.SyntaxKind.FunctionDeclaration]: processFunctionDeclaration,
+        [tsm.SyntaxKind.InterfaceDeclaration]: () => {},
         [tsm.SyntaxKind.ImportDeclaration]: processImportDeclaration,
         [tsm.SyntaxKind.VariableStatement]: processVariableStatement,
         [tsm.SyntaxKind.EndOfFileToken]: () => { },
     });
 }
 
-export function createSymbolTree(project: tsm.Project, diagnostics: tsm.ts.Diagnostic[]): ReadonlyArray<ReadonlyScope> {
+export function createSymbolTrees(project: tsm.Project, diagnostics: tsm.ts.Diagnostic[]): ReadonlyArray<ReadonlyScope> {
     const scopes = new Array<GlobalScope>();
     for (const src of project.getSourceFiles()) {
         if (src.isDeclarationFile()) continue;

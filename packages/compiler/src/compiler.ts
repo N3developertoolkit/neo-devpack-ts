@@ -5,7 +5,7 @@ import { createDiagnostic, toDiagnostic } from "./utils";
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
-import { createSymbolTree } from "./scope";
+import { createSymbolTrees } from "./scope";
 
 export const DEFAULT_ADDRESS_VALUE = 53;
 
@@ -53,36 +53,21 @@ export function compile({ project, addressVersion, inline, optimize }: CompileOp
         optimize: optimize ?? false,
     }
 
-    const symbolTree = createSymbolTree(project, diagnostics);
-    const foo = symbolTree.flatMap(a => [...a.symbols]).map(s => s.symbol.getName());
-    console.log(JSON.stringify(foo, null, 4));
+    try {
+        const symbolTrees = createSymbolTrees(project, diagnostics);
+        for (const tree of symbolTrees) {
+            const names = [...tree.symbols].map(d => d.symbol.getName());
+            console.log(JSON.stringify(names, null, 4));
+            for (const symbol of tree.symbols) {
 
-    
-    //  for (const sym of globals.symbols) {
-    //     if (sym instanceof FunctionSymbolDef) {
-    //         processFunctionDeclaration(sym);
-    //     }
-    // }
+            }
+            
+        }
+    } catch (error) {
+        diagnostics.push(toDiagnostic(error));
+    }
 
-    // for (const src of project.getSourceFiles()) {
-    //     if (src.isDeclarationFile()) continue;
-    //     src.forEachChild(node => {
-    //         if (tsm.Node.isJSDocable(node)) {
-    //             for (const jsDoc of node.getJsDocs()) {
-    //                 const ss = jsDoc.getStructure();
-    //                 for (const tag of jsDoc.getTags()) {
-    //                     const s = tag.getStructure()
-    //                     var i = 0;
-    //                 }
-    //             }
-    //         }
-    //     });
-    // }
-
-
-
-    // throw new Error("Not Implemented")
-    // const globals = createGlobalScope(options.project);
+    return { diagnostics };
 
     // // type CompilePass = (context: CompileContext) => void;
     // const passes = [

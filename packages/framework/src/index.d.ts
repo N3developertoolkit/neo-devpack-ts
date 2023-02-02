@@ -4,7 +4,13 @@
 //  * ByteString is defined as ReadonlyUint8Array as per https://www.growingwiththeweb.com/2020/10/typescript-readonly-typed-arrays.html
 //  * Pointer, Struct and InteropInterface are all TBD
 
-export interface ByteString extends Omit<Uint8Array, 'copyWithin' | 'fill' | 'reverse' | 'set' | 'sort'> { }
+export interface ByteString extends Omit<Uint8Array, 'copyWithin' | 'fill' | 'reverse' | 'set' | 'sort'> { 
+}
+
+// /** @opcode {OpCode.CONVERT} StackItemType.ByteString */
+// export declare function asInteger(value: ByteString): bigint;
+// export declare function asByteString(value: string): ByteString;
+// export declare function asString(value: ByteString): string;
 
 // There are 7 interop Contract service
 // three are internal use only: CallNative, NativeOnPersist and NativePostPersist
@@ -38,7 +44,7 @@ export declare function storageGetReadOnlyContext(): StorageContext;
 /** @syscall System.Storage.AsReadOnly */ 
 export declare function storageAsReadOnly(context:StorageContext): StorageContext;
 /** @syscall System.Storage.Get */ 
-export declare function storageGet(context:StorageContext, key: ByteString): ByteString;
+export declare function storageGet(context:StorageContext, key: ByteString): ByteString | undefined;
 /** @syscall System.Storage.Put */ 
 export declare function storagePut(context:StorageContext, key: ByteString, value: ByteString): void;
 /** @syscall System.Storage.Delete */ 

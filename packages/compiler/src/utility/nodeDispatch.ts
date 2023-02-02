@@ -1,12 +1,5 @@
 import * as tsm from "ts-morph";
 import { CompileError } from "../compiler";
-import { toDiagnostic } from "../utils";
-
-function optionsHasDiagnostics(options: any): options is { readonly diagnostics: Array<tsm.ts.Diagnostic> } {
-    return typeof options === 'object'
-        && 'diagnostics' in options
-        && Array.isArray(options.diagnostics);
-}
 
 export type NodeDispatchMap<TOptions> = {
     [TKind in tsm.SyntaxKind]?: (node: tsm.KindToNodeMappings[TKind], options: TOptions) => void;
@@ -21,8 +14,6 @@ export function dispatch<TOptions>(node: tsm.Node, options: TOptions, dispatchMa
         const error = new CompileError(`dispatch ${node.getKindName()} failed`, node);
         if (missing) {
             missing(error);
-        } else if (optionsHasDiagnostics(options)) {
-            options.diagnostics.push(toDiagnostic(error));
         } else {
             throw error;
         }

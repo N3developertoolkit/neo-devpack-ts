@@ -4,6 +4,7 @@ import { ts } from "ts-morph";
 import { compile, createContractProject, saveArtifacts, toDiagnostic } from '../packages/compiler/';
 // import { dumpArtifacts } from "./utils";
 
+const FILENAME = "contract-test.ts";
 
 function printDiagnostics(diags: ReadonlyArray<ts.Diagnostic>) {
     const formatHost: ts.FormatDiagnosticsHost = {
@@ -21,8 +22,8 @@ async function main() {
     const project = await createContractProject();
 
     // load test contract
-    const contractSource = await readFile(join(__dirname, "contract.ts"), 'utf8');
-    project.createSourceFile("contract.ts", contractSource);
+    const contractSource = await readFile(join(__dirname, FILENAME), 'utf8');
+    project.createSourceFile(FILENAME, contractSource);
     project.resolveSourceFileDependencies();
 
     // console.time('getPreEmitDiagnostics');
@@ -34,12 +35,12 @@ async function main() {
     } else {
         try {
             // const { artifacts, context, diagnostics } = 
-            compile({ project });
+            const { diagnostics } = compile({ project });
 
-            // if (diagnostics.length > 0) {
-            //     printDiagnostics(diagnostics);
-            //     return;
-            // }
+            if (diagnostics.length > 0) {
+                printDiagnostics(diagnostics);
+                return;
+            }
             // if (artifacts) {
             //     dumpArtifacts(artifacts);
             //     const rootPath = join(__dirname, "../express/out");

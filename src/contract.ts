@@ -1,4 +1,4 @@
-import { ByteString, storageGet as get, storageGetContext as getContext } from '@neo-project/neo-contract-framework';
+import { ByteString, storageGet, storageGetContext } from '@neo-project/neo-contract-framework';
 
 /**
  * @contract ApocToken
@@ -27,9 +27,10 @@ export function decimals() { return DECIMALS; }
 
 /** @safe */
 export function totalSupply( ) { 
-    const ctx = getContext();
+    const ctx = storageGetContext();
     const key = Uint8Array.from([prefixTotalSupply]);
-    return get(ctx, key);
+    const value = storageGet(ctx, key);
+    // return value ? asInteger(value) : 0n;
 }
 
 // /** @safe */
