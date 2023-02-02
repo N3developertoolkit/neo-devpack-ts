@@ -3,13 +3,11 @@ import { CompileError } from "../compiler";
 import { MethodSymbolDef, ReadonlyScope } from "../scope";
 import { Operation } from "../types/Operation";
 import { MethodBuilder } from "./MethodBuilder";
-import { processStatement } from "./statementProcessor"
+import { processStatement } from "./statementProcessor";
+// import { processStatement } from "./statementProcessor"
 
 
-export interface ProcessOptions {
-    builder: MethodBuilder,
-    scope: ReadonlyScope,
-}
+
 
 
 
@@ -120,11 +118,12 @@ export interface ProcessOptions {
 //     // })
 // }
 
+
 function isSafe(node: tsm.JSDocableNode): boolean {
     for (const doc of node.getJsDocs()) {
         for (const tag of doc.getTags()) {
-            const { tagName, text } = tag.getStructure();
-            if (tagName === "safe" && !text) {
+            const tagName = tag.getTagName();
+            if (tagName === "safe") {
                 return true;
             }
         }
@@ -132,11 +131,25 @@ function isSafe(node: tsm.JSDocableNode): boolean {
     return false;
 }
 
+export interface ContractMethod {
+    name: string,
+    safe: boolean,
+    public: boolean,
+    returnType: tsm.Type,
+    parameters: ReadonlyArray<{ name: string, type: tsm.Type }>,
+    operations: ReadonlyArray<Operation>
+}
+
+export interface ProcessMethodOptions {
+    diagnostics: tsm.ts.Diagnostic[];
+    builder: MethodBuilder,
+    scope: ReadonlyScope,
+}
+
 // @internal
-export function processFunctionDeclaration(def: MethodSymbolDef) {
+export function processMethodDef(def: MethodSymbolDef, diagnostics: Array<tsm.ts.Diagnostic>): ContractMethod {
 
-    const { node } = def;
-
+    const node = def.node;
     const name = node.getNameOrThrow();
     const body = node.getBodyOrThrow();
     if (!tsm.Node.isStatement(body)) {
@@ -144,25 +157,28 @@ export function processFunctionDeclaration(def: MethodSymbolDef) {
     }
 
     const builder = new MethodBuilder(node.getParameters().length);
-    const options = { builder, scope: def }
-    processStatement(body, options);
-
-    const parameters = node.getParameters().map((p, index) => ({
-        name: p.getName(),
-        type: p.getType(),
-        index,
-        node: p,
-    }));
+    processStatement(body, { diagnostics, builder, scope: def });
 
     return {
         name,
         safe: isSafe(node),
         public: !!node.getExportKeyword(),
-        return: node.getReturnType(),
-        parameters
+        returnType: node.getReturnType(),
+        parameters: node.getParameters().map(p => ({ name: p.getName(), type: p.getType(), })),
+        operations: builder.getOperations()
     }
-
 }
+
+export function processMethodsDefs(scope: ReadonlyScope, diagnostics: tsm.ts.Diagnostic[]): ContractMethod[] {
+    const methods = new Array<ContractMethod>();
+    for (const def of scope.symbols) {
+        if (def instanceof MethodSymbolDef) {
+            methods.push(processMethodDef(def, diagnostics));
+        }
+    }
+    return methods;
+}
+
 
 // export function processFunctionDeclarationsPass(context: CompileContext): void {
 //     const { project } = context;

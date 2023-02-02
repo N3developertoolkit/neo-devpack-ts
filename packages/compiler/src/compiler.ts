@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
 import { createSymbolTrees } from "./scope";
+import { processMethodsDefs } from "./passes/processFunctionDeclarations";
 
 export const DEFAULT_ADDRESS_VALUE = 53;
 
@@ -56,12 +57,8 @@ export function compile({ project, addressVersion, inline, optimize }: CompileOp
     try {
         const symbolTrees = createSymbolTrees(project, diagnostics);
         for (const tree of symbolTrees) {
-            const names = [...tree.symbols].map(d => d.symbol.getName());
-            console.log(JSON.stringify(names, null, 4));
-            for (const symbol of tree.symbols) {
-
-            }
-            
+            // console.log([...tree.symbols].map(d => d.symbol.getName()));
+            processMethodsDefs(tree, diagnostics);
         }
     } catch (error) {
         diagnostics.push(toDiagnostic(error));

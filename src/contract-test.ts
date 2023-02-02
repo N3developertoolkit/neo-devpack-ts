@@ -1,4 +1,3 @@
-
 /**
  * @contract Test Contract
  * @extra Author "Harry Pierson"
@@ -6,7 +5,7 @@
  * @extra Description "this is a prototype contract written in TypeScript"
  */
 
-import { ByteString, storageDelete, storageGet, storageGetContext, storagePut } from "@neo-project/neo-contract-framework";
+import { ByteString, storageGetContext, storageGet, storagePut, storageDelete } from "@neo-project/neo-contract-framework";
 
 const prefixSampleValue = 0x00;
 
@@ -14,8 +13,7 @@ const prefixSampleValue = 0x00;
 export function get() { 
     const ctx = storageGetContext();
     const key = Uint8Array.from([prefixSampleValue]);
-    const value = storageGet(ctx, key);
-    return value;
+    return storageGet(ctx, key);
 }
 
 export function set(value: ByteString) {

@@ -22,6 +22,11 @@ export class MethodBuilder {
         }
     }
 
+    getOperations(): ReadonlyArray<Operation> {
+        // TODO: process jump targets
+        return this._operations;
+    }
+
     get returnTarget(): Readonly<TargetOffset> { return this._returnTarget; }
 
     getLocationSetter(): (node?: tsm.Node) => void {
