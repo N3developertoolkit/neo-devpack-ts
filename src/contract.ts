@@ -1,4 +1,4 @@
-import { storageGet as get, storageGetContext as getContext } from '@neo-project/neo-contract-framework';
+import { ByteString, storageGet as get, storageGetContext as getContext } from '@neo-project/neo-contract-framework';
 
 /**
  * @contract ApocToken
@@ -16,8 +16,8 @@ const prefixTotalSupply = 0xA0;
 const prefixBalance = 0xA1;
 const prefixContractOwner = 0xFF;
 
-// /** @event */
-// declare function Transfer(from: Address | undefined, to: Address | undefined, amount: bigint): void;
+/** @event */
+declare function Transfer(from: ByteString | undefined, to: ByteString | undefined, amount: bigint): void;
 
 /** @safe */
 export function symbol() { return SYMBOL; }

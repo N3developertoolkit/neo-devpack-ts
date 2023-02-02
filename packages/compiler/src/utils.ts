@@ -8,22 +8,25 @@ export function isNotNullOrUndefined<T extends Object>(input: null | undefined |
     return input != null;
 }
 
-export function createDiagnostic(messageText: string, options: {
+export interface DiagnosticOptions {
     code?: number,
     node?: tsm.Node,
     category?: tsm.ts.DiagnosticCategory
+};
+
+export function notImpl(options: DiagnosticOptions) {
+    return createDiagnostic("not implemented", options);
 }
-): tsm.ts.Diagnostic {
-    const { node } = options;
+
+export function createDiagnostic(messageText: string, options: DiagnosticOptions): tsm.ts.Diagnostic {
+    const node = options.node;
     const category = options.category ?? tsm.ts.DiagnosticCategory.Error;
     const code = options.code ?? 0;
     return {
         category,
         code,
         file: node?.getSourceFile().compilerNode,
-        length: node
-            ? node.getEnd() - node.getPos()
-            : undefined,
+        length: node ? node.getEnd() - node.getPos() : undefined,
         messageText,
         start: node?.getPos(),
         source: node?.print()
@@ -31,12 +34,8 @@ export function createDiagnostic(messageText: string, options: {
 }
 
 export function toDiagnostic(error: unknown): tsm.ts.Diagnostic {
-    const message = error instanceof Error
-        ? error.message
-        : "unknown error";
-    const node = error instanceof CompileError
-        ? error.node
-        : undefined;
+    const message = error instanceof Error ? error.message : String(error);
+    const node = error instanceof CompileError ? error.node : undefined;
     return createDiagnostic(message, { node });
 }
 
@@ -111,7 +110,6 @@ export function isCompoundAssignment(kind: tsm.SyntaxKind) {
 
 
 
-// @internal
 export function getConstantValue(node: tsm.Expression) {
     switch (node.getKind()) {
         case tsm.SyntaxKind.NullKeyword:
@@ -218,7 +216,7 @@ export function bigIntToByteArray(value: bigint): Uint8Array {
     }
 }
 
-export function asExpressionOrCompileError(node: tsm.Node): tsm.Expression {
-    if (tsm.Node.isExpression(node)) { return node; }
-    throw new CompileError(`Invalid expression node ${node.getKindName()}`, node);
-}
+// export function asExpressionOrCompileError(node: tsm.Node): tsm.Expression {
+//     if (tsm.Node.isExpression(node)) { return node; }
+//     throw new CompileError(`Invalid expression node ${node.getKindName()}`, node);
+// }

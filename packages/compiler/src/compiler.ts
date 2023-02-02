@@ -1,20 +1,12 @@
 import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
-import { collectArtifacts } from "./collectArtifacts";
-// import { processFunctionDeclarationsPass } from "./passes/processFunctionDeclarations";
-import { ConstantSymbolDef, createGlobalScope, MethodSymbolDef, ReadonlyScope, Scope } from "./scope";
-// import { Operation } from "./types";
 import { DebugInfo, toJson as debugInfoToJson } from "./types/DebugInfo";
 import { createDiagnostic, toDiagnostic } from "./utils";
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
-// import { LocalVariable } from "./types/FunctionBuilder";
-import { Console } from "console";
-import { create } from "domain";
-import { processFunctionDeclaration } from "./passes/processFunctionDeclarations";
+import { createSymbolTree } from "./scope";
 
-// @internal
 export const DEFAULT_ADDRESS_VALUE = 53;
 
 export class CompileError extends Error {
@@ -41,7 +33,6 @@ export interface CompileArtifacts {
 
 export interface CompileContext {
     readonly diagnostics: Array<tsm.ts.Diagnostic>;
-    readonly globals: ReadonlyScope;
     readonly options: Readonly<Required<Omit<CompileOptions, 'project'>>>;
     readonly project: tsm.Project;
     // readonly functions: Array<FunctionContext>;
@@ -52,6 +43,115 @@ export interface CompileContext {
 //     operations?: ReadonlyArray<Operation>;
 //     locals?: ReadonlyArray<LocalVariable>;
 // }
+
+export function compile({ project, addressVersion, inline, optimize }: CompileOptions) {
+
+    const diagnostics = new Array<tsm.ts.Diagnostic>();
+    const options = {
+        addressVersion: addressVersion ?? DEFAULT_ADDRESS_VALUE,
+        inline: inline ?? false,
+        optimize: optimize ?? false,
+    }
+
+    const symbolTree = createSymbolTree(project, diagnostics);
+    const foo = symbolTree.flatMap(a => [...a.symbols]).map(s => s.symbol.getName());
+    console.log(JSON.stringify(foo, null, 4));
+
+    
+    //  for (const sym of globals.symbols) {
+    //     if (sym instanceof FunctionSymbolDef) {
+    //         processFunctionDeclaration(sym);
+    //     }
+    // }
+
+    // for (const src of project.getSourceFiles()) {
+    //     if (src.isDeclarationFile()) continue;
+    //     src.forEachChild(node => {
+    //         if (tsm.Node.isJSDocable(node)) {
+    //             for (const jsDoc of node.getJsDocs()) {
+    //                 const ss = jsDoc.getStructure();
+    //                 for (const tag of jsDoc.getTags()) {
+    //                     const s = tag.getStructure()
+    //                     var i = 0;
+    //                 }
+    //             }
+    //         }
+    //     });
+    // }
+
+
+
+    // throw new Error("Not Implemented")
+    // const globals = createGlobalScope(options.project);
+
+    // // type CompilePass = (context: CompileContext) => void;
+    // const passes = [
+    //     processFunctionDeclarationsPass,
+    // ] as const;
+
+    // for (const pass of passes) {
+    //     try {
+    //         pass(context);
+    //     } catch (error) {
+    //         context.diagnostics.push(toDiagnostic(error));
+    //     }
+
+    //     if (context.diagnostics.some(d => d.category == tsm.ts.DiagnosticCategory.Error)) {
+    //         break;
+    //     }
+    // }
+
+    // let artifacts: CompileArtifacts | undefined; 
+    // try {
+    //     artifacts = collectArtifacts(context);
+    // } catch (error) {
+    //     context.diagnostics.push(toDiagnostic(error));
+    // }
+
+    // return {
+    //     diagnostics: context.diagnostics,
+    //     artifacts,
+    //     context
+    // };
+}
+
+async function exists(rootPath: fs.PathLike) {
+    try {
+        await fsp.access(rootPath);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+export interface SaveArtifactsOptions {
+    artifacts: CompileArtifacts; 
+    rootPath: string; 
+    baseName?: string;
+    sourceDir?: string;
+}
+
+export async function saveArtifacts({ artifacts, rootPath, baseName = "contract", sourceDir }: SaveArtifactsOptions) {
+    if (await exists(rootPath) === false) { await fsp.mkdir(rootPath); }
+
+    const nefPath = path.join(rootPath, baseName + ".nef")
+    const manifestPath = path.join(rootPath, baseName + ".manifest.json");
+    const debugInfoPath = path.join(rootPath, baseName + ".debug.json");
+
+    const {nef, manifest, debugInfo} = artifacts;
+    const _nef = Buffer.from(nef.serialize(), 'hex');
+    const _manifest = JSON.stringify(manifest.toJson(), null, 4);
+    const _debugInfo = JSON.stringify(debugInfoToJson(debugInfo, nef, sourceDir), null, 4);
+
+    await Promise.all([
+        fsp.writeFile(nefPath, _nef), 
+        fsp.writeFile(manifestPath, _manifest),
+        fsp.writeFile(debugInfoPath, _debugInfo)]);
+}
+
+
+
+
 
 function parse(node: tsm.JSDocableNode) {
     for (const doc of node.getJsDocs()) {
@@ -165,124 +265,4 @@ function processMetadata(project: tsm.Project, options: ProcessMetadataOptions) 
         });
     }
 
-}
-
-export function compile(options: CompileOptions) {
-
-    const { project } = options;
-
-    const diagnostics: Array<tsm.ts.Diagnostic> = [];
-
-    // processMetadata(project, { diagnostics });
-    
-    // const context: CompileContext = {
-    //     diagnostics: [],
-    //     globals,
-    //     options: {
-    //         addressVersion: options.addressVersion ?? DEFAULT_ADDRESS_VALUE,
-    //         inline: options.inline ?? false,
-    //         optimize: options.optimize ?? false,
-    //     },
-    //     project: options.project,
-    //     // functions: []
-    // };
-
-    for (const src of project.getSourceFiles()) {
-        if (src.isDeclarationFile()) continue;
-        const globals = createGlobalScope(src);
-        console.log([...globals.symbols].map(s => s.symbol.getName()));
-        // src.forEachChild(node => processScopeNode(node, globals));
-    }
-
-
-    
-    //  for (const sym of globals.symbols) {
-    //     if (sym instanceof FunctionSymbolDef) {
-    //         processFunctionDeclaration(sym);
-    //     }
-    // }
-
-    // for (const src of project.getSourceFiles()) {
-    //     if (src.isDeclarationFile()) continue;
-    //     src.forEachChild(node => {
-    //         if (tsm.Node.isJSDocable(node)) {
-    //             for (const jsDoc of node.getJsDocs()) {
-    //                 const ss = jsDoc.getStructure();
-    //                 for (const tag of jsDoc.getTags()) {
-    //                     const s = tag.getStructure()
-    //                     var i = 0;
-    //                 }
-    //             }
-    //         }
-    //     });
-    // }
-
-
-
-    // throw new Error("Not Implemented")
-    // const globals = createGlobalScope(options.project);
-
-    // // type CompilePass = (context: CompileContext) => void;
-    // const passes = [
-    //     processFunctionDeclarationsPass,
-    // ] as const;
-
-    // for (const pass of passes) {
-    //     try {
-    //         pass(context);
-    //     } catch (error) {
-    //         context.diagnostics.push(toDiagnostic(error));
-    //     }
-
-    //     if (context.diagnostics.some(d => d.category == tsm.ts.DiagnosticCategory.Error)) {
-    //         break;
-    //     }
-    // }
-
-    // let artifacts: CompileArtifacts | undefined; 
-    // try {
-    //     artifacts = collectArtifacts(context);
-    // } catch (error) {
-    //     context.diagnostics.push(toDiagnostic(error));
-    // }
-
-    // return {
-    //     diagnostics: context.diagnostics,
-    //     artifacts,
-    //     context
-    // };
-}
-
-async function exists(rootPath: fs.PathLike) {
-    try {
-        await fsp.access(rootPath);
-        return true;
-    } catch {
-        return false;
-    }
-}
-
-export interface SaveArtifactsOptions {
-    artifacts: CompileArtifacts; 
-    rootPath: string; 
-    baseName?: string;
-    sourceDir?: string;
-}
-
-export async function saveArtifacts({ artifacts, rootPath, baseName = "contract", sourceDir }: SaveArtifactsOptions) {
-    if (await exists(rootPath) === false) { await fsp.mkdir(rootPath); }
-
-    const nefPath = path.join(rootPath, baseName + ".nef")
-    const manifestPath = path.join(rootPath, baseName + ".manifest.json");
-    const debugInfoPath = path.join(rootPath, baseName + ".debug.json");
-
-    const {nef, manifest, debugInfo} = artifacts;
-    const _nef = Buffer.from(nef.serialize(), 'hex');
-    const _manifest = JSON.stringify(manifest.toJson(), null, 4);
-    const _debugInfo = JSON.stringify(debugInfoToJson(debugInfo, nef, sourceDir), null, 4);
-
-    await Promise.all([
-        fsp.writeFile(nefPath, _nef), 
-        fsp.writeFile(manifestPath, _manifest),
-        fsp.writeFile(debugInfoPath, _debugInfo)]);
 }

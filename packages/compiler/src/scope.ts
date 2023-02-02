@@ -1,10 +1,11 @@
 import './ext';
 import * as tsm from "ts-morph";
-import { CompileError } from "./compiler";
+import { CompileContext, CompileError } from "./compiler";
 import { MethodBuilder } from "./passes/MethodBuilder";
-import { dispatch } from "./utility/nodeDispatch";
+import { dispatch, NodeDispatchMap } from "./utility/nodeDispatch";
 import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
-import { getConstantValue, getJSDocTag } from "./utils";
+import { createDiagnostic, DiagnosticOptions, getConstantValue, getJSDocTag, isVoidLike, notImpl } from "./utils";
+import { create } from 'domain';
 
 export interface ReadonlyScope {
     readonly parentScope: ReadonlyScope | undefined;
@@ -172,22 +173,32 @@ export class VariableSymbolDef implements SymbolDef {
 }
 
 export class EventSymbolDef implements SymbolDef {
+    readonly parameters: ReadonlyArray<tsm.ParameterDeclaration>;
     constructor(
         readonly symbol: tsm.Symbol,
-        readonly signature: tsm.Signature,
         readonly parentScope: ReadonlyScope,
         readonly name: string,
+        node: tsm.FunctionDeclaration,
     ) {
+        if (!node.hasDeclareKeyword()) throw new CompileError('invalid', node);
+        if (!isVoidLike(node.getReturnType())) throw new CompileError('invalid', node);
+        this.parameters = node.getParameters();
     }
 }
 
 export class SysCallSymbolDef implements SymbolDef {
+    readonly parameters: ReadonlyArray<tsm.ParameterDeclaration>;
+    readonly returnType: tsm.Type;
+
     constructor(
         readonly symbol: tsm.Symbol,
-        readonly signature: tsm.Signature,
         readonly parentScope: ReadonlyScope,
         readonly name: string,
+        node: tsm.FunctionDeclaration,
     ) {
+        if (!node.hasDeclareKeyword()) throw new CompileError('invalid', node);
+        this.parameters = node.getParameters();
+        this.returnType = node.getReturnType();
     }
 }
 
@@ -227,64 +238,65 @@ export class SysCallSymbolDef implements SymbolDef {
 
 
 interface ScopeOptions {
+    diagnostics: Array<tsm.ts.Diagnostic>;
     scope: Scope,
     symbol?: tsm.Symbol
 }
 
-// Defining a strongly typed event by declaring a function with an @event JsDoc tag. 
-//  /** @event */
-//  declare function Transfer(from: Address | undefined, to: Address | undefined, amount: bigint): void;
+function fail({diagnostics}: ScopeOptions, messageText: string, options: DiagnosticOptions) {
+    diagnostics.push(createDiagnostic(messageText, options));
+}
+
+
 function processFunctionDeclaration(node: tsm.FunctionDeclaration, options: ScopeOptions) {
     const symbol = options.symbol ?? node.getSymbolOrThrow();
     const scope = options.scope;
-    const signature = node.getSignature();
 
     if (node.hasDeclareKeyword()) {
-
         const syscallTag = getJSDocTag(node, "syscall");
         if (syscallTag) {
             const name = syscallTag.getCommentText();
             if (!name || name.length === 0) throw new CompileError('invalid syscall tag', node);
-            scope.define(s => new SysCallSymbolDef(symbol, signature, s, name));
+            scope.define(s => new SysCallSymbolDef(symbol, s, name, node));
             return;
         }
 
         const eventTag = getJSDocTag(node, "event");
         if (eventTag) {
-            const name = eventTag.getCommentText();
-            if (!name || name.length === 0) throw new CompileError('invalid syscall tag', node);
-            scope.define(s => new EventSymbolDef(symbol, signature, s, name));
+            const name = eventTag.getCommentText() ?? symbol.getName();
+            if (!name || name.length === 0) throw new CompileError('invalid event tag', node);
+            scope.define(s => new EventSymbolDef(symbol, s, name, node));
             return;
-        } 
-        
+        }
+
         throw new CompileError("not supported", node);
     } else {
         scope.define(s => new MethodSymbolDef(symbol, s, node));
     }
 }
 
-// function processSCFXImportSpecifier(decls: tsm.ExportedDeclarations[], options: ScopeOptions) {
-//     if (decls.length !== 1) throw new Error('not implemented');
-//     const decl = decls[0];
-//     if (tsm.Node.isVariableDeclaration(decl)) {
-//         processVariableDeclaration(decl, options);
-//     }
-// }
-
-function processImportSpecifier(node: tsm.ImportSpecifier, options: ScopeOptions) {
+function processImportSpecifier(node: tsm.ImportSpecifier, { diagnostics, scope }: ScopeOptions) {
     const $module = node.getImportDeclaration().getModuleSpecifierSourceFileOrThrow();
     const $moduleExports = $module.getExportedDeclarations();
     const symbol = node.getSymbolOrThrow();
     const name = (symbol.getAliasedSymbol() ?? symbol).getName();
-    const $export = $moduleExports.get(name);
-    if (!$export) throw new CompileError("not found", node);
-    if ($export.length !== 1) throw new CompileError("not implemented", node);
-    processScopeNode($export[0], { scope: options.scope, symbol});
+    const exportDecls = $moduleExports.get(name);
+    if (!exportDecls) {
+        diagnostics.push(createDiagnostic(`${name} import not found`, {node}));
+        return;
+    }
+    if (exportDecls.length !== 1) {
+        diagnostics.push(createDiagnostic(`multiple exported declarations not implemented`, {node}));
+        return;
+    }
+    for (const decl of exportDecls) {
+        processScopeNode(decl, { diagnostics, scope, symbol });
+    }
 }
 
-function processImportDeclaration(node: tsm.ImportDeclaration, {scope}: ScopeOptions) {
+function processImportDeclaration(node: tsm.ImportDeclaration, { diagnostics, scope }: ScopeOptions) {
     for (const $import of node.getNamedImports()) {
-        processImportSpecifier($import, {scope});
+        processImportSpecifier($import, { diagnostics, scope });
     }
 }
 
@@ -302,9 +314,9 @@ function processVariableDeclaration(node: tsm.VariableDeclaration, options: Scop
     }
 }
 
-function processVariableStatement(node: tsm.VariableStatement, {scope}: ScopeOptions) {
+function processVariableStatement(node: tsm.VariableStatement, { diagnostics, scope }: ScopeOptions) {
     for (const decl of node.getDeclarations()) {
-        processVariableDeclaration(decl, {scope});
+        processVariableDeclaration(decl, { diagnostics, scope });
     }
 }
 
@@ -317,10 +329,13 @@ function processScopeNode(node: tsm.Node, options: ScopeOptions) {
     });
 }
 
-export function createGlobalScope(src: tsm.SourceFile): ReadonlyScope {
-    if (src.isDeclarationFile()) throw new CompileError(`can't createGlobalScope for declaration file`, src);
-
-    const scope = new GlobalScope();
-    src.forEachChild(node => processScopeNode(node, { scope }));
-    return scope;
+export function createSymbolTree(project: tsm.Project, diagnostics: tsm.ts.Diagnostic[]): ReadonlyArray<ReadonlyScope> {
+    const scopes = new Array<GlobalScope>();
+    for (const src of project.getSourceFiles()) {
+        if (src.isDeclarationFile()) continue;
+        const scope = new GlobalScope();
+        src.forEachChild(node => processScopeNode(node, { diagnostics, scope }));
+        scopes.push(scope);
+    }
+    return scopes;
 }
