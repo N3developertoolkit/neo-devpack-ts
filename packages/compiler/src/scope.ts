@@ -1,11 +1,10 @@
 import './ext';
 import * as tsm from "ts-morph";
-import { CompileContext, CompileError } from "./compiler";
+import { CompileError } from "./compiler";
 import { MethodBuilder } from "./passes/MethodBuilder";
-import { dispatch, NodeDispatchMap } from "./utility/nodeDispatch";
+import { dispatch } from "./utility/nodeDispatch";
 import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
-import { createDiagnostic, DiagnosticOptions, getConstantValue, getJSDocTag, isVoidLike, notImpl } from "./utils";
-import { create } from 'domain';
+import { createDiagnostic, DiagnosticOptions, getConstantValue, getJSDocTag, isVoidLike } from "./utils";
 
 export interface ReadonlyScope {
     readonly parentScope: ReadonlyScope | undefined;

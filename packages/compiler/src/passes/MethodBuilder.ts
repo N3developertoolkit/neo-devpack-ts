@@ -1,6 +1,6 @@
 import { OpCode } from "@cityofzion/neon-core/lib/sc";
 import * as tsm from "ts-morph";
-import { JumpOperation, LoadStoreOperation, LoadStoreOperationKind, Operation, OperationKind, PushBoolOperation, PushDataOperation, PushIntOperation } from "../types/Operation";
+import { InitSlotOperation, JumpOperation, LoadStoreOperation, LoadStoreOperationKind, Operation, OperationKind, PushBoolOperation, PushDataOperation, PushIntOperation, SysCallOperation } from "../types/Operation";
 import { ReadonlyUint8Array } from "../utility/ReadonlyArrays";
 
 export interface TargetOffset {
@@ -17,14 +17,20 @@ export class MethodBuilder {
     private readonly _locals = new Array<tsm.VariableDeclaration>();
 
     constructor(readonly paramCount: number) {
-        if (!Number.isInteger(paramCount)) {
+        if (!Number.isInteger(paramCount) || paramCount < 0) {
             throw new Error(`Invalid param count ${paramCount}`);
         }
     }
 
     getOperations(): ReadonlyArray<Operation> {
+        const operations = [...this._operations];
+        const locals = this._locals.length;
+        if (this.paramCount > 0 || locals > 0) {
+            const op: InitSlotOperation = { kind: "initslot", locals, params: this.paramCount };
+            operations.unshift(op);
+        }
         // TODO: process jump targets
-        return this._operations;
+        return operations;
     }
 
     get returnTarget(): Readonly<TargetOffset> { return this._returnTarget; }
@@ -89,6 +95,11 @@ export class MethodBuilder {
             ? "storearg"
             : kind === 'local' ? 'storelocal' : 'storestatic';
         const op: LoadStoreOperation = { kind: opKind, index, location };
+        this._operations.push(op);
+    }
+
+    syscall(name: string, location?:tsm.Node): void {
+        const op: SysCallOperation = { kind: 'syscall', name, location };
         this._operations.push(op);
     }
 }

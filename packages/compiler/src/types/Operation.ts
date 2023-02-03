@@ -12,7 +12,7 @@ import { ReadonlyUint8Array } from '../utility/ReadonlyArrays';
 export type OperationKind = 'pushbool' | 'pushint' | 'pushdata' | 'pushnull' |
     'jump' | 'jumpif' | 'jumpifnot' | 'jumpeq' | 'jumpne' | 'jumpgt' | 'jumpge' | 'jumplt' | 'jumple' |
     'loadarg' | 'storearg' | 'loadlocal' | 'storelocal' | 'loadstatic' | 'storestatic' |
-    'noop' | 'return';
+    'noop' | 'return' | 'syscall' | 'initslot';
 
 
 export enum oldOperationKind {
@@ -199,6 +199,26 @@ export interface Operation {
 // export function isInitSlotOperation(ins: Operation): ins is InitSlotOperation {
 //     return ins.kind === OperationKind.INITSLOT;    
 // }
+
+
+export interface SysCallOperation extends Operation { 
+    readonly kind: 'syscall',
+    readonly name: string
+}
+
+export function isSysCallOperation(ins: Operation): ins is SysCallOperation {
+    return ins.kind === 'syscall';
+}
+
+export interface InitSlotOperation extends Operation {
+    readonly kind: 'initslot',
+    readonly locals: number,
+    readonly params: number
+}
+
+export function isInitSlotOperation(ins: Operation): ins is InitSlotOperation {
+    return ins.kind === 'initslot';
+}
 
 export interface PushDataOperation extends Operation {
     readonly kind: 'pushdata';

@@ -119,7 +119,7 @@ import { processStatement } from "./statementProcessor";
 // }
 
 
-function isSafe(node: tsm.JSDocableNode): boolean {
+function hasSafeTag(node: tsm.JSDocableNode): boolean {
     for (const doc of node.getJsDocs()) {
         for (const tag of doc.getTags()) {
             const tagName = tag.getTagName();
@@ -161,7 +161,7 @@ export function processMethodDef(def: MethodSymbolDef, diagnostics: Array<tsm.ts
 
     return {
         name,
-        safe: isSafe(node),
+        safe: hasSafeTag(node),
         public: !!node.getExportKeyword(),
         returnType: node.getReturnType(),
         parameters: node.getParameters().map(p => ({ name: p.getName(), type: p.getType(), })),

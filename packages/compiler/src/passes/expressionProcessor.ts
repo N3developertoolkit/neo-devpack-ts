@@ -5,10 +5,12 @@
 
 
 // import './ext';
-// import * as tsm from "ts-morph";
-// import { CompileError } from "../compiler";
+import * as tsm from "ts-morph";
+import { CompileError } from "../compiler";
+import { SysCallSymbolDef } from "../scope";
 // import { ConstantSymbolDef, SymbolDef } from "../scope";
-// import { dispatch } from "../utility/nodeDispatch";
+import { dispatch } from "../utility/nodeDispatch";
+import { ProcessMethodOptions } from "./processFunctionDeclarations";
 // import { ReadonlyUint8Array } from "../utility/ReadonlyArrays";
 // import { ProcessOptions } from "./processFunctionDeclarations";
 
@@ -209,26 +211,44 @@
 //     processSymbolDef(resolved, options);
 // }
 
-// export function processBooleanLiteral(node: tsm.FalseLiteral | tsm.TrueLiteral, { builder }: ProcessOptions) {
-//     const value = node.getLiteralValue();
-//     builder.pushBoolean(value);
-// }
+export function processBooleanLiteral(node: tsm.FalseLiteral | tsm.TrueLiteral, { builder }: ProcessMethodOptions) {
+    const value = node.getLiteralValue();
+    builder.pushBoolean(value);
+}
 
-// export function processNumericLiteral(node: tsm.NumericLiteral, { builder }: ProcessOptions) {
-//     const value = node.getLiteralValue();
-//     if (!Number.isInteger(value)) throw new CompileError(`invalid non-integer numeric literal`, node);
-//     builder.pushInt(BigInt(value));
-// }
+export function processNumericLiteral(node: tsm.NumericLiteral, { builder }: ProcessMethodOptions) {
+    const value = node.getLiteralValue();
+    if (!Number.isInteger(value)) throw new CompileError(`invalid non-integer numeric literal`, node);
+    builder.pushInt(BigInt(value));
+}
 
-// export function processBigIntLiteral(node: tsm.BigIntLiteral, { builder }: ProcessOptions) {
-//     const value = node.getLiteralValue() as bigint;
-//     builder.pushInt(BigInt(value));
-// }
+export function processBigIntLiteral(node: tsm.BigIntLiteral, { builder }: ProcessMethodOptions) {
+    const value = node.getLiteralValue() as bigint;
+    builder.pushInt(BigInt(value));
+}
 
-// export function processStringLiteral(node: tsm.StringLiteral, { builder }: ProcessOptions) {
-//     const value = Buffer.from(node.getLiteralValue(), 'utf8');
-//     builder.pushData(value);
-// }
+export function processStringLiteral(node: tsm.StringLiteral, { builder }: ProcessMethodOptions) {
+    const value = Buffer.from(node.getLiteralValue(), 'utf8');
+    builder.pushData(value);
+}
+
+export function processCallExpression(node: tsm.CallExpression, { builder, scope }: ProcessMethodOptions) {
+    const expr = node.getExpressionIfKind(tsm.SyntaxKind.Identifier);
+    if (expr) {
+        const resolved = scope.resolve(expr.getSymbolOrThrow());
+        if (resolved) {
+            if (resolved instanceof SysCallSymbolDef) {
+                builder.syscall(resolved.name);
+                return;
+            }
+        }
+    }
+
+
+
+    throw new CompileError("not implemented", node);
+}
+
 
 // function processPropertyAccessExpression(node: tsm.PropertyAccessExpression, options: ProcessOptions) {
 
@@ -282,21 +302,21 @@
 //     throw new CompileError("processPropertyAccessExpression not implemented", node);
 // }
 
-// export function processExpression(node: tsm.Expression, options: ProcessOptions) {
+export function processExpression(node: tsm.Expression, options: ProcessMethodOptions) {
 
-//     dispatch(node, options, {
-//         // [tsm.SyntaxKind.ArrayLiteralExpression]: processArrayLiteralExpression,
-//         // [tsm.SyntaxKind.AsExpression]: processAsExpression,
-//         // [tsm.SyntaxKind.BinaryExpression]: processBinaryExpression,
-//         // [tsm.SyntaxKind.CallExpression]: processCallExpression,
-//         // [tsm.SyntaxKind.ConditionalExpression]: processConditionalExpression,
+    dispatch(node, options, {
+        // [tsm.SyntaxKind.ArrayLiteralExpression]: processArrayLiteralExpression,
+        // [tsm.SyntaxKind.AsExpression]: processAsExpression,
+        // [tsm.SyntaxKind.BinaryExpression]: processBinaryExpression,
+        // [tsm.SyntaxKind.ConditionalExpression]: processConditionalExpression,
+        // [tsm.SyntaxKind.Identifier]: processIdentifier,
+        // [tsm.SyntaxKind.PropertyAccessExpression]: processPropertyAccessExpression,
 
-//         [tsm.SyntaxKind.BigIntLiteral]: processBigIntLiteral,
-//         [tsm.SyntaxKind.FalseKeyword]: processBooleanLiteral,
-//         [tsm.SyntaxKind.Identifier]: processIdentifier,
-//         [tsm.SyntaxKind.NumericLiteral]: processNumericLiteral,
-//         [tsm.SyntaxKind.PropertyAccessExpression]: processPropertyAccessExpression,
-//         [tsm.SyntaxKind.StringLiteral]: processStringLiteral,
-//         [tsm.SyntaxKind.TrueKeyword]: processBooleanLiteral,
-//     });
-// }
+        [tsm.SyntaxKind.BigIntLiteral]: processBigIntLiteral,
+        [tsm.SyntaxKind.CallExpression]: processCallExpression,
+        [tsm.SyntaxKind.FalseKeyword]: processBooleanLiteral,
+        [tsm.SyntaxKind.NumericLiteral]: processNumericLiteral,
+        [tsm.SyntaxKind.StringLiteral]: processStringLiteral,
+        [tsm.SyntaxKind.TrueKeyword]: processBooleanLiteral,
+    });
+}

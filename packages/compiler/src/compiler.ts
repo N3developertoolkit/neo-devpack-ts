@@ -58,7 +58,13 @@ export function compile({ project, addressVersion, inline, optimize }: CompileOp
         const symbolTrees = createSymbolTrees(project, diagnostics);
         for (const tree of symbolTrees) {
             // console.log([...tree.symbols].map(d => d.symbol.getName()));
-            processMethodsDefs(tree, diagnostics);
+            const methods = processMethodsDefs(tree, diagnostics);
+            for (const method of methods) {
+                console.log(method.name);
+                for (const op of method.operations) {
+                    console.log("  " + op.kind);
+                }
+            }
         }
     } catch (error) {
         diagnostics.push(toDiagnostic(error));
