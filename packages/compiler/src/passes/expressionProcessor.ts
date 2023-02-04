@@ -7,7 +7,7 @@
 // import './ext';
 import * as tsm from "ts-morph";
 import { CompileError } from "../compiler";
-import { SysCallSymbolDef } from "../scope";
+import { BuiltInSymbolDef, ConstantSymbolDef, SymbolDef, SysCallSymbolDef } from "../scope";
 // import { ConstantSymbolDef, SymbolDef } from "../scope";
 import { dispatch } from "../utility/nodeDispatch";
 import { ProcessMethodOptions } from "./processFunctionDeclarations";
@@ -180,77 +180,102 @@ import { ProcessMethodOptions } from "./processFunctionDeclarations";
 // // // }
 
 // // @internal
-// export function processSymbolDef(def: SymbolDef, options: ProcessOptions) {
-//     const builder = options.builder;
-//     if (def instanceof ConstantSymbolDef) {
-//         const value = def.value;
-//         if (value === null) {
-//             builder.pushNull();
-//         } else if (value instanceof Uint8Array) {
-//             builder.pushData(value);
-//         } else {
-//             var type = typeof value;
-//             if (type === 'boolean') {
-//                 builder.pushBoolean(value as boolean);
-//             } else if (type === 'bigint') {
-//                 builder.pushInt(value as bigint);
-//             } else {
-//                 throw new Error(`processSymbolDef ConstantSymbolDef ${type}`)
-//             }
-//         }
-//     } else {
-//         throw new Error(`processSymbolDef ${def.symbol.getName()}`);
-//     }
-// }
+export function processSymbolDef(def: SymbolDef, options: ProcessMethodOptions) {
+    const builder = options.builder;
+    if (def instanceof ConstantSymbolDef) {
+        const value = def.value;
+        if (value === null) {
+            builder.emitPushNull();
+        } else if (value instanceof Uint8Array) {
+            builder.emitPushData(value);
+        } else {
+            var type = typeof value;
+            if (type === 'boolean') {
+                builder.emitPushBoolean(value as boolean);
+            } else if (type === 'bigint') {
+                builder.emitPushInt(value as bigint);
+            } else {
+                throw new Error(`processSymbolDef ConstantSymbolDef ${type}`)
+            }
+        }
+    } else if (def instanceof SysCallSymbolDef) {
+        builder.emitSysCall(def.name);
+    } else {
+        throw new Error(`processSymbolDef ${def.symbol.getName()}`);
+    }
+}
 
-// // @internal
-// export function processIdentifier(node: tsm.Identifier, options: ProcessOptions) {
-//     const symbol = node.getSymbolOrThrow();
-//     const resolved = options.scope.resolve(symbol);
-//     if (!resolved) throw new CompileError(`unresolved symbol ${symbol.getName()}`, node);
-//     processSymbolDef(resolved, options);
-// }
+
+export function processIdentifier(node: tsm.Identifier, options: ProcessMethodOptions) {
+    const symbol = node.getSymbolOrThrow();
+    const resolved = options.scope.resolve(symbol);
+    if (!resolved) throw new CompileError(`unresolved symbol ${symbol.getName()}`, node);
+    processSymbolDef(resolved, options);
+}
 
 export function processBooleanLiteral(node: tsm.FalseLiteral | tsm.TrueLiteral, { builder }: ProcessMethodOptions) {
     const value = node.getLiteralValue();
-    builder.pushBoolean(value);
+    builder.emitPushBoolean(value);
 }
 
 export function processNumericLiteral(node: tsm.NumericLiteral, { builder }: ProcessMethodOptions) {
     const value = node.getLiteralValue();
     if (!Number.isInteger(value)) throw new CompileError(`invalid non-integer numeric literal`, node);
-    builder.pushInt(BigInt(value));
+    builder.emitPushInt(BigInt(value));
 }
 
 export function processBigIntLiteral(node: tsm.BigIntLiteral, { builder }: ProcessMethodOptions) {
     const value = node.getLiteralValue() as bigint;
-    builder.pushInt(BigInt(value));
+    builder.emitPushInt(BigInt(value));
 }
 
 export function processStringLiteral(node: tsm.StringLiteral, { builder }: ProcessMethodOptions) {
     const value = Buffer.from(node.getLiteralValue(), 'utf8');
-    builder.pushData(value);
+    builder.emitPushData(value);
 }
 
-export function processCallExpression(node: tsm.CallExpression, { builder, scope }: ProcessMethodOptions) {
-    const expr = node.getExpressionIfKind(tsm.SyntaxKind.Identifier);
-    if (expr) {
-        const resolved = scope.resolve(expr.getSymbolOrThrow());
-        if (resolved) {
-            if (resolved instanceof SysCallSymbolDef) {
-                builder.syscall(resolved.name);
-                return;
-            }
-        }
-    }
+// export function processBuiltIn(node: tsm.PropertyAccessExpression()) {
+
+// }
+
+
+export function processCallExpression(node: tsm.CallExpression, options: ProcessMethodOptions) {
+
+    // arguments
+    const expr = node.getExpression();
+    processExpression(expr, options);
+
+    // if (tsm.Node.isIdentifier(expr)) {
+    //     const resolved = scope.resolve(expr.getSymbolOrThrow());
+    //     if (resolved) {
+    //         if (resolved instanceof SysCallSymbolDef) {
+    //             builder.syscall(resolved.name);
+    //             return;
+    //         }
+    //     }
+    // } else if (tsm.Node.isPropertyAccessExpression(expr)) {
+    //     const owner = expr.getExpression();
+    //     const propName = expr.getName();
+    //     const t = owner.getType().getText();
+    //     console.log();
+    // }
 
 
 
+    // throw new CompileError("not implemented", node);
+}
+
+
+function processPropertyAccessExpression(node: tsm.PropertyAccessExpression, options: ProcessMethodOptions) {
+    const p = node.print();
+    const expr = node.getExpression();
+    const t = node.getType().getText();
+    const t2 = expr.getType().getText();
+    const sym = expr.getSymbol();
+    // processExpression(expr, options);
+    // const name = node.getName();
     throw new CompileError("not implemented", node);
 }
-
-
-// function processPropertyAccessExpression(node: tsm.PropertyAccessExpression, options: ProcessOptions) {
 
 //     // TODO: left off here
 //     const expr = node.getExpression();
@@ -299,7 +324,7 @@ export function processCallExpression(node: tsm.CallExpression, { builder, scope
 // // //     //     return;
 // // //     // }
 
-//     throw new CompileError("processPropertyAccessExpression not implemented", node);
+//     
 // }
 
 export function processExpression(node: tsm.Expression, options: ProcessMethodOptions) {
@@ -309,13 +334,13 @@ export function processExpression(node: tsm.Expression, options: ProcessMethodOp
         // [tsm.SyntaxKind.AsExpression]: processAsExpression,
         // [tsm.SyntaxKind.BinaryExpression]: processBinaryExpression,
         // [tsm.SyntaxKind.ConditionalExpression]: processConditionalExpression,
-        // [tsm.SyntaxKind.Identifier]: processIdentifier,
-        // [tsm.SyntaxKind.PropertyAccessExpression]: processPropertyAccessExpression,
 
         [tsm.SyntaxKind.BigIntLiteral]: processBigIntLiteral,
         [tsm.SyntaxKind.CallExpression]: processCallExpression,
         [tsm.SyntaxKind.FalseKeyword]: processBooleanLiteral,
+        [tsm.SyntaxKind.Identifier]: processIdentifier,
         [tsm.SyntaxKind.NumericLiteral]: processNumericLiteral,
+        [tsm.SyntaxKind.PropertyAccessExpression]: processPropertyAccessExpression,
         [tsm.SyntaxKind.StringLiteral]: processStringLiteral,
         [tsm.SyntaxKind.TrueKeyword]: processBooleanLiteral,
     });

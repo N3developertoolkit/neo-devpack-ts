@@ -11,7 +11,7 @@ import { processExpression } from "./expressionProcessor";
 
 export function processBlock(node: tsm.Block, { diagnostics, builder, scope }: ProcessMethodOptions): void {
     var open = node.getFirstChildByKind(tsm.SyntaxKind.OpenBraceToken);
-    if (open) builder.operation('noop', open);
+    if (open) builder.emitOperation('noop', open);
 
     const blockScope = new BlockScope(node, scope);
     const options = { diagnostics, builder, scope: blockScope };
@@ -20,7 +20,7 @@ export function processBlock(node: tsm.Block, { diagnostics, builder, scope }: P
     }
 
     var close = node.getLastChildByKind(tsm.SyntaxKind.CloseBraceToken);
-    if (close) builder.operation('noop', close);
+    if (close) builder.emitOperation('noop', close);
 }
 
 // // // function processExpressionStatement(node: tsm.ExpressionStatement, options: ProcessOptions): void {
@@ -103,7 +103,7 @@ export function processVariableStatement(node: tsm.VariableStatement, options: P
         if (init) {
             const locSetter = builder.getLocationSetter();
             processExpression(init, options);
-            builder.store('local', index);
+            builder.emitStore('local', index);
             locSetter(decl);
         } 
     }

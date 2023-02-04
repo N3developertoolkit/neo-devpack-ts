@@ -39,8 +39,8 @@ export function toDiagnostic(error: unknown): tsm.ts.Diagnostic {
     return createDiagnostic(message, { node });
 }
 
-export async function createContractProject(scfxSource?: string) {
-    const project = new tsm.Project({
+export function createProject() {
+    return new tsm.Project({
         compilerOptions: {
             experimentalDecorators: true,
             // specify lib file directly to avoid bringing in web apis like DOM and WebWorker
@@ -50,6 +50,10 @@ export async function createContractProject(scfxSource?: string) {
         },
         useInMemoryFileSystem: true,
     });
+}
+
+export async function createContractProject(scfxSource?: string) {
+    const project = createProject();
 
     // load SCFX definitions
     if (!scfxSource) {

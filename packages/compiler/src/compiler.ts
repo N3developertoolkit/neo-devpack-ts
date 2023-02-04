@@ -1,6 +1,6 @@
 import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
-import { DebugInfo, toJson as debugInfoToJson } from "./types/DebugInfo";
+// import { DebugInfo, toJson as debugInfoToJson } from "./types/DebugInfo";
 import { createDiagnostic, toDiagnostic } from "./utils";
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
@@ -8,6 +8,8 @@ import * as path from 'path';
 import { createSymbolTrees } from "./scope";
 import { processMethodsDefs } from "./passes/processFunctionDeclarations";
 
+import { from, first, toArray } from 'ix/iterable';
+import { groupBy, orderBy, filter } from 'ix/iterable/operators';
 export const DEFAULT_ADDRESS_VALUE = 53;
 
 export class CompileError extends Error {
@@ -29,7 +31,7 @@ export interface CompileOptions {
 export interface CompileArtifacts {
     nef: sc.NEF;
     manifest: sc.ContractManifest;
-    debugInfo: DebugInfo;
+    // debugInfo: DebugInfo;
 }
 
 export interface CompileContext {
@@ -45,8 +47,76 @@ export interface CompileContext {
 //     locals?: ReadonlyArray<LocalVariable>;
 // }
 
+const LIB_PATH = `/node_modules/typescript/lib/`;
+
+class StdLibReader {
+
+    readonly $func = new Array<tsm.FunctionDeclaration>();
+    readonly $iface = new Array<tsm.InterfaceDeclaration>();
+    readonly $alias = new Array<tsm.TypeAliasDeclaration>();
+    readonly $module = new Array<tsm.ModuleDeclaration>();
+    readonly $var = new Array<tsm.VariableDeclaration>();
+    readonly $processed = new Set<string>();
+    readonly $symbols = new Set<tsm.Symbol>();
+
+    constructor(private readonly project: tsm.Project) {
+        const libs = project.compilerOptions.get().lib ?? [];
+        for (const lib of libs) {
+            this.processFile(LIB_PATH + lib);
+        }
+    }
+
+    processFile(node: string | tsm.SourceFile) {
+        if (typeof node === 'string') {
+            const src = this.project.getSourceFile(node);
+            if (src) node = src;
+            else return;
+        }
+
+        const path = node.getFilePath();
+        if (this.$processed.has(path)) return;
+        this.$processed.add(path);
+
+        node.forEachChild(n => {
+            const k = n.getKindName();
+            const t = n.getType();
+            const s = t.getSymbol();
+            if (s?.getName() === '__type') {
+                console.log();
+            }
+
+            if (s && n.getKind() != tsm.SyntaxKind.TypeAliasDeclaration) { this.$symbols.add(s); }
+
+            if (tsm.Node.isFunctionDeclaration(n)) 
+                this.$func.push(n);
+            else if (tsm.Node.isInterfaceDeclaration(n)) 
+                this.$iface.push(n);
+            else if (tsm.Node.isTypeAliasDeclaration(n)) 
+                this.$alias.push(n);
+            else if (tsm.Node.isModuleDeclaration(n)) 
+                this.$module.push(n);
+            else if (tsm.Node.isVariableStatement(n)) {
+                for (const d of n.getDeclarations()) {
+                    this.$var.push(d);
+                }
+            }
+            else if (n.getKind() == tsm.SyntaxKind.EndOfFileToken) { 
+                const i = 0;
+            }
+            else throw new Error(`${n.getKindName()}`);
+        })
+
+        for (const ref of node.getLibReferenceDirectives()) {
+            const path = LIB_PATH + `lib.${ref.getFileName()}.d.ts`;
+            this.processFile(path);
+        }
+    }
+}
+
 export function compile({ project, addressVersion, inline, optimize }: CompileOptions) {
 
+    const z = new StdLibReader(project);
+    
     const diagnostics = new Array<tsm.ts.Diagnostic>();
     const options = {
         addressVersion: addressVersion ?? DEFAULT_ADDRESS_VALUE,
@@ -113,8 +183,8 @@ async function exists(rootPath: fs.PathLike) {
 }
 
 export interface SaveArtifactsOptions {
-    artifacts: CompileArtifacts; 
-    rootPath: string; 
+    artifacts: CompileArtifacts;
+    rootPath: string;
     baseName?: string;
     sourceDir?: string;
 }
@@ -126,15 +196,15 @@ export async function saveArtifacts({ artifacts, rootPath, baseName = "contract"
     const manifestPath = path.join(rootPath, baseName + ".manifest.json");
     const debugInfoPath = path.join(rootPath, baseName + ".debug.json");
 
-    const {nef, manifest, debugInfo} = artifacts;
-    const _nef = Buffer.from(nef.serialize(), 'hex');
-    const _manifest = JSON.stringify(manifest.toJson(), null, 4);
-    const _debugInfo = JSON.stringify(debugInfoToJson(debugInfo, nef, sourceDir), null, 4);
+    // const { nef, manifest, debugInfo } = artifacts;
+    // const _nef = Buffer.from(nef.serialize(), 'hex');
+    // const _manifest = JSON.stringify(manifest.toJson(), null, 4);
+    // const _debugInfo = JSON.stringify(debugInfoToJson(debugInfo, nef, sourceDir), null, 4);
 
-    await Promise.all([
-        fsp.writeFile(nefPath, _nef), 
-        fsp.writeFile(manifestPath, _manifest),
-        fsp.writeFile(debugInfoPath, _debugInfo)]);
+    // await Promise.all([
+    //     fsp.writeFile(nefPath, _nef),
+    //     fsp.writeFile(manifestPath, _manifest),
+    //     fsp.writeFile(debugInfoPath, _debugInfo)]);
 }
 
 
@@ -163,10 +233,10 @@ function parseContractTag(st: tsm.JSDocStructure, options: ProcessMetadataOption
 
     const initialTag = st.tags![0];
     if (initialTag.tagName !== CONTRACT_TAG) throw new Error(`parseContractTag ${initialTag.tagName}`);
-    const contractName = st.tags![0].text; 
+    const contractName = st.tags![0].text;
     if (typeof contractName !== 'string' || contractName.length === 0) {
         throw new Error('contract tag must contain a non-empty string');
-    } 
+    }
 
     var length = st.tags!.length;
     for (var i = 1; i < length; i++) {
@@ -184,7 +254,7 @@ function parseContractTag(st: tsm.JSDocStructure, options: ProcessMetadataOption
 function parseEventTag(st: tsm.JSDocStructure, options: ProcessMetadataOptions) {
     const initialTag = st.tags![0];
     if (initialTag.tagName !== EVENT_TAG) throw new Error(`parseEventTag ${initialTag.tagName}`);
-    const eventName = st.tags![0].text; 
+    const eventName = st.tags![0].text;
     if (typeof eventName !== 'string' || eventName.length === 0) {
         throw new Error(`${EVENT_TAG} tag must contain a non-empty string`);
     }
@@ -203,7 +273,7 @@ function parseEventTag(st: tsm.JSDocStructure, options: ProcessMetadataOptions) 
 
 
 interface ProcessMetadataOptions {
-    diagnostics: Array<tsm.ts.Diagnostic> 
+    diagnostics: Array<tsm.ts.Diagnostic>
 }
 
 function processMetadataNode(node: tsm.JSDoc, options: ProcessMetadataOptions) {
@@ -221,9 +291,9 @@ function processMetadataNode(node: tsm.JSDoc, options: ProcessMetadataOptions) {
                 const parent = node.getParentOrThrow();
                 if (!tsm.Node.isFunctionDeclaration(parent)) {
                     options.diagnostics.push(createDiagnostic(
-                        `"safe" JSDoc tag on ${parent.getKindName()} node`, 
-                        { 
-                            node, 
+                        `"safe" JSDoc tag on ${parent.getKindName()} node`,
+                        {
+                            node,
                             category: tsm.ts.DiagnosticCategory.Warning
                         }));
                 }
@@ -231,9 +301,9 @@ function processMetadataNode(node: tsm.JSDoc, options: ProcessMetadataOptions) {
             }
             default:
                 options.diagnostics.push(createDiagnostic(
-                    `unrecognized JSDoc tag ${tag.tagName}`, 
-                    { 
-                        node, 
+                    `unrecognized JSDoc tag ${tag.tagName}`,
+                    {
+                        node,
                         category: tsm.ts.DiagnosticCategory.Warning
                     }));
                 break;

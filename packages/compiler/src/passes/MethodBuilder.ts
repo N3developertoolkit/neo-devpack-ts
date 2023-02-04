@@ -49,38 +49,38 @@ export class MethodBuilder {
         return length - 1;
     }
 
-    operation(kind: OperationKind, location?: tsm.Node): void {
+    emitOperation(kind: OperationKind, location?: tsm.Node): void {
         var op: Operation = { kind, location };
         this._operations.push(op);
     }
 
-    pushBoolean(value: boolean, location?: tsm.Node): void {
+    emitPushBoolean(value: boolean, location?: tsm.Node): void {
         const op: PushBoolOperation = { kind: 'pushbool', value, location };
         this._operations.push(op);
     }
 
-    pushInt(value: bigint, location?: tsm.Node): void {
+    emitPushInt(value: bigint, location?: tsm.Node): void {
         const op: PushIntOperation = { kind: 'pushint', value, location };
         this._operations.push(op);
     }
 
-    pushData(value: ReadonlyUint8Array, location?: tsm.Node) {
+    emitPushData(value: ReadonlyUint8Array, location?: tsm.Node) {
         const op: PushDataOperation = { kind: 'pushdata', value, location };
         this._operations.push(op);
     }
 
-    pushNull(location?: tsm.Node) {
+    emitPushNull(location?: tsm.Node) {
         const op: Operation = { kind: 'pushnull', location };
         this._operations.push(op);
     }
 
-    jump(target: TargetOffset, location?: tsm.Node): void {
+    emitJump(target: TargetOffset, location?: tsm.Node): void {
         const op: JumpOperation = { kind: 'jump', offset: 0, location };
         this._operations.push(op);
         this._jumps.set(op, target);
     }
 
-    load(kind: LoadStoreKind, index: number, location?: tsm.Node): void {
+    emitLoad(kind: LoadStoreKind, index: number, location?: tsm.Node): void {
         if (!Number.isInteger(index)) throw new Error(`Invalid load index ${index}`);
         const opKind = kind === 'arg' 
             ? "loadarg"
@@ -89,7 +89,7 @@ export class MethodBuilder {
             this._operations.push(op);
     }
 
-    store(kind: LoadStoreKind, index: number, location?: tsm.Node): void {
+    emitStore(kind: LoadStoreKind, index: number, location?: tsm.Node): void {
         if (!Number.isInteger(index)) throw new Error(`Invalid store index ${index}`);
         const opKind = kind === 'arg' 
             ? "storearg"
@@ -98,7 +98,7 @@ export class MethodBuilder {
         this._operations.push(op);
     }
 
-    syscall(name: string, location?:tsm.Node): void {
+    emitSysCall(name: string, location?:tsm.Node): void {
         const op: SysCallOperation = { kind: 'syscall', name, location };
         this._operations.push(op);
     }

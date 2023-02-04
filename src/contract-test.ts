@@ -12,7 +12,7 @@ const prefixSampleValue = 0x00;
 /** @safe */
 export function get() { 
     const ctx = storageGetContext();
-    // const key = Uint8Array.from([prefixSampleValue]);
+    const key = Uint8Array.from([prefixSampleValue]);
     // return storageGet(ctx, key);
 }
 

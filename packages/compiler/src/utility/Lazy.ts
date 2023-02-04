@@ -3,7 +3,7 @@ export class Lazy<T> {
 
     constructor(private readonly initFunc: () => T) { }
 
-    get instance() {
+    get() {
         return this._instance || (this._instance = this.initFunc());
     }
 }

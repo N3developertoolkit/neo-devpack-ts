@@ -6,7 +6,7 @@
 
 export interface ByteString extends Omit<Uint8Array, 'copyWithin' | 'fill' | 'reverse' | 'set' | 'sort'> { 
 }
-
+ 
 // /** @opcode {OpCode.CONVERT} StackItemType.ByteString */
 // export declare function asInteger(value: ByteString): bigint;
 // export declare function asByteString(value: string): ByteString;
