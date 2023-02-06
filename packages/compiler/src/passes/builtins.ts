@@ -11,6 +11,7 @@ import * as tsm from "ts-morph";
 // // import { asExpressionOrCompileError, asKindOrCompileError, getNumericLiteral, isBigIntLike } from "./utils";
 
 import { MethodBuilder } from "./MethodBuilder";
+import { ProcessMethodOptions } from "./processFunctionDeclarations";
 
 // // I need to be able to resolve types and symbols
 // // SCFX types have a prefix like : "\"/node_modules/@neo-project/neo-contract-framework/index\".StorageConstructor"
@@ -185,6 +186,7 @@ import { MethodBuilder } from "./MethodBuilder";
 
 
 
-export function emitU8ArrayFrom(builder: MethodBuilder, args: ReadonlyArray<tsm.Node>): void {
+export function emitU8ArrayFrom(args: ReadonlyArray<tsm.Node>, options: ProcessMethodOptions): void {
+    // if (args.length !== 1) throw new 
     throw new Error("Uint8Array.from not implemented yet")
 }

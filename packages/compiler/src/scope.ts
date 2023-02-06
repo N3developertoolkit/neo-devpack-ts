@@ -8,6 +8,7 @@ import { createDiagnostic, DiagnosticOptions, getConstantValue, getJSDocTag, isV
 import { from } from 'ix/iterable';
 import { map, groupBy, orderBy } from 'ix/iterable/operators';
 import { emitU8ArrayFrom } from './passes/builtins';
+import { ProcessMethodOptions } from './passes/processFunctionDeclarations';
 
 export interface ReadonlyScope {
     readonly parentScope: ReadonlyScope | undefined;
@@ -33,7 +34,7 @@ export function canResolve(def: SymbolDef): def is SymbolDef & ReadonlyScope {
 }
 
 export interface CallableSymbolDef extends SymbolDef {
-    emitCall(builder: MethodBuilder, args: ReadonlyArray<tsm.Node>): void;
+    emitCall(args: ReadonlyArray<tsm.Node>, options: ProcessMethodOptions): void;
 }
 
 export function isCallable(def: SymbolDef): def is CallableSymbolDef {
@@ -41,7 +42,7 @@ export function isCallable(def: SymbolDef): def is CallableSymbolDef {
 }
 
 export interface LoadableSymbolDef extends SymbolDef {
-    emitLoad(builder: MethodBuilder): void;
+    emitLoad(options: ProcessMethodOptions): void;
 }
 
 export function isLoadable(def: SymbolDef): def is LoadableSymbolDef {
@@ -49,7 +50,7 @@ export function isLoadable(def: SymbolDef): def is LoadableSymbolDef {
 }
 
 export interface StorableSymbolDef extends SymbolDef {
-    emitStore(builder: MethodBuilder): void;
+    emitStore(options: ProcessMethodOptions): void;
 }
 
 export function isStorable(def: SymbolDef): def is StorableSymbolDef {
@@ -170,7 +171,7 @@ export class IntrinsicSymbolDef implements LoadableSymbolDef {
     ) {
         this.symbol = node.getSymbolOrThrow();
     }
-    emitLoad(_builder: MethodBuilder): void {
+    emitLoad(_options: ProcessMethodOptions): void {
         // intrinsic objects don't have a stack represenation so loading one is a no-op
     }
 }
@@ -179,7 +180,7 @@ export class IntrinsicMethodDef implements CallableSymbolDef {
     constructor(
         readonly symbol: tsm.Symbol,
         readonly parentScope: ReadonlyScope,
-        readonly emitCall: (builder: MethodBuilder, args: ReadonlyArray<tsm.Node>)=> void
+        readonly emitCall: (args: ReadonlyArray<tsm.Node>, options: ProcessMethodOptions)=> void
     ) {}
 
 }
@@ -190,7 +191,7 @@ export class ConstantSymbolDef implements LoadableSymbolDef {
         readonly parentScope: ReadonlyScope,
         readonly value: boolean | bigint | null | ReadonlyUint8Array) { }
 
-    emitLoad(builder: MethodBuilder) {
+    emitLoad({builder}: ProcessMethodOptions) {
         if (this.value === null) {
             builder.emitPushNull();
         } else if (this.value instanceof Uint8Array) {
@@ -217,11 +218,11 @@ export class VariableSymbolDef implements LoadableSymbolDef, StorableSymbolDef {
         readonly kind: 'arg' | 'local' | 'static',
         readonly index: number) {}
 
-    emitLoad(builder: MethodBuilder) {
+    emitLoad({builder}: ProcessMethodOptions) {
         builder.emitLoad(this.kind, this.index);
     }
 
-    emitStore(builder: MethodBuilder) {
+    emitStore({builder}: ProcessMethodOptions) {
         builder.emitStore(this.kind, this.index);
     }
 }
@@ -255,7 +256,7 @@ export class SysCallSymbolDef implements CallableSymbolDef {
         this.returnType = node.getReturnType();
     }
 
-    emitCall(builder: MethodBuilder, args: ReadonlyArray<tsm.Node>) {
+    emitCall(args: ReadonlyArray<tsm.Node>, {builder}: ProcessMethodOptions) {
         if (args.length > 0) throw new Error("not implemented")
         builder.emitSysCall(this.name);
     }
@@ -302,11 +303,6 @@ interface ScopeOptions {
     scope: Scope,
     symbol?: tsm.Symbol
 }
-
-function fail({ diagnostics }: ScopeOptions, messageText: string, options: DiagnosticOptions) {
-    diagnostics.push(createDiagnostic(messageText, options));
-}
-
 
 function processFunctionDeclaration(node: tsm.FunctionDeclaration, options: ScopeOptions) {
     const symbol = options.symbol ?? node.getSymbolOrThrow();

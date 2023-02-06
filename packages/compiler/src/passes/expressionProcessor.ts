@@ -120,10 +120,10 @@ function resolveIdentifier(node: tsm.Identifier, scope: ReadonlyScope) {
     return resolved ?? scope.resolve(symbol.getValueDeclaration()?.getSymbol());
 }
 
-export function callIdentifier(node: tsm.Identifier, args: ReadonlyArray<tsm.Node>, {scope, builder}: ProcessMethodOptions) {
-    const resolved = resolveIdentifier(node, scope);
+export function callIdentifier(node: tsm.Identifier, args: ReadonlyArray<tsm.Node>, options: ProcessMethodOptions) {
+    const resolved = resolveIdentifier(node, options.scope);
     if (!resolved) throw new CompileError(`unresolved symbol ${node.getSymbolOrThrow().getName()}`, node);
-    if (isCallable(resolved)) resolved.emitCall(builder, args);
+    if (isCallable(resolved)) resolved.emitCall(args, options);
     else throw new CompileError(`Uncallable symbol ${node.getSymbolOrThrow().getName()}`, node);
 }
 
@@ -138,7 +138,7 @@ function callPropertyAccessExpression(node: tsm.PropertyAccessExpression, args: 
     if (!isCallable(prop)) throw new CompileError(`${prop.symbol.getName()} not callable`, node)
 
     processExpression(expr, options);
-    prop.emitCall(options.builder, args);
+    prop.emitCall(args, options);
 }
 
 export function processCallExpression(node: tsm.CallExpression, options: ProcessMethodOptions) {
@@ -160,10 +160,10 @@ export function processCallExpression(node: tsm.CallExpression, options: Process
 
 
 
-export function processIdentifier(node: tsm.Identifier, {builder, scope}: ProcessMethodOptions) {
-    const resolved = resolveIdentifier(node, scope);
+export function processIdentifier(node: tsm.Identifier, options: ProcessMethodOptions) {
+    const resolved = resolveIdentifier(node, options.scope);
     if (!resolved) throw new CompileError(`unresolved symbol ${node.getSymbolOrThrow().getName()}`, node);
-    if (isLoadable(resolved)) resolved.emitLoad(builder);
+    if (isLoadable(resolved)) resolved.emitLoad(options);
     else throw new CompileError(`Unloadable symbol ${node.getSymbolOrThrow().getName()}`, node);
 }
 

@@ -34,19 +34,20 @@ export class MethodBuilder {
         }
 
         // push a return operation at end
-        const returnOp: Operation = {kind: 'return'}
-        operations.push(returnOp);
+        const returnOp: Operation = { kind: 'return' }
+        const returnIndex = operations.push(returnOp) - 1;
 
         // process jump targets (1st draft)
-        for (const [jump, targetOffset] of this._jumps) {
+        for (const [jump, target] of this._jumps) {
             const jumpIndex = operations.indexOf(jump);
-            if (jumpIndex < 0 ) throw new Error("failed to locate operation index");
-            const target = targetOffset == this._returnTarget ? returnOp : undefined;
-            if (!target) throw new Error("failed to locate jump target");
-            operations[jumpIndex] = { 
+            if (jumpIndex < 0) throw new Error("failed to locate operation index");
+            const targetIndex = target === this._returnTarget ? returnIndex : -1;
+            if (targetIndex < 0) throw new Error("failed to locate target index");
+            operations[jumpIndex] = {
                 kind: jump.kind,
-                target,
-                location: jump.location } as JumpOperation; 
+                offset: targetIndex - jumpIndex,
+                location: jump.location
+            } as JumpOperation;
         }
 
         return operations;
@@ -94,30 +95,30 @@ export class MethodBuilder {
     }
 
     emitJump(target: TargetOffset, location?: tsm.Node): void {
-        const op: JumpOperation = { kind: 'jump', target: undefined, location };
-        this._operations.push(op);
+        const op: JumpOperation = { kind: 'jump', offset: 0, location };
         this._jumps.set(op, target);
+        this._operations.push(op);
     }
 
     emitLoad(kind: LoadStoreKind, index: number, location?: tsm.Node): void {
         if (!Number.isInteger(index)) throw new Error(`Invalid load index ${index}`);
-        const opKind = kind === 'arg' 
+        const opKind = kind === 'arg'
             ? "loadarg"
             : kind === 'local' ? 'loadlocal' : 'loadstatic';
-            const op: LoadStoreOperation = { kind: opKind, index, location };
-            this._operations.push(op);
+        const op: LoadStoreOperation = { kind: opKind, index, location };
+        this._operations.push(op);
     }
 
     emitStore(kind: LoadStoreKind, index: number, location?: tsm.Node): void {
         if (!Number.isInteger(index)) throw new Error(`Invalid store index ${index}`);
-        const opKind = kind === 'arg' 
+        const opKind = kind === 'arg'
             ? "storearg"
             : kind === 'local' ? 'storelocal' : 'storestatic';
         const op: LoadStoreOperation = { kind: opKind, index, location };
         this._operations.push(op);
     }
 
-    emitSysCall(name: string, location?:tsm.Node): void {
+    emitSysCall(name: string, location?: tsm.Node): void {
         const op: SysCallOperation = { kind: 'syscall', name, location };
         this._operations.push(op);
     }
