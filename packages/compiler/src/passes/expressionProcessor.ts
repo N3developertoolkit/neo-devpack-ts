@@ -1,7 +1,8 @@
 // import './ext';
+import { resolvePtr } from "dns";
 import * as tsm from "ts-morph";
 import { CompileError } from "../compiler";
-import { ConstantSymbolDef, isCallable, isLoadable, SymbolDef, SysCallSymbolDef } from "../scope";
+import { ConstantSymbolDef, isCallable, isLoadable, ReadonlyScope, SymbolDef, SysCallSymbolDef } from "../scope";
 // import { ConstantSymbolDef, SymbolDef } from "../scope";
 import { dispatch } from "../utility/nodeDispatch";
 import { ProcessMethodOptions } from "./processFunctionDeclarations";
@@ -113,80 +114,57 @@ import { ProcessMethodOptions } from "./processFunctionDeclarations";
 // // //     endTarget.operation = builder.push(OperationKind.NOP).instruction;
 // // // }
 
-export function processIdentifierCall(node: tsm.Identifier, {builder, scope}: ProcessMethodOptions) {
+function resolveIdentifier(node: tsm.Identifier, scope: ReadonlyScope) {
     const symbol = node.getSymbolOrThrow();
-    const resolved = scope.resolve(symbol);
-    if (!resolved) throw new CompileError(`unresolved symbol ${symbol.getName()}`, node);
-    if (isCallable(resolved)) resolved.emitCall(builder);
-    else throw new CompileError(`Uncallable symbol ${symbol.getName()}`, node);
+    let resolved = scope.resolve(symbol);
+    return resolved ?? scope.resolve(symbol.getValueDeclaration()?.getSymbol());
 }
 
-function processPropertyAccessExpressionCall(node: tsm.PropertyAccessExpression, options: ProcessMethodOptions) {
+export function callIdentifier(node: tsm.Identifier, args: ReadonlyArray<tsm.Node>, {scope, builder}: ProcessMethodOptions) {
+    const resolved = resolveIdentifier(node, scope);
+    if (!resolved) throw new CompileError(`unresolved symbol ${node.getSymbolOrThrow().getName()}`, node);
+    if (isCallable(resolved)) resolved.emitCall(builder, args);
+    else throw new CompileError(`Uncallable symbol ${node.getSymbolOrThrow().getName()}`, node);
+}
+
+function callPropertyAccessExpression(node: tsm.PropertyAccessExpression, args: ReadonlyArray<tsm.Node>, options: ProcessMethodOptions) {
 
     const expr = node.getExpression();
-    const sym = expr.getSymbol()?.getValueDeclaration()?.getSymbol() ?? expr.getSymbolOrThrow();
-    const r1 = options.scope.resolve(sym);
+    const exprType = expr.getType();
+    const propName = node.getName();
 
-    // this works for resolving UInt8Array to intrinsic
-    const sym2 = sym.getValueDeclaration()?.getSymbol();
-    const r2 = sym2 ? options.scope.resolve(sym2) : undefined;
+    const prop = options.scope.resolve(exprType.getProperty(propName));
+    if (!prop) throw new CompileError(`${exprType.getText()} missing ${propName} property`, node)
+    if (!isCallable(prop)) throw new CompileError(`${prop.symbol.getName()} not callable`, node)
 
     processExpression(expr, options);
-
-
-    // Uint8Array
-
-    /*
-    UInt8Array is an intrinsic object in JS
-        the intrinsic UInt8Array is typed as a UInt8ArrayConstructor
-
-    */
-
-    // throw new CompileError("not implemented", node);
+    prop.emitCall(options.builder, args);
 }
 
 export function processCallExpression(node: tsm.CallExpression, options: ProcessMethodOptions) {
 
-    // arguments
-
     const expr = node.getExpression();
-    dispatch(node.getExpression(), options, {
-        [tsm.SyntaxKind.Identifier]: processIdentifierCall,
-        [tsm.SyntaxKind.PropertyAccessExpression]: processPropertyAccessExpressionCall,
-    });
-
-    // 
-    // processExpression(expr, options);
-
-    // if (tsm.Node.isIdentifier(expr)) {
-    //     const resolved = scope.resolve(expr.getSymbolOrThrow());
-    //     if (resolved) {
-    //         if (resolved instanceof SysCallSymbolDef) {
-    //             builder.syscall(resolved.name);
-    //             return;
-    //         }
-    //     }
-    // } else if (tsm.Node.isPropertyAccessExpression(expr)) {
-    //     const owner = expr.getExpression();
-    //     const propName = expr.getName();
-    //     const t = owner.getType().getText();
-    //     console.log();
-    // }
-
-
-
-    // throw new CompileError("not implemented", node);
+    const args = node.getArguments();
+    switch (expr.getKind()) {
+        case tsm.SyntaxKind.Identifier:
+            callIdentifier(expr as tsm.Identifier, args, options);
+            break;
+        case tsm.SyntaxKind.PropertyAccessExpression:
+            callPropertyAccessExpression(expr as tsm.PropertyAccessExpression, args, options);
+            break;
+        default:
+            throw new CompileError(`uncallable expression ${expr.getKindName()}`, expr);
+    }
 }
 
 
 
 
 export function processIdentifier(node: tsm.Identifier, {builder, scope}: ProcessMethodOptions) {
-    const symbol = node.getSymbolOrThrow();
-    const resolved = scope.resolve(symbol);
-    if (!resolved) throw new CompileError(`unresolved symbol ${symbol.getName()}`, node);
+    const resolved = resolveIdentifier(node, scope);
+    if (!resolved) throw new CompileError(`unresolved symbol ${node.getSymbolOrThrow().getName()}`, node);
     if (isLoadable(resolved)) resolved.emitLoad(builder);
-    else throw new CompileError(`Unloadable symbol ${symbol.getName()}`, node);
+    else throw new CompileError(`Unloadable symbol ${node.getSymbolOrThrow().getName()}`, node);
 }
 
 export function processBooleanLiteral(node: tsm.FalseLiteral | tsm.TrueLiteral, { builder }: ProcessMethodOptions) {

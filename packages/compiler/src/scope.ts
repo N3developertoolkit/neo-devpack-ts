@@ -7,11 +7,12 @@ import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
 import { createDiagnostic, DiagnosticOptions, getConstantValue, getJSDocTag, isVoidLike } from "./utils";
 import { from } from 'ix/iterable';
 import { map, groupBy, orderBy } from 'ix/iterable/operators';
+import { emitU8ArrayFrom } from './passes/builtins';
 
 export interface ReadonlyScope {
     readonly parentScope: ReadonlyScope | undefined;
     readonly symbols: IterableIterator<SymbolDef>;
-    resolve(symbol: tsm.Symbol): SymbolDef | undefined;
+    resolve(symbol?: tsm.Symbol): SymbolDef | undefined;
 }
 
 export interface Scope extends ReadonlyScope {
@@ -27,8 +28,12 @@ export interface SymbolDef {
     readonly parentScope: ReadonlyScope;
 }
 
+export function canResolve(def: SymbolDef): def is SymbolDef & ReadonlyScope {
+    return 'resolve' in def && typeof def.resolve === 'function';
+}
+
 export interface CallableSymbolDef extends SymbolDef {
-    emitCall(builder: MethodBuilder): void;
+    emitCall(builder: MethodBuilder, args: ReadonlyArray<tsm.Node>): void;
 }
 
 export function isCallable(def: SymbolDef): def is CallableSymbolDef {
@@ -52,7 +57,8 @@ export function isStorable(def: SymbolDef): def is StorableSymbolDef {
 }
 
 
-function resolve(map: ReadonlyMap<tsm.Symbol, SymbolDef>, symbol: tsm.Symbol, parent?: ReadonlyScope) {
+function resolve(map: ReadonlyMap<tsm.Symbol, SymbolDef>, symbol?: tsm.Symbol, parent?: ReadonlyScope) {
+    if (!symbol) return undefined;
     const symbolDef = map.get(symbol);
     return symbolDef ?? parent?.resolve(symbol);
 }
@@ -86,7 +92,7 @@ export class GlobalScope implements Scope {
         return this.map.values();
     }
 
-    resolve(symbol: tsm.Symbol): SymbolDef | undefined {
+    resolve(symbol?: tsm.Symbol): SymbolDef | undefined {
         return resolve(this.map, symbol);
     }
 
@@ -108,7 +114,7 @@ export class BlockScope implements Scope {
         return this.map.values();
     }
 
-    resolve(symbol: tsm.Symbol) {
+    resolve(symbol?: tsm.Symbol) {
         return resolve(this.map, symbol, this.parentScope);
     }
 
@@ -138,7 +144,7 @@ export class MethodSymbolDef implements SymbolDef, ReadonlyScope {
         return this.map.values();
     }
 
-    resolve(symbol: tsm.Symbol): SymbolDef | undefined {
+    resolve(symbol?: tsm.Symbol): SymbolDef | undefined {
         return resolve(this.map, symbol, this.parentScope);
     }
 }
@@ -149,6 +155,34 @@ export class MethodSymbolDef implements SymbolDef, ReadonlyScope {
 
 
 
+
+
+
+
+
+
+export class IntrinsicSymbolDef implements LoadableSymbolDef {
+    readonly symbol: tsm.Symbol;
+    
+    constructor(
+        readonly node: tsm.VariableDeclaration,
+        readonly parentScope: ReadonlyScope
+    ) {
+        this.symbol = node.getSymbolOrThrow();
+    }
+    emitLoad(_builder: MethodBuilder): void {
+        // intrinsic objects don't have a stack represenation so loading one is a no-op
+    }
+}
+
+export class IntrinsicMethodDef implements CallableSymbolDef {
+    constructor(
+        readonly symbol: tsm.Symbol,
+        readonly parentScope: ReadonlyScope,
+        readonly emitCall: (builder: MethodBuilder, args: ReadonlyArray<tsm.Node>)=> void
+    ) {}
+
+}
 
 export class ConstantSymbolDef implements LoadableSymbolDef {
     constructor(
@@ -221,21 +255,13 @@ export class SysCallSymbolDef implements CallableSymbolDef {
         this.returnType = node.getReturnType();
     }
 
-    emitCall(builder: MethodBuilder) {
+    emitCall(builder: MethodBuilder, args: ReadonlyArray<tsm.Node>) {
+        if (args.length > 0) throw new Error("not implemented")
         builder.emitSysCall(this.name);
     }
 }
 
-export class IntrinsicSymbolDef implements SymbolDef {
-    readonly symbol: tsm.Symbol;
-    
-    constructor(
-        readonly node: tsm.VariableDeclaration,
-        readonly parentScope: ReadonlyScope
-    ) {
-        this.symbol = node.getSymbolOrThrow();
-    }
-}
+
 
 
 
@@ -471,12 +497,14 @@ export function createSymbolTrees(project: tsm.Project, diagnostics: Array<tsm.t
 
     // intrinsics:
     const u8array = decls.variables.get("Uint8Array");
+    const u8arrayFrom = u8array?.getType()?.getProperty("from");
 
     const scopes = new Array<GlobalScope>();
     for (const src of project.getSourceFiles()) {
         if (src.isDeclarationFile()) continue;
         const scope = new GlobalScope();
         if (u8array) scope.define(s => new IntrinsicSymbolDef(u8array, s));
+        if (u8arrayFrom) scope.define(s => new IntrinsicMethodDef(u8arrayFrom, s, emitU8ArrayFrom));
         src.forEachChild(node => processScopeNode(node, { diagnostics, scope }));
         scopes.push(scope);
     }

@@ -1,5 +1,5 @@
 // // import { resolve } from "path";
-// import * as tsm from "ts-morph";
+import * as tsm from "ts-morph";
 // // import { CompileError } from "../compiler";
 // // import { ConstantSymbolDef, resolveOrThrow, VariableSymbolDef } from "../scope";
 // // import { dispatch } from "../utility/nodeDispatch";
@@ -9,6 +9,8 @@
 // // import { ProcessOptions, processExpression } from "./passes/processOperations";
 // // import { StackItemType } from "./types/StackItem";
 // // import { asExpressionOrCompileError, asKindOrCompileError, getNumericLiteral, isBigIntLike } from "./utils";
+
+import { MethodBuilder } from "./MethodBuilder";
 
 // // I need to be able to resolve types and symbols
 // // SCFX types have a prefix like : "\"/node_modules/@neo-project/neo-contract-framework/index\".StorageConstructor"
@@ -180,3 +182,9 @@
 //     }
 
 // }
+
+
+
+export function emitU8ArrayFrom(builder: MethodBuilder, args: ReadonlyArray<tsm.Node>): void {
+    throw new Error("Uint8Array.from not implemented yet")
+}

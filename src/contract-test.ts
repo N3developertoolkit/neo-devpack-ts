@@ -18,12 +18,12 @@ export function symbol() { return SYMBOL; }
 /** @safe */
 export function decimals() { return DECIMALS; }
 
-// /** @safe */
-// export function get() { 
-//     const ctx = storageGetContext();
-//     const key = Uint8Array.from([prefixSampleValue]);
-//     // return storageGet(ctx, key);
-// }
+/** @safe */
+export function get() { 
+    const ctx = storageGetContext();
+    const key = Uint8Array.from([prefixSampleValue]);
+    // return storageGet(ctx, key);
+}
 
 // export function set(value: ByteString) {
 //     const ctx = storageGetContext();
