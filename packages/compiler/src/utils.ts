@@ -113,7 +113,6 @@ export function isCompoundAssignment(kind: tsm.SyntaxKind) {
 // }
 
 
-
 export function getConstantValue(node: tsm.Expression) {
     switch (node.getKind()) {
         case tsm.SyntaxKind.NullKeyword:

@@ -1,7 +1,6 @@
 import './ext';
 import * as tsm from "ts-morph";
 import { CompileError } from "./compiler";
-import { MethodBuilder } from "./passes/MethodBuilder";
 import { dispatch } from "./utility/nodeDispatch";
 import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
 import { createDiagnostic, DiagnosticOptions, getConstantValue, getJSDocTag, isVoidLike } from "./utils";
@@ -32,31 +31,6 @@ export interface SymbolDef {
 export function canResolve(def: SymbolDef): def is SymbolDef & ReadonlyScope {
     return 'resolve' in def && typeof def.resolve === 'function';
 }
-
-export interface CallableSymbolDef extends SymbolDef {
-    emitCall(args: ReadonlyArray<tsm.Node>, options: ProcessMethodOptions): void;
-}
-
-export function isCallable(def: SymbolDef): def is CallableSymbolDef {
-    return 'emitCall' in def && typeof def.emitCall === 'function'
-}
-
-export interface LoadableSymbolDef extends SymbolDef {
-    emitLoad(options: ProcessMethodOptions): void;
-}
-
-export function isLoadable(def: SymbolDef): def is LoadableSymbolDef {
-    return 'emitLoad' in def && typeof def.emitLoad === 'function'
-}
-
-export interface StorableSymbolDef extends SymbolDef {
-    emitStore(options: ProcessMethodOptions): void;
-}
-
-export function isStorable(def: SymbolDef): def is StorableSymbolDef {
-    return 'emitStore' in def && typeof def.emitStore === 'function'
-}
-
 
 function resolve(map: ReadonlyMap<tsm.Symbol, SymbolDef>, symbol?: tsm.Symbol, parent?: ReadonlyScope) {
     if (!symbol) return undefined;
@@ -162,69 +136,41 @@ export class MethodSymbolDef implements SymbolDef, ReadonlyScope {
 
 
 
-export class IntrinsicSymbolDef implements LoadableSymbolDef {
+export class IntrinsicSymbolDef implements SymbolDef {
     readonly symbol: tsm.Symbol;
-    
+
     constructor(
         readonly node: tsm.VariableDeclaration,
         readonly parentScope: ReadonlyScope
     ) {
         this.symbol = node.getSymbolOrThrow();
     }
-    emitLoad(_options: ProcessMethodOptions): void {
-        // intrinsic objects don't have a stack represenation so loading one is a no-op
-    }
 }
 
-export class IntrinsicMethodDef implements CallableSymbolDef {
+export class IntrinsicMethodDef implements SymbolDef {
     constructor(
         readonly symbol: tsm.Symbol,
         readonly parentScope: ReadonlyScope,
-        readonly emitCall: (args: ReadonlyArray<tsm.Node>, options: ProcessMethodOptions)=> void
-    ) {}
-
+        readonly emitCall: (args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions) => void
+    ) { }
 }
 
-export class ConstantSymbolDef implements LoadableSymbolDef {
+export class ConstantSymbolDef implements SymbolDef {
     constructor(
         readonly symbol: tsm.Symbol,
         readonly parentScope: ReadonlyScope,
-        readonly value: boolean | bigint | null | ReadonlyUint8Array) { }
+        readonly value: boolean | bigint | null | ReadonlyUint8Array
+    ) { }
 
-    emitLoad({builder}: ProcessMethodOptions) {
-        if (this.value === null) {
-            builder.emitPushNull();
-        } else if (this.value instanceof Uint8Array) {
-            builder.emitPushData(this.value);
-        } else {
-            switch (typeof this.value) {
-                case 'boolean':
-                    builder.emitPushBoolean(this.value as boolean);
-                    break;
-                case 'bigint':
-                    builder.emitPushInt(this.value as bigint);
-                    break;
-                default:
-                    throw new Error(`ConstantSymbolDef load ${this.value}`)
-            }
-        }
-    }
 }
 
-export class VariableSymbolDef implements LoadableSymbolDef, StorableSymbolDef {
+export class VariableSymbolDef implements SymbolDef {
     constructor(
         readonly symbol: tsm.Symbol,
         readonly parentScope: ReadonlyScope,
         readonly kind: 'arg' | 'local' | 'static',
-        readonly index: number) {}
-
-    emitLoad({builder}: ProcessMethodOptions) {
-        builder.emitLoad(this.kind, this.index);
-    }
-
-    emitStore({builder}: ProcessMethodOptions) {
-        builder.emitStore(this.kind, this.index);
-    }
+        readonly index: number
+    ) { }
 }
 
 export class EventSymbolDef implements SymbolDef {
@@ -241,7 +187,7 @@ export class EventSymbolDef implements SymbolDef {
     }
 }
 
-export class SysCallSymbolDef implements CallableSymbolDef {
+export class SysCallSymbolDef implements SymbolDef {
     readonly parameters: ReadonlyArray<tsm.ParameterDeclaration>;
     readonly returnType: tsm.Type;
 
@@ -254,11 +200,6 @@ export class SysCallSymbolDef implements CallableSymbolDef {
         if (!node.hasDeclareKeyword()) throw new CompileError('invalid', node);
         this.parameters = node.getParameters();
         this.returnType = node.getReturnType();
-    }
-
-    emitCall(args: ReadonlyArray<tsm.Node>, {builder}: ProcessMethodOptions) {
-        if (args.length > 0) throw new Error("not implemented")
-        builder.emitSysCall(this.name);
     }
 }
 

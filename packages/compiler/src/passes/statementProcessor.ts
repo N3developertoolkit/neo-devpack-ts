@@ -57,7 +57,7 @@ export function processReturnStatement(node: tsm.ReturnStatement, options: Proce
     const builder = options.builder;
     const locSetter = builder.getLocationSetter();
     const expr = node.getExpression();
-    if (expr) { 
+    if (expr) {
         processExpression(expr, options);
     }
     builder.emitJump(builder.returnTarget);
@@ -93,28 +93,28 @@ export function processVariableStatement(node: tsm.VariableStatement, options: P
 
     if (!isWritableScope(scope)) {
         throw new CompileError(`can't declare variables in read only scope`, node);
-    }
+    } else {
+        for (const decl of node.getDeclarations()) {
+            const index = builder.addLocal(decl);
+            const def = scope.define(s => new VariableSymbolDef(decl.getSymbolOrThrow(), s, 'local', index));
 
-    for (const decl of node.getDeclarations()) {
-        const index = builder.addLocal(decl);
-        scope.define(s => new VariableSymbolDef(decl.getSymbolOrThrow(), s, 'local', index));
-
-        const init = decl.getInitializer();
-        if (init) {
-            const locSetter = builder.getLocationSetter();
-            processExpression(init, options);
-            builder.emitStore('local', index);
-            locSetter(decl);
-        } 
+            const init = decl.getInitializer();
+            if (init) {
+                const locSetter = builder.getLocationSetter();
+                processExpression(init, options);
+                builder.emitStore(def.kind, def.index);
+                locSetter(decl);
+            }
+        }
     }
 }
 
 export function processStatement(node: tsm.Statement, options: ProcessMethodOptions): void {
     dispatch(node, options, {
-    //     // [tsm.SyntaxKind.ExpressionStatement]: processExpressionStatement,
-    //     // [tsm.SyntaxKind.IfStatement]: processIfStatement,
-    //     // [tsm.SyntaxKind.ThrowStatement]: processThrowStatement,
-        
+        //     // [tsm.SyntaxKind.ExpressionStatement]: processExpressionStatement,
+        //     // [tsm.SyntaxKind.IfStatement]: processIfStatement,
+        //     // [tsm.SyntaxKind.ThrowStatement]: processThrowStatement,
+
 
         [tsm.SyntaxKind.Block]: processBlock,
         [tsm.SyntaxKind.ReturnStatement]: processReturnStatement,

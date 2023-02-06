@@ -1,118 +1,9 @@
 // import './ext';
-import { resolvePtr } from "dns";
 import * as tsm from "ts-morph";
 import { CompileError } from "../compiler";
-import { ConstantSymbolDef, isCallable, isLoadable, ReadonlyScope, SymbolDef, SysCallSymbolDef } from "../scope";
-// import { ConstantSymbolDef, SymbolDef } from "../scope";
+import { ConstantSymbolDef, IntrinsicMethodDef, IntrinsicSymbolDef, ReadonlyScope, SymbolDef, SysCallSymbolDef, VariableSymbolDef } from "../scope";
 import { dispatch } from "../utility/nodeDispatch";
 import { ProcessMethodOptions } from "./processFunctionDeclarations";
-// import { ReadonlyUint8Array } from "../utility/ReadonlyArrays";
-// import { ProcessOptions } from "./processFunctionDeclarations";
-
-// // // function processBinaryExpression(node: tsm.BinaryExpression, options: ProcessOptions) {
-
-// // //     const opToken = node.getOperatorToken();
-// // //     const opTokenKind = opToken.getKind();
-// // //     const left = node.getLeft();
-// // //     const right = node.getRight();
-
-// // //     switch (opTokenKind) {
-// // //         case tsm.SyntaxKind.LessThanToken: {
-// // //             processExpression(left, options);
-// // //             processExpression(right, options);
-// // //             options.builder.push(OperationKind.LT);
-// // //             break;
-// // //         }
-// // //         case tsm.SyntaxKind.GreaterThanToken: {
-// // //             processExpression(left, options);
-// // //             processExpression(right, options);
-// // //             options.builder.push(OperationKind.LT);
-// // //             break;
-// // //         }
-// // //         case tsm.SyntaxKind.LessThanEqualsToken: {
-// // //             processExpression(left, options);
-// // //             processExpression(right, options);
-// // //             options.builder.push(OperationKind.LE);
-// // //             break;
-// // //         }
-// // //         case tsm.SyntaxKind.GreaterThanEqualsToken: {
-// // //             processExpression(left, options);
-// // //             processExpression(right, options);
-// // //             options.builder.push(OperationKind.GE);
-// // //             break;
-// // //         }
-// // //         case tsm.SyntaxKind.EqualsEqualsToken:
-// // //         case tsm.SyntaxKind.EqualsEqualsEqualsToken: {
-// // //             processExpression(left, options);
-// // //             processExpression(right, options);
-// // //             options.builder.push(OperationKind.NUMEQUAL);
-// // //             break;
-// // //         }
-// // //         case tsm.SyntaxKind.PlusToken: {
-// // //             processExpression(left, options);
-// // //             processExpression(right, options);
-// // //             if (isBigIntLike(left.getType()) && isBigIntLike(right.getType())) {
-// // //                 options.builder.push(OperationKind.ADD);
-// // //             }
-// // //             else {
-// // //                 throw new CompileError('not supported', opToken);
-// // //             }
-// // //             break;
-// // //         }
-// // //         case tsm.SyntaxKind.QuestionQuestionToken: {
-// // //             const { builder } = options;
-// // //             processExpression(left, options);
-// // //             const endTarget: TargetOffset = { operation: undefined };
-// // //             builder.push(OperationKind.DUP);
-// // //             builder.push(OperationKind.ISNULL);
-// // //             builder.pushJump(OperationKind.JMPIFNOT, endTarget);
-// // //             processExpression(right, options)
-// // //             endTarget.operation = builder.push(OperationKind.NOP).instruction;
-// // //             break;
-// // //         }
-// // //         case tsm.SyntaxKind.EqualsToken: {
-// // //             const resolved = resolveOrThrow(options.scope, left);
-// // //             processExpression(right, options);
-// // //             storeSymbolDef(resolved, options);
-// // //             break;
-// // //         }
-// // //         case tsm.SyntaxKind.PlusEqualsToken: {
-// // //             const resolved = resolveOrThrow(options.scope, left);
-// // //             processExpression(left, options);
-// // //             processExpression(right, options);
-// // //             if (isBigIntLike(left.getType()) && isBigIntLike(right.getType())) {
-// // //                 options.builder.push(OperationKind.ADD);
-// // //                 storeSymbolDef(resolved, options);
-// // //             } else {
-// // //                 throw new CompileError('not supported', opToken);
-// // //             }
-// // //             break;
-// // //         }
-// // //         default:
-// // //             throw new CompileError(`not implemented ${tsm.SyntaxKind[opTokenKind]}`, node);
-// // //     }
-// // // }
-
-// // // function processConditionalExpression(node: tsm.ConditionalExpression, options: ProcessOptions) {
-
-// // //     const { builder } = options;
-
-// // //     const falseTarget: TargetOffset = { operation: undefined };
-// // //     const endTarget: TargetOffset = { operation: undefined };
-// // //     const cond = node.getCondition();
-// // //     processExpression(cond, options);
-// // //     if (!isBooleanLike(cond.getType())) {
-// // //         builder.push(OperationKind.ISNULL);
-// // //         builder.pushJump(OperationKind.JMPIF, falseTarget);
-// // //     } else {
-// // //         builder.pushJump(OperationKind.JMPIFNOT, falseTarget);
-// // //     }
-// // //     processExpression(node.getWhenTrue(), options);
-// // //     builder.pushJump(OperationKind.JMP, endTarget);
-// // //     falseTarget.operation = builder.push(OperationKind.NOP).instruction;
-// // //     processExpression(node.getWhenFalse(), options);
-// // //     endTarget.operation = builder.push(OperationKind.NOP).instruction;
-// // // }
 
 function resolveIdentifier(node: tsm.Identifier, scope: ReadonlyScope) {
     const symbol = node.getSymbolOrThrow();
@@ -120,14 +11,24 @@ function resolveIdentifier(node: tsm.Identifier, scope: ReadonlyScope) {
     return resolved ?? scope.resolve(symbol.getValueDeclaration()?.getSymbol());
 }
 
-export function callIdentifier(node: tsm.Identifier, args: ReadonlyArray<tsm.Node>, options: ProcessMethodOptions) {
-    const resolved = resolveIdentifier(node, options.scope);
-    if (!resolved) throw new CompileError(`unresolved symbol ${node.getSymbolOrThrow().getName()}`, node);
-    if (isCallable(resolved)) resolved.emitCall(args, options);
-    else throw new CompileError(`Uncallable symbol ${node.getSymbolOrThrow().getName()}`, node);
+function callSymbolDef(def: SymbolDef, args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions) {
+    if (def instanceof SysCallSymbolDef) {
+        if (args.length > 0) throw new Error("not implemented")
+        options.builder.emitSysCall(def.name);
+    } else if (def instanceof IntrinsicMethodDef) {
+        def.emitCall(args, options);
+    } else {
+        throw new Error("callSymbolDef")
+    }
 }
 
-function callPropertyAccessExpression(node: tsm.PropertyAccessExpression, args: ReadonlyArray<tsm.Node>, options: ProcessMethodOptions) {
+export function callIdentifier(node: tsm.Identifier, args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions) {
+    const resolved = resolveIdentifier(node, options.scope);
+    if (!resolved) throw new CompileError(`unresolved symbol ${node.getSymbolOrThrow().getName()}`, node);
+    else callSymbolDef(resolved, args, options);
+}
+
+function callPropertyAccessExpression(node: tsm.PropertyAccessExpression, args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions) {
 
     const expr = node.getExpression();
     const exprType = expr.getType();
@@ -135,16 +36,18 @@ function callPropertyAccessExpression(node: tsm.PropertyAccessExpression, args: 
 
     const prop = options.scope.resolve(exprType.getProperty(propName));
     if (!prop) throw new CompileError(`${exprType.getText()} missing ${propName} property`, node)
-    if (!isCallable(prop)) throw new CompileError(`${prop.symbol.getName()} not callable`, node)
 
     processExpression(expr, options);
-    prop.emitCall(args, options);
+    callSymbolDef(prop, args, options);
 }
 
 export function processCallExpression(node: tsm.CallExpression, options: ProcessMethodOptions) {
 
     const expr = node.getExpression();
-    const args = node.getArguments();
+    for (const arg of node.getArguments()) {
+        if (!tsm.Node.isExpression(arg)) throw new CompileError("invalid argument", arg);
+    }
+    const args = node.getArguments() as tsm.Expression[];
     switch (expr.getKind()) {
         case tsm.SyntaxKind.Identifier:
             callIdentifier(expr as tsm.Identifier, args, options);
@@ -158,13 +61,35 @@ export function processCallExpression(node: tsm.CallExpression, options: Process
 }
 
 
+function loadSymbolDef(def: SymbolDef, options: ProcessMethodOptions) {
+    if (def instanceof IntrinsicSymbolDef) {
+        // nothing to do here
+    } else if (def instanceof ConstantSymbolDef) {
+        if (def.value === null) {
+            options.builder.emitPushNull();
+        } else if (def.value instanceof Uint8Array) {
+            options.builder.emitPushData(def.value);
+        } else {
+            switch (typeof def.value) {
+                case 'boolean':
+                    options.builder.emitPushBoolean(def.value as boolean);
+                    break;
+                case 'bigint':
+                    options.builder.emitPushInt(def.value as bigint);
+                    break;
+                default:
+                    throw new Error(`ConstantSymbolDef load ${def.value}`)
+            }
+        }
+    } else if (def instanceof VariableSymbolDef) {
+        options.builder.emitLoad(def.kind, def.index);
 
+    }
+}
 
 export function processIdentifier(node: tsm.Identifier, options: ProcessMethodOptions) {
     const resolved = resolveIdentifier(node, options.scope);
-    if (!resolved) throw new CompileError(`unresolved symbol ${node.getSymbolOrThrow().getName()}`, node);
-    if (isLoadable(resolved)) resolved.emitLoad(options);
-    else throw new CompileError(`Unloadable symbol ${node.getSymbolOrThrow().getName()}`, node);
+    if (resolved) loadSymbolDef(resolved, options);
 }
 
 export function processBooleanLiteral(node: tsm.FalseLiteral | tsm.TrueLiteral, { builder }: ProcessMethodOptions) {
