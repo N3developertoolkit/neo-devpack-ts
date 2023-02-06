@@ -23,13 +23,14 @@ export function processBlock(node: tsm.Block, { diagnostics, builder, scope }: P
     if (close) builder.emitOperation('noop', close);
 }
 
-// // // function processExpressionStatement(node: tsm.ExpressionStatement, options: ProcessOptions): void {
-// // //     const { builder } = options;
-// // //     const nodeSetter = builder.getNodeSetter();
-// // //     const expr = node.getExpression();
-// // //     processExpression(expr, options);
-// // //     nodeSetter.set(node);
-// // // }
+function processExpressionStatement(node: tsm.ExpressionStatement, options: ProcessMethodOptions): void {
+    const { builder } = options;
+    const locSetter = builder.getLocationSetter();
+
+    const expr = node.getExpression();
+    processExpression(expr, options);
+    locSetter(node);
+}
 
 // // // function processIfStatement(node: tsm.IfStatement, options: ProcessOptions): void {
 // // //     const { builder } = options;
@@ -111,12 +112,12 @@ export function processVariableStatement(node: tsm.VariableStatement, options: P
 
 export function processStatement(node: tsm.Statement, options: ProcessMethodOptions): void {
     dispatch(node, options, {
-        //     // [tsm.SyntaxKind.ExpressionStatement]: processExpressionStatement,
         //     // [tsm.SyntaxKind.IfStatement]: processIfStatement,
         //     // [tsm.SyntaxKind.ThrowStatement]: processThrowStatement,
 
 
         [tsm.SyntaxKind.Block]: processBlock,
+        [tsm.SyntaxKind.ExpressionStatement]: processExpressionStatement,
         [tsm.SyntaxKind.ReturnStatement]: processReturnStatement,
         [tsm.SyntaxKind.VariableStatement]: processVariableStatement,
     });

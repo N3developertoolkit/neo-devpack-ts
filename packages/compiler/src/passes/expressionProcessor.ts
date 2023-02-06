@@ -11,9 +11,15 @@ function resolveIdentifier(node: tsm.Identifier, scope: ReadonlyScope) {
     return resolved ?? scope.resolve(symbol.getValueDeclaration()?.getSymbol());
 }
 
+function processArguments(args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions) {
+    for (let i = args.length - 1; i >= 0; i--) {
+        processExpression(args[i], options);
+    }
+}
+
 function callSymbolDef(def: SymbolDef, args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions) {
     if (def instanceof SysCallSymbolDef) {
-        if (args.length > 0) throw new Error("not implemented")
+        processArguments(args, options);
         options.builder.emitSysCall(def.name);
     } else if (def instanceof IntrinsicMethodDef) {
         def.emitCall(args, options);
