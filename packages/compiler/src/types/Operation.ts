@@ -274,7 +274,7 @@ export type JumpOperationKind = typeof jumpOperationKinds[number];
 
 export interface JumpOperation extends Operation {
     readonly kind: JumpOperationKind;
-    readonly offset: number;
+    readonly target: Operation | undefined;
 }
 
 export function isJumpOperation(ins: Operation): ins is JumpOperation {

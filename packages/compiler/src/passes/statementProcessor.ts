@@ -52,17 +52,17 @@ export function processBlock(node: tsm.Block, { diagnostics, builder, scope }: P
 // // //     }
 // // // }
 
-// export function processReturnStatement(node: tsm.ReturnStatement, options: ProcessOptions): void {
+export function processReturnStatement(node: tsm.ReturnStatement, options: ProcessMethodOptions): void {
 
-//     const builder = options.builder;
-//     const locSetter = builder.getLocationSetter();
-//     const expr = node.getExpression();
-//     if (expr) { 
-//         processExpression(expr, options);
-//     }
-//     builder.jump(builder.returnTarget);
-//     locSetter(node);
-// }
+    const builder = options.builder;
+    const locSetter = builder.getLocationSetter();
+    const expr = node.getExpression();
+    if (expr) { 
+        processExpression(expr, options);
+    }
+    builder.emitJump(builder.returnTarget);
+    locSetter(node);
+}
 
 // // // function processThrowStatement(node: tsm.ThrowStatement, options: ProcessOptions) {
 // // //     const { builder } = options;
@@ -117,7 +117,7 @@ export function processStatement(node: tsm.Statement, options: ProcessMethodOpti
         
 
         [tsm.SyntaxKind.Block]: processBlock,
-    //     [tsm.SyntaxKind.ReturnStatement]: processReturnStatement,
+        [tsm.SyntaxKind.ReturnStatement]: processReturnStatement,
         [tsm.SyntaxKind.VariableStatement]: processVariableStatement,
     });
 }

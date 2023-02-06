@@ -23,13 +23,32 @@ export class MethodBuilder {
     }
 
     getOperations(): ReadonlyArray<Operation> {
+        // make a copy of the builder's operation
         const operations = [...this._operations];
+
+        // push a initslot operation at the start if needed
         const locals = this._locals.length;
         if (this.paramCount > 0 || locals > 0) {
             const op: InitSlotOperation = { kind: "initslot", locals, params: this.paramCount };
             operations.unshift(op);
         }
-        // TODO: process jump targets
+
+        // push a return operation at end
+        const returnOp: Operation = {kind: 'return'}
+        operations.push(returnOp);
+
+        // process jump targets (1st draft)
+        for (const [jump, targetOffset] of this._jumps) {
+            const jumpIndex = operations.indexOf(jump);
+            if (jumpIndex < 0 ) throw new Error("failed to locate operation index");
+            const target = targetOffset == this._returnTarget ? returnOp : undefined;
+            if (!target) throw new Error("failed to locate jump target");
+            operations[jumpIndex] = { 
+                kind: jump.kind,
+                target,
+                location: jump.location } as JumpOperation; 
+        }
+
         return operations;
     }
 
@@ -75,7 +94,7 @@ export class MethodBuilder {
     }
 
     emitJump(target: TargetOffset, location?: tsm.Node): void {
-        const op: JumpOperation = { kind: 'jump', offset: 0, location };
+        const op: JumpOperation = { kind: 'jump', target: undefined, location };
         this._operations.push(op);
         this._jumps.set(op, target);
     }

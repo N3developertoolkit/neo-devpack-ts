@@ -127,7 +127,7 @@ export function compile({ project, addressVersion, inline, optimize }: CompileOp
     try {
         const symbolTrees = createSymbolTrees(project, diagnostics);
         for (const tree of symbolTrees) {
-            // console.log([...tree.symbols].map(d => d.symbol.getName()));
+            console.log([...tree.symbols].map(d => d.symbol.getName()));
             const methods = processMethodsDefs(tree, diagnostics);
             for (const method of methods) {
                 console.log(method.name);

@@ -27,6 +27,31 @@ export interface SymbolDef {
     readonly parentScope: ReadonlyScope;
 }
 
+export interface CallableSymbolDef extends SymbolDef {
+    emitCall(builder: MethodBuilder): void;
+}
+
+export function isCallable(def: SymbolDef): def is CallableSymbolDef {
+    return 'emitCall' in def && typeof def.emitCall === 'function'
+}
+
+export interface LoadableSymbolDef extends SymbolDef {
+    emitLoad(builder: MethodBuilder): void;
+}
+
+export function isLoadable(def: SymbolDef): def is LoadableSymbolDef {
+    return 'emitLoad' in def && typeof def.emitLoad === 'function'
+}
+
+export interface StorableSymbolDef extends SymbolDef {
+    emitStore(builder: MethodBuilder): void;
+}
+
+export function isStorable(def: SymbolDef): def is StorableSymbolDef {
+    return 'emitStore' in def && typeof def.emitStore === 'function'
+}
+
+
 function resolve(map: ReadonlyMap<tsm.Symbol, SymbolDef>, symbol: tsm.Symbol, parent?: ReadonlyScope) {
     const symbolDef = map.get(symbol);
     return symbolDef ?? parent?.resolve(symbol);
@@ -62,19 +87,11 @@ export class GlobalScope implements Scope {
     }
 
     resolve(symbol: tsm.Symbol): SymbolDef | undefined {
-        return resolve(this.map, symbol) ?? this.resolveBuiltIn(symbol);
+        return resolve(this.map, symbol);
     }
 
     define<T extends SymbolDef>(factory: T | ((scope: ReadonlyScope) => T)) {
         return define(this, this.map, factory);
-    }
-
-    private resolveBuiltIn(symbol: tsm.Symbol): SymbolDef | undefined {
-        const name = symbol.getName();
-        const foo = name === 'Uint8Array';
-        return name === 'Uint8Array'
-            ? new BuiltInSymbolDef(symbol, this)
-            : undefined;
     }
 }
 
@@ -133,22 +150,13 @@ export class MethodSymbolDef implements SymbolDef, ReadonlyScope {
 
 
 
-
-export class BuiltInSymbolDef implements SymbolDef {
-    constructor(
-        readonly symbol: tsm.Symbol,
-        readonly parentScope: ReadonlyScope
-    ) { }
-}
-
-export class ConstantSymbolDef implements SymbolDef {
+export class ConstantSymbolDef implements LoadableSymbolDef {
     constructor(
         readonly symbol: tsm.Symbol,
         readonly parentScope: ReadonlyScope,
-        readonly value: boolean | bigint | null | ReadonlyUint8Array,
-    ) { }
+        readonly value: boolean | bigint | null | ReadonlyUint8Array) { }
 
-    load(builder: MethodBuilder) {
+    emitLoad(builder: MethodBuilder) {
         if (this.value === null) {
             builder.emitPushNull();
         } else if (this.value instanceof Uint8Array) {
@@ -168,20 +176,18 @@ export class ConstantSymbolDef implements SymbolDef {
     }
 }
 
-export class VariableSymbolDef implements SymbolDef {
+export class VariableSymbolDef implements LoadableSymbolDef, StorableSymbolDef {
     constructor(
         readonly symbol: tsm.Symbol,
         readonly parentScope: ReadonlyScope,
         readonly kind: 'arg' | 'local' | 'static',
-        readonly index: number
-    ) {
-    }
+        readonly index: number) {}
 
-    load(builder: MethodBuilder) {
+    emitLoad(builder: MethodBuilder) {
         builder.emitLoad(this.kind, this.index);
     }
 
-    store(builder: MethodBuilder) {
+    emitStore(builder: MethodBuilder) {
         builder.emitStore(this.kind, this.index);
     }
 }
@@ -200,7 +206,7 @@ export class EventSymbolDef implements SymbolDef {
     }
 }
 
-export class SysCallSymbolDef implements SymbolDef {
+export class SysCallSymbolDef implements CallableSymbolDef {
     readonly parameters: ReadonlyArray<tsm.ParameterDeclaration>;
     readonly returnType: tsm.Type;
 
@@ -214,8 +220,22 @@ export class SysCallSymbolDef implements SymbolDef {
         this.parameters = node.getParameters();
         this.returnType = node.getReturnType();
     }
+
+    emitCall(builder: MethodBuilder) {
+        builder.emitSysCall(this.name);
+    }
 }
 
+export class IntrinsicSymbolDef implements SymbolDef {
+    readonly symbol: tsm.Symbol;
+    
+    constructor(
+        readonly node: tsm.VariableDeclaration,
+        readonly parentScope: ReadonlyScope
+    ) {
+        this.symbol = node.getSymbolOrThrow();
+    }
+}
 
 
 
@@ -364,15 +384,19 @@ interface Declarations {
 
 const LIB_PATH = `/node_modules/typescript/lib/`;
 
+// this code iterates thru the project's library declaration files. For now, we're just using ES2020,
+// though eventually we will likely want our own declaration file(s)
 function $getDeclarations(node: tsm.SourceFile | undefined, decls: Declarations, files?: Set<string>) {
 
     if (!node) return;
     if (!files) files = new Set<string>();
 
+    // ensure each library decalaration file is only processed once
     const path = node.getFilePath();
     if (files.has(path)) return;
     files.add(path);
 
+    // Loop thru the declarations in this file, adding each to the appropriate declaration array
     node.forEachChild(n => {
         switch (n.getKind()) {
             case tsm.SyntaxKind.FunctionDeclaration:
@@ -397,6 +421,7 @@ function $getDeclarations(node: tsm.SourceFile | undefined, decls: Declarations,
         }
     });
 
+    // loop thru the library references in the file and recursively call $getDeclarations
     const prj = node.getProject();
     for (const ref of node.getLibReferenceDirectives()) {
         const path = LIB_PATH + `lib.${ref.getFileName()}.d.ts`;
@@ -411,31 +436,47 @@ function getDeclarations(project: tsm.Project) {
         variables: new Array<tsm.VariableDeclaration>(),
     };
 
+    // call $getDeclarations for each top level library declaration file in the project
     const libs = project.compilerOptions.get().lib ?? [];
     for (const lib of libs) {
         const src = project.getSourceFile(LIB_PATH + lib);
         $getDeclarations(src, decls);
     }
 
-    const variables = new Map(decls.variables.map(v => [v.getSymbolOrThrow().getName(), v]));
-    const functions = new Map(decls.functions.map(v => [v.getSymbolOrThrow().getName(), v]));
-    const interfaces = new Map(from(decls.interfaces).pipe(
-        groupBy(x => x.getSymbolOrThrow().getName()),
-        orderBy(x => x.key),
-        map(x => [x.key, [...x]])));
+    // create a map of strings to the declaration's symbol
+    const variables = new Map(from(decls.variables).pipe(
+        map(x => [x.getSymbolOrThrow().getName(), x] as [string, tsm.VariableDeclaration]),
+        orderBy(x => x[0])
+    ));
 
-    return {functions, interfaces, variables};
+    // const functions = new Map(from(decls.functions).pipe(
+    //     map(x => x.getSymbolOrThrow()),
+    //     orderBy(x => x.getName()),
+    //     map(x => [x.getName(), x])));
+    // // note, interfaces can have multiple declarations which are merged 
+    // // each declaration has a unique symbol, but the interface Type and type's symbol) is
+    // // shared across all the declarations. So for interfaces, first create a set of type symbols
+    // // to weed out duplicates, then create a string -> symbol map from the set values
+    // const interfaceSet = new Set(from(decls.interfaces).pipe(map(x => x.getType().getSymbolOrThrow())));
+    // const interfaces = new Map(from(interfaceSet.values()).pipe(
+    //     orderBy(x => x.getName()),
+    //     map(x => [x.getName(), x])));
+
+    return { variables };
 }
 
 export function createSymbolTrees(project: tsm.Project, diagnostics: Array<tsm.ts.Diagnostic>): ReadonlyArray<ReadonlyScope> {
 
     const decls = getDeclarations(project);
 
+    // intrinsics:
+    const u8array = decls.variables.get("Uint8Array");
+
     const scopes = new Array<GlobalScope>();
     for (const src of project.getSourceFiles()) {
         if (src.isDeclarationFile()) continue;
         const scope = new GlobalScope();
-        // if ($Uint8Array) scope.define(s => new BuiltInSymbolDef($Uint8Array.getSymbolOrThrow(), s));
+        if (u8array) scope.define(s => new IntrinsicSymbolDef(u8array, s));
         src.forEachChild(node => processScopeNode(node, { diagnostics, scope }));
         scopes.push(scope);
     }
