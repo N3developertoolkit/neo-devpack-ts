@@ -1,6 +1,6 @@
 import './ext';
 import * as tsm from "ts-morph";
-import { CompileError } from "./compiler";
+import { CompileContext, CompileError } from "./compiler";
 import { dispatch } from "./utility/nodeDispatch";
 import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
 import { createDiagnostic, DiagnosticOptions, getConstantValue, getJSDocTag, isVoidLike } from "./utils";
@@ -428,7 +428,7 @@ function getDeclarations(project: tsm.Project) {
     return { variables };
 }
 
-export function createSymbolTrees(project: tsm.Project, diagnostics: Array<tsm.ts.Diagnostic>): ReadonlyArray<ReadonlyScope> {
+export function createSymbolTrees({ project, diagnostics, scopes }: CompileContext): void {
 
     const decls = getDeclarations(project);
 
@@ -436,7 +436,6 @@ export function createSymbolTrees(project: tsm.Project, diagnostics: Array<tsm.t
     const u8array = decls.variables.get("Uint8Array");
     const u8arrayFrom = u8array?.getType()?.getProperty("from");
 
-    const scopes = new Array<GlobalScope>();
     for (const src of project.getSourceFiles()) {
         if (src.isDeclarationFile()) continue;
         const scope = new GlobalScope();
@@ -445,5 +444,4 @@ export function createSymbolTrees(project: tsm.Project, diagnostics: Array<tsm.t
         src.forEachChild(node => processScopeNode(node, { diagnostics, scope }));
         scopes.push(scope);
     }
-    return scopes;
 }

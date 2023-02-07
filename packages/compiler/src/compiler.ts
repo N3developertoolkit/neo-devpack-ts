@@ -5,11 +5,10 @@ import { createDiagnostic, toDiagnostic } from "./utils";
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
-import { createSymbolTrees } from "./scope";
-import { processMethodsDefs } from "./passes/processFunctionDeclarations";
+import { createSymbolTrees, ReadonlyScope } from "./scope";
+import { ContractMethod, processMethodDefinitions } from "./passes/processFunctionDeclarations";
+import { processContractMethods } from "./processContractMethods";
 
-import { from, first, toArray } from 'ix/iterable';
-import { groupBy, orderBy, filter } from 'ix/iterable/operators';
 export const DEFAULT_ADDRESS_VALUE = 53;
 
 export class CompileError extends Error {
@@ -38,6 +37,8 @@ export interface CompileContext {
     readonly diagnostics: Array<tsm.ts.Diagnostic>;
     readonly options: Readonly<Required<Omit<CompileOptions, 'project'>>>;
     readonly project: tsm.Project;
+    readonly scopes: Array<ReadonlyScope>;
+    readonly methods: Array<ContractMethod>;
     // readonly functions: Array<FunctionContext>;
 }
 
@@ -47,95 +48,38 @@ export interface CompileContext {
 //     locals?: ReadonlyArray<LocalVariable>;
 // }
 
-const LIB_PATH = `/node_modules/typescript/lib/`;
-
-class StdLibReader {
-
-    readonly $func = new Array<tsm.FunctionDeclaration>();
-    readonly $iface = new Array<tsm.InterfaceDeclaration>();
-    readonly $alias = new Array<tsm.TypeAliasDeclaration>();
-    readonly $module = new Array<tsm.ModuleDeclaration>();
-    readonly $var = new Array<tsm.VariableDeclaration>();
-    readonly $processed = new Set<string>();
-    readonly $symbols = new Set<tsm.Symbol>();
-
-    constructor(private readonly project: tsm.Project) {
-        const libs = project.compilerOptions.get().lib ?? [];
-        for (const lib of libs) {
-            this.processFile(LIB_PATH + lib);
-        }
+function hasErrors(diagnostics: tsm.ts.Diagnostic[]) {
+    for (const diag of diagnostics) {
+        if (diag.category === tsm.ts.DiagnosticCategory.Error) return true;
     }
-
-    processFile(node: string | tsm.SourceFile) {
-        if (typeof node === 'string') {
-            const src = this.project.getSourceFile(node);
-            if (src) node = src;
-            else return;
-        }
-
-        const path = node.getFilePath();
-        if (this.$processed.has(path)) return;
-        this.$processed.add(path);
-
-        node.forEachChild(n => {
-            const k = n.getKindName();
-            const t = n.getType();
-            const s = t.getSymbol();
-            if (s?.getName() === '__type') {
-                console.log();
-            }
-
-            if (s && n.getKind() != tsm.SyntaxKind.TypeAliasDeclaration) { this.$symbols.add(s); }
-
-            if (tsm.Node.isFunctionDeclaration(n)) 
-                this.$func.push(n);
-            else if (tsm.Node.isInterfaceDeclaration(n)) 
-                this.$iface.push(n);
-            else if (tsm.Node.isTypeAliasDeclaration(n)) 
-                this.$alias.push(n);
-            else if (tsm.Node.isModuleDeclaration(n)) 
-                this.$module.push(n);
-            else if (tsm.Node.isVariableStatement(n)) {
-                for (const d of n.getDeclarations()) {
-                    this.$var.push(d);
-                }
-            }
-            else if (n.getKind() == tsm.SyntaxKind.EndOfFileToken) { 
-                const i = 0;
-            }
-            else throw new Error(`${n.getKindName()}`);
-        })
-
-        for (const ref of node.getLibReferenceDirectives()) {
-            const path = LIB_PATH + `lib.${ref.getFileName()}.d.ts`;
-            this.processFile(path);
-        }
-    }
+    return false;
 }
+
 
 export function compile({ project, addressVersion, inline, optimize }: CompileOptions) {
 
-    const z = new StdLibReader(project);
-    
+
     const diagnostics = new Array<tsm.ts.Diagnostic>();
-    const options = {
-        addressVersion: addressVersion ?? DEFAULT_ADDRESS_VALUE,
-        inline: inline ?? false,
-        optimize: optimize ?? false,
+    const context: CompileContext = {
+        project,
+        diagnostics,
+        options: {
+            addressVersion: addressVersion ?? DEFAULT_ADDRESS_VALUE,
+            inline: inline ?? false,
+            optimize: optimize ?? false,
+        },
+        scopes: new Array<ReadonlyScope>(),
+        methods: new Array<ContractMethod>(),
     }
 
     try {
-        const symbolTrees = createSymbolTrees(project, diagnostics);
-        for (const tree of symbolTrees) {
-            console.log([...tree.symbols].map(d => d.symbol.getName()));
-            const methods = processMethodsDefs(tree, diagnostics);
-            for (const method of methods) {
-                console.log(method.name);
-                for (const op of method.operations) {
-                    console.log("  " + op.kind);
-                }
-            }
-        }
+        createSymbolTrees(context);
+        if (hasErrors(diagnostics)) return { diagnostics };
+        processMethodDefinitions(context);
+        if (hasErrors(diagnostics)) return { diagnostics };
+        processContractMethods(context);
+        if (hasErrors(diagnostics)) return { diagnostics };
+
     } catch (error) {
         diagnostics.push(toDiagnostic(error));
     }
@@ -324,3 +268,4 @@ function processMetadata(project: tsm.Project, options: ProcessMetadataOptions) 
     }
 
 }
+

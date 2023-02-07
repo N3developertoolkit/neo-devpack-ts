@@ -1,5 +1,5 @@
 import * as tsm from "ts-morph";
-import { CompileError } from "../compiler";
+import { CompileContext, CompileError } from "../compiler";
 import { MethodSymbolDef, ReadonlyScope } from "../scope";
 import { Operation } from "../types/Operation";
 import { MethodBuilder } from "./MethodBuilder";
@@ -137,7 +137,8 @@ export interface ContractMethod {
     public: boolean,
     returnType: tsm.Type,
     parameters: ReadonlyArray<{ name: string, type: tsm.Type }>,
-    operations: ReadonlyArray<Operation>
+    operations: ReadonlyArray<Operation>,
+    instructions?: Uint8Array,
 }
 
 export interface ProcessMethodOptions {
@@ -169,45 +170,14 @@ export function processMethodDef(def: MethodSymbolDef, diagnostics: Array<tsm.ts
     }
 }
 
-export function processMethodsDefs(scope: ReadonlyScope, diagnostics: tsm.ts.Diagnostic[]): ContractMethod[] {
-    const methods = new Array<ContractMethod>();
-    for (const def of scope.symbols) {
-        if (def instanceof MethodSymbolDef) {
-            methods.push(processMethodDef(def, diagnostics));
+export function processMethodDefinitions(context: CompileContext) {
+
+    for (const scope of context.scopes) {
+        for (const def of scope.symbols) {
+            if (def instanceof MethodSymbolDef) {
+                const method = processMethodDef(def, context.diagnostics);
+                context.methods.push(method);
+            }
         }
     }
-    return methods;
 }
-
-
-// export function processFunctionDeclarationsPass(context: CompileContext): void {
-//     const { project } = context;
-
-//     for (const src of project.getSourceFiles()) {
-//         if (src.isDeclarationFile()) continue;
-//         src.forEachChild(node => {
-//             if (tsm.Node.isFunctionDeclaration(node)) {
-//                 // const symbolDef = resolveOrThrow(globals, node) as FunctionSymbolDef;
-//                 // processFunctionDeclaration(symbolDef, context);
-//             }
-//         });
-//     }
-// }
-
-// // export function getOperationInfo(node: tsm.FunctionDeclaration) {
-// //     return {
-// //         name: node.getNameOrThrow(),
-// //         safe: node.getJsDocs()
-// //             .flatMap(d => d.getTags())
-// //             .findIndex(t => t.getTagName() === 'safe') >= 0,
-// //         isPublic: !!node.getExportKeyword(),
-// //         returnType: node.getReturnType(),
-// //         parameters: node.getParameters().map((p, index) => ({
-// //             node: p,
-// //             name: p.getName(),
-// //             type: p.getType(),
-// //             index
-// //         }))
-// //     }
-// // }
-

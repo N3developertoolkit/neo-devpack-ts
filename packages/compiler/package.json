@@ -12,6 +12,7 @@
     "test": "mocha"
   },
   "dependencies": {
+    "@cityofzion/neon-core": "^5.3.0",
     "ix": "^5.0.0",
     "ts-morph": "^17.0.1"
   },
