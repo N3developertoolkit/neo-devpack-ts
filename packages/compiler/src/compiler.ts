@@ -7,9 +7,8 @@ import * as fsp from 'fs/promises';
 import * as path from 'path';
 import { createSymbolTrees, ReadonlyScope } from "./scope";
 import { ContractMethod, processMethodDefinitions } from "./passes/processFunctionDeclarations";
-import { processContractMethods } from "./processContractMethods";
 import { collectArtifacts } from "./collectArtifacts";
-import { DebugInfo } from "./types/DebugInfo";
+import { DebugInfo, DebugInfoJson } from "./types/DebugInfo";
 
 export const DEFAULT_ADDRESS_VALUE = 53;
 
@@ -33,7 +32,7 @@ export interface CompileArtifacts {
     readonly diagnostics: Array<tsm.ts.Diagnostic>;
     readonly nef?: sc.NEF;
     readonly manifest?: sc.ContractManifest;
-    readonly debugInfo?: DebugInfo;
+    readonly debugInfo?: DebugInfoJson;
 }
 
 export interface CompileContext {
@@ -42,14 +41,7 @@ export interface CompileContext {
     readonly project: tsm.Project;
     readonly scopes: Array<ReadonlyScope>;
     readonly methods: Array<ContractMethod>;
-    // readonly functions: Array<FunctionContext>;
 }
-
-// export interface FunctionContext {
-//     readonly node: tsm.FunctionDeclaration;
-//     operations?: ReadonlyArray<Operation>;
-//     locals?: ReadonlyArray<LocalVariable>;
-// }
 
 function hasErrors(diagnostics: tsm.ts.Diagnostic[]) {
     for (const diag of diagnostics) {
@@ -78,46 +70,14 @@ export function compile({ project, addressVersion, inline, optimize }: CompileOp
         if (hasErrors(diagnostics)) return { diagnostics };
         processMethodDefinitions(context);
         if (hasErrors(diagnostics)) return { diagnostics };
-        processContractMethods(context);
+        const { nef, manifest, debugInfo } = collectArtifacts(context);
         if (hasErrors(diagnostics)) return { diagnostics };
-        const {nef, manifest, debugInfo} = collectArtifacts(context);
-        return { nef, manifest, debugInfo, diagnostics}
-
+        return { nef, manifest, debugInfo, diagnostics };
     } catch (error) {
         diagnostics.push(toDiagnostic(error));
     }
 
     return { diagnostics };
-
-    // // type CompilePass = (context: CompileContext) => void;
-    // const passes = [
-    //     processFunctionDeclarationsPass,
-    // ] as const;
-
-    // for (const pass of passes) {
-    //     try {
-    //         pass(context);
-    //     } catch (error) {
-    //         context.diagnostics.push(toDiagnostic(error));
-    //     }
-
-    //     if (context.diagnostics.some(d => d.category == tsm.ts.DiagnosticCategory.Error)) {
-    //         break;
-    //     }
-    // }
-
-    // let artifacts: CompileArtifacts | undefined; 
-    // try {
-    //     artifacts = collectArtifacts(context);
-    // } catch (error) {
-    //     context.diagnostics.push(toDiagnostic(error));
-    // }
-
-    // return {
-    //     diagnostics: context.diagnostics,
-    //     artifacts,
-    //     context
-    // };
 }
 
 async function exists(rootPath: fs.PathLike) {

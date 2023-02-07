@@ -1,7 +1,7 @@
 // import path from "path";
 // import { ContractType, PrimitiveType, StructContractType, toString as contractTypeToString } from "./ContractType";
 // import { join } from 'path';
-import { sc } from "@cityofzion/neon-core";
+import { sc, u } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
 
 export interface DebugInfo {
@@ -16,7 +16,7 @@ export interface DebugMethod {
     parameters?: SlotVariable[];
     variables?: SlotVariable[];
     returnType?: sc.ContractParamType;
-    sequencePoints?: SequencePoint[];
+    sequencePoints?: SequencePointLocation[];
 }
 
 // export interface Event {
@@ -48,32 +48,41 @@ export interface SlotVariable {
 //     }[];
 // }
 
-export interface SequencePoint {
+export interface SequencePointLocation {
     address: number;
     location: tsm.Node,
 }
 
-// export interface DebugInfoJson {
-//     version: undefined | 2,
-//     hash: string; // hex-encoded UInt160
-//     checksum: number;
-//     documents?: string[]; // file paths
-//     events?: {
-//         id: string;
-//         name: string;
-//         params?: string[];
-//     }[];
-//     methods?: {
-//         id?: string;
-//         name: string;
-//         range: string; // format: "{start-address}-{end-address}
-//         params?: string[];
-//         "return"?: string;
-//         variables?: string[];
-//         "sequence-points"?: string[]; // format: "{address}[{document-index}]{start-line}:{start-column}-{end-line}:{end-column}"
-//     }[];
-//     "static-variables"?: string[];
-// }
+
+export interface DebugEventJson {
+    id: string;
+    name: string;
+    params?: string[];
+}
+export interface DebugMethodJson {
+    id: string;
+    name: string;
+    range: string; // format: "{start-address}-{end-address}
+    params?: string[];
+    "return"?: string;
+    variables?: string[];
+    "sequence-points"?: string[]; // format: "{address}[{document-index}]{start-line}:{start-column}-{end-line}:{end-column}"
+}
+
+export interface DebugInfoJson {
+    hash: string; // hex-encoded UInt160
+    documents?: string[]; // file paths
+    events?: ReadonlyArray<DebugEventJson>;
+    methods?: ReadonlyArray<DebugMethodJson>;
+    "static-variables"?: string[];
+}
+
+export function toJson(methods: DebugMethod[], nef: sc.NEF) {
+    const hash = Buffer.from(u.hash160(nef.script), 'hex').reverse();
+    const sourceFiles = [...new Set(methods
+        .flatMap(m => m.sequencePoints ?? [])
+        .map(sp => sp.location.getSourceFile()))];
+}
 
 // export function toJson(info: DebugInfo, nef: sc.NEF, sourceDir?: string): DebugInfoJson {
 //     const documentSet = [...new Set(info.methods

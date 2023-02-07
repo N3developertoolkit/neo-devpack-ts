@@ -1,12 +1,13 @@
 import { sc } from "@cityofzion/neon-core";
-import { ContractParameterDefinition } from "@cityofzion/neon-core/lib/sc";
-import { getScriptHashFromPublicKey } from "@cityofzion/neon-core/lib/wallet";
+import { range } from "ix/asynciterable";
+import { from } from "ix/iterable";
+import { map } from "ix/iterable/operators";
 
 import * as tsm from "ts-morph";
 import { CompileContext } from "./compiler";
 import { ContractMethod } from "./passes/processFunctionDeclarations";
+import { SequencePointLocation } from "./types/DebugInfo";
 import { InitSlotOperation, JumpOperation, LoadStoreOperation, Operation, PushDataOperation, SysCallOperation } from "./types/Operation";
-import { isStringLike } from "./utils";
 
 function convertPushData({ value }: PushDataOperation) {
     if (value.length <= 255) /* byte.MaxValue */ {
@@ -27,6 +28,29 @@ function convertPushData({ value }: PushDataOperation) {
 
 function convertLoadStore(opCode: sc.OpCode, { index }: LoadStoreOperation) {
     return (index <= 6) ? [opCode + index] : [opCode + 7, index];
+}
+
+function convertSysCall({ name }: SysCallOperation) {
+    const code = Buffer.from(sc.generateInteropServiceCode(name), 'hex');
+    return [sc.OpCode.SYSCALL, ...code];
+}
+
+function convertInitSlot({ locals, params }: InitSlotOperation) {
+    return [sc.OpCode.INITSLOT, locals, params];
+}
+
+function convertJump(index: number, { offset }: JumpOperation, addressMap: Map<number, number>) {
+    const currentAddress = addressMap.get(index);
+    const targetAddress = addressMap.get(index + offset);
+
+    if (!currentAddress) throw new Error("could not resolve jump instruction current address")
+    if (!targetAddress) throw new Error("could not resolve jump instruction target address")
+
+    const addressOffset = targetAddress - currentAddress;
+    const buffer = new ArrayBuffer(4);
+    const view = new DataView(buffer);
+    view.setInt32(0, addressOffset, true);
+    return [sc.OpCode.JMP_L, ...new Uint8Array(buffer)];
 }
 
 export function getOperationSize(op: Operation) {
@@ -63,40 +87,36 @@ export function getOperationSize(op: Operation) {
     }
 }
 
-function createAddressMap(method: ContractMethod) {
+function createAddressMap(operations: ReadonlyArray<Operation>, offset: number) {
+    let address = offset;
     const addressMap = new Map<number, number>();
-    let address = 0;
-    method.operations.forEach((v, i) => {
+    operations.forEach((v, i) => {
         addressMap.set(i, address);
         address += getOperationSize(v);
     })
     return addressMap;
 }
 
-function convertContractMethod(method: ContractMethod, diagnostics: tsm.ts.Diagnostic[]) {
+export function compileMethodScript(method: ContractMethod, offset: number, diagnostics: tsm.ts.Diagnostic[]) {
 
-    const addressMap = createAddressMap(method);
-
+    const addressMap = createAddressMap(method.operations, offset);
+    const sequencePoints = new Array<SequencePointLocation>()
     const instructions = new Array<number>();
+    let rangeEnd = 0;
     method.operations.forEach((op, i) => {
-        switch (op.kind) {
-            case 'initslot': {
-                const { locals, params } = op as InitSlotOperation;
-                instructions.push(sc.OpCode.INITSLOT, locals, params);
-                break;
-            }
-            case 'jump': {
-                const { offset } = op as JumpOperation;
-                const currentAddress = addressMap.get(i);
-                const targetAddress = addressMap.get(i + offset);
-                if (!currentAddress || !targetAddress) throw new Error();
-                const addressOffset = targetAddress - currentAddress;
+        rangeEnd = instructions.length;
 
-                const buffer = new ArrayBuffer(4);
-                new DataView(buffer).setInt32(0, addressOffset, true);
-                instructions.push(sc.OpCode.JMP_L, ...new Uint8Array(buffer));
+        if (op.location) {
+            sequencePoints.push({ address: rangeEnd, location: op.location });
+        }
+
+        switch (op.kind) {
+            case 'initslot':
+                instructions.push(...convertInitSlot(op as InitSlotOperation));
                 break;
-            }
+            case 'jump':
+                instructions.push(...convertJump(i, op as JumpOperation, addressMap));
+                break;
             case 'loadarg':
                 instructions.push(...convertLoadStore(sc.OpCode.LDARG0, op as LoadStoreOperation));
                 break;
@@ -124,26 +144,19 @@ function convertContractMethod(method: ContractMethod, diagnostics: tsm.ts.Diagn
             case 'storestatic':
                 instructions.push(...convertLoadStore(sc.OpCode.STSFLD0, op as LoadStoreOperation));
                 break;
-            case 'syscall': {
-                const { name } = op as SysCallOperation;
-                const code = Buffer.from(sc.generateInteropServiceCode(name), 'hex');
-                instructions.push(sc.OpCode.SYSCALL, ...code);
+            case 'syscall':
+                instructions.push(...convertSysCall(op as SysCallOperation));
                 break;
-            }
             default:
                 throw new Error(`convertContractMethod ${method.name} ${op.kind}`);
         }
     });
-    return Uint8Array.from(instructions);
+    return {
+        instructions: Uint8Array.from(instructions),
+        sequencePoints,
+        range: {start: offset, end: offset + rangeEnd},
+    };
 }
-
-export function processContractMethods(context: CompileContext) {
-    const { diagnostics } = context;
-    for (const method of context.methods) {
-        method.instructions = convertContractMethod(method, diagnostics);
-    }
-}
-
 
 
 

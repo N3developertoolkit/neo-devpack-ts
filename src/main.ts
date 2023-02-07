@@ -37,7 +37,7 @@ async function main() {
     } else {
         try {
             // const { artifacts, context, diagnostics } = 
-            const { diagnostics, nef, manifest } = compile({ project });
+            const { diagnostics, nef, manifest, debugInfo } = compile({ project });
 
             if (diagnostics.length > 0) {
                 printDiagnostics(diagnostics);
@@ -53,6 +53,12 @@ async function main() {
                 const manifestPath = join(__dirname, OUTPUT_DIR, "contract.manifest.json");
                 const $manifest = JSON.stringify(manifest.toJson(), null, 4);
                 await fsp.writeFile(manifestPath, $manifest);
+            }
+
+            if (debugInfo) {
+                const debugInfoPath = join(__dirname, OUTPUT_DIR, "contract.debug.json");
+                const $debugInfo = JSON.stringify(debugInfo, null, 4);
+                await fsp.writeFile(debugInfoPath, $debugInfo);
             }
         } catch (error) {
             printDiagnostics([toDiagnostic(error)]);
