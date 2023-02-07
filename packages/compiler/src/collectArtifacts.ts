@@ -4,6 +4,10 @@ import { CompileContext } from "./compiler";
 import { ContractMethod } from "./passes/processFunctionDeclarations";
 import * as tsm from "ts-morph";
 import { isBigIntLike, isBooleanLike, isNumberLike, isStringLike, isVoidLike } from "./utils";
+import { DebugInfo, DebugMethod, SequencePoint, SlotVariable } from "./types/DebugInfo";
+import { getOperationSize } from "./processContractMethods";
+import { Operation } from "./types/Operation";
+import { first, last } from "ix/iterable";
 
 export function convertToContractParamType(type: tsm.Type): sc.ContractParamType {
 
@@ -21,10 +25,10 @@ export function convertToContractParamType(type: tsm.Type): sc.ContractParamType
     throw new Error(`convertTypeScriptType ${type.getText()} not implemented`);
 }
 
-export function toContractMethodDefinition(method: ContractMethod, offset: number) {
+export function toContractMethodDefinition(method: ContractMethod, ops: AddressedOperation[]) {
     if (!method.public) return undefined;
     const returnType = isVoidLike(method.returnType)
-        ? sc.ContractParamType.Void 
+        ? sc.ContractParamType.Void
         : convertToContractParamType(method.returnType);
     const parameters = method.parameters.map(p => ({
         name: p.name,
@@ -33,25 +37,76 @@ export function toContractMethodDefinition(method: ContractMethod, offset: numbe
     return new sc.ContractMethodDefinition({
         name: method.name,
         safe: method.safe,
-        offset,
+        offset: first(ops)!.address,
         returnType,
         parameters
     })
 }
 
+export function toDebugMethod(method: ContractMethod, ops: AddressedOperation[]): DebugMethod {
+    const name = "," + method.name;
+    const id = name;
+    const start = first(ops)!.address;
+    const end = last(ops)!.address;
+    const returnType = isVoidLike(method.returnType)
+        ? sc.ContractParamType.Void
+        : convertToContractParamType(method.returnType);
+    const parameters: SlotVariable[] = method.parameters
+        .map((v, index) => ({
+            name: v.name, type: convertToContractParamType(v.type), index
+        } as SlotVariable));
+    const variables = method.variables
+        .map((v, index) => ({
+            name: v.name, type: convertToContractParamType(v.type), index
+        } as SlotVariable))
+    const sequencePoints = ops
+        .filter(v => !!v.operation.location)
+        .map(v => ({
+            address: v.address,
+            location: v.operation.location!
+        } as SequencePoint));
+
+    return {
+        id,
+        name,
+        range: { start, end },
+        parameters,
+        returnType,
+        variables,
+        sequencePoints
+    };
+}
+
+interface AddressedOperation {
+    address: number;
+    size: number;
+    operation: Operation;
+}
+function* getAddressedOperation(method: ContractMethod, offset: number): Generator<AddressedOperation, void> {
+    let address = offset;
+    for (const operation of method.operations) {
+        const size = getOperationSize(operation);
+        yield { address, size, operation }
+        address += size;
+    }
+}
+
 export function collectArtifacts(context: CompileContext) {
     let offset = 0;
     const methodDefs = new Array<sc.ContractMethodDefinition>();
+    const debugMethods = new Array<DebugMethod>();
     let script = Buffer.from([]);
 
     for (const method of context.methods) {
-        if (!method.instructions)
-            throw new Error();
-        const methodDef = toContractMethodDefinition(method, offset);
-        if (methodDef)
-            methodDefs.push(methodDef);
+        if (!method.instructions) throw new Error();
+
+        const ops = [...getAddressedOperation(method, offset)];
         offset += method.instructions.length;
         script = Buffer.concat([script, method.instructions]);
+
+        const methodDef = toContractMethodDefinition(method, ops);
+        if (methodDef) methodDefs.push(methodDef);
+        debugMethods.push(toDebugMethod(method, ops));
     }
 
     const manifest = new sc.ContractManifest({
@@ -64,6 +119,10 @@ export function collectArtifacts(context: CompileContext) {
         script: Buffer.from(script).toString("hex"),
     });
 
-    return { nef, manifest };
+    const debugInfo = {
+        methods: debugMethods
+    } as DebugInfo;
+
+    return { nef, manifest, debugInfo };
 
 }

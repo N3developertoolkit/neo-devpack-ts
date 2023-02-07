@@ -29,7 +29,7 @@ function convertLoadStore(opCode: sc.OpCode, { index }: LoadStoreOperation) {
     return (index <= 6) ? [opCode + index] : [opCode + 7, index];
 }
 
-function getOperationSize(op: Operation) {
+export function getOperationSize(op: Operation) {
     switch (op.kind) {
         case 'initslot':
             return 3;

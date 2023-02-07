@@ -22,6 +22,13 @@ export class MethodBuilder {
         }
     }
 
+    getVariables() {
+        return this._locals.map(v => ({
+            name: v.getName(),
+            type: v.getType(),
+        }));
+    }
+
     getOperations(): ReadonlyArray<Operation> {
         // make a copy of the builder's operation
         const operations = [...this._operations];

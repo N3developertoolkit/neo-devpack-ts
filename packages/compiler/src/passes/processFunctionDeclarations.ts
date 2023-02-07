@@ -137,6 +137,7 @@ export interface ContractMethod {
     public: boolean,
     returnType: tsm.Type,
     parameters: ReadonlyArray<{ name: string, type: tsm.Type }>,
+    variables: ReadonlyArray<{ name: string, type: tsm.Type }>,
     operations: ReadonlyArray<Operation>,
     instructions?: Uint8Array,
 }
@@ -166,6 +167,7 @@ export function processMethodDef(def: MethodSymbolDef, diagnostics: Array<tsm.ts
         public: !!node.getExportKeyword(),
         returnType: node.getReturnType(),
         parameters: node.getParameters().map(p => ({ name: p.getName(), type: p.getType(), })),
+        variables: builder.getVariables(),
         operations: builder.getOperations()
     }
 }

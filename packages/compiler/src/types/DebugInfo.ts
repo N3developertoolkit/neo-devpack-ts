@@ -1,36 +1,34 @@
 // import path from "path";
 // import { ContractType, PrimitiveType, StructContractType, toString as contractTypeToString } from "./ContractType";
 // import { join } from 'path';
-// import { sc, u } from "@cityofzion/neon-core";
-// import * as tsm from "ts-morph";
+import { sc } from "@cityofzion/neon-core";
+import * as tsm from "ts-morph";
 
-// export interface DebugInfo {
-//     methods?: Method[];
-//     events?: Event[];
-//     staticVariables?: SlotVariable[];
-//     structs?: StructContractType[];
-//     storageGroups?: StorageGroupDef[];
-// }
+export interface DebugInfo {
+    methods?: DebugMethod[];
+    // events?: Event[];
+}
 
-// export interface Method {
-//     name: string;
-//     range: { start: number, end: number };
-//     parameters?: SlotVariable[];
-//     variables?: SlotVariable[];
-//     returnType?: ContractType;
-//     sequencePoints?: SequencePoint[];
-// }
+export interface DebugMethod {
+    id: string,
+    name: string;
+    range: { start: number, end: number };
+    parameters?: SlotVariable[];
+    variables?: SlotVariable[];
+    returnType?: sc.ContractParamType;
+    sequencePoints?: SequencePoint[];
+}
 
 // export interface Event {
 //     name: string;
 //     parameters?: SlotVariable[];
 // }
 
-// export interface SlotVariable {
-//     name: string;
-//     type: ContractType;
-//     index?: number;
-// }
+export interface SlotVariable {
+    name: string;
+    type: sc.ContractParamType;
+    index?: number;
+}
 
 // export interface Struct {
 //     name: string,
@@ -50,10 +48,10 @@
 //     }[];
 // }
 
-// export interface SequencePoint {
-//     address: number;
-//     location: tsm.Node,
-// }
+export interface SequencePoint {
+    address: number;
+    location: tsm.Node,
+}
 
 // export interface DebugInfoJson {
 //     version: undefined | 2,
