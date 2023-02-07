@@ -1,12 +1,14 @@
 import { sc } from "@cityofzion/neon-core";
+import { ContractParameterDefinition } from "@cityofzion/neon-core/lib/sc";
 import { getScriptHashFromPublicKey } from "@cityofzion/neon-core/lib/wallet";
 
 import * as tsm from "ts-morph";
 import { CompileContext } from "./compiler";
 import { ContractMethod } from "./passes/processFunctionDeclarations";
 import { InitSlotOperation, JumpOperation, LoadStoreOperation, Operation, PushDataOperation, SysCallOperation } from "./types/Operation";
+import { isStringLike } from "./utils";
 
-function convertPushData({value}: PushDataOperation) {
+function convertPushData({ value }: PushDataOperation) {
     if (value.length <= 255) /* byte.MaxValue */ {
         return [sc.OpCode.PUSHDATA1, value.length, ...value];
     }
@@ -23,20 +25,28 @@ function convertPushData({value}: PushDataOperation) {
     throw new Error(`pushData length ${value.length} too long`);
 }
 
-function getOperationSize(op:Operation) {
+function convertLoadStore(opCode: sc.OpCode, { index }: LoadStoreOperation) {
+    return (index <= 6) ? [opCode + index] : [opCode + 7, index];
+}
+
+function getOperationSize(op: Operation) {
     switch (op.kind) {
-        case 'initslot': 
+        case 'initslot':
             return 3;
         case 'syscall':
-        case 'jump': 
+        case 'jump':
             return 5;
+        case 'loadarg':
+        case 'loadlocal':
+        case 'loadstatic':
+        case 'storearg':
         case 'storelocal':
-        case 'loadlocal': {
+        case 'storestatic': {
             const { index } = op as LoadStoreOperation
             return index <= 6 ? 1 : 2;
         }
         case 'pushdata': {
-            const {value} = op as PushDataOperation;
+            const { value } = op as PushDataOperation;
             if (value.length <= 255) /* byte.MaxValue */ {
                 return 2 + value.length;
             }
@@ -71,7 +81,7 @@ function convertContractMethod(method: ContractMethod, diagnostics: tsm.ts.Diagn
     method.operations.forEach((op, i) => {
         switch (op.kind) {
             case 'initslot': {
-                const {locals, params} = op as InitSlotOperation;
+                const { locals, params } = op as InitSlotOperation;
                 instructions.push(sc.OpCode.INITSLOT, locals, params);
                 break;
             }
@@ -87,27 +97,34 @@ function convertContractMethod(method: ContractMethod, diagnostics: tsm.ts.Diagn
                 instructions.push(sc.OpCode.JMP_L, ...new Uint8Array(buffer));
                 break;
             }
-            case 'loadlocal': {
-                const { index } = op as LoadStoreOperation
-                if (index <= 6) instructions.push(sc.OpCode.LDLOC0 + index)
-                else instructions.push(sc.OpCode.LDLOC, index); 
+            case 'loadarg':
+                instructions.push(...convertLoadStore(sc.OpCode.LDARG0, op as LoadStoreOperation));
                 break;
-            }
+            case 'loadlocal':
+                instructions.push(...convertLoadStore(sc.OpCode.LDLOC0, op as LoadStoreOperation));
+                break;
+            case 'loadstatic':
+                instructions.push(...convertLoadStore(sc.OpCode.LDSFLD0, op as LoadStoreOperation));
+                break;
             case 'noop':
                 instructions.push(sc.OpCode.NOP);
                 break;
-            case 'pushdata': 
+            case 'pushdata':
                 instructions.push(...convertPushData(op as PushDataOperation));
                 break;
             case 'return':
                 instructions.push(sc.OpCode.RET);
-            case 'storelocal': {
-                const { index } = op as LoadStoreOperation
-                if (index <= 6) instructions.push(sc.OpCode.STLOC0 + index)
-                else instructions.push(sc.OpCode.STLOC, index); 
                 break;
-            }
-            case 'syscall':{
+            case 'storearg':
+                instructions.push(...convertLoadStore(sc.OpCode.STARG0, op as LoadStoreOperation));
+                break;
+            case 'storelocal':
+                instructions.push(...convertLoadStore(sc.OpCode.STLOC0, op as LoadStoreOperation));
+                break;
+            case 'storestatic':
+                instructions.push(...convertLoadStore(sc.OpCode.STSFLD0, op as LoadStoreOperation));
+                break;
+            case 'syscall': {
                 const { name } = op as SysCallOperation;
                 const code = Buffer.from(sc.generateInteropServiceCode(name), 'hex');
                 instructions.push(sc.OpCode.SYSCALL, ...code);
@@ -126,3 +143,13 @@ export function processContractMethods(context: CompileContext) {
         method.instructions = convertContractMethod(method, diagnostics);
     }
 }
+
+
+
+
+
+
+
+
+
+

@@ -3,8 +3,7 @@ import { readFile, writeFile } from "fs/promises";
 import { ts } from "ts-morph";
 import { compile, createContractProject, saveArtifacts, toDiagnostic } from '../packages/compiler/';
 // import { dumpArtifacts } from "./utils";
-
-const FILENAME = "contract-test.ts";
+import * as fsp from 'fs/promises';
 
 function printDiagnostics(diags: ReadonlyArray<ts.Diagnostic>) {
     const formatHost: ts.FormatDiagnosticsHost = {
@@ -17,6 +16,9 @@ function printDiagnostics(diags: ReadonlyArray<ts.Diagnostic>) {
     const msg = ts.formatDiagnosticsWithColorAndContext(diags, formatHost);
     console.log(msg);
 }
+
+const FILENAME = "contract-test.ts";
+const OUTPUT_DIR = "../express";
 
 async function main() {
     const project = await createContractProject();
@@ -35,29 +37,23 @@ async function main() {
     } else {
         try {
             // const { artifacts, context, diagnostics } = 
-            const { diagnostics } = compile({ project });
+            const { diagnostics, nef, manifest } = compile({ project });
 
             if (diagnostics.length > 0) {
                 printDiagnostics(diagnostics);
-                return;
             }
-            // if (artifacts) {
-            //     dumpArtifacts(artifacts);
-            //     const rootPath = join(__dirname, "../express/out");
-            //     const sourceDir = join(rootPath, "..");
-            //     await saveArtifacts({
-            //         artifacts,
-            //         rootPath,
-            //         sourceDir,
-            //     })
 
-            //     await writeFile(join(sourceDir, "contract.ts"), contractSource)
+            if (nef) {
+                const nefPath = join(__dirname, OUTPUT_DIR, "contract.nef");
+                const $nef = Buffer.from(nef.serialize(), 'hex');
+                await fsp.writeFile(nefPath, $nef);
+            }
 
-            // } else {
-            //     for (const func of context.functions) {
-            //         dumpFunctionContext(func);
-            //     }
-            // }
+            if (manifest) {
+                const manifestPath = join(__dirname, OUTPUT_DIR, "contract.manifest.json");
+                const $manifest = JSON.stringify(manifest.toJson(), null, 4);
+                await fsp.writeFile(manifestPath, $manifest);
+            }
         } catch (error) {
             printDiagnostics([toDiagnostic(error)]);
         }

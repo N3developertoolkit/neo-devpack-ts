@@ -199,7 +199,10 @@ $RECYCLE.BIN/
 # Custom rules (everything added below won't be overriden by 'Generate .gitignore File' if you use 'Update' option)
 
 packages/*/lib
-express/out/*
+express/contract.nef
+express/contract.manifest.json
+express/contract.nefdbgnfo
+express/contract.debug.json
 src/*.d.ts
 src/*.js
 src/*.js.map

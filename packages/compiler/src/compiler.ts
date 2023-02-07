@@ -8,6 +8,7 @@ import * as path from 'path';
 import { createSymbolTrees, ReadonlyScope } from "./scope";
 import { ContractMethod, processMethodDefinitions } from "./passes/processFunctionDeclarations";
 import { processContractMethods } from "./processContractMethods";
+import { collectArtifacts } from "./collectArtifacts";
 
 export const DEFAULT_ADDRESS_VALUE = 53;
 
@@ -28,8 +29,9 @@ export interface CompileOptions {
 }
 
 export interface CompileArtifacts {
-    nef: sc.NEF;
-    manifest: sc.ContractManifest;
+    readonly diagnostics: Array<tsm.ts.Diagnostic>;
+    readonly nef?: sc.NEF;
+    readonly manifest?: sc.ContractManifest;
     // debugInfo: DebugInfo;
 }
 
@@ -55,9 +57,7 @@ function hasErrors(diagnostics: tsm.ts.Diagnostic[]) {
     return false;
 }
 
-
-export function compile({ project, addressVersion, inline, optimize }: CompileOptions) {
-
+export function compile({ project, addressVersion, inline, optimize }: CompileOptions): CompileArtifacts {
 
     const diagnostics = new Array<tsm.ts.Diagnostic>();
     const context: CompileContext = {
@@ -79,6 +79,8 @@ export function compile({ project, addressVersion, inline, optimize }: CompileOp
         if (hasErrors(diagnostics)) return { diagnostics };
         processContractMethods(context);
         if (hasErrors(diagnostics)) return { diagnostics };
+        const {nef, manifest} = collectArtifacts(context);
+        return { nef, manifest, diagnostics}
 
     } catch (error) {
         diagnostics.push(toDiagnostic(error));
