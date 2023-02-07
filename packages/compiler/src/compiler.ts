@@ -21,7 +21,6 @@ export class CompileError extends Error {
 }
 
 export interface CompileOptions {
-    readonly project: tsm.Project;
     readonly addressVersion?: number;
     readonly inline?: boolean;
     readonly optimize?: boolean;
@@ -36,7 +35,7 @@ export interface CompileArtifacts {
 
 export interface CompileContext {
     readonly diagnostics: Array<tsm.ts.Diagnostic>;
-    readonly options: Readonly<Required<Omit<CompileOptions, 'project'>>>;
+    readonly options: Readonly<Required<CompileOptions>>;
     readonly project: tsm.Project;
     readonly scopes: Array<ReadonlyScope>;
     readonly methods: Array<ContractMethod>;
@@ -49,16 +48,20 @@ function hasErrors(diagnostics: tsm.ts.Diagnostic[]) {
     return false;
 }
 
-export function compile({ project, addressVersion, inline, optimize }: CompileOptions): CompileArtifacts {
+export function compile(
+    project: tsm.Project, 
+    contractName: string, 
+    options?: CompileOptions
+): CompileArtifacts {
 
     const diagnostics = new Array<tsm.ts.Diagnostic>();
     const context: CompileContext = {
         project,
         diagnostics,
         options: {
-            addressVersion: addressVersion ?? DEFAULT_ADDRESS_VALUE,
-            inline: inline ?? false,
-            optimize: optimize ?? false,
+            addressVersion: options?.addressVersion ?? DEFAULT_ADDRESS_VALUE,
+            inline: options?.inline ?? false,
+            optimize: options?.optimize ?? false,
         },
         scopes: new Array<ReadonlyScope>(),
         methods: new Array<ContractMethod>(),
@@ -69,7 +72,7 @@ export function compile({ project, addressVersion, inline, optimize }: CompileOp
         if (hasErrors(diagnostics)) return { diagnostics };
         processMethodDefinitions(context);
         if (hasErrors(diagnostics)) return { diagnostics };
-        const { nef, manifest, debugInfo } = collectArtifacts(context);
+        const { nef, manifest, debugInfo } = collectArtifacts(contractName, context);
         if (hasErrors(diagnostics)) return { diagnostics };
         return { nef, manifest, debugInfo, diagnostics };
     } catch (error) {

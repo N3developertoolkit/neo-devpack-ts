@@ -37,7 +37,7 @@ async function main() {
         printDiagnostics(diagnostics.map(d => d.compilerObject));
     } else {
         try {
-            const { diagnostics, nef, manifest, debugInfo } = compile({ project });
+            const { diagnostics, nef, manifest, debugInfo } = compile(project, contractName);
 
             if (diagnostics.length > 0) printDiagnostics(diagnostics);
 

@@ -107,7 +107,7 @@ interface MethodInfo {
 }
 
 
-export function collectArtifacts({ methods, diagnostics}: CompileContext) {
+export function collectArtifacts(contractName: string, { methods, diagnostics}: CompileContext) {
 
     let script = Buffer.from([]);
     const methodMap = new Map<ContractMethod, MethodInfo>();
@@ -134,7 +134,7 @@ export function collectArtifacts({ methods, diagnostics}: CompileContext) {
     )];
 
     const manifest = new sc.ContractManifest({
-        name: 'test-contract',
+        name: contractName,
         abi: new sc.ContractAbi({ methods: manifestMethods })
     });
 
