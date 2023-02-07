@@ -122,12 +122,6 @@ export function processStringLiteral(node: tsm.StringLiteral, { builder }: Proce
 export function processExpression(node: tsm.Expression, options: ProcessMethodOptions) {
 
     dispatch(node, options, {
-        // [tsm.SyntaxKind.ArrayLiteralExpression]: processArrayLiteralExpression,
-        // [tsm.SyntaxKind.AsExpression]: processAsExpression,
-        // [tsm.SyntaxKind.BinaryExpression]: processBinaryExpression,
-        // [tsm.SyntaxKind.ConditionalExpression]: processConditionalExpression,
-        // [tsm.SyntaxKind.PropertyAccessExpression]: processPropertyAccessExpression,
-
         [tsm.SyntaxKind.BigIntLiteral]: processBigIntLiteral,
         [tsm.SyntaxKind.CallExpression]: processCallExpression,
         [tsm.SyntaxKind.FalseKeyword]: processBooleanLiteral,

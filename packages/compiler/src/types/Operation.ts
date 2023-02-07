@@ -1,19 +1,10 @@
-import { sc } from '@cityofzion/neon-core'
 import * as tsm from "ts-morph";
 import { ReadonlyUint8Array } from '../utility/ReadonlyArrays';
-// import { FunctionSymbolDef } from '../scope';
-
-// Instruction Kind is slightly simplified version of NeoVM OpCode enum
-//  * All the PUSHINT* opcodes are folded into a single Instruction Kind
-//  * The PUSHDATA? opcodes are folded into a single Instruction Kind
-//  * All the opcode pairs with and without an _L variant have been folded into a single Instruction Kind
-//  * the hard coded index Load/Store opcodes have been folded into a single Instruction Kind 
 
 export type OperationKind = 'pushbool' | 'pushint' | 'pushdata' | 'pushnull' |
     'jump' | 'jumpif' | 'jumpifnot' | 'jumpeq' | 'jumpne' | 'jumpgt' | 'jumpge' | 'jumplt' | 'jumple' |
     'loadarg' | 'storearg' | 'loadlocal' | 'storelocal' | 'loadstatic' | 'storestatic' |
     'noop' | 'return' | 'syscall' | 'initslot';
-
 
 export enum oldOperationKind {
 
@@ -172,35 +163,6 @@ export interface Operation {
     location?: tsm.Node,
 }
 
-// export interface CallOperation extends Operation {
-//     readonly kind: OperationKind.CALL;
-//     readonly symbol: tsm.Symbol;
-// }
-
-// export function isCallOperation(ins: Operation): ins is CallOperation {
-//     return ins.kind === OperationKind.CALL;
-// }
-
-// export interface ConvertOperation extends Operation {
-//     readonly kind: OperationKind.CONVERT;
-//     readonly type: sc.StackItemType
-// }
-
-// export function isConvertOperation(ins: Operation): ins is ConvertOperation {
-//     return ins.kind === OperationKind.CONVERT;    
-// }
-
-// export interface InitSlotOperation extends Operation {
-//     readonly kind: OperationKind.INITSLOT;
-//     readonly localCount: number,
-//     readonly paramCount: number,
-// }
-
-// export function isInitSlotOperation(ins: Operation): ins is InitSlotOperation {
-//     return ins.kind === OperationKind.INITSLOT;    
-// }
-
-
 export interface SysCallOperation extends Operation { 
     readonly kind: 'syscall',
     readonly name: string
@@ -247,25 +209,6 @@ export function isPushBoolOperation(ins: Operation): ins is PushBoolOperation {
     return ins.kind === 'pushbool';
 }
 
-// export interface SysCallOperation extends Operation {
-//     readonly kind: OperationKind.SYSCALL,
-//     readonly service: sc.InteropServiceCode
-// }
-
-// export function isSysCallOperation(ins: Operation): ins is SysCallOperation {
-//     return ins.kind === OperationKind.SYSCALL;
-// }
-
-// export interface TryOperation extends Operation {
-//     readonly kind: OperationKind.TRY,
-//     readonly catchOffset: number,
-//     readonly finallyOffset: number,
-// }
-
-// export function isTryOperation(ins: Operation): ins is TryOperation {
-//     return ins.kind === OperationKind.TRY;
-// }
-
 const jumpOperationKinds = [
     'jump', 'jumpif', 'jumpifnot', 'jumpeq', 'jumpne', 'jumpgt', 'jumpge', 'jumplt', 'jumple'
 ] as const as ReadonlyArray<OperationKind>;
@@ -295,14 +238,3 @@ export interface LoadStoreOperation extends Operation {
 export function isLoadStoreOperation(ins: Operation): ins is LoadStoreOperation {
     return loadStoreOperationKinds.includes(ins.kind);
 }
-
-// export const specializedOperationKinds: ReadonlyArray<OperationKind> = [
-//     OperationKind.CALL,
-//     OperationKind.CONVERT,
-//     OperationKind.INITSLOT,
-//     OperationKind.PUSHDATA,
-//     OperationKind.PUSHINT,
-//     OperationKind.SYSCALL,
-//     OperationKind.TRY,
-//     ...jumpOperationKinds, 
-//     ...loadStoreOperationKinds];

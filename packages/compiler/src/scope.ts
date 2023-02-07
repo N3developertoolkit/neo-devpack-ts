@@ -3,9 +3,9 @@ import * as tsm from "ts-morph";
 import { CompileContext, CompileError } from "./compiler";
 import { dispatch } from "./utility/nodeDispatch";
 import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
-import { createDiagnostic, DiagnosticOptions, getConstantValue, getJSDocTag, isVoidLike } from "./utils";
+import { createDiagnostic, getConstantValue, getJSDocTag, isVoidLike } from "./utils";
 import { from } from 'ix/iterable';
-import { map, groupBy, orderBy } from 'ix/iterable/operators';
+import { map, orderBy } from 'ix/iterable/operators';
 import { emitU8ArrayFrom } from './passes/builtins';
 import { ProcessMethodOptions } from './passes/processFunctionDeclarations';
 

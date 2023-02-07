@@ -4,10 +4,10 @@ import { CompileContext } from "./compiler";
 import { ContractMethod } from "./passes/processFunctionDeclarations";
 import * as tsm from "ts-morph";
 import { isBigIntLike, isBooleanLike, isNumberLike, isStringLike, isVoidLike } from "./utils";
-import { DebugInfo, DebugInfoJson, DebugMethod, DebugMethodJson, SequencePointLocation, SlotVariable } from "./types/DebugInfo";
+import { DebugInfoJson, DebugMethodJson, SequencePointLocation } from "./types/DebugInfo";
 import { compileMethodScript, getOperationSize } from "./processContractMethods";
 import { Operation } from "./types/Operation";
-import { first, from, last } from "ix/iterable";
+import { from } from "ix/iterable";
 import { map, flatMap } from "ix/iterable/operators";
 
 export function convertToContractParamType(type: tsm.Type): sc.ContractParamType {

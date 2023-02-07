@@ -106,13 +106,6 @@ export function isCompoundAssignment(kind: tsm.SyntaxKind) {
     }
 }
 
-// export function getNumericLiteral(node: tsm.NumericLiteral) {
-//     const literal = node.getLiteralValue();
-//     if (!Number.isInteger(literal)) throw new CompileError(`invalid non-integer numeric literal`, node);
-//     return literal;
-// }
-
-
 export function getConstantValue(node: tsm.Expression) {
     switch (node.getKind()) {
         case tsm.SyntaxKind.NullKeyword:
@@ -147,18 +140,6 @@ export function getJSDocTag(node: tsm.JSDocableNode, tagName: string): tsm.JSDoc
     }
     return undefined
 }
-
-// export function byteArrayToBigInt(value: Uint8Array): bigint {
-//     const buffer = Buffer.from(value);
-//     buffer.reverse();
-//     const negativeValue = buffer[0] & 0x80;
-//     if (!negativeValue) {
-//         return toBigInt(buffer);
-//     }
-
-//     throw new Error("Not Implemented");
-// }
-
 
 function toHexString(value: bigint): string {
     let str = value.toString(16);
@@ -218,8 +199,3 @@ export function bigIntToByteArray(value: bigint): Uint8Array {
         return buffer2.reverse();
     }
 }
-
-// export function asExpressionOrCompileError(node: tsm.Node): tsm.Expression {
-//     if (tsm.Node.isExpression(node)) { return node; }
-//     throw new CompileError(`Invalid expression node ${node.getKindName()}`, node);
-// }

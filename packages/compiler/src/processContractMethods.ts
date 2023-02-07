@@ -1,10 +1,5 @@
 import { sc } from "@cityofzion/neon-core";
-import { range } from "ix/asynciterable";
-import { from } from "ix/iterable";
-import { map } from "ix/iterable/operators";
-
 import * as tsm from "ts-morph";
-import { CompileContext } from "./compiler";
 import { ContractMethod } from "./passes/processFunctionDeclarations";
 import { SequencePointLocation } from "./types/DebugInfo";
 import { InitSlotOperation, JumpOperation, LoadStoreOperation, Operation, PushDataOperation, SysCallOperation } from "./types/Operation";

@@ -1,6 +1,5 @@
 import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
-// import { DebugInfo, toJson as debugInfoToJson } from "./types/DebugInfo";
 import { createDiagnostic, toDiagnostic } from "./utils";
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
@@ -8,7 +7,7 @@ import * as path from 'path';
 import { createSymbolTrees, ReadonlyScope } from "./scope";
 import { ContractMethod, processMethodDefinitions } from "./passes/processFunctionDeclarations";
 import { collectArtifacts } from "./collectArtifacts";
-import { DebugInfo, DebugInfoJson } from "./types/DebugInfo";
+import { DebugInfoJson } from "./types/DebugInfo";
 
 export const DEFAULT_ADDRESS_VALUE = 53;
 

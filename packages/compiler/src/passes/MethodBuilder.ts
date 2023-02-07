@@ -1,4 +1,3 @@
-import { OpCode } from "@cityofzion/neon-core/lib/sc";
 import * as tsm from "ts-morph";
 import { InitSlotOperation, JumpOperation, LoadStoreOperation, LoadStoreOperationKind, Operation, OperationKind, PushBoolOperation, PushDataOperation, PushIntOperation, SysCallOperation } from "../types/Operation";
 import { ReadonlyUint8Array } from "../utility/ReadonlyArrays";
