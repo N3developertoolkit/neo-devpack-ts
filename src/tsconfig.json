@@ -7,7 +7,7 @@
     },
     "exclude": [
         "bin/",
-        "contract*.ts",
+        "sample-contracts/",
     ],
     "references": [
         {

@@ -17,7 +17,7 @@ function printDiagnostics(diags: ReadonlyArray<ts.Diagnostic>) {
     console.log(msg);
 }
 
-const FILENAME = "contract-test.ts";
+const FILENAME = "sample-contracts/helloworld.ts";
 const OUTPUT_DIR = "../express/out";
 
 async function main() {
