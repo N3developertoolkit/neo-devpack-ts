@@ -13,36 +13,37 @@ const prefixContractOwner = 0xFF;
 
 /** @safe */
 export function get() { 
-    const ctx = storageGetContext();
-    const key = Uint8Array.from([prefixSampleValue]);
-    return storageGet(ctx, key);
+    return storageGet(
+        storageGetContext(), 
+        Uint8Array.from([prefixSampleValue]));
 }
 
 export function set(value: ByteString) {
-    const ctx = storageGetContext();
-    const key = Uint8Array.from([prefixSampleValue]);
-    storagePut(ctx, key, value);
+    storagePut(
+        storageGetContext(), 
+        Uint8Array.from([prefixSampleValue]), 
+        value);
 }
 
 export function remove() {
-    const ctx = storageGetContext();
-    const key = Uint8Array.from([prefixSampleValue]);
-    storageDelete(ctx, key);
+    storageDelete(
+        storageGetContext(), 
+        Uint8Array.from([prefixSampleValue]));
 }
 
 export function _deploy(_data: any, update: boolean): void { 
     if (update) return;
     const tx = runtimeGetScriptContainer() as Transaction;
-
-    const ctx = storageGetContext()
-    const key = Uint8Array.from([prefixContractOwner]);
-    storagePut(ctx, key, tx.sender);
+    storagePut(
+        storageGetContext(), 
+        Uint8Array.from([prefixContractOwner]), 
+        tx.sender);
 }
 
 export function update(nefFile: ByteString, manifest: string) {
-    const ctx = storageGetContext();
-    const key = Uint8Array.from([prefixContractOwner]);
-    const owner = storageGet(ctx, key)!;
+    const owner = storageGet(
+        storageGetContext(), 
+        Uint8Array.from([prefixContractOwner]))!;
     if (runtimeCheckWitness(owner)) {
         contractManagementUpdate(nefFile, manifest);
     } else {
