@@ -1,7 +1,6 @@
 import path from "path";
 import { ts } from "ts-morph";
-import { compile, createContractProject, saveArtifacts, toDiagnostic } from '../packages/compiler/';
-// import { dumpArtifacts } from "./utils";
+import { compile, createContractProject, toDiagnostic } from '../packages/compiler/';
 import * as fsp from 'fs/promises';
 import * as fs from 'fs';
 
@@ -17,7 +16,7 @@ function printDiagnostics(diags: ReadonlyArray<ts.Diagnostic>) {
     console.log(msg);
 }
 
-const FILENAME = "sample-contracts/helloworld.ts";
+const FILENAME = "sample-contracts/nep17token.ts";
 const OUTPUT_DIR = "../express/out";
 
 async function main() {

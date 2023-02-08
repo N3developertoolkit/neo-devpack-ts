@@ -9,6 +9,7 @@ import { map, orderBy } from 'ix/iterable/operators';
 import { emitError, emitU8ArrayFrom } from './passes/builtins';
 import { ProcessMethodOptions } from './passes/processFunctionDeclarations';
 import { sc, u } from '@cityofzion/neon-core';
+import { Operation, parseOperation } from './types/Operation';
 
 export interface ReadonlyScope {
     readonly parentScope: ReadonlyScope | undefined;
@@ -205,7 +206,13 @@ export class MethodTokenSymbolDef implements SymbolDef {
     ) { }
 }
 
-
+export class OperationsSymbolDef implements SymbolDef {
+    constructor(
+        readonly symbol: tsm.Symbol,
+        readonly parentScope: ReadonlyScope,
+        readonly operations: ReadonlyArray<Operation>
+    ) { }
+}
 
 
 
@@ -247,26 +254,14 @@ interface ScopeOptions {
     symbol?: tsm.Symbol
 }
 
-// if (!node.hasDeclareKeyword()) throw new CompileError('invalid', node);
-// const parametersCount = node.getParameters().length;
-// 
-
-// this.token = new sc.MethodToken({
-//     hash,
-//     method,
-//     parametersCount,
-//     hasReturnValue,
-//     callFlags: callFlags ?? sc.CallFlags.All
-// });
-
 const regexMethodToken = /\{((?:0x)?[0-9a-fA-F]{40})\} ([_a-zA-Z0-9]+)/
 
-function createMethodToken(node: tsm.FunctionDeclaration, tag: tsm.JSDocTag) {
-    const matches = tag.getCommentText()?.match(regexMethodToken);
-    if (!matches || matches.length !== 3) throw new CompileError("invalid method token tag comment", node);
+function parseMethodTokenTag(node: tsm.FunctionDeclaration, tag: tsm.JSDocTag) {
+    const matches = tag.getCommentText()?.match(regexMethodToken) ?? [];
+    if (matches.length !== 3) throw new CompileError("invalid method token tag comment", tag);
     const hash = u.HexString.fromHex(matches[1], true);
 
-    // TODO: support specifying call flags in tag comment
+    // TODO: should we support specifying call flags in tag comment?
     const callFlags = sc.CallFlags.All
 
     return new sc.MethodToken({
@@ -278,34 +273,63 @@ function createMethodToken(node: tsm.FunctionDeclaration, tag: tsm.JSDocTag) {
     })
 }
 
+const regexOperation = /(\S+)\s?(\S+)?/
+
+function parseOperationTags(node: tsm.FunctionDeclaration, tags: ReadonlyArray<tsm.JSDocTag>) {
+    const operations = new Array<Operation>();
+    for (const tag of tags) {
+        if (tag.getTagName() !== 'operation') {
+            throw new CompileError(`invalid operation tag`, node);
+        }
+        const comment = tag.getCommentText() ?? "";
+        const matches = comment.match(regexOperation) ?? [];
+        if (matches.length !== 3) throw new CompileError("invalid operation tag comment", tag);
+        operations.push(parseOperation(matches[1], matches[2]));
+    }
+    return operations;
+}
+
 
 function processFunctionDeclaration(node: tsm.FunctionDeclaration, options: ScopeOptions) {
     const symbol = options.symbol ?? node.getSymbolOrThrow();
     const scope = options.scope;
 
     if (node.hasDeclareKeyword()) {
-        const syscallTag = getJSDocTag(node, "syscall");
-        if (syscallTag) {
-            const name = syscallTag.getCommentText() ?? "";
-            if (name.length === 0) throw new CompileError('invalid syscall tag', node);
-            scope.define(s => new SysCallSymbolDef(symbol, s, name));
-            return;
-        }
+        const jsDocs = node.getJsDocs();
+        if (jsDocs.length !== 1) throw new CompileError(`declared functions must have a single JSDoc block tag`, node);
+        const jsTags = jsDocs[0].getTags();
+        const tag = jsTags[0];
+        if (!tag) throw new CompileError(`declared functions must have at least one JSDoc tag`, node);
 
-        // const eventTag = getJSDocTag(node, "event");
-        // if (eventTag) {
-        //     if (!isVoidLike(node.getReturnType())) throw new CompileError('event functions cannot have return values', node);
-        //     const name = eventTag.getCommentText() ?? symbol.getName();
-        //     if (!name || name.length === 0) throw new CompileError('invalid event tag', node);
-        //     scope.define(s => new EventSymbolDef(symbol, s, name, node));
-        //     return;
-        // }
-
-        const methodTokenTag = getJSDocTag(node, "methodToken");
-        if (methodTokenTag) {
-            const token = createMethodToken(node, methodTokenTag);
-            scope.define(s => new MethodTokenSymbolDef(symbol, s, token));
-            return;
+        switch (tag.getTagName()) {
+            case 'event': {
+                if (jsTags.length !== 1) throw new CompileError('event functions must only have one JSDoc tag', node);
+                if (!isVoidLike(node.getReturnType())) throw new CompileError('event functions cannot have return values', node);
+                const eventName = tag.getCommentText() ?? symbol.getName();
+                if (eventName.length === 0) throw new CompileError('invalid event tag', node);
+                // scope.define(s => new EventSymbolDef(symbol, s, name, node));
+                return;
+            }
+            case 'methodToken': {
+                if (jsTags.length !== 1) throw new CompileError('methodToken functions must only have one JSDoc tag', node);
+                const token = parseMethodTokenTag(node, tag);
+                scope.define(s => new MethodTokenSymbolDef(symbol, s, token));
+                return;
+            }
+            case 'operation': {
+                const operations = parseOperationTags(node, jsTags);
+                scope.define(s => new OperationsSymbolDef(symbol, s, operations));
+                return;
+            }
+            case 'syscall': {
+                if (jsTags.length !== 1) throw new CompileError('syscall functions must only have one JSDoc tag', node);
+                const serviceName = tag.getCommentText() ?? "";
+                if (serviceName.length === 0) throw new CompileError('invalid syscall tag', node);
+                scope.define(s => new SysCallSymbolDef(symbol, s, serviceName));
+                return;
+            }
+            default:
+                throw new CompileError(`invalid function declaration tag ${tag.getTagName()}`, node);
         }
 
         throw new CompileError("not supported", node);

@@ -1,5 +1,7 @@
 // import { ByteString, storageGet, storageGetContext } from '@neo-project/neo-contract-framework';
 
+import { runtimeGetScriptContainer, Transaction, storagePut, storageGetContext, ByteString, storageGet, runtimeCheckWitness, contractManagementUpdate, asInteger } from "@neo-project/neo-contract-framework";
+
 // /**
 //  * @contract ApocToken
 //  * @extra Author "Harry Pierson"
@@ -12,26 +14,27 @@ const SYMBOL = "APOC";
 const DECIMALS = 8n;
 // const INITIAL_SUPPLY = 1_000_000n;
 
-// const prefixTotalSupply = 0xA0;
+const prefixTotalSupply = 0xA0;
 // const prefixBalance = 0xA1;
-// const prefixContractOwner = 0xFF;
+const prefixContractOwner = 0xFF;
 
 // /** @event */
 // declare function Transfer(from: ByteString | undefined, to: ByteString | undefined, amount: bigint): void;
 
-/** @safe */
-export function symbol() { return SYMBOL; }
-
-/** @safe */
-export function decimals() { return DECIMALS; }
+// /** @safe */
+// export function symbol() { return SYMBOL; }
 
 // /** @safe */
-// export function totalSupply( ) { 
-//     const ctx = storageGetContext();
-//     const key = Uint8Array.from([prefixTotalSupply]);
-//     const value = storageGet(ctx, key);
-//     return value ? asInteger(value) : 0n;
-// }
+// export function decimals() { return DECIMALS; }
+
+/** @safe */
+export function totalSupply( ) { 
+    const value = storageGet(
+        storageGetContext(), 
+        Uint8Array.from([prefixTotalSupply]));
+
+    return asInteger(value);
+}
 
 // /** @safe */
 // export function balanceOf(account: Address) { 
@@ -134,4 +137,24 @@ export function decimals() { return DECIMALS; }
 // function getOwner() {
 //     const key = new ByteString(prefixContractOwner);
 //     return Storage.get(Storage.currentContext, key) as Address;
+// }
+
+// export function _deploy(_data: any, update: boolean): void { 
+//     if (update) return;
+//     const tx = runtimeGetScriptContainer() as Transaction;
+//     storagePut(
+//         storageGetContext(), 
+//         Uint8Array.from([prefixContractOwner]), 
+//         tx.sender);
+// }
+
+// export function update(nefFile: ByteString, manifest: string) {
+//     const owner = storageGet(
+//         storageGetContext(), 
+//         Uint8Array.from([prefixContractOwner]))!;
+//     if (runtimeCheckWitness(owner)) {
+//         contractManagementUpdate(nefFile, manifest);
+//     } else {
+//         throw Error("Only the contract owner can update the contract");
+//     }
 // }

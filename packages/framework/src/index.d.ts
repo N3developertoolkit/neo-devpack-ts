@@ -4,9 +4,19 @@
 //  * ByteString is defined as ReadonlyUint8Array as per https://www.growingwiththeweb.com/2020/10/typescript-readonly-typed-arrays.html
 //  * Pointer, Struct and InteropInterface are all TBD
 
-export interface ByteString extends Omit<Uint8Array, 'copyWithin' | 'fill' | 'reverse' | 'set' | 'sort'> { 
-}
- 
+export interface ByteString extends Omit<Uint8Array, 'copyWithin' | 'fill' | 'reverse' | 'set' | 'sort'> { }
+
+/**
+ * @operation duplicate 
+ * @operation isnull
+ * @operation jumpif 3
+ * @operation convert Integer 
+ * @operation jump 3
+ * @operation drop 
+ * @operation pushint 0
+ */
+export declare function asInteger(value: ByteString | null | undefined): bigint;
+
 // /** @opcode {OpCode.CONVERT} StackItemType.ByteString */
 // export declare function asInteger(value: ByteString): bigint;
 // export declare function asByteString(value: string): ByteString;
@@ -38,27 +48,27 @@ export interface ByteString extends Omit<Uint8Array, 'copyWithin' | 'fill' | 're
 // syscall System.Contract.Call 
 // export declare function contractCall(scriptHash: ByteString, method: string, ): any;
 
-export interface StorageContext {}
+export interface StorageContext { }
 
-/** @syscall System.Storage.GetContext */ 
+/** @syscall System.Storage.GetContext */
 export declare function storageGetContext(): StorageContext;
-/** @syscall System.Storage.GetReadOnlyContext */ 
+/** @syscall System.Storage.GetReadOnlyContext */
 export declare function storageGetReadOnlyContext(): StorageContext;
-/** @syscall System.Storage.AsReadOnly */ 
-export declare function storageAsReadOnly(context:StorageContext): StorageContext;
-/** @syscall System.Storage.Get */ 
-export declare function storageGet(context:StorageContext, key: ByteString): ByteString | undefined;
-/** @syscall System.Storage.Put */ 
-export declare function storagePut(context:StorageContext, key: ByteString, value: ByteString): void;
-/** @syscall System.Storage.Delete */ 
-export declare function storageDelete(context:StorageContext, key: ByteString):void;
+/** @syscall System.Storage.AsReadOnly */
+export declare function storageAsReadOnly(context: StorageContext): StorageContext;
+/** @syscall System.Storage.Get */
+export declare function storageGet(context: StorageContext, key: ByteString): ByteString | undefined;
+/** @syscall System.Storage.Put */
+export declare function storagePut(context: StorageContext, key: ByteString, value: ByteString): void;
+/** @syscall System.Storage.Delete */
+export declare function storageDelete(context: StorageContext, key: ByteString): void;
 
-/** @syscall System.Runtime.GetScriptContainer */ 
+/** @syscall System.Runtime.GetScriptContainer */
 export declare function runtimeGetScriptContainer(): any;
-/** @syscall System.Runtime.CheckWitness */ 
+/** @syscall System.Runtime.CheckWitness */
 export declare function runtimeCheckWitness(account: ByteString): boolean;
 
-/** @methodToken {0xfffdc93764dbaddd97c48f252a53ea4643faa3fd} update */ 
+/** @methodToken {0xfffdc93764dbaddd97c48f252a53ea4643faa3fd} update */
 export declare function contractManagementUpdate(nefFile: ByteString, manifest: string, data?: any): void;
 
 // TODO: Do stack item interfaces such as Transacation and Block need a JSDoc tag like @stackitem?
@@ -87,5 +97,7 @@ export interface Block {
 }
 
 
-// /** @syscall System.Storage.Find */ 
+// /** @syscall System.Storage.Find */
 // export declare function storageFind(context:StorageContext, prefix: any, options: any): any;
+
+

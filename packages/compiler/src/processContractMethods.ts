@@ -2,7 +2,7 @@ import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
 import { ContractMethod } from "./passes/processFunctionDeclarations";
 import { SequencePointLocation } from "./types/DebugInfo";
-import { CallTokenOperation, InitSlotOperation, JumpOperation, JumpOperationKind, LoadStoreOperation, Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
+import { CallTokenOperation, ConvertOperation, InitSlotOperation, JumpOperation, JumpOperationKind, LoadStoreOperation, Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
 
 function convertPushData({ value }: PushDataOperation) {
     if (value.length <= 255) /* byte.MaxValue */ {
@@ -30,16 +30,12 @@ function convertSysCall({ name }: SysCallOperation) {
     return [sc.OpCode.SYSCALL, ...code];
 }
 
-function convertCallToken({token}: CallTokenOperation, tokens: ReadonlyArray<sc.MethodToken>) {
+function convertCallToken({ token }: CallTokenOperation, tokens: ReadonlyArray<sc.MethodToken>) {
     const index = tokens.findIndex(t => t.hash === token.hash && t.method === token.method);
     if (index < 0) throw new Error(`convertCallToken: ${token.hash} ${token.method}`);
     const buffer = new ArrayBuffer(2);
     new DataView(buffer).setUint16(0, index, true);
     return [sc.OpCode.CALLT, ...new Uint8Array(buffer)];
-}
-
-function convertInitSlot({ locals, params }: InitSlotOperation) {
-    return [sc.OpCode.INITSLOT, locals, params];
 }
 
 function convertJumpOperationKind(kind: JumpOperationKind) {
@@ -82,19 +78,29 @@ function convertPushInt({ value }: PushIntOperation) {
 
 export function getOperationSize(op: Operation) {
     switch (op.kind) {
+        case 'drop':
+        case 'duplicate':
+        case 'isnull':
+        case 'noop':
+        case 'pickitem':
+        case 'return':
+        case 'throw':
+            return 1;
+        case 'convert':
+            return 2;
         case 'initslot':
         case 'calltoken':
             return 3;
         case 'syscall':
-        case "jump":
-        case "jumpeq":
-        case "jumpge":
-        case "jumpgt":
-        case "jumpif":
-        case "jumpifnot":
-        case "jumple":
-        case "jumplt":
+        case 'jump':
+        case 'jumpif':
+        case 'jumpifnot':
+        case 'jumpeq':
         case "jumpne":
+        case "jumpgt":
+        case "jumpge":
+        case "jumplt":
+        case "jumple":
             return 5;
         case 'loadarg':
         case 'loadlocal':
@@ -123,11 +129,6 @@ export function getOperationSize(op: Operation) {
             if (value <= 16n && value >= -1n) return 1;
             throw new Error(`pushint ${value}`);
         }
-        case 'noop':
-        case 'pickitem':
-        case 'return':
-        case 'throw':
-            return 1;
         default:
             throw new Error(`getOperationSize ${op.kind}`);
     }
@@ -160,11 +161,34 @@ export function compileMethodScript(method: ContractMethod, offset: number, toke
             case 'calltoken':
                 instructions.push(...convertCallToken(op as CallTokenOperation, tokens));
                 break;
-            case 'initslot':
-                instructions.push(...convertInitSlot(op as InitSlotOperation));
+            case 'convert': {
+                const { type } = op as ConvertOperation;
+                instructions.push(sc.OpCode.CONVERT, type);
+                break;
+            }
+            case 'drop':
+                instructions.push(sc.OpCode.DROP)
+                break;
+            case 'duplicate':
+                instructions.push(sc.OpCode.DUP);
+                break;
+            case 'initslot': {
+                const { locals, params } = op as InitSlotOperation;
+                instructions.push(sc.OpCode.INITSLOT, locals, params);
+                break;
+            }
+            case 'isnull':
+                instructions.push(sc.OpCode.ISNULL);
                 break;
             case 'jump':
+            case 'jumpif':
             case 'jumpifnot':
+            case 'jumpeq':
+            case "jumpne":
+            case "jumpgt":
+            case "jumpge":
+            case "jumplt":
+            case "jumple":
                 instructions.push(...convertJump(i, op as JumpOperation, addressMap));
                 break;
             case 'loadarg':
