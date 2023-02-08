@@ -25,7 +25,8 @@ async function main() {
 
     // load test contract
     const contractName = path.basename(FILENAME, ".ts");
-    const contractSource = await fsp.readFile(path.join(__dirname, FILENAME), 'utf8');
+    const contractPath = path.join(__dirname, FILENAME);
+    const contractSource = await fsp.readFile(contractPath, 'utf8');
     project.createSourceFile(FILENAME, contractSource);
     project.resolveSourceFileDependencies();
 
@@ -60,6 +61,7 @@ async function main() {
             }
 
             if (debugInfo) {
+                debugInfo["document-root"] = __dirname;
                 const debugInfoPath = path.join(outputPath, `${contractName}.debug.json`);
                 const $debugInfo = JSON.stringify(debugInfo, null, 4);
                 await fsp.writeFile(debugInfoPath, $debugInfo);

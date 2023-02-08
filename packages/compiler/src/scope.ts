@@ -317,10 +317,17 @@ function processVariableStatement(node: tsm.VariableStatement, { diagnostics, sc
     }
 }
 
+function processInterfaceDeclaration(node: tsm.InterfaceDeclaration, { diagnostics, scope }: ScopeOptions) {
+    const stackItemTag = getJSDocTag(node, "stackitem");
+    if (stackItemTag) {
+        
+    }
+}
+
 function processScopeNode(node: tsm.Node, options: ScopeOptions) {
     dispatch(node, options, {
         [tsm.SyntaxKind.FunctionDeclaration]: processFunctionDeclaration,
-        [tsm.SyntaxKind.InterfaceDeclaration]: () => { },
+        [tsm.SyntaxKind.InterfaceDeclaration]: processInterfaceDeclaration,
         [tsm.SyntaxKind.ImportDeclaration]: processImportDeclaration,
         [tsm.SyntaxKind.VariableStatement]: processVariableStatement,
         [tsm.SyntaxKind.EndOfFileToken]: () => { },
@@ -427,6 +434,8 @@ function getDeclarations(project: tsm.Project) {
 
     return { variables };
 }
+
+
 
 export function createSymbolTrees({ project, diagnostics, scopes }: CompileContext): void {
 

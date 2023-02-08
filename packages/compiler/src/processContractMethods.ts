@@ -2,7 +2,7 @@ import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
 import { ContractMethod } from "./passes/processFunctionDeclarations";
 import { SequencePointLocation } from "./types/DebugInfo";
-import { InitSlotOperation, JumpOperation, LoadStoreOperation, Operation, PushDataOperation, SysCallOperation } from "./types/Operation";
+import { InitSlotOperation, JumpOperation, JumpOperationKind, LoadStoreOperation, Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
 
 function convertPushData({ value }: PushDataOperation) {
     if (value.length <= 255) /* byte.MaxValue */ {
@@ -34,7 +34,23 @@ function convertInitSlot({ locals, params }: InitSlotOperation) {
     return [sc.OpCode.INITSLOT, locals, params];
 }
 
-function convertJump(index: number, { offset }: JumpOperation, addressMap: Map<number, number>) {
+function convertJumpOperationKind(kind: JumpOperationKind) {
+    switch (kind) {
+        case "jump": return sc.OpCode.JMP_L;
+        case "jumpeq": return sc.OpCode.JMPEQ_L;
+        case "jumpge": return sc.OpCode.JMPGE_L;
+        case "jumpgt": return sc.OpCode.JMPGT_L;
+        case "jumpif": return sc.OpCode.JMPIF_L;
+        case "jumpifnot": return sc.OpCode.JMPIFNOT_L;
+        case "jumple": return sc.OpCode.JMPLE_L;
+        case "jumplt": return sc.OpCode.JMPLT_L;
+        case "jumpne": return sc.OpCode.JMPNE_L;
+        default: throw new Error(`Invalid JumpOperationKind ${kind}`);
+    }
+}
+
+function convertJump(index: number, { kind, offset }: JumpOperation, addressMap: Map<number, number>) {
+    const opCode = convertJumpOperationKind(kind);
     const currentAddress = addressMap.get(index);
     const targetAddress = addressMap.get(index + offset);
 
@@ -45,7 +61,15 @@ function convertJump(index: number, { offset }: JumpOperation, addressMap: Map<n
     const buffer = new ArrayBuffer(4);
     const view = new DataView(buffer);
     view.setInt32(0, addressOffset, true);
-    return [sc.OpCode.JMP_L, ...new Uint8Array(buffer)];
+    return [opCode, ...new Uint8Array(buffer)];
+}
+
+function convertPushInt({ value }: PushIntOperation) {
+    if (value <= 16n && value >= -1n) {
+        const opCode = sc.OpCode.PUSH0 + Number(value);
+        return [opCode]
+    }
+    throw new Error(`convertPushInt not implemented for ${value}`);
 }
 
 export function getOperationSize(op: Operation) {
@@ -53,7 +77,15 @@ export function getOperationSize(op: Operation) {
         case 'initslot':
             return 3;
         case 'syscall':
-        case 'jump':
+        case "jump":
+        case "jumpeq":
+        case "jumpge":
+        case "jumpgt":
+        case "jumpif":
+        case "jumpifnot":
+        case "jumple":
+        case "jumplt":
+        case "jumpne":
             return 5;
         case 'loadarg':
         case 'loadlocal':
@@ -77,8 +109,17 @@ export function getOperationSize(op: Operation) {
             }
             throw new Error(`pushData length ${value.length} too long`);
         }
-        default:
+        case 'pushint': {
+            const { value } = op as PushIntOperation;
+            if (value <= 16n && value >= -1n) return 1;
+            throw new Error(`pushint ${value}`);
+        }
+        case 'noop':
+        case 'pickitem':
+        case 'return':
             return 1;
+        default:
+            throw new Error(`${op.kind}`);
     }
 }
 
@@ -125,8 +166,14 @@ export function compileMethodScript(method: ContractMethod, offset: number, diag
             case 'noop':
                 instructions.push(sc.OpCode.NOP);
                 break;
+            case 'pickitem':
+                instructions.push(sc.OpCode.PICKITEM);
+                break;
             case 'pushdata':
                 instructions.push(...convertPushData(op as PushDataOperation));
+                break;
+            case 'pushint':
+                instructions.push(...convertPushInt(op as PushIntOperation));
                 break;
             case 'return':
                 instructions.push(sc.OpCode.RET);
@@ -150,7 +197,7 @@ export function compileMethodScript(method: ContractMethod, offset: number, diag
     return {
         instructions: Uint8Array.from(instructions),
         sequencePoints,
-        range: {start: offset, end: offset + rangeEnd},
+        range: { start: offset, end: offset + rangeEnd },
     };
 }
 

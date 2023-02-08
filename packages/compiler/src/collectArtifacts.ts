@@ -6,7 +6,7 @@ import * as tsm from "ts-morph";
 import { isBigIntLike, isBooleanLike, isNumberLike, isStringLike, isVoidLike } from "./utils";
 import { DebugInfoJson, DebugMethodJson, SequencePointLocation } from "./types/DebugInfo";
 import { compileMethodScript, getOperationSize } from "./processContractMethods";
-import { Operation } from "./types/Operation";
+import { Location, Operation } from "./types/Operation";
 import { from } from "ix/iterable";
 import { map, flatMap } from "ix/iterable/operators";
 
@@ -49,13 +49,20 @@ function toSlotVariableString(name: string, type: tsm.Type, index: number) {
     return `${name},${sc.ContractParamType[$type]},${index}`
 }
 
+function getSourceFile(location: Location) {
+    return tsm.Node.isNode(location)
+        ? location.getSourceFile()
+        : location.start.getSourceFile();
+}
 function toSequencePointString(point: SequencePointLocation, documentMap: ReadonlyMap<tsm.SourceFile, number>): string {
-    const node = point.location;
-    const src = node.getSourceFile();
+    const location = point.location;
+    const src = getSourceFile(location);
+    
     const index = documentMap.get(src);
     if (index === undefined) throw new Error("toSequencePointString");
-    const start = src.getLineAndColumnAtPos(node.getStart());
-    const end = src.getLineAndColumnAtPos(node.getEnd());
+    const [start, end] = tsm.Node.isNode(location)
+        ? [src.getLineAndColumnAtPos(location.getStart()), src.getLineAndColumnAtPos(location.getEnd())]
+        : [src.getLineAndColumnAtPos(location.start.getStart()), src.getLineAndColumnAtPos(location.end.getEnd())]
     return `${point.address}[${index}]${start.line}:${start.column}-${end.line}:${end.column}`
 }
 
@@ -107,7 +114,6 @@ interface MethodInfo {
     sequencePoints: ReadonlyArray<SequencePointLocation>
 }
 
-
 export function collectArtifacts(contractName: string, { methods, diagnostics}: CompileContext) {
 
     let script = Buffer.from([]);
@@ -141,14 +147,16 @@ export function collectArtifacts(contractName: string, { methods, diagnostics}: 
 
     const sourceFiles = new Set(from(methodMap.values()).pipe(
         flatMap(v => v.sequencePoints),
-        map(v => v.location.getSourceFile())));
+        map(v => getSourceFile(v.location))));
     const docsMap = new Map(from(sourceFiles).pipe(map((v, i) => [v, i])));
     const debugMethods = [...from(methodMap.entries()).pipe(
         map(x => toDebugMethodJson(x[0], x[1].range, x[1].sequencePoints, docsMap))
     )];
     const debugInfo: DebugInfoJson = {
         hash: `0x${hash.toString('hex')}`,
-        documents: [...from(sourceFiles).pipe(map(v => v.getFilePath()))],
+        // TODO: correct processing of file path
+        // currently stripping off initial slash 
+        documents: [...from(sourceFiles).pipe(map(v => v.getFilePath().substring(1)))],
         methods: debugMethods,
         "static-variables": [],
         events: []

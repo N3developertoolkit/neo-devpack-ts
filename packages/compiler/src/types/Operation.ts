@@ -4,7 +4,7 @@ import { ReadonlyUint8Array } from '../utility/ReadonlyArrays';
 export type OperationKind = 'pushbool' | 'pushint' | 'pushdata' | 'pushnull' |
     'jump' | 'jumpif' | 'jumpifnot' | 'jumpeq' | 'jumpne' | 'jumpgt' | 'jumpge' | 'jumplt' | 'jumple' |
     'loadarg' | 'storearg' | 'loadlocal' | 'storelocal' | 'loadstatic' | 'storestatic' |
-    'noop' | 'return' | 'syscall' | 'initslot';
+    'noop' | 'return' | 'syscall' | 'initslot' | 'pickitem';
 
 export enum oldOperationKind {
 
@@ -158,9 +158,11 @@ export enum oldOperationKind {
     // CONVERT = 219
 } 
 
+export type Location = tsm.Node | { start: tsm.Node, end: tsm.Node };
+
 export interface Operation {
     readonly kind: OperationKind,
-    location?: tsm.Node,
+    location?: Location,
 }
 
 export interface SysCallOperation extends Operation { 

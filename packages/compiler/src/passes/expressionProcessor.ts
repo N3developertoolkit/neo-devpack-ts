@@ -119,14 +119,33 @@ export function processStringLiteral(node: tsm.StringLiteral, { builder }: Proce
     builder.emitPushData(value);
 }
 
+export function processAsExpression(node: tsm.AsExpression, options: ProcessMethodOptions) {
+    const $as = node.getExpression();
+    processExpression($as, options);
+}
+
+export function processPropertyAccessExpression(node: tsm.PropertyAccessExpression, options: ProcessMethodOptions) {
+    const expr = node.getExpression();
+    const exprType = expr.getType();
+    const propName = node.getName();
+    const propIndex = exprType.getProperties().findIndex(s => s.getName() === propName);
+    if (propIndex < 0) throw new CompileError(`Could not find ${propName} on ${exprType.getSymbol()?.getName()}`, node);
+
+    processExpression(expr, options);
+    options.builder.emitPushInt(propIndex);
+    options.builder.emit('pickitem');
+}
+
 export function processExpression(node: tsm.Expression, options: ProcessMethodOptions) {
 
     dispatch(node, options, {
+        [tsm.SyntaxKind.AsExpression]: processAsExpression,
         [tsm.SyntaxKind.BigIntLiteral]: processBigIntLiteral,
         [tsm.SyntaxKind.CallExpression]: processCallExpression,
         [tsm.SyntaxKind.FalseKeyword]: processBooleanLiteral,
         [tsm.SyntaxKind.Identifier]: processIdentifier,
         [tsm.SyntaxKind.NumericLiteral]: processNumericLiteral,
+        [tsm.SyntaxKind.PropertyAccessExpression]: processPropertyAccessExpression,
         [tsm.SyntaxKind.StringLiteral]: processStringLiteral,
         [tsm.SyntaxKind.TrueKeyword]: processBooleanLiteral,
     });

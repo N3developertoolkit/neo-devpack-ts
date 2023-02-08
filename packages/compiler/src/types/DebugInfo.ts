@@ -3,6 +3,7 @@
 // import { join } from 'path';
 import { sc, u } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
+import { Location } from "./Operation";
 
 export interface DebugInfo {
     methods?: DebugMethod[];
@@ -50,9 +51,8 @@ export interface SlotVariable {
 
 export interface SequencePointLocation {
     address: number;
-    location: tsm.Node,
+    location: Location,
 }
-
 
 export interface DebugEventJson {
     id: string;
@@ -72,17 +72,18 @@ export interface DebugMethodJson {
 export interface DebugInfoJson {
     hash: string; // hex-encoded UInt160
     documents?: string[]; // file paths
+    "document-root"?: string;
     events?: ReadonlyArray<DebugEventJson>;
     methods?: ReadonlyArray<DebugMethodJson>;
     "static-variables"?: string[];
 }
 
-export function toJson(methods: DebugMethod[], nef: sc.NEF) {
-    const hash = Buffer.from(u.hash160(nef.script), 'hex').reverse();
-    const sourceFiles = [...new Set(methods
-        .flatMap(m => m.sequencePoints ?? [])
-        .map(sp => sp.location.getSourceFile()))];
-}
+// export function toJson(methods: DebugMethod[], nef: sc.NEF) {
+//     const hash = Buffer.from(u.hash160(nef.script), 'hex').reverse();
+//     const sourceFiles = [...new Set(methods
+//         .flatMap(m => m.sequencePoints ?? [])
+//         .map(sp => sp.location.getSourceFile()))];
+// }
 
 // export function toJson(info: DebugInfo, nef: sc.NEF, sourceDir?: string): DebugInfoJson {
 //     const documentSet = [...new Set(info.methods
