@@ -21,29 +21,29 @@ const prefixContractOwner = 0xFF;
 // /** @event */
 // declare function Transfer(from: ByteString | undefined, to: ByteString | undefined, amount: bigint): void;
 
-// /** @safe */
-// export function symbol() { return SYMBOL; }
+/** @safe */
+export function symbol() { return SYMBOL; }
 
-// /** @safe */
-// export function decimals() { return DECIMALS; }
+/** @safe */
+export function decimals() { return DECIMALS; }
 
-// /** @safe */
-// export function totalSupply( ) { 
-//     const value = storageGet(
-//         storageGetContext(), 
-//         Uint8Array.from([prefixTotalSupply]));
+/** @safe */
+export function totalSupply( ) { 
+    const value = storageGet(
+        storageGetContext(), 
+        Uint8Array.from([prefixTotalSupply]));
 
-//     return asInteger(value);
-// }
+    return asInteger(value);
+}
 
-// export function _deploy(_data: any, update: boolean): void { 
-//     if (update) return;
-//     const tx = runtimeGetScriptContainer() as Transaction;
-//     storagePut(
-//         storageGetContext(), 
-//         Uint8Array.from([prefixContractOwner]), 
-//         tx.sender);
-// }
+export function _deploy(_data: any, update: boolean): void { 
+    if (update) return;
+    const tx = runtimeGetScriptContainer() as Transaction;
+    storagePut(
+        storageGetContext(), 
+        Uint8Array.from([prefixContractOwner]), 
+        tx.sender);
+}
 
 export function update(nefFile: ByteString, manifest: string) {
     if (checkOwner()) {

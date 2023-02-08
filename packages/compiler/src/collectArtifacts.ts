@@ -50,7 +50,7 @@ function hasSafeTag(node: tsm.JSDocableNode): boolean {
 export function toContractMethodDefinition(method: ContractMethod, offset: number): sc.ContractMethodDefinition | undefined {
 
     const node = method.def.node;
-    if (!!node.getExportKeyword()) return undefined;
+    if (!node.getExportKeyword()) return undefined;
     const parameters = node.getParameters()
         .map(p => ({ 
             name: p.getName(), 
