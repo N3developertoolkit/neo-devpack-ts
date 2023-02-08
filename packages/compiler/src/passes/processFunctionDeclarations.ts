@@ -25,7 +25,6 @@ export interface ContractMethod {
     parameters: ReadonlyArray<{ name: string, type: tsm.Type }>,
     variables: ReadonlyArray<{ name: string, type: tsm.Type }>,
     operations: ReadonlyArray<Operation>,
-    instructions?: Uint8Array,
 }
 
 export interface ProcessMethodOptions {

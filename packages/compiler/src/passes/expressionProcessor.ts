@@ -1,7 +1,7 @@
 // import './ext';
 import * as tsm from "ts-morph";
 import { CompileError } from "../compiler";
-import { ConstantSymbolDef, IntrinsicMethodDef, IntrinsicSymbolDef, ReadonlyScope, SymbolDef, SysCallSymbolDef, VariableSymbolDef } from "../scope";
+import { ConstantSymbolDef, IntrinsicMethodDef, IntrinsicSymbolDef, MethodTokenSymbolDef, ReadonlyScope, SymbolDef, SysCallSymbolDef, VariableSymbolDef } from "../scope";
 import { dispatch } from "../utility/nodeDispatch";
 import { ProcessMethodOptions } from "./processFunctionDeclarations";
 
@@ -23,8 +23,11 @@ function callSymbolDef(def: SymbolDef, args: ReadonlyArray<tsm.Expression>, opti
         options.builder.emitSysCall(def.name);
     } else if (def instanceof IntrinsicMethodDef) {
         def.emitCall(args, options);
+    } else if (def instanceof MethodTokenSymbolDef) {
+        processArguments(args, options);
+        options.builder.emitCallToken(def.token);
     } else {
-        throw new Error("callSymbolDef")
+        throw new Error("callSymbolDef: unknown SymbolDef type")
     }
 }
 
@@ -136,6 +139,12 @@ export function processPropertyAccessExpression(node: tsm.PropertyAccessExpressi
     options.builder.emit('pickitem');
 }
 
+// export function processNewExpression(node: tsm.NewExpression, options: ProcessMethodOptions) {
+//     const args = node.getArguments();
+//     const expr = node.getExpression();
+//     console.log();
+// }
+
 export function processExpression(node: tsm.Expression, options: ProcessMethodOptions) {
 
     dispatch(node, options, {
@@ -145,6 +154,7 @@ export function processExpression(node: tsm.Expression, options: ProcessMethodOp
         [tsm.SyntaxKind.FalseKeyword]: processBooleanLiteral,
         [tsm.SyntaxKind.Identifier]: processIdentifier,
         [tsm.SyntaxKind.NonNullExpression]: (node) => { processExpression(node.getExpression(), options); },
+        // [tsm.SyntaxKind.NewExpression]: processNewExpression,
         [tsm.SyntaxKind.NumericLiteral]: processNumericLiteral,
         [tsm.SyntaxKind.PropertyAccessExpression]: processPropertyAccessExpression,
         [tsm.SyntaxKind.StringLiteral]: processStringLiteral,

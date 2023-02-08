@@ -1,10 +1,12 @@
 import * as tsm from "ts-morph";
 import { ReadonlyUint8Array } from '../utility/ReadonlyArrays';
+import { sc} from '@cityofzion/neon-core';
 
 export type OperationKind = 'pushbool' | 'pushint' | 'pushdata' | 'pushnull' |
     'jump' | 'jumpif' | 'jumpifnot' | 'jumpeq' | 'jumpne' | 'jumpgt' | 'jumpge' | 'jumplt' | 'jumple' |
     'loadarg' | 'storearg' | 'loadlocal' | 'storelocal' | 'loadstatic' | 'storestatic' |
-    'noop' | 'return' | 'syscall' | 'initslot' | 'pickitem' | 'throw';
+    'calltoken' | 'syscall' |
+    'noop' | 'return' | 'initslot' | 'pickitem' | 'throw';
 
 export enum oldOperationKind {
 
@@ -172,6 +174,15 @@ export interface SysCallOperation extends Operation {
 
 export function isSysCallOperation(ins: Operation): ins is SysCallOperation {
     return ins.kind === 'syscall';
+}
+
+export interface CallTokenOperation extends Operation {
+    readonly kind: 'calltoken',
+    readonly token: sc.MethodToken
+}
+
+export function isCallTokenOperation(ins: Operation): ins is CallTokenOperation {
+    return ins.kind === 'calltoken';
 }
 
 export interface InitSlotOperation extends Operation {

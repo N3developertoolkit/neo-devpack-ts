@@ -1,7 +1,16 @@
 import * as tsm from "ts-morph";
 import { CompileError } from "../compiler";
 import { ConstantSymbolDef } from "../scope";
+import { processExpression } from "./expressionProcessor";
 import { ProcessMethodOptions } from "./processFunctionDeclarations";
+
+export function emitError(args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions): void {
+    if (args.length === 0) {
+        options.builder.emitPushData("");
+    } else {
+        processExpression(args[0], options);
+    }
+}
 
 export function emitU8ArrayFrom(args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions): void {
     if (args.length === 0) throw new Error("Invalid arg count");

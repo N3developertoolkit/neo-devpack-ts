@@ -35,6 +35,9 @@ export interface ByteString extends Omit<Uint8Array, 'copyWithin' | 'fill' | 're
 // two have no params: GetContext and GetReadOnlyContext
 // five have an initial StorageContext param: AsReadOnly, Get, Find, Put, Delete
 
+// syscall System.Contract.Call 
+// export declare function contractCall(scriptHash: ByteString, method: string, ): any;
+
 export interface StorageContext {}
 
 /** @syscall System.Storage.GetContext */ 
@@ -55,7 +58,7 @@ export declare function runtimeGetScriptContainer(): any;
 /** @syscall System.Runtime.CheckWitness */ 
 export declare function runtimeCheckWitness(account: ByteString): boolean;
 
-/** @contractMethod {0xfffdc93764dbaddd97c48f252a53ea4643faa3fd} update */ 
+/** @methodToken {0xfffdc93764dbaddd97c48f252a53ea4643faa3fd} update */ 
 export declare function contractManagementUpdate(nefFile: ByteString, manifest: string, data?: any): void;
 
 // TODO: Do stack item interfaces such as Transacation and Block need a JSDoc tag like @stackitem?

@@ -1,6 +1,7 @@
 import * as tsm from "ts-morph";
-import { InitSlotOperation, JumpOperation, JumpOperationKind, LoadStoreOperation, LoadStoreOperationKind, Location, Operation, OperationKind, PushBoolOperation, PushDataOperation, PushIntOperation, SysCallOperation } from "../types/Operation";
+import { CallTokenOperation, InitSlotOperation, JumpOperation, JumpOperationKind, LoadStoreOperation, LoadStoreOperationKind, Location, Operation, OperationKind, PushBoolOperation, PushDataOperation, PushIntOperation, SysCallOperation } from "../types/Operation";
 import { ReadonlyUint8Array } from "../utility/ReadonlyArrays";
+import { sc } from '@cityofzion/neon-core';
 
 export interface TargetOffset {
     operation: Operation | undefined
@@ -55,7 +56,7 @@ export class MethodBuilder {
             if (jumpIndex < 0) throw new Error("failed to locate operation index");
             const targetIndex = target === this._returnTarget 
                 ? returnIndex 
-                : this._operations.indexOf(target.operation!);
+                : operations.indexOf(target.operation!);
             if (targetIndex < 0) throw new Error("failed to locate target index");
             operations[jumpIndex] = {
                 kind: jump.kind,
@@ -150,6 +151,11 @@ export class MethodBuilder {
 
     emitSysCall(name: string, location?: Location) {
         const op: SysCallOperation = { kind: 'syscall', name, location };
+        return this.emit(op);
+    }
+
+    emitCallToken(token: sc.MethodToken, location?: Location) {
+        const op: CallTokenOperation = { kind: 'calltoken', token, location };
         return this.emit(op);
     }
 }

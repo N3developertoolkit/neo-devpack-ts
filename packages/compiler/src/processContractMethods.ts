@@ -2,7 +2,7 @@ import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
 import { ContractMethod } from "./passes/processFunctionDeclarations";
 import { SequencePointLocation } from "./types/DebugInfo";
-import { InitSlotOperation, JumpOperation, JumpOperationKind, LoadStoreOperation, Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
+import { CallTokenOperation, InitSlotOperation, JumpOperation, JumpOperationKind, LoadStoreOperation, Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
 
 function convertPushData({ value }: PushDataOperation) {
     if (value.length <= 255) /* byte.MaxValue */ {
@@ -28,6 +28,14 @@ function convertLoadStore(opCode: sc.OpCode, { index }: LoadStoreOperation) {
 function convertSysCall({ name }: SysCallOperation) {
     const code = Buffer.from(sc.generateInteropServiceCode(name), 'hex');
     return [sc.OpCode.SYSCALL, ...code];
+}
+
+function convertCallToken({token}: CallTokenOperation, tokens: ReadonlyArray<sc.MethodToken>) {
+    const index = tokens.findIndex(t => t.hash === token.hash && t.method === token.method);
+    if (index < 0) throw new Error(`convertCallToken: ${token.hash} ${token.method}`);
+    const buffer = new ArrayBuffer(2);
+    new DataView(buffer).setUint16(0, index, true);
+    return [sc.OpCode.CALLT, ...new Uint8Array(buffer)];
 }
 
 function convertInitSlot({ locals, params }: InitSlotOperation) {
@@ -75,6 +83,7 @@ function convertPushInt({ value }: PushIntOperation) {
 export function getOperationSize(op: Operation) {
     switch (op.kind) {
         case 'initslot':
+        case 'calltoken':
             return 3;
         case 'syscall':
         case "jump":
@@ -134,20 +143,23 @@ function createAddressMap(operations: ReadonlyArray<Operation>, offset: number) 
     return addressMap;
 }
 
-export function compileMethodScript(method: ContractMethod, offset: number, diagnostics: tsm.ts.Diagnostic[]) {
+export function compileMethodScript(method: ContractMethod, offset: number, tokens: ReadonlyArray<sc.MethodToken>, diagnostics: tsm.ts.Diagnostic[]) {
 
     const addressMap = createAddressMap(method.operations, offset);
-    const sequencePoints = new Array<SequencePointLocation>()
+    const sequencePoints = new Array<SequencePointLocation>();
     const instructions = new Array<number>();
     let rangeEnd = 0;
     method.operations.forEach((op, i) => {
         rangeEnd = instructions.length;
 
         if (op.location) {
-            sequencePoints.push({ address: rangeEnd, location: op.location });
+            sequencePoints.push({ address: offset + rangeEnd, location: op.location });
         }
 
         switch (op.kind) {
+            case 'calltoken':
+                instructions.push(...convertCallToken(op as CallTokenOperation, tokens));
+                break;
             case 'initslot':
                 instructions.push(...convertInitSlot(op as InitSlotOperation));
                 break;

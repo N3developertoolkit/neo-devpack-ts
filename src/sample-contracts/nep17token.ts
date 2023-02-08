@@ -8,8 +8,8 @@
 //  * @standard "NEP-17"
 //  */
 
-// const SYMBOL = "APOC";
-// const DECIMALS = 8n;
+const SYMBOL = "APOC";
+const DECIMALS = 8n;
 // const INITIAL_SUPPLY = 1_000_000n;
 
 // const prefixTotalSupply = 0xA0;
@@ -19,11 +19,11 @@
 // /** @event */
 // declare function Transfer(from: ByteString | undefined, to: ByteString | undefined, amount: bigint): void;
 
-// /** @safe */
-// export function symbol() { return SYMBOL; }
+/** @safe */
+export function symbol() { return SYMBOL; }
 
-// /** @safe */
-// export function decimals() { return DECIMALS; }
+/** @safe */
+export function decimals() { return DECIMALS; }
 
 // /** @safe */
 // export function totalSupply( ) { 

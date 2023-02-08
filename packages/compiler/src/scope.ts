@@ -6,8 +6,9 @@ import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
 import { createDiagnostic, getConstantValue, getJSDocTag, isVoidLike } from "./utils";
 import { from } from 'ix/iterable';
 import { map, orderBy } from 'ix/iterable/operators';
-import { emitU8ArrayFrom } from './passes/builtins';
+import { emitError, emitU8ArrayFrom } from './passes/builtins';
 import { ProcessMethodOptions } from './passes/processFunctionDeclarations';
+import { sc, u } from '@cityofzion/neon-core';
 
 export interface ReadonlyScope {
     readonly parentScope: ReadonlyScope | undefined;
@@ -173,34 +174,35 @@ export class VariableSymbolDef implements SymbolDef {
     ) { }
 }
 
-export class EventSymbolDef implements SymbolDef {
-    readonly parameters: ReadonlyArray<tsm.ParameterDeclaration>;
-    constructor(
-        readonly symbol: tsm.Symbol,
-        readonly parentScope: ReadonlyScope,
-        readonly name: string,
-        node: tsm.FunctionDeclaration,
-    ) {
-        if (!node.hasDeclareKeyword()) throw new CompileError('invalid', node);
-        if (!isVoidLike(node.getReturnType())) throw new CompileError('invalid', node);
-        this.parameters = node.getParameters();
-    }
-}
+// export class EventSymbolDef implements SymbolDef {
+//     readonly parameters: ReadonlyArray<tsm.ParameterDeclaration>;
+//     constructor(
+//         readonly symbol: tsm.Symbol,
+//         readonly parentScope: ReadonlyScope,
+//         readonly name: string,
+//         node: tsm.FunctionDeclaration,
+//     ) {
+//         if (!node.hasDeclareKeyword()) throw new CompileError('invalid', node);
+//         if (!isVoidLike(node.getReturnType())) throw new CompileError('invalid', node);
+//         this.parameters = node.getParameters();
+//     }
+// }
 
 export class SysCallSymbolDef implements SymbolDef {
-    readonly parameters: ReadonlyArray<tsm.ParameterDeclaration>;
-    readonly returnType: tsm.Type;
 
     constructor(
         readonly symbol: tsm.Symbol,
         readonly parentScope: ReadonlyScope,
         readonly name: string,
-        node: tsm.FunctionDeclaration,
-    ) {
-        if (!node.hasDeclareKeyword()) throw new CompileError('invalid', node);
-        this.parameters = node.getParameters();
-        this.returnType = node.getReturnType();
-    }
+    ) { }
+}
+
+export class MethodTokenSymbolDef implements SymbolDef {
+    constructor(
+        readonly symbol: tsm.Symbol,
+        readonly parentScope: ReadonlyScope,
+        readonly token: sc.MethodToken
+    ) { }
 }
 
 
@@ -245,6 +247,38 @@ interface ScopeOptions {
     symbol?: tsm.Symbol
 }
 
+// if (!node.hasDeclareKeyword()) throw new CompileError('invalid', node);
+// const parametersCount = node.getParameters().length;
+// 
+
+// this.token = new sc.MethodToken({
+//     hash,
+//     method,
+//     parametersCount,
+//     hasReturnValue,
+//     callFlags: callFlags ?? sc.CallFlags.All
+// });
+
+const regexMethodToken = /\{((?:0x)?[0-9a-fA-F]{40})\} ([_a-zA-Z0-9]+)/
+
+function createMethodToken(node: tsm.FunctionDeclaration, tag: tsm.JSDocTag) {
+    const matches = tag.getCommentText()?.match(regexMethodToken);
+    if (!matches || matches.length !== 3) throw new CompileError("invalid method token tag comment", node);
+    const hash = u.HexString.fromHex(matches[1], true);
+
+    // TODO: support specifying call flags in tag comment
+    const callFlags = sc.CallFlags.All
+
+    return new sc.MethodToken({
+        hash: hash.toString(),
+        method: matches[2],
+        parametersCount: node.getParameters().length,
+        hasReturnValue: !isVoidLike(node.getReturnType()),
+        callFlags
+    })
+}
+
+
 function processFunctionDeclaration(node: tsm.FunctionDeclaration, options: ScopeOptions) {
     const symbol = options.symbol ?? node.getSymbolOrThrow();
     const scope = options.scope;
@@ -252,26 +286,26 @@ function processFunctionDeclaration(node: tsm.FunctionDeclaration, options: Scop
     if (node.hasDeclareKeyword()) {
         const syscallTag = getJSDocTag(node, "syscall");
         if (syscallTag) {
-            const name = syscallTag.getCommentText();
-            if (!name || name.length === 0) throw new CompileError('invalid syscall tag', node);
-            scope.define(s => new SysCallSymbolDef(symbol, s, name, node));
+            const name = syscallTag.getCommentText() ?? "";
+            if (name.length === 0) throw new CompileError('invalid syscall tag', node);
+            scope.define(s => new SysCallSymbolDef(symbol, s, name));
             return;
         }
 
-        const eventTag = getJSDocTag(node, "event");
-        if (eventTag) {
-            const name = eventTag.getCommentText() ?? symbol.getName();
-            if (!name || name.length === 0) throw new CompileError('invalid event tag', node);
-            scope.define(s => new EventSymbolDef(symbol, s, name, node));
-            return;
-        }
+        // const eventTag = getJSDocTag(node, "event");
+        // if (eventTag) {
+        //     if (!isVoidLike(node.getReturnType())) throw new CompileError('event functions cannot have return values', node);
+        //     const name = eventTag.getCommentText() ?? symbol.getName();
+        //     if (!name || name.length === 0) throw new CompileError('invalid event tag', node);
+        //     scope.define(s => new EventSymbolDef(symbol, s, name, node));
+        //     return;
+        // }
 
-        const contractMethodTag = getJSDocTag(node, "contractMethod");
-        if (contractMethodTag) {
-            const comment = contractMethodTag.getComment();
-            const text = contractMethodTag.getCommentText();
-            // TODO: Parse contract hash + method name
-            console.log();
+        const methodTokenTag = getJSDocTag(node, "methodToken");
+        if (methodTokenTag) {
+            const token = createMethodToken(node, methodTokenTag);
+            scope.define(s => new MethodTokenSymbolDef(symbol, s, token));
+            return;
         }
 
         throw new CompileError("not supported", node);
@@ -340,16 +374,6 @@ function processScopeNode(node: tsm.Node, options: ScopeOptions) {
         [tsm.SyntaxKind.VariableStatement]: processVariableStatement,
         [tsm.SyntaxKind.EndOfFileToken]: () => { },
     });
-}
-
-function test(fs: tsm.FileSystemHost, cur?: string) {
-    if (!cur) cur = fs.getCurrentDirectory();
-    console.log(cur);
-    const entries = fs.readDirSync(cur);
-    for (const e of entries) {
-        if (e.isFile) console.log("  " + e.name);
-        if (e.isDirectory) test(fs, e.name);
-    }
 }
 
 interface Declarations {
@@ -450,12 +474,14 @@ export function createSymbolTrees({ project, diagnostics, scopes }: CompileConte
     const decls = getDeclarations(project);
 
     // intrinsics:
+    const error = decls.variables.get("Error");
     const u8array = decls.variables.get("Uint8Array");
     const u8arrayFrom = u8array?.getType()?.getProperty("from");
 
     for (const src of project.getSourceFiles()) {
         if (src.isDeclarationFile()) continue;
         const scope = new GlobalScope();
+        if (error) scope.define(s => new IntrinsicMethodDef(error.getSymbolOrThrow(), s, emitError));
         if (u8array) scope.define(s => new IntrinsicSymbolDef(u8array, s));
         if (u8arrayFrom) scope.define(s => new IntrinsicMethodDef(u8arrayFrom, s, emitU8ArrayFrom));
         src.forEachChild(node => processScopeNode(node, { diagnostics, scope }));

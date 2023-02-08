@@ -6,7 +6,7 @@ import * as tsm from "ts-morph";
 import { isBigIntLike, isBooleanLike, isNumberLike, isStringLike, isVoidLike } from "./utils";
 import { DebugInfoJson, DebugMethodJson, SequencePointLocation } from "./types/DebugInfo";
 import { compileMethodScript, getOperationSize } from "./processContractMethods";
-import { Location, Operation } from "./types/Operation";
+import { isCallTokenOperation, Location, Operation } from "./types/Operation";
 import { from } from "ix/iterable";
 import { map, flatMap } from "ix/iterable/operators";
 
@@ -114,18 +114,32 @@ interface MethodInfo {
     sequencePoints: ReadonlyArray<SequencePointLocation>
 }
 
+function collectMethodTokens(methods: ReadonlyArray<ContractMethod>) {
+    const ops = methods.flatMap(m => m.operations).filter(isCallTokenOperation);
+
+    const map = new Map<string, sc.MethodToken>();
+    for (const { token }of ops) {
+        const key = `${token.hash}-${token.method}`;
+        const value = map.get(key);
+        if (value) {
+            // todo: ensure remaining token fields match
+        } else {
+            map.set(key, token);
+        }
+    }
+
+    return [...map.values()]
+}
+
 export function collectArtifacts(contractName: string, { methods, diagnostics}: CompileContext) {
+
+    const tokens = collectMethodTokens(methods);
 
     let script = Buffer.from([]);
     const methodMap = new Map<ContractMethod, MethodInfo>();
-    // let manifestMethods = new Array<sc.ContractMethodDefinition>();
-    // let debugMethods = new Array<{
-    //     method: ContractMethod,
-        
-    // }>();
 
     for (const method of methods) {
-        const { instructions, range, sequencePoints } = compileMethodScript(method, script.length, diagnostics);
+        const { instructions, range, sequencePoints } = compileMethodScript(method, script.length, tokens, diagnostics);
         script = Buffer.concat([script, instructions]);
         methodMap.set(method, { range, sequencePoints });
     }
@@ -133,6 +147,7 @@ export function collectArtifacts(contractName: string, { methods, diagnostics}: 
     const nef = new sc.NEF({
         compiler: "neo-devpack-ts",
         script: Buffer.from(script).toString("hex"),
+        tokens: tokens.map(t => t.export()),
     });
     const hash = Buffer.from(u.hash160(nef.script), 'hex').reverse();
 

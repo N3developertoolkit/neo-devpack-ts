@@ -72,20 +72,7 @@ export function processThrowStatement(node: tsm.ThrowStatement, options: Process
     const { builder } = options;
     const expr = node.getExpression();
     const setLocation = builder.getLocationSetter();
-
-    if (tsm.Node.isStringLiteral(expr)) {
-        builder.emitPushData(expr.getLiteralValue());
-    } else if (tsm.Node.isNewExpression(expr)
-        && expr.getType().getSymbol()?.getName() === "Error"
-    ) {
-        const args = expr.getArguments();
-        if (args.length === 0) {
-            builder.emitPushData("unknown");
-        } else {
-            processExpression(args[0] as tsm.Expression, options);
-        }
-    } else throw new CompileError("not implemented", node);
-    
+    processExpression(expr, options);
     builder.emit('throw');
     setLocation(node);
 }
