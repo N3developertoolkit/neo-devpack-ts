@@ -110,6 +110,7 @@ export function compileMethodScript(method: ContractMethod, offset: number, diag
                 instructions.push(...convertInitSlot(op as InitSlotOperation));
                 break;
             case 'jump':
+            case 'jumpifnot':
                 instructions.push(...convertJump(i, op as JumpOperation, addressMap));
                 break;
             case 'loadarg':

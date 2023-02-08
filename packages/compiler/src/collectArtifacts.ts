@@ -12,6 +12,7 @@ import { map, flatMap } from "ix/iterable/operators";
 
 export function convertToContractParamType(type: tsm.Type): sc.ContractParamType {
 
+    if (type.isAny()) return sc.ContractParamType.Any;
     if (isStringLike(type)) return sc.ContractParamType.String;
     if (isBigIntLike(type) || isNumberLike(type)) return sc.ContractParamType.Integer;
     if (isBooleanLike(type)) return sc.ContractParamType.Boolean;

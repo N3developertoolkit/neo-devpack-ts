@@ -51,3 +51,35 @@ export declare function storagePut(context:StorageContext, key: ByteString, valu
 export declare function storageDelete(context:StorageContext, key: ByteString):void;
 // /** @syscall System.Storage.Find */ 
 // export declare function storageFind(context:StorageContext, prefix: any, options: any): any;
+
+/** @syscall System.Runtime.GetScriptContainer */ 
+export declare function runtimeGetScriptContainer(): any;
+/** @syscall System.Runtime.CheckWitness */ 
+export declare function runtimeCheckWitness(account: ByteString): boolean;
+
+export interface Transaction {
+    readonly hash: ByteString,
+    readonly version: number,
+    readonly nonce: number,
+    readonly sender: ByteString,
+    readonly systemFee: bigint,
+    readonly networkFee: bigint,
+    readonly validUntilBlock: number,
+    readonly script: ByteString
+}
+
+export interface Block {
+    readonly hash: ByteString,
+    readonly version: number,
+    readonly previousHash: ByteString,
+    readonly merkleRoot: ByteString,
+    readonly timestamp: bigint,
+    readonly nonce: bigint,
+    readonly index: number,
+    readonly primaryIndex: number,
+    readonly nextConsensus: ByteString,
+    readonly transactionsCount: number
+}
+
+// /** @contractMethod {0xfffdc93764dbaddd97c48f252a53ea4643faa3fd} update */ 
+// export declare function contractManagementUpdate(nefFile: ByteString, manifest: string, data?: any): void;
