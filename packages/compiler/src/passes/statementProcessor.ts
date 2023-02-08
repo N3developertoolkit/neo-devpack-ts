@@ -22,24 +22,24 @@ export function processBlock(node: tsm.Block, { diagnostics, builder, scope }: P
 
 export function processExpressionStatement(node: tsm.ExpressionStatement, options: ProcessMethodOptions): void {
     const { builder } = options;
-    const locSetter = builder.getLocationSetter();
+    const setLocation = builder.getLocationSetter();
 
     const expr = node.getExpression();
     processExpression(expr, options);
-    locSetter(node);
+    setLocation(node);
 }
 
 export function processIfStatement(node: tsm.IfStatement, options: ProcessMethodOptions): void {
 
     const builder = options.builder;
-    const locSetter = builder.getLocationSetter();
+    const setLocation = builder.getLocationSetter();
     const elseTarget: TargetOffset = { operation: undefined };
     const expr = node.getExpression();
     processExpression(expr, options);
 
     const closeParen = node.getLastChildByKind(tsm.SyntaxKind.CloseParenToken);
-    if (closeParen) locSetter(node, closeParen);
-    else locSetter(expr);
+    if (closeParen) setLocation(node, closeParen);
+    else setLocation(expr);
     builder.emitJump('jumpifnot', elseTarget);
     const $then = node.getThenStatement();
     const $else = node.getElseStatement();
@@ -58,13 +58,13 @@ export function processIfStatement(node: tsm.IfStatement, options: ProcessMethod
 export function processReturnStatement(node: tsm.ReturnStatement, options: ProcessMethodOptions): void {
 
     const builder = options.builder;
-    const locSetter = builder.getLocationSetter();
+    const setLocation = builder.getLocationSetter();
     const expr = node.getExpression();
     if (expr) {
         processExpression(expr, options);
     }
     builder.emitJump("jump", builder.returnTarget);
-    locSetter(node);
+    setLocation(node);
 }
 
 export function processVariableStatement(node: tsm.VariableStatement, options: ProcessMethodOptions): void {
@@ -80,8 +80,10 @@ export function processVariableStatement(node: tsm.VariableStatement, options: P
 
             const init = decl.getInitializer();
             if (init) {
+                const setLocation = builder.getLocationSetter();
                 processExpression(init, options);
-                builder.emitStore(def.kind, def.index).set(decl, init);
+                builder.emitStore(def.kind, def.index);
+                setLocation(decl, init);
             }
         }
     }
