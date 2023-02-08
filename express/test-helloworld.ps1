@@ -9,21 +9,25 @@ if (-NOT ($PSScriptRoot -eq $curLoc)) {
     break;
 }
 
+if (-not (test-path ./out/helloworld.nef)) {
+    throw "contract file missing"
+}
+
 dotnet tool restore
 if (-not $?) { break }
 dotnet neoxp reset -f
 if (-not $?) { break }
-dotnet neoxp contract deploy ./contract.nef genesis
+dotnet neoxp contract deploy ./out/helloworld.nef genesis
 if (-not $?) { break }
 
-dotnet neoxp contract run test-contract get -r -j
-dotnet neoxp contract storage test-contract -j 
+dotnet neoxp contract run helloworld get -r -j
+dotnet neoxp contract storage helloworld -j 
 echo ""
-dotnet neoxp contract run test-contract set "test"  -a genesis
-dotnet neoxp contract run test-contract get -r -j
-dotnet neoxp contract storage test-contract -j
+dotnet neoxp contract run helloworld set "test"  -a genesis
+dotnet neoxp contract run helloworld get -r -j
+dotnet neoxp contract storage helloworld -j
 echo ""
-dotnet neoxp contract run test-contract remove -a genesis
-dotnet neoxp contract run test-contract get -r -j
-dotnet neoxp contract storage test-contract -j
+dotnet neoxp contract run helloworld remove -a genesis
+dotnet neoxp contract run helloworld get -r -j
+dotnet neoxp contract storage helloworld -j
 echo ""
