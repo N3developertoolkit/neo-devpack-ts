@@ -1,8 +1,10 @@
 import * as tsm from "ts-morph";
 import { ReadonlyUint8Array } from '../utility/ReadonlyArrays';
 import { sc } from '@cityofzion/neon-core';
+import { MethodSymbolDef } from "../scope";
 
 export const allowedOperations = [
+    'call',
     'calltoken',
     'convert',
     'drop',
@@ -53,18 +55,21 @@ export interface SysCallOperation extends Operation {
     readonly name: string
 }
 
-export function isSysCallOperation(ins: Operation): ins is SysCallOperation {
-    return ins.kind === 'syscall';
-}
+// export function isSysCallOperation(ins: Operation): ins is SysCallOperation {
+//     return ins.kind === 'syscall';
+// }
 
 export interface CallTokenOperation extends Operation {
     readonly kind: 'calltoken',
     readonly token: sc.MethodToken
 }
 
-export function isCallTokenOperation(ins: Operation): ins is CallTokenOperation {
-    return ins.kind === 'calltoken';
+export interface CallOperation extends Operation {
+    readonly kind: 'call',
+    readonly method: MethodSymbolDef,
+
 }
+
 
 export interface InitSlotOperation extends Operation {
     readonly kind: 'initslot',
@@ -72,36 +77,36 @@ export interface InitSlotOperation extends Operation {
     readonly params: number
 }
 
-export function isInitSlotOperation(ins: Operation): ins is InitSlotOperation {
-    return ins.kind === 'initslot';
-}
+// export function isInitSlotOperation(ins: Operation): ins is InitSlotOperation {
+//     return ins.kind === 'initslot';
+// }
 
 export interface PushDataOperation extends Operation {
     readonly kind: 'pushdata';
     readonly value: ReadonlyUint8Array
 }
 
-export function isPushDataOperation(ins: Operation): ins is PushDataOperation {
-    return ins.kind === 'pushdata';
-}
+// export function isPushDataOperation(ins: Operation): ins is PushDataOperation {
+//     return ins.kind === 'pushdata';
+// }
 
 export interface PushIntOperation extends Operation {
     readonly kind: 'pushint';
     readonly value: bigint;
 }
 
-export function isPushIntOperation(ins: Operation): ins is PushIntOperation {
-    return ins.kind === 'pushint';
-}
+// export function isPushIntOperation(ins: Operation): ins is PushIntOperation {
+//     return ins.kind === 'pushint';
+// }
 
 export interface PushBoolOperation extends Operation {
     readonly kind: 'pushbool';
     readonly value: boolean;
 }
 
-export function isPushBoolOperation(ins: Operation): ins is PushBoolOperation {
-    return ins.kind === 'pushbool';
-}
+// export function isPushBoolOperation(ins: Operation): ins is PushBoolOperation {
+//     return ins.kind === 'pushbool';
+// }
 
 const jumpOperationKinds = [
     'jump', 'jumpif', 'jumpifnot', 'jumpeq', 'jumpne', 'jumpgt', 'jumpge', 'jumplt', 'jumple'
@@ -114,9 +119,9 @@ export interface JumpOperation extends Operation {
     readonly offset: number;
 }
 
-export function isJumpOperation(ins: Operation): ins is JumpOperation {
-    return jumpOperationKinds.includes(ins.kind as JumpOperationKind);
-}
+// export function isJumpOperation(ins: Operation): ins is JumpOperation {
+//     return jumpOperationKinds.includes(ins.kind as JumpOperationKind);
+// }
 
 const loadStoreOperationKinds = [
     'loadarg', 'storearg', 'loadlocal', 'storelocal', 'loadstatic', 'storestatic'
@@ -129,9 +134,9 @@ export interface LoadStoreOperation extends Operation {
     readonly index: number
 }
 
-export function isLoadStoreOperation(ins: Operation): ins is LoadStoreOperation {
-    return loadStoreOperationKinds.includes(ins.kind as LoadStoreOperationKind);
-}
+// export function isLoadStoreOperation(ins: Operation): ins is LoadStoreOperation {
+//     return loadStoreOperationKinds.includes(ins.kind as LoadStoreOperationKind);
+// }
 
 export function parseOperation(kind: string, operand: string | undefined): Operation {
     if (jumpOperationKinds.includes(kind as JumpOperationKind)) {

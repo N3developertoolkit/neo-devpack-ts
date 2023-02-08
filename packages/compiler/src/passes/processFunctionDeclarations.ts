@@ -5,27 +5,20 @@ import { Operation } from "../types/Operation";
 import { MethodBuilder } from "./MethodBuilder";
 import { processStatement } from "./statementProcessor";
 
-function hasSafeTag(node: tsm.JSDocableNode): boolean {
-    for (const doc of node.getJsDocs()) {
-        for (const tag of doc.getTags()) {
-            const tagName = tag.getTagName();
-            if (tagName === "safe") {
-                return true;
-            }
-        }
-    }
-    return false;
+export interface ContractMethod {
+    def: MethodSymbolDef,
+    operations: ReadonlyArray<Operation>,
+    variables: ReadonlyArray<{ name: string, type: tsm.Type }>,
 }
 
-export interface ContractMethod {
-    name: string,
-    safe: boolean,
-    public: boolean,
-    returnType: tsm.Type,
-    parameters: ReadonlyArray<{ name: string, type: tsm.Type }>,
-    variables: ReadonlyArray<{ name: string, type: tsm.Type }>,
-    operations: ReadonlyArray<Operation>,
-}
+    // const name = node.getNameOrThrow();
+        // name,
+        // safe: hasSafeTag(node),
+        // public: !!node.getExportKeyword(),
+        // returnType: node.getReturnType(),
+        // parameters: node.getParameters().map(p => ({ name: p.getName(), type: p.getType(), })),
+        // variables: builder.getVariables(),
+        // operations: builder.getOperations()
 
 export interface ProcessMethodOptions {
     diagnostics: tsm.ts.Diagnostic[];
@@ -37,7 +30,6 @@ export interface ProcessMethodOptions {
 export function processMethodDef(def: MethodSymbolDef, diagnostics: Array<tsm.ts.Diagnostic>): ContractMethod {
 
     const node = def.node;
-    const name = node.getNameOrThrow();
     const body = node.getBodyOrThrow();
     if (!tsm.Node.isStatement(body)) {
         throw new CompileError(`Unexpected body kind ${body.getKindName()}`, body);
@@ -47,13 +39,9 @@ export function processMethodDef(def: MethodSymbolDef, diagnostics: Array<tsm.ts
     processStatement(body, { diagnostics, builder, scope: def });
 
     return {
-        name,
-        safe: hasSafeTag(node),
-        public: !!node.getExportKeyword(),
-        returnType: node.getReturnType(),
-        parameters: node.getParameters().map(p => ({ name: p.getName(), type: p.getType(), })),
+        def,
+        operations: builder.getOperations(),
         variables: builder.getVariables(),
-        operations: builder.getOperations()
     }
 }
 

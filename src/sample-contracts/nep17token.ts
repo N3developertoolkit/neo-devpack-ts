@@ -27,14 +27,42 @@ const prefixContractOwner = 0xFF;
 // /** @safe */
 // export function decimals() { return DECIMALS; }
 
-/** @safe */
-export function totalSupply( ) { 
-    const value = storageGet(
-        storageGetContext(), 
-        Uint8Array.from([prefixTotalSupply]));
+// /** @safe */
+// export function totalSupply( ) { 
+//     const value = storageGet(
+//         storageGetContext(), 
+//         Uint8Array.from([prefixTotalSupply]));
 
-    return asInteger(value);
+//     return asInteger(value);
+// }
+
+// export function _deploy(_data: any, update: boolean): void { 
+//     if (update) return;
+//     const tx = runtimeGetScriptContainer() as Transaction;
+//     storagePut(
+//         storageGetContext(), 
+//         Uint8Array.from([prefixContractOwner]), 
+//         tx.sender);
+// }
+
+export function update(nefFile: ByteString, manifest: string) {
+    if (checkOwner()) {
+        contractManagementUpdate(nefFile, manifest);
+    } else {
+        throw Error("Only the contract owner can update the contract");
+    }
 }
+
+function checkOwner() {
+    const owner = storageGet(
+        storageGetContext(), 
+        Uint8Array.from([prefixContractOwner]))!;
+    return runtimeCheckWitness(owner);
+}
+
+
+
+// ==============================================================
 
 // /** @safe */
 // export function balanceOf(account: Address) { 
@@ -112,21 +140,6 @@ export function totalSupply( ) {
 //     return true;
 // }
 
-// export function _deploy(data: any, update: boolean) { 
-//     if (update) return;
-//     const key = ByteString.from([prefixContractOwner]);
-//     var sender = (Runtime.scriptContainer as Transaction).sender;
-//     Storage.put(Storage.currentContext, key, sender);
-//     var amount = INITIAL_SUPPLY * (10n ** DECIMALS);
-//     createTokens(sender, amount);
-// }
-
-// export function update(nefFile: ByteString, manifest: string) {
-//     var owner = getOwner();
-//     if (!Runtime.checkWitness(owner)) throw new Error();
-//     ContractManagement.update(nefFile, manifest);
-// }
-
 // function createTokens(account: Address, amount: bigint) {
 //     if (amount < 0n) throw new Error("The amount must be a positive number");
 //     updateBalance(account, amount);
@@ -134,27 +147,4 @@ export function totalSupply( ) {
 //     postTransfer(null, account, amount, null);
 // }
 
-// function getOwner() {
-//     const key = new ByteString(prefixContractOwner);
-//     return Storage.get(Storage.currentContext, key) as Address;
-// }
 
-// export function _deploy(_data: any, update: boolean): void { 
-//     if (update) return;
-//     const tx = runtimeGetScriptContainer() as Transaction;
-//     storagePut(
-//         storageGetContext(), 
-//         Uint8Array.from([prefixContractOwner]), 
-//         tx.sender);
-// }
-
-// export function update(nefFile: ByteString, manifest: string) {
-//     const owner = storageGet(
-//         storageGetContext(), 
-//         Uint8Array.from([prefixContractOwner]))!;
-//     if (runtimeCheckWitness(owner)) {
-//         contractManagementUpdate(nefFile, manifest);
-//     } else {
-//         throw Error("Only the contract owner can update the contract");
-//     }
-// }

@@ -1,7 +1,8 @@
 // import './ext';
+import { open } from "fs";
 import * as tsm from "ts-morph";
 import { CompileError } from "../compiler";
-import { ConstantSymbolDef, IntrinsicMethodDef, IntrinsicSymbolDef, MethodTokenSymbolDef, OperationsSymbolDef, ReadonlyScope, SymbolDef, SysCallSymbolDef, VariableSymbolDef } from "../scope";
+import { ConstantSymbolDef, IntrinsicMethodDef, IntrinsicSymbolDef, MethodSymbolDef, MethodTokenSymbolDef, OperationsSymbolDef, ReadonlyScope, SymbolDef, SysCallSymbolDef, VariableSymbolDef } from "../scope";
 import { dispatch } from "../utility/nodeDispatch";
 import { ProcessMethodOptions } from "./processFunctionDeclarations";
 
@@ -31,6 +32,9 @@ function callSymbolDef(def: SymbolDef, args: ReadonlyArray<tsm.Expression>, opti
         for (const op of def.operations) {
             options.builder.emit(op);
         }
+    } else if (def instanceof MethodSymbolDef) {
+        processArguments(args, options);
+        options.builder.emitCall(def);
     } else {
         throw new Error("callSymbolDef: unknown SymbolDef type")
     }

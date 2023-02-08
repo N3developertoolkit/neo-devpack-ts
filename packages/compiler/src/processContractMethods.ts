@@ -1,8 +1,9 @@
 import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
 import { ContractMethod } from "./passes/processFunctionDeclarations";
+import { MethodSymbolDef } from "./scope";
 import { SequencePointLocation } from "./types/DebugInfo";
-import { CallTokenOperation, ConvertOperation, InitSlotOperation, JumpOperation, JumpOperationKind, LoadStoreOperation, Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
+import { CallOperation, CallTokenOperation, ConvertOperation, InitSlotOperation, JumpOperation, JumpOperationKind, LoadStoreOperation, Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
 
 function convertPushData({ value }: PushDataOperation) {
     if (value.length <= 255) /* byte.MaxValue */ {
@@ -38,6 +39,16 @@ function convertCallToken({ token }: CallTokenOperation, tokens: ReadonlyArray<s
     return [sc.OpCode.CALLT, ...new Uint8Array(buffer)];
 }
 
+function convertCall({ method }: CallOperation, currentAddress: number, methodAddresses: ReadonlyMap<MethodSymbolDef, number>) {
+    const targetAddress = methodAddresses.get(method);
+    if (!targetAddress) throw new Error(`cannot find address for ${method.symbol.getName()}`)
+    const addressOffset = targetAddress - currentAddress;
+
+    const buffer = new ArrayBuffer(4);
+    new DataView(buffer).setInt32(0, addressOffset, true);
+    return [sc.OpCode.CALL_L, ...new Uint8Array(buffer)];
+}
+
 function convertJumpOperationKind(kind: JumpOperationKind) {
     switch (kind) {
         case "jump": return sc.OpCode.JMP_L;
@@ -63,8 +74,7 @@ function convertJump(index: number, { kind, offset }: JumpOperation, addressMap:
 
     const addressOffset = targetAddress - currentAddress;
     const buffer = new ArrayBuffer(4);
-    const view = new DataView(buffer);
-    view.setInt32(0, addressOffset, true);
+    new DataView(buffer).setInt32(0, addressOffset, true);
     return [opCode, ...new Uint8Array(buffer)];
 }
 
@@ -76,7 +86,7 @@ function convertPushInt({ value }: PushIntOperation) {
     throw new Error(`convertPushInt not implemented for ${value}`);
 }
 
-export function getOperationSize(op: Operation) {
+function getOperationSize(op: Operation) {
     switch (op.kind) {
         case 'drop':
         case 'duplicate':
@@ -88,10 +98,10 @@ export function getOperationSize(op: Operation) {
             return 1;
         case 'convert':
             return 2;
-        case 'initslot':
         case 'calltoken':
+        case 'initslot':
             return 3;
-        case 'syscall':
+        case 'call':
         case 'jump':
         case 'jumpif':
         case 'jumpifnot':
@@ -101,6 +111,7 @@ export function getOperationSize(op: Operation) {
         case "jumpge":
         case "jumplt":
         case "jumple":
+        case 'syscall':
             return 5;
         case 'loadarg':
         case 'loadlocal':
@@ -134,6 +145,14 @@ export function getOperationSize(op: Operation) {
     }
 }
 
+export function getMethodSize(method: ContractMethod) {
+    let size = 0;
+    for (const op of method.operations) {
+        size += getOperationSize(op);
+    }
+    return size;
+}
+
 function createAddressMap(operations: ReadonlyArray<Operation>, offset: number) {
     let address = offset;
     const addressMap = new Map<number, number>();
@@ -144,7 +163,16 @@ function createAddressMap(operations: ReadonlyArray<Operation>, offset: number) 
     return addressMap;
 }
 
-export function compileMethodScript(method: ContractMethod, offset: number, tokens: ReadonlyArray<sc.MethodToken>, diagnostics: tsm.ts.Diagnostic[]) {
+interface MethodCompileOptions {
+    diagnostics: tsm.ts.Diagnostic[];
+    tokens: ReadonlyArray<sc.MethodToken>;
+    methodAddressMap: ReadonlyMap<MethodSymbolDef, number>;
+}
+export function compileMethodScript(
+    method: ContractMethod, 
+    offset: number, 
+    { diagnostics, tokens, methodAddressMap }: MethodCompileOptions
+) {
 
     const addressMap = createAddressMap(method.operations, offset);
     const sequencePoints = new Array<SequencePointLocation>();
@@ -158,6 +186,9 @@ export function compileMethodScript(method: ContractMethod, offset: number, toke
         }
 
         switch (op.kind) {
+            case 'call':
+                instructions.push(...convertCall(op as CallOperation, addressMap.get(i)!, methodAddressMap));
+                break;
             case 'calltoken':
                 instructions.push(...convertCallToken(op as CallTokenOperation, tokens));
                 break;
@@ -231,7 +262,7 @@ export function compileMethodScript(method: ContractMethod, offset: number, toke
                 instructions.push(sc.OpCode.THROW);
                 break;
             default:
-                throw new Error(`convertContractMethod ${method.name} ${op.kind}`);
+                throw new Error(`convertContractMethod ${method.def.node.getName()} ${op.kind}`);
         }
     });
     return {

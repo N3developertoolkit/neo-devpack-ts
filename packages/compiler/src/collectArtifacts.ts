@@ -5,10 +5,11 @@ import { ContractMethod } from "./passes/processFunctionDeclarations";
 import * as tsm from "ts-morph";
 import { isBigIntLike, isBooleanLike, isNumberLike, isStringLike, isVoidLike } from "./utils";
 import { DebugInfoJson, DebugMethodJson, SequencePointLocation } from "./types/DebugInfo";
-import { compileMethodScript, getOperationSize } from "./processContractMethods";
-import { isCallTokenOperation, Location, Operation } from "./types/Operation";
+import { compileMethodScript, getMethodSize } from "./processContractMethods";
+import { CallTokenOperation, Location, Operation } from "./types/Operation";
 import { from } from "ix/iterable";
-import { map, flatMap } from "ix/iterable/operators";
+import { map, flatMap, filter } from "ix/iterable/operators";
+import { MethodSymbolDef } from "./scope";
 
 export function convertToContractParamType(type: tsm.Type): sc.ContractParamType {
 
@@ -27,19 +28,39 @@ export function convertToContractParamType(type: tsm.Type): sc.ContractParamType
     return sc.ContractParamType.Any;
 }
 
-export function toContractMethodDefinition(method: ContractMethod, offset: number) {
-    const returnType = isVoidLike(method.returnType)
+function getReturnContractParamType(node: tsm.FunctionDeclaration) {
+    const returnType = node.getReturnType();
+    return isVoidLike(returnType)
         ? sc.ContractParamType.Void
-        : convertToContractParamType(method.returnType);
-    const parameters = method.parameters.map(p => ({
-        name: p.name,
-        type: convertToContractParamType(p.type)
-    } as ContractParameterDefinition));
+        : convertToContractParamType(returnType);
+}
+
+function hasSafeTag(node: tsm.JSDocableNode): boolean {
+    for (const doc of node.getJsDocs()) {
+        for (const tag of doc.getTags()) {
+            const tagName = tag.getTagName();
+            if (tagName === "safe") {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+export function toContractMethodDefinition(method: ContractMethod, offset: number): sc.ContractMethodDefinition | undefined {
+
+    const node = method.def.node;
+    if (!!node.getExportKeyword()) return undefined;
+    const parameters = node.getParameters()
+        .map(p => ({ 
+            name: p.getName(), 
+            type: convertToContractParamType(p.getType()) }));
+
     return new sc.ContractMethodDefinition({
-        name: method.name,
-        safe: method.safe,
+        name: method.def.symbol.getName(),
+        safe: hasSafeTag(node),
         offset,
-        returnType,
+        returnType: getReturnContractParamType(node),
         parameters
     })
 }
@@ -57,7 +78,7 @@ function getSourceFile(location: Location) {
 function toSequencePointString(point: SequencePointLocation, documentMap: ReadonlyMap<tsm.SourceFile, number>): string {
     const location = point.location;
     const src = getSourceFile(location);
-    
+
     const index = documentMap.get(src);
     if (index === undefined) throw new Error("toSequencePointString");
     const [start, end] = tsm.Node.isNode(location)
@@ -67,46 +88,30 @@ function toSequencePointString(point: SequencePointLocation, documentMap: Readon
 }
 
 export function toDebugMethodJson(
-    method: ContractMethod, 
-    range: {start: number, end: number}, 
+    method: ContractMethod,
+    range: { start: number, end: number },
     sequencePoints: ReadonlyArray<SequencePointLocation>,
     documentMap: ReadonlyMap<tsm.SourceFile, number>
-    ): DebugMethodJson {
+): DebugMethodJson {
 
-    const returnType = isVoidLike(method.returnType)
-        ? sc.ContractParamType.Void
-        : convertToContractParamType(method.returnType);
-    const params = method.parameters
-        .map((v, index) => toSlotVariableString(v.name, v.type, index));
+    const node = method.def.node;
+    const name = "," + node.getSymbolOrThrow().getName();
+    const params = node.getParameters()
+        .map((v, index) => toSlotVariableString(v.getName(), v.getType(), index));
     const variables = method.variables
         .map((v, index) => toSlotVariableString(v.name, v.type, index));
     const points = sequencePoints
         .map(v => toSequencePointString(v, documentMap))
 
-
     return {
-        id: "," + method.name,
-        name: "," + method.name,
+        id: name,
+        name,
         range: `${range.start}-${range.end}`,
-        return: sc.ContractParamType[returnType],
+        return: sc.ContractParamType[getReturnContractParamType(node)],
         params,
         variables,
         "sequence-points": points
     } as DebugMethodJson;
-}
-
-interface AddressedOperation {
-    address: number;
-    size: number;
-    operation: Operation;
-}
-function* getAddressedOperation(method: ContractMethod, offset: number): Generator<AddressedOperation, void> {
-    let address = offset;
-    for (const operation of method.operations) {
-        const size = getOperationSize(operation);
-        yield { address, size, operation }
-        address += size;
-    }
 }
 
 interface MethodInfo {
@@ -114,11 +119,16 @@ interface MethodInfo {
     sequencePoints: ReadonlyArray<SequencePointLocation>
 }
 
-function collectMethodTokens(methods: ReadonlyArray<ContractMethod>) {
-    const ops = methods.flatMap(m => m.operations).filter(isCallTokenOperation);
+export function isCallTokenOperation(ins: Operation): ins is CallTokenOperation {
+    return ins.kind === 'calltoken';
+}
 
+function collectMethodTokens(methods: ReadonlyArray<ContractMethod>): ReadonlyArray<sc.MethodToken> {
+    const callTokenOps = from(methods).pipe(
+        flatMap(m => m.operations),
+        filter(isCallTokenOperation));
     const map = new Map<string, sc.MethodToken>();
-    for (const { token }of ops) {
+    for (const { token } of callTokenOps) {
         const key = `${token.hash}-${token.method}`;
         const value = map.get(key);
         if (value) {
@@ -127,19 +137,30 @@ function collectMethodTokens(methods: ReadonlyArray<ContractMethod>) {
             map.set(key, token);
         }
     }
-
     return [...map.values()]
 }
 
-export function collectArtifacts(contractName: string, { methods, diagnostics}: CompileContext) {
+function collectMethodAddressMap(methods: ContractMethod[]): ReadonlyMap<MethodSymbolDef, number> {
+    let address = 0;
+    const methodAddressMap = new Map<MethodSymbolDef, number>();
+    for (const m of methods) {
+        methodAddressMap.set(m.def, address);
+        address += getMethodSize(m);
+    }
+    return methodAddressMap;
+}
+
+export function collectArtifacts(contractName: string, { methods, diagnostics }: CompileContext) {
 
     const tokens = collectMethodTokens(methods);
+    const methodAddressMap = collectMethodAddressMap(methods);
+    const compileMethodOptions = { diagnostics, tokens, methodAddressMap };
 
     let script = Buffer.from([]);
     const methodMap = new Map<ContractMethod, MethodInfo>();
 
     for (const method of methods) {
-        const { instructions, range, sequencePoints } = compileMethodScript(method, script.length, tokens, diagnostics);
+        const { instructions, range, sequencePoints } = compileMethodScript(method, script.length, compileMethodOptions);
         script = Buffer.concat([script, instructions]);
         methodMap.set(method, { range, sequencePoints });
     }
@@ -151,22 +172,25 @@ export function collectArtifacts(contractName: string, { methods, diagnostics}: 
     });
     const hash = Buffer.from(u.hash160(nef.script), 'hex').reverse();
 
-    const manifestMethods = [...from(methodMap.entries()).pipe(
-        map(x => toContractMethodDefinition(x[0], x[1].range.start))
-    )];
-
-    const manifest = new sc.ContractManifest({
-        name: contractName,
-        abi: new sc.ContractAbi({ methods: manifestMethods })
-    });
-
     const sourceFiles = new Set(from(methodMap.values()).pipe(
         flatMap(v => v.sequencePoints),
         map(v => getSourceFile(v.location))));
     const docsMap = new Map(from(sourceFiles).pipe(map((v, i) => [v, i])));
-    const debugMethods = [...from(methodMap.entries()).pipe(
-        map(x => toDebugMethodJson(x[0], x[1].range, x[1].sequencePoints, docsMap))
-    )];
+
+    const manifestMethods = new Array<sc.ContractMethodDefinition>();
+    const debugMethods = new Array<DebugMethodJson>();
+    for (const [method, info] of methodMap.entries()) {
+        const debugMethod = toDebugMethodJson(method, info.range, info.sequencePoints, docsMap)
+        debugMethods.push(debugMethod);
+        const manifestMethod = toContractMethodDefinition(method, info.range.start);
+        if (manifestMethod) manifestMethods.push(manifestMethod);
+    }
+    
+    const manifest = new sc.ContractManifest({
+        name: contractName,
+        abi: new sc.ContractAbi({ methods: manifestMethods})
+    });
+
     const debugInfo: DebugInfoJson = {
         hash: `0x${hash.toString('hex')}`,
         // TODO: correct processing of file path
@@ -179,3 +203,5 @@ export function collectArtifacts(contractName: string, { methods, diagnostics}: 
 
     return { nef, manifest, debugInfo };
 }
+
+

@@ -1,7 +1,8 @@
 import * as tsm from "ts-morph";
-import { CallTokenOperation, InitSlotOperation, JumpOperation, JumpOperationKind, LoadStoreOperation, LoadStoreOperationKind, Location, Operation, OperationKind, PushBoolOperation, PushDataOperation, PushIntOperation, SysCallOperation } from "../types/Operation";
+import { CallOperation, CallTokenOperation, InitSlotOperation, JumpOperation, JumpOperationKind, LoadStoreOperation, LoadStoreOperationKind, Location, Operation, OperationKind, PushBoolOperation, PushDataOperation, PushIntOperation, SysCallOperation } from "../types/Operation";
 import { ReadonlyUint8Array } from "../utility/ReadonlyArrays";
 import { sc } from '@cityofzion/neon-core';
+import { MethodSymbolDef } from "../scope";
 
 export interface TargetOffset {
     operation: Operation | undefined
@@ -156,6 +157,11 @@ export class MethodBuilder {
 
     emitCallToken(token: sc.MethodToken, location?: Location) {
         const op: CallTokenOperation = { kind: 'calltoken', token, location };
+        return this.emit(op);
+    }
+
+    emitCall(method: MethodSymbolDef, location?: Location) {
+        const op: CallOperation = {kind: 'call', method, location };
         return this.emit(op);
     }
 }
