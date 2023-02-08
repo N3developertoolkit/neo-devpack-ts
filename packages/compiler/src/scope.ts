@@ -266,6 +266,14 @@ function processFunctionDeclaration(node: tsm.FunctionDeclaration, options: Scop
             return;
         }
 
+        const contractMethodTag = getJSDocTag(node, "contractMethod");
+        if (contractMethodTag) {
+            const comment = contractMethodTag.getComment();
+            const text = contractMethodTag.getCommentText();
+            // TODO: Parse contract hash + method name
+            console.log();
+        }
+
         throw new CompileError("not supported", node);
     } else {
         scope.define(s => new MethodSymbolDef(symbol, s, node));
@@ -320,7 +328,7 @@ function processVariableStatement(node: tsm.VariableStatement, { diagnostics, sc
 function processInterfaceDeclaration(node: tsm.InterfaceDeclaration, { diagnostics, scope }: ScopeOptions) {
     const stackItemTag = getJSDocTag(node, "stackitem");
     if (stackItemTag) {
-        
+
     }
 }
 

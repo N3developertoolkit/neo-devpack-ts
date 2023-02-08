@@ -113,7 +113,8 @@ export class MethodBuilder {
         return this.emit(op);
     }
 
-    emitPushData(value: ReadonlyUint8Array, location?: Location) {
+    emitPushData(value: string | ReadonlyUint8Array, location?: Location) {
+        if (typeof value === 'string') { value = Buffer.from(value, 'utf8'); }
         const op: PushDataOperation = { kind: 'pushdata', value, location };
         return this.emit(op);
     }

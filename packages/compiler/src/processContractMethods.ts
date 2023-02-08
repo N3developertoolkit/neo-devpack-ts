@@ -117,9 +117,10 @@ export function getOperationSize(op: Operation) {
         case 'noop':
         case 'pickitem':
         case 'return':
+        case 'throw':
             return 1;
         default:
-            throw new Error(`${op.kind}`);
+            throw new Error(`getOperationSize ${op.kind}`);
     }
 }
 
@@ -189,6 +190,9 @@ export function compileMethodScript(method: ContractMethod, offset: number, diag
                 break;
             case 'syscall':
                 instructions.push(...convertSysCall(op as SysCallOperation));
+                break;
+            case 'throw':
+                instructions.push(sc.OpCode.THROW);
                 break;
             default:
                 throw new Error(`convertContractMethod ${method.name} ${op.kind}`);

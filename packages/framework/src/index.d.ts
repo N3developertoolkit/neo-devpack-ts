@@ -49,14 +49,16 @@ export declare function storageGet(context:StorageContext, key: ByteString): Byt
 export declare function storagePut(context:StorageContext, key: ByteString, value: ByteString): void;
 /** @syscall System.Storage.Delete */ 
 export declare function storageDelete(context:StorageContext, key: ByteString):void;
-// /** @syscall System.Storage.Find */ 
-// export declare function storageFind(context:StorageContext, prefix: any, options: any): any;
 
 /** @syscall System.Runtime.GetScriptContainer */ 
 export declare function runtimeGetScriptContainer(): any;
 /** @syscall System.Runtime.CheckWitness */ 
 export declare function runtimeCheckWitness(account: ByteString): boolean;
 
+/** @contractMethod {0xfffdc93764dbaddd97c48f252a53ea4643faa3fd} update */ 
+export declare function contractManagementUpdate(nefFile: ByteString, manifest: string, data?: any): void;
+
+// TODO: Do stack item interfaces such as Transacation and Block need a JSDoc tag like @stackitem?
 export interface Transaction {
     readonly hash: ByteString,
     readonly version: number,
@@ -81,5 +83,6 @@ export interface Block {
     readonly transactionsCount: number
 }
 
-// /** @contractMethod {0xfffdc93764dbaddd97c48f252a53ea4643faa3fd} update */ 
-// export declare function contractManagementUpdate(nefFile: ByteString, manifest: string, data?: any): void;
+
+// /** @syscall System.Storage.Find */ 
+// export declare function storageFind(context:StorageContext, prefix: any, options: any): any;

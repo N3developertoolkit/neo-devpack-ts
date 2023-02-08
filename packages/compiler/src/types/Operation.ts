@@ -4,7 +4,7 @@ import { ReadonlyUint8Array } from '../utility/ReadonlyArrays';
 export type OperationKind = 'pushbool' | 'pushint' | 'pushdata' | 'pushnull' |
     'jump' | 'jumpif' | 'jumpifnot' | 'jumpeq' | 'jumpne' | 'jumpgt' | 'jumpge' | 'jumplt' | 'jumple' |
     'loadarg' | 'storearg' | 'loadlocal' | 'storelocal' | 'loadstatic' | 'storestatic' |
-    'noop' | 'return' | 'syscall' | 'initslot' | 'pickitem';
+    'noop' | 'return' | 'syscall' | 'initslot' | 'pickitem' | 'throw';
 
 export enum oldOperationKind {
 

@@ -67,6 +67,29 @@ export function processReturnStatement(node: tsm.ReturnStatement, options: Proce
     setLocation(node);
 }
 
+export function processThrowStatement(node: tsm.ThrowStatement, options: ProcessMethodOptions): void {
+
+    const { builder } = options;
+    const expr = node.getExpression();
+    const setLocation = builder.getLocationSetter();
+
+    if (tsm.Node.isStringLiteral(expr)) {
+        builder.emitPushData(expr.getLiteralValue());
+    } else if (tsm.Node.isNewExpression(expr)
+        && expr.getType().getSymbol()?.getName() === "Error"
+    ) {
+        const args = expr.getArguments();
+        if (args.length === 0) {
+            builder.emitPushData("unknown");
+        } else {
+            processExpression(args[0] as tsm.Expression, options);
+        }
+    } else throw new CompileError("not implemented", node);
+    
+    builder.emit('throw');
+    setLocation(node);
+}
+
 export function processVariableStatement(node: tsm.VariableStatement, options: ProcessMethodOptions): void {
     const { builder, scope } = options;
 
@@ -95,6 +118,7 @@ export function processStatement(node: tsm.Statement, options: ProcessMethodOpti
         [tsm.SyntaxKind.ExpressionStatement]: processExpressionStatement,
         [tsm.SyntaxKind.IfStatement]: processIfStatement,
         [tsm.SyntaxKind.ReturnStatement]: processReturnStatement,
+        [tsm.SyntaxKind.ThrowStatement]: processThrowStatement,
         [tsm.SyntaxKind.VariableStatement]: processVariableStatement,
     });
 }

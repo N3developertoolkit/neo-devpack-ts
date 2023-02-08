@@ -115,7 +115,7 @@ export function processBigIntLiteral(node: tsm.BigIntLiteral, { builder }: Proce
 }
 
 export function processStringLiteral(node: tsm.StringLiteral, { builder }: ProcessMethodOptions) {
-    const value = Buffer.from(node.getLiteralValue(), 'utf8');
+    const value = node.getLiteralValue(); 
     builder.emitPushData(value);
 }
 
@@ -144,6 +144,7 @@ export function processExpression(node: tsm.Expression, options: ProcessMethodOp
         [tsm.SyntaxKind.CallExpression]: processCallExpression,
         [tsm.SyntaxKind.FalseKeyword]: processBooleanLiteral,
         [tsm.SyntaxKind.Identifier]: processIdentifier,
+        [tsm.SyntaxKind.NonNullExpression]: (node) => { processExpression(node.getExpression(), options); },
         [tsm.SyntaxKind.NumericLiteral]: processNumericLiteral,
         [tsm.SyntaxKind.PropertyAccessExpression]: processPropertyAccessExpression,
         [tsm.SyntaxKind.StringLiteral]: processStringLiteral,
