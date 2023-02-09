@@ -1,6 +1,7 @@
 import * as tsm from "ts-morph";
 import { ContractMethod } from "../packages/compiler/src/passes/processFunctionDeclarations";
-import { CallOperation, CallTokenOperation, ConvertOperation, InitSlotOperation, JumpOperation, LoadStoreOperation, Location, Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "../packages/compiler/src/types/Operation";
+import { CallOperation, CallTokenOperation, ConvertOperation, InitSlotOperation, JumpOperation, LoadStoreOperation, Location, Operation, PushBoolOperation, PushDataOperation, PushIntOperation, SysCallOperation } from "../packages/compiler/src/types/Operation";
+import { sc, u } from "@cityofzion/neon-core";
 
 export function dumpContractMethod(method: ContractMethod) {
     console.log(magenta, `Method: ${method.def.node.getSymbolOrThrow().getName()}`);
@@ -25,7 +26,7 @@ function dumpOperation(op: Operation, currentIndex: number) {
     switch (op.kind) {
         case 'convert': {
             const { type } = op as ConvertOperation;
-            return `${op.kind} ${type}`
+            return `${op.kind} ${sc.StackItemType[type]}`
         }
         case 'calltoken': {
             const { token } = op as CallTokenOperation;
@@ -63,6 +64,10 @@ function dumpOperation(op: Operation, currentIndex: number) {
         case 'storestatic': {
             const { index } = op as LoadStoreOperation
             return `${op.kind} ${index}`
+        }
+        case 'pushbool': {
+            const { value } = op as PushBoolOperation;
+            return `${op.kind} ${value}`;
         }
         case 'pushdata': {
             const { value } = op as PushDataOperation;

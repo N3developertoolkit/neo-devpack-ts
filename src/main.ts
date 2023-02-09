@@ -45,7 +45,7 @@ async function main() {
             if (hasErrors(diagnostics)) return;
 
             for (const m of methods) {
-                if (m.def.symbol.getName() !== "updateTotalSupply") continue;
+                if (m.def.symbol.getName() !== "updateBalance") continue;
                 dumpContractMethod(m);
             }
 

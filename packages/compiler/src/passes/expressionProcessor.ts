@@ -166,6 +166,10 @@ export function processBinaryExpression(node: tsm.BinaryExpression, options: Pro
         case tsm.SyntaxKind.AsteriskToken:
             builder.emit('multiply');
             break;
+        case tsm.SyntaxKind.EqualsEqualsToken:
+        case tsm.SyntaxKind.EqualsEqualsEqualsToken:
+            builder.emit('equal');
+            break;
         case tsm.SyntaxKind.GreaterThanToken:
             builder.emit('greaterthan');
             break;
@@ -178,11 +182,26 @@ export function processBinaryExpression(node: tsm.BinaryExpression, options: Pro
         case tsm.SyntaxKind.LessThanEqualsToken:
             builder.emit('lessthanorequal');
             break;
+        case tsm.SyntaxKind.PrefixUnaryExpression:
+            break;
         case tsm.SyntaxKind.PlusToken:
             builder.emit('add');
             break;
         default:
             throw new CompileError(`processBinaryExpression ${opToken.getKindName()}`, node)
+    }
+}
+
+export function processPrefixUnaryExpression(node: tsm.PrefixUnaryExpression, options: ProcessMethodOptions) {
+    
+    processExpression(node.getOperand(), options);
+    const token = node.getOperatorToken();
+    switch (token) {
+        case tsm.SyntaxKind.ExclamationToken:
+            options.builder.emit('not');
+            break;
+        default: 
+            throw new CompileError(`processPrefixUnaryExpression ${tsm.ts.SyntaxKind[token]}`, node)
     }
 }
 
@@ -200,9 +219,11 @@ export function processExpression(node: tsm.Expression, options: ProcessMethodOp
         [tsm.SyntaxKind.FalseKeyword]: processBooleanLiteral,
         [tsm.SyntaxKind.Identifier]: processIdentifier,
         [tsm.SyntaxKind.NonNullExpression]: (node) => { processExpression(node.getExpression(), options); },
+        [tsm.SyntaxKind.NullKeyword]: (node) => { options.builder.emitPushNull(); },
         // [tsm.SyntaxKind.NewExpression]: processNewExpression,
         [tsm.SyntaxKind.NumericLiteral]: processNumericLiteral,
         [tsm.SyntaxKind.ParenthesizedExpression]: processParenthesizedExpression, 
+        [tsm.SyntaxKind.PrefixUnaryExpression]: processPrefixUnaryExpression,
         [tsm.SyntaxKind.PropertyAccessExpression]: processPropertyAccessExpression,
         [tsm.SyntaxKind.StringLiteral]: processStringLiteral,
         [tsm.SyntaxKind.TrueKeyword]: processBooleanLiteral,

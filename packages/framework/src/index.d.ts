@@ -20,8 +20,12 @@ export declare function asInteger(value: ByteString | null | undefined): bigint;
 /**
  * @operation convert ByteString
  */
-
 export declare function asByteString(value: bigint): ByteString;
+
+/**
+ * @operation concat
+ */
+export declare function concat(value1: ByteString, value2: ByteString): ByteString;
 
 // /** @opcode {OpCode.CONVERT} StackItemType.ByteString */
 // export declare function asInteger(value: ByteString): bigint;

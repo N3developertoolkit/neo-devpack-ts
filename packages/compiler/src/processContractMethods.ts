@@ -3,7 +3,7 @@ import * as tsm from "ts-morph";
 import { ContractMethod } from "./passes/processFunctionDeclarations";
 import { MethodSymbolDef } from "./scope";
 import { SequencePointLocation } from "./types/DebugInfo";
-import { CallOperation, CallTokenOperation, ConvertOperation, InitSlotOperation, JumpOperation, JumpOperationKind, LoadStoreOperation, Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
+import { CallOperation, CallTokenOperation, ConvertOperation, InitSlotOperation, JumpOperation, JumpOperationKind, LoadStoreOperation, Operation, PushBoolOperation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
 import { bigIntToByteArray } from "./utils";
 
 function convertPushData({ value }: PushDataOperation) {
@@ -103,8 +103,10 @@ function convertPushInt({ value }: PushIntOperation) {
 function getOperationSize(op: Operation) {
     switch (op.kind) {
         case 'add':
+        case 'concat':
         case 'drop':
         case 'duplicate':
+        case 'equal':
         case 'greaterthan':
         case 'greaterthanorequal':
         case 'isnull':
@@ -112,7 +114,11 @@ function getOperationSize(op: Operation) {
         case 'lessthanorequal':
         case 'multiply':
         case 'noop':
+        case 'not':
+        case 'notequal':
         case 'pickitem':
+        case 'pushbool':
+        case 'pushnull':
         case 'power':
         case 'return':
         case 'subtract':
@@ -219,6 +225,9 @@ export function compileMethodScript(
             case 'calltoken':
                 instructions.push(...convertCallToken(op as CallTokenOperation, tokens));
                 break;
+            case 'concat':
+                instructions.push(sc.OpCode.CAT);
+                break;
             case 'convert': {
                 const { type } = op as ConvertOperation;
                 instructions.push(sc.OpCode.CONVERT, type);
@@ -229,6 +238,9 @@ export function compileMethodScript(
                 break;
             case 'duplicate':
                 instructions.push(sc.OpCode.DUP);
+                break;
+            case 'equal':
+                instructions.push(sc.OpCode.EQUAL);
                 break;
             case 'greaterthan':
                 instructions.push(sc.OpCode.GT);
@@ -276,18 +288,32 @@ export function compileMethodScript(
             case 'noop':
                 instructions.push(sc.OpCode.NOP);
                 break;
+            case 'not':
+                instructions.push(sc.OpCode.NOT);
+                break;
+            case 'notequal':
+                instructions.push(sc.OpCode.NOTEQUAL);
+                break;
             case 'pickitem':
                 instructions.push(sc.OpCode.PICKITEM);
                 break;
             case 'power':
                 instructions.push(sc.OpCode.POW);
                 break;
+            case 'pushbool': {
+                const { value } = op as PushBoolOperation;
+                // neon-js hasn't added the PUSHT (0x08) or PUSHF (0x09) opcodes yet
+                instructions.push(value ? 0x08 : 0x09);
+                break;
+            }
             case 'pushdata':
                 instructions.push(...convertPushData(op as PushDataOperation));
                 break;
             case 'pushint':
                 instructions.push(...convertPushInt(op as PushIntOperation));
                 break;
+            case 'pushnull':
+                instructions.push(sc.OpCode.PUSHNULL);
             case 'return':
                 instructions.push(sc.OpCode.RET);
                 break;
