@@ -6,6 +6,11 @@
     "packages/compiler",
     "packages/framework"
   ],
+  "scripts": {
+    "config": "npm i && dotnet tool restore --tool-manifest ./express/.config/dotnet-tools.json",
+    "build": "npm run config && tsc --build tsconfig.json",
+    "exec": "node ./src/main.js"
+  },
   "devDependencies": {
     "@cityofzion/neon-core": "^5.3.0",
     "@tsconfig/node16": "^1.0.3",
