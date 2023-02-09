@@ -138,7 +138,7 @@ export class MethodSymbolDef implements SymbolDef, ReadonlyScope {
 
 
 
-export class IntrinsicSymbolDef implements SymbolDef {
+export class IntrinsicValueSymbolDef implements SymbolDef {
     readonly symbol: tsm.Symbol;
 
     constructor(
@@ -510,7 +510,7 @@ export function createSymbolTrees({ project, diagnostics, scopes }: CompileConte
         if (src.isDeclarationFile()) continue;
         const scope = new GlobalScope();
         if (error) scope.define(s => new IntrinsicMethodDef(error.getSymbolOrThrow(), s, emitError));
-        if (u8array) scope.define(s => new IntrinsicSymbolDef(u8array, s));
+        if (u8array) scope.define(s => new IntrinsicValueSymbolDef(u8array, s));
         if (u8arrayFrom) scope.define(s => new IntrinsicMethodDef(u8arrayFrom, s, emitU8ArrayFrom));
         src.forEachChild(node => processScopeNode(node, { diagnostics, scope }));
         scopes.push(scope);

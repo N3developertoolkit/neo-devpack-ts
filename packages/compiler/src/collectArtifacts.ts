@@ -150,7 +150,7 @@ function collectMethodAddressMap(methods: ContractMethod[]): ReadonlyMap<MethodS
     return methodAddressMap;
 }
 
-export function collectArtifacts(contractName: string, { methods, diagnostics }: CompileContext) {
+export function collectArtifacts(contractName: string, { methods, diagnostics, options: { standards } }: CompileContext) {
 
     const tokens = collectMethodTokens(methods);
     const methodAddressMap = collectMethodAddressMap(methods);
@@ -188,6 +188,7 @@ export function collectArtifacts(contractName: string, { methods, diagnostics }:
     
     const manifest = new sc.ContractManifest({
         name: contractName,
+        supportedStandards: [...standards],
         abi: new sc.ContractAbi({ methods: manifestMethods})
     });
 

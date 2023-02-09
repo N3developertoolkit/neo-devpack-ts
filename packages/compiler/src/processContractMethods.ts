@@ -326,6 +326,7 @@ export function compileMethodScript(
                 break;
             case 'pushnull':
                 instructions.push(sc.OpCode.PUSHNULL);
+                break;
             case 'return':
                 instructions.push(sc.OpCode.RET);
                 break;

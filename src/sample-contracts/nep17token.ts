@@ -1,14 +1,14 @@
 import { runtimeGetScriptContainer, Transaction, storagePut, storageGetContext, ByteString, storageGet, runtimeCheckWitness, contractManagementUpdate, asInteger, asByteString, concat, storageDelete, contractManagementGetContract, contractCall, callFlagsAll } from "@neo-project/neo-contract-framework";
 
 // /**
-//  * @contract ApocToken
+//  * @contract TankToken
 //  * @extra Author "Harry Pierson"
 //  * @extra Email "harrypierson@hotmail.com"
 //  * @extra Description "this is a prototype NEP-17 contract written in TypeScript"
 //  * @standard "NEP-17"
 //  */
 
-const SYMBOL = "APOC";
+const SYMBOL = "TANK";
 const DECIMALS = 8n;
 const INITIAL_SUPPLY = 1_000_000n;
 

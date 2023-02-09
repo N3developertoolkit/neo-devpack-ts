@@ -5,6 +5,7 @@ import { dispatch } from "../utility/nodeDispatch";
 import { BlockScope, isScope as isWritableScope, VariableSymbolDef } from "../scope";
 import { processExpression } from "./expressionProcessor";
 import { TargetOffset } from "./MethodBuilder";
+import { isVoidLike } from "../utils";
 
 export function processBlock(node: tsm.Block, { diagnostics, builder, scope }: ProcessMethodOptions): void {
     var open = node.getFirstChildByKind(tsm.SyntaxKind.OpenBraceToken);
@@ -23,9 +24,9 @@ export function processBlock(node: tsm.Block, { diagnostics, builder, scope }: P
 export function processExpressionStatement(node: tsm.ExpressionStatement, options: ProcessMethodOptions): void {
     const { builder } = options;
     const setLocation = builder.getLocationSetter();
-
     const expr = node.getExpression();
     processExpression(expr, options);
+    if (!isVoidLike(expr.getType())) { builder.emit('drop'); }
     setLocation(node);
 }
 

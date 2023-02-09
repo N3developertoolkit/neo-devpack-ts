@@ -2,7 +2,7 @@
 import { open } from "fs";
 import * as tsm from "ts-morph";
 import { CompileError } from "../compiler";
-import { ConstantSymbolDef, EventSymbolDef, IntrinsicMethodDef, IntrinsicSymbolDef, MethodSymbolDef, MethodTokenSymbolDef, OperationsSymbolDef, ReadonlyScope, SymbolDef, SysCallSymbolDef, VariableSymbolDef } from "../scope";
+import { ConstantSymbolDef, EventSymbolDef, IntrinsicMethodDef, IntrinsicValueSymbolDef, MethodSymbolDef, MethodTokenSymbolDef, OperationsSymbolDef, ReadonlyScope, SymbolDef, SysCallSymbolDef, VariableSymbolDef } from "../scope";
 import { dispatch } from "../utility/nodeDispatch";
 import { ProcessMethodOptions } from "./processFunctionDeclarations";
 
@@ -90,7 +90,7 @@ export function processCallExpression(node: tsm.CallExpression, options: Process
 
 
 function loadSymbolDef(def: SymbolDef, options: ProcessMethodOptions) {
-    if (def instanceof IntrinsicSymbolDef) {
+    if (def instanceof IntrinsicValueSymbolDef) {
         // nothing to do here
     } else if (def instanceof ConstantSymbolDef) {
         if (def.value === null) {

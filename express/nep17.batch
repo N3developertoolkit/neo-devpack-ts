@@ -1,0 +1,4 @@
+transfer 100000 gas genesis owen
+contract deploy ./out/nep17token.nef owen
+transfer 10000 TANK owen alice
+transfer 10000 TANK owen bob

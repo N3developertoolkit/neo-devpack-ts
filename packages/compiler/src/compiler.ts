@@ -24,6 +24,7 @@ export interface CompileOptions {
     readonly addressVersion?: number;
     readonly inline?: boolean;
     readonly optimize?: boolean;
+    readonly standards?: ReadonlyArray<string>;
 }
 
 export interface CompileArtifacts {
@@ -57,6 +58,7 @@ export function compile(
             addressVersion: options?.addressVersion ?? DEFAULT_ADDRESS_VALUE,
             inline: options?.inline ?? false,
             optimize: options?.optimize ?? false,
+            standards: options?.standards ?? [],
         },
         scopes: new Array<ReadonlyScope>(),
         methods,

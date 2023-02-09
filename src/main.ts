@@ -1,6 +1,6 @@
 import path from "path";
 import { ts } from "ts-morph";
-import { compile, createContractProject, hasErrors, toDiagnostic } from '../packages/compiler/';
+import { compile, CompileOptions, createContractProject, hasErrors, toDiagnostic } from '../packages/compiler/';
 import * as fsp from 'fs/promises';
 import * as fs from 'fs';
 import { blue, dumpContractMethod } from "./utils";
@@ -38,16 +38,14 @@ async function main() {
         printDiagnostics(diagnostics.map(d => d.compilerObject));
     } else {
         try {
-            const { diagnostics, methods, nef, manifest, debugInfo } = compile(project, contractName);
+
+            const options: CompileOptions = contractName.startsWith('nep17')
+                ? { standards: ["NEP-17"] } : {}
+            const { diagnostics, methods, nef, manifest, debugInfo } = compile(project, contractName, options);
 
             if (diagnostics.length > 0) printDiagnostics(diagnostics);
 
             if (hasErrors(diagnostics)) return;
-
-            // for (const m of methods) {
-            //     if (m.def.symbol.getName() !== "postTransfer") continue;
-            //     dumpContractMethod(m);
-            // }
 
             const outputPath = path.join(__dirname, OUTPUT_DIR);
             if ((nef || manifest || debugInfo) && !fs.existsSync(outputPath))
