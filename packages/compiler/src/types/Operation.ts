@@ -32,6 +32,7 @@ export const allowedOperations = [
     'loadlocal',
     'loadstatic',
     'multiply',
+    'negate',
     'newemptyarray',
     'noop',
     'not',

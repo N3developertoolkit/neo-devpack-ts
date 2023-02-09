@@ -45,7 +45,7 @@ async function main() {
             if (hasErrors(diagnostics)) return;
 
             for (const m of methods) {
-                if (m.def.symbol.getName() !== "postTransfer") continue;
+                if (m.def.symbol.getName() !== "burn") continue;
                 dumpContractMethod(m);
             }
 

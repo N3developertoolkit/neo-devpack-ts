@@ -114,6 +114,7 @@ function getOperationSize(op: Operation) {
         case 'lessthan':
         case 'lessthanorequal':
         case 'multiply':
+        case 'negate':
         case 'newemptyarray':
         case 'noop':
         case 'not':
@@ -289,6 +290,9 @@ export function compileMethodScript(
                 break;
             case 'multiply':
                 instructions.push(sc.OpCode.MUL);
+                break;
+            case 'negate':
+                instructions.push(sc.OpCode.NEGATE);
                 break;
             case 'newemptyarray':
                 instructions.push(sc.OpCode.NEWARRAY0);

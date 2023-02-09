@@ -1,5 +1,3 @@
-// import { ByteString, storageGet, storageGetContext } from '@neo-project/neo-contract-framework';
-
 import { runtimeGetScriptContainer, Transaction, storagePut, storageGetContext, ByteString, storageGet, runtimeCheckWitness, contractManagementUpdate, asInteger, asByteString, concat, storageDelete } from "@neo-project/neo-contract-framework";
 
 // /**
@@ -29,13 +27,41 @@ export function totalSupply( ) {
     const value = storageGet(
         storageGetContext(), 
         Uint8Array.from([prefixTotalSupply]));
-
     return asInteger(value);
+}
+
+/** @safe */
+export function balanceOf(account: ByteString) { 
+    const key = concat(
+        Uint8Array.from([prefixTotalSupply]),
+        account);
+    const value = storageGet(storageGetContext(), key);
+    return asInteger(value);
+}
+
+export function transfer(from: ByteString, to: ByteString, amount: bigint, data: any) {
+    if (amount < 0n) throw Error("The amount must be a positive number");
+    if (!runtimeCheckWitness(from)) return false;
+    if (amount != 0n) {
+        if (!updateBalance(from, -amount)) return false;
+        updateBalance(to, amount);
+    }
+    postTransfer(from, to, amount, data);
+    return true;
 }
 
 export function mint(account: ByteString, amount: bigint): void {
     if (!checkOwner()) throw Error("Only the contract owner can mint tokens");
     createTokens(account, amount);
+}
+
+export function burn(account: ByteString, amount: bigint): void {
+    if (amount === 0n) return;
+    if (amount < 0n) throw Error("amount must be greater than zero");
+    if (!checkOwner()) throw Error("Only the contract owner can mint tokens");
+    if (!updateBalance(account, -amount)) throw Error("account did not have sufficient funds to burn");
+    updateTotalSupply(-amount);
+    postTransfer(account, null, amount, null);
 }
 
 export function _deploy(_data: any, update: boolean): void { 
@@ -105,51 +131,3 @@ function postTransfer(from: ByteString | null, to: ByteString | null, amount: bi
 //         }
 //     }
 }
-
-// ==============================================================
-
-
-
-
-
-// /** @safe */
-// export function balanceOf(account: Address) { 
-//     if (!ByteString.isValidAddress(account)) throw new Error();
-//     const context = Storage.currentContext;
-//     const key = ByteString.concat(new ByteString(prefixBalance), account);
-//     const value = Storage.get(context, key);
-//     return value ? value as bigint : 0n;
-// }
-
-// export function transfer(from: Address, to: Address, amount: bigint, data: any) {
-//     if (!ByteString.isValidAddress(from)) throw new Error();
-//     if (!ByteString.isValidAddress(to)) throw new Error();
-//     if (amount < 0n) throw new Error("The amount must be a positive number");
-//     if (!Runtime.checkWitness(from)) return false;
-//     if (amount != 0n) {
-//         if (!updateBalance(from, -amount)) return false;
-//         updateBalance(to, amount);
-//     }
-//     postTransfer(from, to, amount, data);
-//     return true;
-// }
-
-
-
-// export function burn(account: Address, amount: bigint): void {
-//     if (amount === 0n) return;
-//     if (amount < 0n) throw new Error("amount must be greater than zero");
-//     var owner = getOwner();
-//     if (!Runtime.checkWitness(owner)) throw new Error();
-
-//     if (!updateBalance(account, -amount)) throw new Error();
-//     updateTotalSupply(-amount);
-//     postTransfer(account, null, amount, null);
-// }
-
-
-
-
-
-
-

@@ -192,6 +192,10 @@ export function processBinaryExpression(node: tsm.BinaryExpression, options: Pro
         case tsm.SyntaxKind.LessThanEqualsToken:
             builder.emit('lessthanorequal');
             break;
+        case tsm.SyntaxKind.ExclamationEqualsToken:
+        case tsm.SyntaxKind.ExclamationEqualsEqualsToken:
+            builder.emit('notequal');
+            break;
         case tsm.SyntaxKind.PrefixUnaryExpression:
             break;
         case tsm.SyntaxKind.PlusToken:
@@ -204,11 +208,15 @@ export function processBinaryExpression(node: tsm.BinaryExpression, options: Pro
 
 export function processPrefixUnaryExpression(node: tsm.PrefixUnaryExpression, options: ProcessMethodOptions) {
     
-    processExpression(node.getOperand(), options);
     const token = node.getOperatorToken();
     switch (token) {
         case tsm.SyntaxKind.ExclamationToken:
+            processExpression(node.getOperand(), options);
             options.builder.emit('not');
+            break;
+        case tsm.SyntaxKind.MinusToken:
+            processExpression(node.getOperand(), options);
+            options.builder.emit('negate');
             break;
         default: 
             throw new CompileError(`processPrefixUnaryExpression ${tsm.ts.SyntaxKind[token]}`, node)
