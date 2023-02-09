@@ -103,6 +103,7 @@ function convertPushInt({ value }: PushIntOperation) {
 function getOperationSize(op: Operation) {
     switch (op.kind) {
         case 'add':
+        case 'append':
         case 'concat':
         case 'drop':
         case 'duplicate':
@@ -113,6 +114,7 @@ function getOperationSize(op: Operation) {
         case 'lessthan':
         case 'lessthanorequal':
         case 'multiply':
+        case 'newemptyarray':
         case 'noop':
         case 'not':
         case 'notequal':
@@ -217,7 +219,10 @@ export function compileMethodScript(
 
         switch (op.kind) {
             case 'add':
-                instructions.push(sc.OpCode.ADD)
+                instructions.push(sc.OpCode.ADD);
+                break;
+            case 'append':
+                instructions.push(sc.OpCode.APPEND);
                 break;
             case 'call':
                 instructions.push(...convertCall(op as CallOperation, addressMap.get(i)!, methodAddressMap));
@@ -284,6 +289,9 @@ export function compileMethodScript(
                 break;
             case 'multiply':
                 instructions.push(sc.OpCode.MUL);
+                break;
+            case 'newemptyarray':
+                instructions.push(sc.OpCode.NEWARRAY0);
                 break;
             case 'noop':
                 instructions.push(sc.OpCode.NOP);

@@ -5,6 +5,7 @@ import { MethodSymbolDef } from "../scope";
 
 export const allowedOperations = [
     'add',
+    'append',
     'call',
     'calltoken',
     'concat',
@@ -31,6 +32,7 @@ export const allowedOperations = [
     'loadlocal',
     'loadstatic',
     'multiply',
+    'newemptyarray',
     'noop',
     'not',
     'notequal',

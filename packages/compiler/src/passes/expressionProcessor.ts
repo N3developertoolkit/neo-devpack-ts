@@ -2,7 +2,7 @@
 import { open } from "fs";
 import * as tsm from "ts-morph";
 import { CompileError } from "../compiler";
-import { ConstantSymbolDef, IntrinsicMethodDef, IntrinsicSymbolDef, MethodSymbolDef, MethodTokenSymbolDef, OperationsSymbolDef, ReadonlyScope, SymbolDef, SysCallSymbolDef, VariableSymbolDef } from "../scope";
+import { ConstantSymbolDef, EventSymbolDef, IntrinsicMethodDef, IntrinsicSymbolDef, MethodSymbolDef, MethodTokenSymbolDef, OperationsSymbolDef, ReadonlyScope, SymbolDef, SysCallSymbolDef, VariableSymbolDef } from "../scope";
 import { dispatch } from "../utility/nodeDispatch";
 import { ProcessMethodOptions } from "./processFunctionDeclarations";
 
@@ -19,22 +19,32 @@ function processArguments(args: ReadonlyArray<tsm.Expression>, options: ProcessM
 }
 
 function callSymbolDef(def: SymbolDef, args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions) {
+    const { builder } = options;
     if (def instanceof SysCallSymbolDef) {
         processArguments(args, options);
-        options.builder.emitSysCall(def.name);
+        builder.emitSysCall(def.name);
     } else if (def instanceof IntrinsicMethodDef) {
         def.emitCall(args, options);
     } else if (def instanceof MethodTokenSymbolDef) {
         processArguments(args, options);
-        options.builder.emitCallToken(def.token);
+        builder.emitCallToken(def.token);
     } else if (def instanceof OperationsSymbolDef) {
         processArguments(args, options);
         for (const op of def.operations) {
-            options.builder.emit(op);
+            builder.emit(op);
         }
     } else if (def instanceof MethodSymbolDef) {
         processArguments(args, options);
-        options.builder.emitCall(def);
+        builder.emitCall(def);
+    } else if (def instanceof EventSymbolDef) {
+        builder.emit('newemptyarray');
+        def.parameters.forEach((v,i) => {
+            builder.emit('duplicate');
+            processExpression(args[i], options);
+            builder.emit('append');
+        });
+        builder.emitPushData(def.name);
+        builder.emitSysCall("System.Runtime.Notify");
     } else {
         throw new Error("callSymbolDef: unknown SymbolDef type")
     }

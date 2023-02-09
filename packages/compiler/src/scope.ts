@@ -175,22 +175,16 @@ export class VariableSymbolDef implements SymbolDef {
     ) { }
 }
 
-// export class EventSymbolDef implements SymbolDef {
-//     readonly parameters: ReadonlyArray<tsm.ParameterDeclaration>;
-//     constructor(
-//         readonly symbol: tsm.Symbol,
-//         readonly parentScope: ReadonlyScope,
-//         readonly name: string,
-//         node: tsm.FunctionDeclaration,
-//     ) {
-//         if (!node.hasDeclareKeyword()) throw new CompileError('invalid', node);
-//         if (!isVoidLike(node.getReturnType())) throw new CompileError('invalid', node);
-//         this.parameters = node.getParameters();
-//     }
-// }
+export class EventSymbolDef implements SymbolDef {
+    constructor(
+        readonly symbol: tsm.Symbol,
+        readonly parentScope: ReadonlyScope,
+        readonly name: string,
+        readonly parameters: ReadonlyArray<tsm.ParameterDeclaration>,
+    ) { }
+}
 
 export class SysCallSymbolDef implements SymbolDef {
-
     constructor(
         readonly symbol: tsm.Symbol,
         readonly parentScope: ReadonlyScope,
@@ -307,7 +301,7 @@ function processFunctionDeclaration(node: tsm.FunctionDeclaration, options: Scop
                 if (!isVoidLike(node.getReturnType())) throw new CompileError('event functions cannot have return values', node);
                 const eventName = tag.getCommentText() ?? symbol.getName();
                 if (eventName.length === 0) throw new CompileError('invalid event tag', node);
-                // scope.define(s => new EventSymbolDef(symbol, s, name, node));
+                scope.define(s => new EventSymbolDef(symbol, s, eventName, node.getParameters()));
                 return;
             }
             case 'methodToken': {

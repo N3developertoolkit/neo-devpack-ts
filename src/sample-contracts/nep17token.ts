@@ -93,12 +93,11 @@ function updateBalance(account: ByteString, amount: bigint): boolean {
     return true;
 }
 
-// /** @event */
-// declare function Transfer(from: ByteString | undefined, to: ByteString | undefined, amount: bigint): void;
+/** @event */
+declare function Transfer(from: ByteString | null, to: ByteString | null, amount: bigint): void;
 
-
-function postTransfer(from: ByteString | undefined | null, to: ByteString | undefined | null, amount: bigint, data: any) {
-//     OnTransfer(from, to, amount);
+function postTransfer(from: ByteString | null, to: ByteString | null, amount: bigint, data: any) {
+    Transfer(from, to, amount);
 //     if (to) {
 //         const contract = ContractManagement.getContract(to);
 //         if (contract) {
