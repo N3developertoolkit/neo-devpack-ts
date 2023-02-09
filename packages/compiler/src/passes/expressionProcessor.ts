@@ -38,7 +38,7 @@ function callSymbolDef(def: SymbolDef, args: ReadonlyArray<tsm.Expression>, opti
         builder.emitCall(def);
     } else if (def instanceof EventSymbolDef) {
         builder.emit('newemptyarray');
-        def.parameters.forEach((v,i) => {
+        def.parameters.forEach((v, i) => {
             builder.emit('duplicate');
             processExpression(args[i], options);
             builder.emit('append');
@@ -111,7 +111,6 @@ function loadSymbolDef(def: SymbolDef, options: ProcessMethodOptions) {
         }
     } else if (def instanceof VariableSymbolDef) {
         options.builder.emitLoad(def.kind, def.index);
-
     }
 }
 
@@ -137,7 +136,7 @@ export function processBigIntLiteral(node: tsm.BigIntLiteral, { builder }: Proce
 }
 
 export function processStringLiteral(node: tsm.StringLiteral, { builder }: ProcessMethodOptions) {
-    const value = node.getLiteralValue(); 
+    const value = node.getLiteralValue();
     builder.emitPushData(value);
 }
 
@@ -158,12 +157,6 @@ export function processPropertyAccessExpression(node: tsm.PropertyAccessExpressi
     options.builder.emit('pickitem');
 }
 
-// export function processNewExpression(node: tsm.NewExpression, options: ProcessMethodOptions) {
-//     const args = node.getArguments();
-//     const expr = node.getExpression();
-//     console.log();
-// }
-
 export function processBinaryExpression(node: tsm.BinaryExpression, options: ProcessMethodOptions) {
     processExpression(node.getLeft(), options);
     processExpression(node.getRight(), options);
@@ -176,27 +169,27 @@ export function processBinaryExpression(node: tsm.BinaryExpression, options: Pro
         case tsm.SyntaxKind.AsteriskToken:
             builder.emit('multiply');
             break;
-        case tsm.SyntaxKind.EqualsEqualsToken:
+        // TODO: SHould == and === be the same?
         case tsm.SyntaxKind.EqualsEqualsEqualsToken:
+        case tsm.SyntaxKind.EqualsEqualsToken:
             builder.emit('equal');
             break;
-        case tsm.SyntaxKind.GreaterThanToken:
-            builder.emit('greaterthan');
-            break;
-        case tsm.SyntaxKind.GreaterThanEqualsToken:
-            builder.emit('greaterthanorequal');
-            break;
-        case tsm.SyntaxKind.LessThanToken:
-            builder.emit('lessthan');
-            break;
-        case tsm.SyntaxKind.LessThanEqualsToken:
-            builder.emit('lessthanorequal');
-            break;
+        // TODO: SHould != and !== be the same?
         case tsm.SyntaxKind.ExclamationEqualsToken:
         case tsm.SyntaxKind.ExclamationEqualsEqualsToken:
             builder.emit('notequal');
             break;
-        case tsm.SyntaxKind.PrefixUnaryExpression:
+        case tsm.SyntaxKind.GreaterThanEqualsToken:
+            builder.emit('greaterthanorequal');
+            break;
+        case tsm.SyntaxKind.GreaterThanToken:
+            builder.emit('greaterthan');
+            break;
+        case tsm.SyntaxKind.LessThanEqualsToken:
+            builder.emit('lessthanorequal');
+            break;
+        case tsm.SyntaxKind.LessThanToken:
+            builder.emit('lessthan');
             break;
         case tsm.SyntaxKind.PlusToken:
             builder.emit('add');
@@ -204,10 +197,42 @@ export function processBinaryExpression(node: tsm.BinaryExpression, options: Pro
         default:
             throw new CompileError(`processBinaryExpression ${opToken.getKindName()}`, node)
     }
+
+    // SyntaxKind.AmpersandAmpersandEqualsToken 
+    // SyntaxKind.AmpersandAmpersandToken 
+    // SyntaxKind.AmpersandEqualsToken 
+    // SyntaxKind.AmpersandToken 
+    // SyntaxKind.AsteriskAsteriskEqualsToken 
+    // SyntaxKind.AsteriskEqualsToken 
+    // SyntaxKind.BarBarEqualsToken 
+    // SyntaxKind.BarBarToken;
+    // SyntaxKind.BarEqualsToken 
+    // SyntaxKind.BarToken 
+    // SyntaxKind.CaretEqualsToken 
+    // SyntaxKind.CaretToken;
+    // SyntaxKind.CommaToken;
+    // SyntaxKind.EqualsToken
+    // SyntaxKind.GreaterThanGreaterThanEqualsToken 
+    // SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken 
+    // SyntaxKind.GreaterThanGreaterThanGreaterThanToken;
+    // SyntaxKind.GreaterThanGreaterThanToken 
+    // SyntaxKind.InKeyword;
+    // SyntaxKind.InstanceOfKeyword 
+    // SyntaxKind.LessThanLessThanEqualsToken 
+    // SyntaxKind.LessThanLessThanToken 
+    // SyntaxKind.MinusEqualsToken 
+    // SyntaxKind.MinusToken;
+    // SyntaxKind.PercentEqualsToken 
+    // SyntaxKind.PercentToken
+    // SyntaxKind.PlusEqualsToken 
+    // SyntaxKind.QuestionQuestionEqualsToken
+    // SyntaxKind.QuestionQuestionToken
+    // SyntaxKind.SlashEqualsToken 
+    // SyntaxKind.SlashToken 
 }
 
 export function processPrefixUnaryExpression(node: tsm.PrefixUnaryExpression, options: ProcessMethodOptions) {
-    
+
     const token = node.getOperatorToken();
     switch (token) {
         case tsm.SyntaxKind.ExclamationToken:
@@ -218,17 +243,17 @@ export function processPrefixUnaryExpression(node: tsm.PrefixUnaryExpression, op
             processExpression(node.getOperand(), options);
             options.builder.emit('negate');
             break;
-        default: 
+        default:
             throw new CompileError(`processPrefixUnaryExpression ${tsm.ts.SyntaxKind[token]}`, node)
     }
+
+    // SyntaxKind.MinusMinusToken
+    // SyntaxKind.PlusPlusToken 
+    // SyntaxKind.PlusToken
+    // SyntaxKind.TildeToken 
 }
 
-export function processParenthesizedExpression(node: tsm.ParenthesizedExpression, options: ProcessMethodOptions) {
-    processExpression(node.getExpression(), options);
-} 
-
 export function processExpression(node: tsm.Expression, options: ProcessMethodOptions) {
-
     dispatch(node, options, {
         [tsm.SyntaxKind.AsExpression]: processAsExpression,
         [tsm.SyntaxKind.BigIntLiteral]: processBigIntLiteral,
@@ -236,14 +261,55 @@ export function processExpression(node: tsm.Expression, options: ProcessMethodOp
         [tsm.SyntaxKind.CallExpression]: processCallExpression,
         [tsm.SyntaxKind.FalseKeyword]: processBooleanLiteral,
         [tsm.SyntaxKind.Identifier]: processIdentifier,
-        [tsm.SyntaxKind.NonNullExpression]: (node) => { processExpression(node.getExpression(), options); },
-        [tsm.SyntaxKind.NullKeyword]: (node) => { options.builder.emitPushNull(); },
-        // [tsm.SyntaxKind.NewExpression]: processNewExpression,
+        [tsm.SyntaxKind.NonNullExpression]: (node, options) => { processExpression(node.getExpression(), options); },
+        [tsm.SyntaxKind.NullKeyword]: (_node, options) => { options.builder.emitPushNull(); },
         [tsm.SyntaxKind.NumericLiteral]: processNumericLiteral,
-        [tsm.SyntaxKind.ParenthesizedExpression]: processParenthesizedExpression, 
+        [tsm.SyntaxKind.ParenthesizedExpression]: (node, options) => { processExpression(node.getExpression(), options); },
         [tsm.SyntaxKind.PrefixUnaryExpression]: processPrefixUnaryExpression,
         [tsm.SyntaxKind.PropertyAccessExpression]: processPropertyAccessExpression,
         [tsm.SyntaxKind.StringLiteral]: processStringLiteral,
         [tsm.SyntaxKind.TrueKeyword]: processBooleanLiteral,
     });
 }
+
+// case SyntaxKind.AnyKeyword:
+// case SyntaxKind.ArrayLiteralExpression:
+// case SyntaxKind.ArrowFunction:
+// case SyntaxKind.AwaitExpression:
+// case SyntaxKind.BooleanKeyword:
+// case SyntaxKind.ClassExpression:
+// case SyntaxKind.CommaListExpression:
+// case SyntaxKind.ConditionalExpression:
+// case SyntaxKind.DeleteExpression:
+// case SyntaxKind.ElementAccessExpression:
+// case SyntaxKind.FunctionExpression:
+// case SyntaxKind.ImportKeyword:
+    // case SyntaxKind.JsxClosingFragment:
+    // case SyntaxKind.JsxElement:
+    // case SyntaxKind.JsxExpression:
+    // case SyntaxKind.JsxFragment:
+    // case SyntaxKind.JsxOpeningElement:
+    // case SyntaxKind.JsxOpeningFragment:
+    // case SyntaxKind.JsxSelfClosingElement:
+// case SyntaxKind.MetaProperty:
+// case SyntaxKind.NewExpression:
+// case SyntaxKind.NoSubstitutionTemplateLiteral:
+// case SyntaxKind.NumberKeyword:
+// case SyntaxKind.ObjectKeyword:
+// case SyntaxKind.ObjectLiteralExpression:
+// case SyntaxKind.OmittedExpression:
+// case SyntaxKind.PartiallyEmittedExpression:
+// case SyntaxKind.PostfixUnaryExpression:
+// case SyntaxKind.RegularExpressionLiteral:
+// case SyntaxKind.SpreadElement:
+// case SyntaxKind.StringKeyword:
+// case SyntaxKind.SuperKeyword:
+// case SyntaxKind.SymbolKeyword:
+// case SyntaxKind.TaggedTemplateExpression:
+// case SyntaxKind.TemplateExpression:
+// case SyntaxKind.ThisKeyword:
+// case SyntaxKind.TypeAssertionExpression:
+// case SyntaxKind.TypeOfExpression:
+// case SyntaxKind.UndefinedKeyword:
+// case SyntaxKind.VoidExpression:
+// case SyntaxKind.YieldExpression:

@@ -109,3 +109,30 @@ export function processStatement(node: tsm.Statement, options: ProcessMethodOpti
         [tsm.SyntaxKind.VariableStatement]: processVariableStatement,
     });
 }
+
+
+// case SyntaxKind.BreakStatement:
+// case SyntaxKind.ClassDeclaration:
+// case SyntaxKind.ContinueStatement:
+// case SyntaxKind.DebuggerStatement:
+// case SyntaxKind.DoStatement:
+// case SyntaxKind.EmptyStatement:
+// case SyntaxKind.EnumDeclaration:
+// case SyntaxKind.ExportAssignment:
+// case SyntaxKind.ExportDeclaration:
+// case SyntaxKind.ForInStatement:
+// case SyntaxKind.ForOfStatement:
+// case SyntaxKind.ForStatement:
+// case SyntaxKind.FunctionDeclaration:
+// case SyntaxKind.ImportDeclaration:
+// case SyntaxKind.ImportEqualsDeclaration:
+// case SyntaxKind.InterfaceDeclaration:
+// case SyntaxKind.LabeledStatement:
+// case SyntaxKind.ModuleBlock:
+// case SyntaxKind.ModuleDeclaration:
+// case SyntaxKind.NotEmittedStatement:
+// case SyntaxKind.SwitchStatement:
+// case SyntaxKind.TryStatement:
+// case SyntaxKind.TypeAliasDeclaration:
+// case SyntaxKind.WhileStatement:
+// case SyntaxKind.WithStatement:
