@@ -1,4 +1,4 @@
-import { runtimeGetScriptContainer, Transaction, storagePut, storageGetContext, ByteString, storageGet, runtimeCheckWitness, contractManagementUpdate, asInteger, asByteString, concat, storageDelete } from "@neo-project/neo-contract-framework";
+import { runtimeGetScriptContainer, Transaction, storagePut, storageGetContext, ByteString, storageGet, runtimeCheckWitness, contractManagementUpdate, asInteger, asByteString, concat, storageDelete, contractManagementGetContract, contractCall, callFlagsAll } from "@neo-project/neo-contract-framework";
 
 // /**
 //  * @contract ApocToken
@@ -124,10 +124,10 @@ declare function Transfer(from: ByteString | null, to: ByteString | null, amount
 
 function postTransfer(from: ByteString | null, to: ByteString | null, amount: bigint, data: any) {
     Transfer(from, to, amount);
-//     if (to) {
-//         const contract = ContractManagement.getContract(to);
-//         if (contract) {
-//             Contract.call(to, "onNEP17Payment", from, amount, data);
-//         }
-//     }
+    if (to) {
+        const contract = contractManagementGetContract(to);
+        if (contract) {
+            contractCall(to, "onNEP17Payment", callFlagsAll, from, amount, data);
+        }
+    }
 }

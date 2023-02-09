@@ -44,10 +44,10 @@ async function main() {
 
             if (hasErrors(diagnostics)) return;
 
-            for (const m of methods) {
-                if (m.def.symbol.getName() !== "burn") continue;
-                dumpContractMethod(m);
-            }
+            // for (const m of methods) {
+            //     if (m.def.symbol.getName() !== "postTransfer") continue;
+            //     dumpContractMethod(m);
+            // }
 
             const outputPath = path.join(__dirname, OUTPUT_DIR);
             if ((nef || manifest || debugInfo) && !fs.existsSync(outputPath))

@@ -27,10 +27,14 @@ export declare function asByteString(value: bigint): ByteString;
  */
 export declare function concat(value1: ByteString, value2: ByteString): ByteString;
 
-// /** @opcode {OpCode.CONVERT} StackItemType.ByteString */
-// export declare function asInteger(value: ByteString): bigint;
-// export declare function asByteString(value: string): ByteString;
-// export declare function asString(value: ByteString): string;
+export const callFlagsNone = 0;
+export const callFlagsReadStates = 1;
+export const callFlagsWriteStates = 2;
+export const callFlagsAllowCall = 4;
+export const callFlagsAllowNotify = 8;
+export const callFlagsStates = 3;
+export const callFlagsReadOnly = 5;
+export const callFlagsAll = 15
 
 // There are 7 interop Contract service
 // three are internal use only: CallNative, NativeOnPersist and NativePostPersist
@@ -78,8 +82,16 @@ export declare function runtimeGetScriptContainer(): any;
 /** @syscall System.Runtime.CheckWitness */
 export declare function runtimeCheckWitness(account: ByteString): boolean;
 
+/** @syscall System.Contract.Call */
+export declare function contractCall(scriptHash: ByteString, method: string, flags: number, ...args: any[]): any;
+
 /** @methodToken {0xfffdc93764dbaddd97c48f252a53ea4643faa3fd} update */
 export declare function contractManagementUpdate(nefFile: ByteString, manifest: string, data?: any): void;
+
+/** @methodToken {0xfffdc93764dbaddd97c48f252a53ea4643faa3fd} getContract */
+export declare function contractManagementGetContract(hash: ByteString): Contract;
+
+// public static extern Contract GetContract(UInt160 hash);
 
 // TODO: Do stack item interfaces such as Transacation and Block need a JSDoc tag like @stackitem?
 export interface Transaction {
@@ -104,6 +116,14 @@ export interface Block {
     readonly primaryIndex: number,
     readonly nextConsensus: ByteString,
     readonly transactionsCount: number
+}
+
+export interface Contract {
+    readonly id: number;
+    readonly updateCounter: number;
+    readonly hash: ByteString;
+    readonly nef: ByteString;
+    readonly manifest: any;
 }
 
 

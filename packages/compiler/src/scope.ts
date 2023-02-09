@@ -384,11 +384,21 @@ function processInterfaceDeclaration(node: tsm.InterfaceDeclaration, { diagnosti
     }
 }
 
+// function processEnumDeclaration(node: tsm.EnumDeclaration, options: ScopeOptions) {
+//     const members = node.getMembers();
+//     for (const member of members) {
+//         const value = member.getValue();
+//         console.log();
+//     }
+// }
+
 function processScopeNode(node: tsm.Node, options: ScopeOptions) {
     dispatch(node, options, {
+        // [tsm.SyntaxKind.EnumDeclaration]: processEnumDeclaration,
         [tsm.SyntaxKind.FunctionDeclaration]: processFunctionDeclaration,
         [tsm.SyntaxKind.InterfaceDeclaration]: processInterfaceDeclaration,
         [tsm.SyntaxKind.ImportDeclaration]: processImportDeclaration,
+        [tsm.SyntaxKind.VariableDeclaration]: processVariableDeclaration,
         [tsm.SyntaxKind.VariableStatement]: processVariableStatement,
         [tsm.SyntaxKind.EndOfFileToken]: () => { },
     });

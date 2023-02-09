@@ -3,8 +3,13 @@ import { ContractMethod } from "../packages/compiler/src/passes/processFunctionD
 import { CallOperation, CallTokenOperation, ConvertOperation, InitSlotOperation, JumpOperation, LoadStoreOperation, Location, Operation, PushBoolOperation, PushDataOperation, PushIntOperation, SysCallOperation } from "../packages/compiler/src/types/Operation";
 import { sc, u } from "@cityofzion/neon-core";
 
+function typeToString(type: tsm.Type) {
+    return type.getSymbol()?.getName() ?? 'unknown';
+}
 export function dumpContractMethod(method: ContractMethod) {
-    console.log(magenta, `Method: ${method.def.node.getSymbolOrThrow().getName()}`);
+    const node = method.def.node;
+    const params = node.getParameters().map(p => `${p.getName()}: ${typeToString(p.getType())}`);
+    console.log(green, `Method: ${node.getSymbolOrThrow().getName()}(${params.join(", ")}): ${typeToString(node.getReturnType())}`);
     method.operations.forEach((v, i) => {
         if (v.location) { console.log(cyan, `  ${dumpLocation(v.location)}`); }
         console.log(`    ${i}: ${dumpOperation(v, i)}`);
