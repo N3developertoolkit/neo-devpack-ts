@@ -1,6 +1,6 @@
 import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
-import { createDiagnostic, toDiagnostic } from "./utils";
+import { createDiagnostic, hasErrors, toDiagnostic } from "./utils";
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
@@ -28,6 +28,7 @@ export interface CompileOptions {
 
 export interface CompileArtifacts {
     readonly diagnostics: Array<tsm.ts.Diagnostic>;
+    readonly methods: ReadonlyArray<ContractMethod>;
     readonly nef?: sc.NEF;
     readonly manifest?: sc.ContractManifest;
     readonly debugInfo?: DebugInfoJson;
@@ -41,13 +42,6 @@ export interface CompileContext {
     readonly methods: Array<ContractMethod>;
 }
 
-function hasErrors(diagnostics: tsm.ts.Diagnostic[]) {
-    for (const diag of diagnostics) {
-        if (diag.category === tsm.ts.DiagnosticCategory.Error) return true;
-    }
-    return false;
-}
-
 export function compile(
     project: tsm.Project, 
     contractName: string, 
@@ -55,6 +49,7 @@ export function compile(
 ): CompileArtifacts {
 
     const diagnostics = new Array<tsm.ts.Diagnostic>();
+    const methods = new Array<ContractMethod>();
     const context: CompileContext = {
         project,
         diagnostics,
@@ -64,22 +59,22 @@ export function compile(
             optimize: options?.optimize ?? false,
         },
         scopes: new Array<ReadonlyScope>(),
-        methods: new Array<ContractMethod>(),
+        methods,
     }
 
     try {
         createSymbolTrees(context);
-        if (hasErrors(diagnostics)) return { diagnostics };
+        if (hasErrors(diagnostics)) return { diagnostics, methods };
         processMethodDefinitions(context);
-        if (hasErrors(diagnostics)) return { diagnostics };
+        if (hasErrors(diagnostics)) return { diagnostics, methods };
         const { nef, manifest, debugInfo } = collectArtifacts(contractName, context);
-        if (hasErrors(diagnostics)) return { diagnostics };
-        return { nef, manifest, debugInfo, diagnostics };
+        if (hasErrors(diagnostics)) return { diagnostics, methods };
+        return { nef, manifest, debugInfo, diagnostics, methods };
     } catch (error) {
         diagnostics.push(toDiagnostic(error));
     }
 
-    return { diagnostics };
+    return { diagnostics, methods };
 }
 
 async function exists(rootPath: fs.PathLike) {

@@ -106,6 +106,13 @@ export function isCompoundAssignment(kind: tsm.SyntaxKind) {
     }
 }
 
+export function hasErrors(diagnostics: tsm.ts.Diagnostic[]) {
+    for (const diag of diagnostics) {
+        if (diag.category === tsm.ts.DiagnosticCategory.Error) return true;
+    }
+    return false;
+}
+
 export function getConstantValue(node: tsm.Expression) {
     switch (node.getKind()) {
         case tsm.SyntaxKind.NullKeyword:

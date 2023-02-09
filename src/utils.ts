@@ -1,10 +1,83 @@
-// import { OperationKind, Operation, isLoadStoreOperation, isJumpOperation, CallOperation, ConvertOperation, PushIntOperation, PushDataOperation, InitSlotOperation, SysCallOperation, CompileArtifacts } from '../packages/compiler';
-// import util from 'util';
-// import { FunctionDeclaration } from "ts-morph";
-// import { sc } from '@cityofzion/neon-core'
-// import { OpCode } from '@cityofzion/neon-core/lib/sc';
-// import { debug } from 'console';
+import * as tsm from "ts-morph";
+import { ContractMethod } from "../packages/compiler/src/passes/processFunctionDeclarations";
+import { CallOperation, CallTokenOperation, ConvertOperation, InitSlotOperation, JumpOperation, LoadStoreOperation, Location, Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "../packages/compiler/src/types/Operation";
 
+export function dumpContractMethod(method: ContractMethod) {
+    console.log(magenta, `Method: ${method.def.node.getSymbolOrThrow().getName()}`);
+    method.operations.forEach((v, i) => {
+        if (v.location) { console.log(cyan, `  ${dumpLocation(v.location)}`); }
+        console.log(`    ${i}: ${dumpOperation(v, i)}`);
+    })
+}
+
+function dumpLocation(location: Location) {
+    if (tsm.Node.isNode(location)) {
+        return location.print();
+    } else {
+        const src = location.start.getSourceFile().getFullText();
+        const start = location.start.getStart();
+        const end = location.end.getEnd();
+        return src.substring(start, end);
+    }
+}
+
+function dumpOperation(op: Operation, currentIndex: number) {
+    switch (op.kind) {
+        case 'convert': {
+            const { type } = op as ConvertOperation;
+            return `${op.kind} ${type}`
+        }
+        case 'calltoken': {
+            const { token } = op as CallTokenOperation;
+            return `${op.kind} ${token.hash} ${token.method}`
+        }
+        case 'initslot': {
+            const { locals, params } = op as InitSlotOperation;
+            return `${op.kind} ${locals} locals ${params} params`
+        }
+        case 'call': {
+            const { method } = op as CallOperation;
+            return `${op.kind} ${method.symbol.getName()}`
+        }
+        case 'jump':
+        case 'jumpif':
+        case 'jumpifnot':
+        case 'jumpeq':
+        case "jumpne":
+        case "jumpgt":
+        case "jumpge":
+        case "jumplt":
+        case "jumple": {
+            const { offset } = op as JumpOperation;
+            return `${op.kind} ${offset} (${offset + currentIndex})`
+        }
+        case 'syscall':{
+            const { name } = op as SysCallOperation;
+            return `${op.kind} ${name}`
+        }
+        case 'loadarg':
+        case 'loadlocal':
+        case 'loadstatic':
+        case 'storearg':
+        case 'storelocal':
+        case 'storestatic': {
+            const { index } = op as LoadStoreOperation
+            return `${op.kind} ${index}`
+        }
+        case 'pushdata': {
+            const { value } = op as PushDataOperation;
+            const buffer = Buffer.from(value);
+            return `${op.kind} 0x${buffer.toString('hex')} "${buffer.toString('utf8')}"`;
+        }
+        case 'pushint': {
+            const { value } = op as PushIntOperation;
+            return `${op.kind} ${value}`
+        }
+        default:
+            return `${op.kind}`
+    }
+
+}
 // // export function dumpFunctionContext(ctx: FunctionContext) {
 // //     const info = getFunctionInfo(ctx.node);
 // //     const params = info.parameters.map(p => `${p.name}: ${p.type.getText()}`).join(', ');
@@ -32,32 +105,33 @@
 // //     }
 // // }
 
-// enum AnsiEscapeSequences {
-//     Black = "\u001b[30m",
-//     Red = "\u001b[31m",
-//     Green = "\u001b[32m",
-//     Yellow = "\u001b[33m",
-//     Blue = "\u001b[34m",
-//     Magenta = "\u001b[35m",
-//     Cyan = "\u001b[36m",
-//     White = "\u001b[37m",
-//     Gray = "\u001b[90m",
-//     BrightRed = "\u001b[91m",
-//     BrightGreen = "\u001b[92m",
-//     BrightYellow = "\u001b[93m",
-//     BrightBlue = "\u001b[94m",
-//     BrightMagenta = "\u001b[95m",
-//     BrightCyan = "\u001b[96m",
-//     BrightWhite = "\u001b[97m",
-//     Invert = "\u001b[7m",
-//     Reset = "\u001b[0m",
-// }
+enum AnsiEscapeSequences {
+    Black = "\u001b[30m",
+    Red = "\u001b[31m",
+    Green = "\u001b[32m",
+    Yellow = "\u001b[33m",
+    Blue = "\u001b[34m",
+    Magenta = "\u001b[35m",
+    Cyan = "\u001b[36m",
+    White = "\u001b[37m",
+    Gray = "\u001b[90m",
+    BrightRed = "\u001b[91m",
+    BrightGreen = "\u001b[92m",
+    BrightYellow = "\u001b[93m",
+    BrightBlue = "\u001b[94m",
+    BrightMagenta = "\u001b[95m",
+    BrightCyan = "\u001b[96m",
+    BrightWhite = "\u001b[97m",
+    Invert = "\u001b[7m",
+    Reset = "\u001b[0m",
+}
 
-// export const green = `${AnsiEscapeSequences.BrightGreen}%s${AnsiEscapeSequences.Reset}`;
-// export const cyan = `${AnsiEscapeSequences.BrightCyan}%s${AnsiEscapeSequences.Reset}`;
-// export const magenta = `${AnsiEscapeSequences.BrightMagenta}%s${AnsiEscapeSequences.Reset}`;
-// export const yellow = `${AnsiEscapeSequences.BrightYellow}%s${AnsiEscapeSequences.Reset}`;
-// export const invert = `${AnsiEscapeSequences.Invert}%s${AnsiEscapeSequences.Reset}`;
+export const green = `${AnsiEscapeSequences.BrightGreen}%s${AnsiEscapeSequences.Reset}`;
+export const cyan = `${AnsiEscapeSequences.BrightCyan}%s${AnsiEscapeSequences.Reset}`;
+export const magenta = `${AnsiEscapeSequences.BrightMagenta}%s${AnsiEscapeSequences.Reset}`;
+export const yellow = `${AnsiEscapeSequences.BrightYellow}%s${AnsiEscapeSequences.Reset}`;
+export const blue = `${AnsiEscapeSequences.BrightBlue}%s${AnsiEscapeSequences.Reset}`;
+export const invert = `${AnsiEscapeSequences.Invert}%s${AnsiEscapeSequences.Reset}`;
 
 // export function getFunctionInfo(node: FunctionDeclaration) {
 //     return {

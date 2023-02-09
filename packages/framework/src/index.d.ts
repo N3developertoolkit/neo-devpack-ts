@@ -17,6 +17,12 @@ export interface ByteString extends Omit<Uint8Array, 'copyWithin' | 'fill' | 're
  */
 export declare function asInteger(value: ByteString | null | undefined): bigint;
 
+/**
+ * @operation convert ByteString
+ */
+
+export declare function asByteString(value: bigint): ByteString;
+
 // /** @opcode {OpCode.CONVERT} StackItemType.ByteString */
 // export declare function asInteger(value: ByteString): bigint;
 // export declare function asByteString(value: string): ByteString;

@@ -1,8 +1,9 @@
 import path from "path";
 import { ts } from "ts-morph";
-import { compile, createContractProject, toDiagnostic } from '../packages/compiler/';
+import { compile, createContractProject, hasErrors, toDiagnostic } from '../packages/compiler/';
 import * as fsp from 'fs/promises';
 import * as fs from 'fs';
+import { blue, dumpContractMethod } from "./utils";
 
 function printDiagnostics(diags: ReadonlyArray<ts.Diagnostic>) {
     const formatHost: ts.FormatDiagnosticsHost = {
@@ -37,9 +38,16 @@ async function main() {
         printDiagnostics(diagnostics.map(d => d.compilerObject));
     } else {
         try {
-            const { diagnostics, nef, manifest, debugInfo } = compile(project, contractName);
+            const { diagnostics, methods, nef, manifest, debugInfo } = compile(project, contractName);
 
             if (diagnostics.length > 0) printDiagnostics(diagnostics);
+
+            if (hasErrors(diagnostics)) return;
+
+            for (const m of methods) {
+                if (m.def.symbol.getName() !== "updateTotalSupply") continue;
+                dumpContractMethod(m);
+            }
 
             const outputPath = path.join(__dirname, OUTPUT_DIR);
             if ((nef || manifest || debugInfo) && !fs.existsSync(outputPath))
@@ -49,14 +57,14 @@ async function main() {
                 const nefPath = path.join(outputPath, `${contractName}.nef`);
                 const $nef = Buffer.from(nef.serialize(), 'hex');
                 await fsp.writeFile(nefPath, $nef);
-                console.log(nefPath);
+                console.log(blue, "Wrote: " + nefPath);
             }
 
             if (manifest) {
                 const manifestPath = path.join(outputPath, `${contractName}.manifest.json`);
                 const $manifest = JSON.stringify(manifest.toJson(), null, 4);
                 await fsp.writeFile(manifestPath, $manifest);
-                console.log(manifestPath);
+                console.log(blue, "Wrote: " + manifestPath);
             }
 
             if (debugInfo) {
@@ -64,7 +72,7 @@ async function main() {
                 const debugInfoPath = path.join(outputPath, `${contractName}.debug.json`);
                 const $debugInfo = JSON.stringify(debugInfo, null, 4);
                 await fsp.writeFile(debugInfoPath, $debugInfo);
-                console.log(debugInfoPath);
+                console.log(blue, "Wrote: " + debugInfoPath);
             }
         } catch (error) {
             printDiagnostics([toDiagnostic(error)]);

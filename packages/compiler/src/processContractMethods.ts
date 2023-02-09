@@ -1,9 +1,10 @@
-import { sc } from "@cityofzion/neon-core";
+import { sc, u } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
 import { ContractMethod } from "./passes/processFunctionDeclarations";
 import { MethodSymbolDef } from "./scope";
 import { SequencePointLocation } from "./types/DebugInfo";
 import { CallOperation, CallTokenOperation, ConvertOperation, InitSlotOperation, JumpOperation, JumpOperationKind, LoadStoreOperation, Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
+import { bigIntToByteArray } from "./utils";
 
 function convertPushData({ value }: PushDataOperation) {
     if (value.length <= 255) /* byte.MaxValue */ {
@@ -78,22 +79,43 @@ function convertJump(index: number, { kind, offset }: JumpOperation, addressMap:
     return [opCode, ...new Uint8Array(buffer)];
 }
 
+function convertBigInteger(value: bigint) {
+    // neon-js BigInteger is not directly compatible with JS bigint type
+    // but we can go bigint -> string -> BigInteger to convert
+    const $value = u.BigInteger.fromNumber(value.toString());
+    const token = sc.OpToken.forInteger($value);
+    return {
+        opCode: token.code,
+        buffer: Buffer.from(token.params!, 'hex')
+    };
+}
+
 function convertPushInt({ value }: PushIntOperation) {
     if (value <= 16n && value >= -1n) {
         const opCode = sc.OpCode.PUSH0 + Number(value);
         return [opCode]
     }
-    throw new Error(`convertPushInt not implemented for ${value}`);
+
+    const {opCode, buffer} = convertBigInteger(value);
+    return [opCode, ...new Uint8Array(buffer)];
 }
 
 function getOperationSize(op: Operation) {
     switch (op.kind) {
+        case 'add':
         case 'drop':
         case 'duplicate':
+        case 'greaterthan':
+        case 'greaterthanorequal':
         case 'isnull':
+        case 'lessthan':
+        case 'lessthanorequal':
+        case 'multiply':
         case 'noop':
         case 'pickitem':
+        case 'power':
         case 'return':
+        case 'subtract':
         case 'throw':
             return 1;
         case 'convert':
@@ -138,7 +160,9 @@ function getOperationSize(op: Operation) {
         case 'pushint': {
             const { value } = op as PushIntOperation;
             if (value <= 16n && value >= -1n) return 1;
-            throw new Error(`pushint ${value}`);
+
+            const {buffer} = convertBigInteger(value);
+            return 1 + buffer.length;
         }
         default:
             throw new Error(`getOperationSize ${op.kind}`);
@@ -186,6 +210,9 @@ export function compileMethodScript(
         }
 
         switch (op.kind) {
+            case 'add':
+                instructions.push(sc.OpCode.ADD)
+                break;
             case 'call':
                 instructions.push(...convertCall(op as CallOperation, addressMap.get(i)!, methodAddressMap));
                 break;
@@ -202,6 +229,12 @@ export function compileMethodScript(
                 break;
             case 'duplicate':
                 instructions.push(sc.OpCode.DUP);
+                break;
+            case 'greaterthan':
+                instructions.push(sc.OpCode.GT);
+                break;
+            case 'greaterthanorequal':
+                instructions.push(sc.OpCode.GE);
                 break;
             case 'initslot': {
                 const { locals, params } = op as InitSlotOperation;
@@ -222,6 +255,12 @@ export function compileMethodScript(
             case "jumple":
                 instructions.push(...convertJump(i, op as JumpOperation, addressMap));
                 break;
+            case 'lessthan':
+                instructions.push(sc.OpCode.LT);
+                break;
+            case 'lessthanorequal':
+                instructions.push(sc.OpCode.LE);
+                break;
             case 'loadarg':
                 instructions.push(...convertLoadStore(sc.OpCode.LDARG0, op as LoadStoreOperation));
                 break;
@@ -231,11 +270,17 @@ export function compileMethodScript(
             case 'loadstatic':
                 instructions.push(...convertLoadStore(sc.OpCode.LDSFLD0, op as LoadStoreOperation));
                 break;
+            case 'multiply':
+                instructions.push(sc.OpCode.MUL);
+                break;
             case 'noop':
                 instructions.push(sc.OpCode.NOP);
                 break;
             case 'pickitem':
                 instructions.push(sc.OpCode.PICKITEM);
+                break;
+            case 'power':
+                instructions.push(sc.OpCode.POW);
                 break;
             case 'pushdata':
                 instructions.push(...convertPushData(op as PushDataOperation));
@@ -255,7 +300,10 @@ export function compileMethodScript(
             case 'storestatic':
                 instructions.push(...convertLoadStore(sc.OpCode.STSFLD0, op as LoadStoreOperation));
                 break;
-            case 'syscall':
+            case 'subtract':
+                instructions.push(sc.OpCode.SUB)
+                break;
+                case 'syscall':
                 instructions.push(...convertSysCall(op as SysCallOperation));
                 break;
             case 'throw':

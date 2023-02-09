@@ -4,11 +4,14 @@ import { sc } from '@cityofzion/neon-core';
 import { MethodSymbolDef } from "../scope";
 
 export const allowedOperations = [
+    'add',
     'call',
     'calltoken',
     'convert',
     'drop',
     'duplicate',
+    'greaterthan',
+    'greaterthanorequal',
     'initslot',
     'isnull',
     'jump',
@@ -20,11 +23,15 @@ export const allowedOperations = [
     'jumple',
     'jumplt',
     'jumpne',
+    'lessthan',
+    'lessthanorequal',
     'loadarg',
     'loadlocal',
     'loadstatic',
+    'multiply',
     'noop',
     'pickitem',
+    'power',
     'pushbool',
     'pushdata',
     'pushint',
@@ -33,6 +40,7 @@ export const allowedOperations = [
     'storearg',
     'storelocal',
     'storestatic',
+    'subtract',
     'syscall',
     'throw'] as const;
 

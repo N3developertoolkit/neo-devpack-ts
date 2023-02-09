@@ -154,17 +154,55 @@ export function processPropertyAccessExpression(node: tsm.PropertyAccessExpressi
 //     console.log();
 // }
 
+export function processBinaryExpression(node: tsm.BinaryExpression, options: ProcessMethodOptions) {
+    processExpression(node.getLeft(), options);
+    processExpression(node.getRight(), options);
+    const { builder } = options;
+    const opToken = node.getOperatorToken();
+    switch (opToken.getKind()) {
+        case tsm.SyntaxKind.AsteriskAsteriskToken:
+            builder.emit('power');
+            break;
+        case tsm.SyntaxKind.AsteriskToken:
+            builder.emit('multiply');
+            break;
+        case tsm.SyntaxKind.GreaterThanToken:
+            builder.emit('greaterthan');
+            break;
+        case tsm.SyntaxKind.GreaterThanEqualsToken:
+            builder.emit('greaterthanorequal');
+            break;
+        case tsm.SyntaxKind.LessThanToken:
+            builder.emit('lessthan');
+            break;
+        case tsm.SyntaxKind.LessThanEqualsToken:
+            builder.emit('lessthanorequal');
+            break;
+        case tsm.SyntaxKind.PlusToken:
+            builder.emit('add');
+            break;
+        default:
+            throw new CompileError(`processBinaryExpression ${opToken.getKindName()}`, node)
+    }
+}
+
+export function processParenthesizedExpression(node: tsm.ParenthesizedExpression, options: ProcessMethodOptions) {
+    processExpression(node.getExpression(), options);
+} 
+
 export function processExpression(node: tsm.Expression, options: ProcessMethodOptions) {
 
     dispatch(node, options, {
         [tsm.SyntaxKind.AsExpression]: processAsExpression,
         [tsm.SyntaxKind.BigIntLiteral]: processBigIntLiteral,
+        [tsm.SyntaxKind.BinaryExpression]: processBinaryExpression,
         [tsm.SyntaxKind.CallExpression]: processCallExpression,
         [tsm.SyntaxKind.FalseKeyword]: processBooleanLiteral,
         [tsm.SyntaxKind.Identifier]: processIdentifier,
         [tsm.SyntaxKind.NonNullExpression]: (node) => { processExpression(node.getExpression(), options); },
         // [tsm.SyntaxKind.NewExpression]: processNewExpression,
         [tsm.SyntaxKind.NumericLiteral]: processNumericLiteral,
+        [tsm.SyntaxKind.ParenthesizedExpression]: processParenthesizedExpression, 
         [tsm.SyntaxKind.PropertyAccessExpression]: processPropertyAccessExpression,
         [tsm.SyntaxKind.StringLiteral]: processStringLiteral,
         [tsm.SyntaxKind.TrueKeyword]: processBooleanLiteral,
