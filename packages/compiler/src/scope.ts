@@ -10,6 +10,7 @@ import { emitError, emitU8ArrayFrom } from './passes/builtins';
 import { ProcessMethodOptions } from './passes/processFunctionDeclarations';
 import { sc, u } from '@cityofzion/neon-core';
 import { Operation, parseOperation } from './types/Operation';
+import { processArguments } from './passes/expressionProcessor';
 
 export interface ReadonlyScope {
     readonly parentScope: ReadonlyScope | undefined;
@@ -25,9 +26,18 @@ export function isScope(scope: ReadonlyScope): scope is Scope {
     return 'define' in scope && typeof scope.define === 'function';
 }
 
+
 export interface SymbolDef {
     readonly symbol: tsm.Symbol;
     readonly parentScope: ReadonlyScope;
+}
+
+export interface CallableSymbolDef extends SymbolDef {
+    emitCall(args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions): void;
+}
+
+export function isCallable(def: SymbolDef): def is CallableSymbolDef {
+    return 'emitCall' in def && typeof def.emitCall === 'function';
 }
 
 export function canResolve(def: SymbolDef): def is SymbolDef & ReadonlyScope {
@@ -100,7 +110,7 @@ export class BlockScope implements Scope {
     }
 }
 
-export class MethodSymbolDef implements SymbolDef, ReadonlyScope {
+export class MethodSymbolDef implements CallableSymbolDef, ReadonlyScope {
     private readonly map: ReadonlyMap<tsm.Symbol, SymbolDef>;
 
     constructor(
@@ -115,6 +125,11 @@ export class MethodSymbolDef implements SymbolDef, ReadonlyScope {
             define(this, map, new VariableSymbolDef(param.getSymbolOrThrow(), this, 'arg', index));
         }
         this.map = map;
+    }
+
+    emitCall(args: readonly tsm.Expression<tsm.ts.Expression>[], options: ProcessMethodOptions): void {
+        processArguments(args, options);
+        options.builder.emitCall(this);
     }
 
     get symbols(): IterableIterator<SymbolDef> {
@@ -149,7 +164,7 @@ export class IntrinsicValueSymbolDef implements SymbolDef {
     }
 }
 
-export class IntrinsicMethodDef implements SymbolDef {
+export class IntrinsicMethodDef implements CallableSymbolDef {
     constructor(
         readonly symbol: tsm.Symbol,
         readonly parentScope: ReadonlyScope,
@@ -175,37 +190,67 @@ export class VariableSymbolDef implements SymbolDef {
     ) { }
 }
 
-export class EventSymbolDef implements SymbolDef {
+export class EventSymbolDef implements CallableSymbolDef {
     constructor(
         readonly symbol: tsm.Symbol,
         readonly parentScope: ReadonlyScope,
         readonly name: string,
         readonly parameters: ReadonlyArray<tsm.ParameterDeclaration>,
     ) { }
+
+    emitCall(args: readonly tsm.Expression<tsm.ts.Expression>[], options: ProcessMethodOptions): void {
+        // NCCS creates an empty array and then APPENDs each notification arg in turn
+        // However, APPEND is 4x more expensive than PACK and is called once per arg
+        // instead of once per Notify call as PACK is. 
+        const { builder } = options;
+        processArguments(args, options);
+        builder.emitPushInt(this.parameters.length);
+        builder.emit('pack');
+        builder.emitPushData(this.name);
+        builder.emitSysCall("System.Runtime.Notify");
+    }
 }
 
-export class SysCallSymbolDef implements SymbolDef {
+export class SysCallSymbolDef implements CallableSymbolDef {
     constructor(
         readonly symbol: tsm.Symbol,
         readonly parentScope: ReadonlyScope,
         readonly name: string,
     ) { }
+
+    emitCall(args: readonly tsm.Expression<tsm.ts.Expression>[], options: ProcessMethodOptions): void {
+        processArguments(args, options);
+        options.builder.emitSysCall(this.name);
+    }
 }
 
-export class MethodTokenSymbolDef implements SymbolDef {
+export class MethodTokenSymbolDef implements CallableSymbolDef {
     constructor(
         readonly symbol: tsm.Symbol,
         readonly parentScope: ReadonlyScope,
         readonly token: sc.MethodToken
     ) { }
+
+    emitCall(args: readonly tsm.Expression<tsm.ts.Expression>[], options: ProcessMethodOptions): void {
+        processArguments(args, options);
+        options.builder.emitCallToken(this.token);
+    }
 }
 
-export class OperationsSymbolDef implements SymbolDef {
+export class OperationsSymbolDef implements CallableSymbolDef {
     constructor(
         readonly symbol: tsm.Symbol,
         readonly parentScope: ReadonlyScope,
         readonly operations: ReadonlyArray<Operation>
     ) { }
+
+    emitCall(args: readonly tsm.Expression<tsm.ts.Expression>[], options: ProcessMethodOptions): void {
+        const { builder } = options;
+        processArguments(args, options);
+        for (const op of this.operations) {
+            builder.emit(op);
+        }
+    }
 }
 
 

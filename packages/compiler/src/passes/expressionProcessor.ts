@@ -1,8 +1,7 @@
 // import './ext';
-import { open } from "fs";
 import * as tsm from "ts-morph";
 import { CompileError } from "../compiler";
-import { ConstantSymbolDef, EventSymbolDef, IntrinsicMethodDef, IntrinsicValueSymbolDef, MethodSymbolDef, MethodTokenSymbolDef, OperationsSymbolDef, ReadonlyScope, SymbolDef, SysCallSymbolDef, VariableSymbolDef } from "../scope";
+import { ConstantSymbolDef, IntrinsicValueSymbolDef, isCallable, ReadonlyScope, SymbolDef, VariableSymbolDef } from "../scope";
 import { dispatch } from "../utility/nodeDispatch";
 import { ProcessMethodOptions } from "./processFunctionDeclarations";
 
@@ -12,41 +11,17 @@ function resolveIdentifier(node: tsm.Identifier, scope: ReadonlyScope) {
     return resolved ?? scope.resolve(symbol.getValueDeclaration()?.getSymbol());
 }
 
-function processArguments(args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions) {
+export function processArguments(args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions) {
     for (let i = args.length - 1; i >= 0; i--) {
         processExpression(args[i], options);
     }
 }
 
 function callSymbolDef(def: SymbolDef, args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions) {
-    const { builder } = options;
-    if (def instanceof SysCallSymbolDef) {
-        processArguments(args, options);
-        builder.emitSysCall(def.name);
-    } else if (def instanceof IntrinsicMethodDef) {
+    if (isCallable(def)) {
         def.emitCall(args, options);
-    } else if (def instanceof MethodTokenSymbolDef) {
-        processArguments(args, options);
-        builder.emitCallToken(def.token);
-    } else if (def instanceof OperationsSymbolDef) {
-        processArguments(args, options);
-        for (const op of def.operations) {
-            builder.emit(op);
-        }
-    } else if (def instanceof MethodSymbolDef) {
-        processArguments(args, options);
-        builder.emitCall(def);
-    } else if (def instanceof EventSymbolDef) {
-        builder.emit('newemptyarray');
-        def.parameters.forEach((v, i) => {
-            builder.emit('duplicate');
-            processExpression(args[i], options);
-            builder.emit('append');
-        });
-        builder.emitPushData(def.name);
-        builder.emitSysCall("System.Runtime.Notify");
     } else {
-        throw new Error("callSymbolDef: unknown SymbolDef type")
+        throw new Error("Uncallable SymbolDef");
     }
 }
 

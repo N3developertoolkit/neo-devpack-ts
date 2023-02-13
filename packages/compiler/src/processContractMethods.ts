@@ -119,6 +119,7 @@ function getOperationSize(op: Operation) {
         case 'noop':
         case 'not':
         case 'notequal':
+        case 'pack':
         case 'pickitem':
         case 'pushbool':
         case 'pushnull':
@@ -305,6 +306,9 @@ export function compileMethodScript(
                 break;
             case 'notequal':
                 instructions.push(sc.OpCode.NOTEQUAL);
+                break;
+            case 'pack':
+                instructions.push(sc.OpCode.PACK);
                 break;
             case 'pickitem':
                 instructions.push(sc.OpCode.PICKITEM);

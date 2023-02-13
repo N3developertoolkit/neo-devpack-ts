@@ -37,6 +37,7 @@ export const allowedOperations = [
     'noop',
     'not',
     'notequal',
+    'pack',
     'pickitem',
     'power',
     'pushbool',
