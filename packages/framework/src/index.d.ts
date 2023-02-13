@@ -62,22 +62,37 @@ export const callFlagsAll = 15
 // syscall System.Contract.Call 
 // export declare function contractCall(scriptHash: ByteString, method: string, ): any;
 
+export interface StorageContext { }
 
-export declare const Storage: StorageConstructor;
+/** @syscall System.Storage.GetContext */
+export declare function storageGetContext(): StorageContext;
+/** @syscall System.Storage.GetReadOnlyContext */
+export declare function storageGetReadOnlyContext(): StorageContext;
+/** @syscall System.Storage.AsReadOnly */
+export declare function storageAsReadOnly(context: StorageContext): StorageContext;
+/** @syscall System.Storage.Get */
+export declare function storageGet(context: StorageContext, key: ByteString): ByteString | undefined;
+/** @syscall System.Storage.Put */
+export declare function storagePut(context: StorageContext, key: ByteString, value: ByteString): void;
+/** @syscall System.Storage.Delete */
+export declare function storageDelete(context: StorageContext, key: ByteString): void;
 
-export interface StorageConstructor {
-    /** @syscall System.Storage.GetContext */
-    readonly context: StorageContext;
-    /** @syscall System.Storage.GetReadOnlyContext */
-    readonly readonlyContext: ReadonlyStorageContext;
-}
 
-export interface ReadonlyStorageContext {
-    /** @syscall System.Storage.Get */
-    get(key: ByteString): ByteString | undefined;
-    // /** @syscall System.Storage.Find */
-    // find(prefix: ByteString, options: FindOptions): Iterator
-}
+// export declare const Storage: StorageConstructor;
+
+// export interface StorageConstructor {
+//     /** @syscall System.Storage.GetContext */
+//     readonly context: StorageContext;
+//     /** @syscall System.Storage.GetReadOnlyContext */
+//     readonly readonlyContext: ReadonlyStorageContext;
+// }
+
+// export interface ReadonlyStorageContext {
+//     /** @syscall System.Storage.Get */
+//     get(key: ByteString): ByteString | undefined;
+//     // /** @syscall System.Storage.Find */
+//     // find(prefix: ByteString, options: FindOptions): Iterator
+// }
 
 // FindOptions
 // None = 0,                    No option is set. The results will be an iterator of (key, value).
@@ -88,14 +103,14 @@ export interface ReadonlyStorageContext {
 // PickField0 = 1 << 4,         Indicates that only the field 0 of the deserialized values need to be returned. This flag must be set together with <see cref="DeserializeValues"/>.
 // PickField1 = 1 << 5,         Indicates that only the field 1 of the deserialized values need to be returned. This flag must be set together with <see cref="DeserializeValues"/>.
 
-export interface StorageContext extends ReadonlyStorageContext {
-    /** @syscall System.Storage.AsReadOnly */
-    readonly asReadonly: ReadonlyStorageContext;
-    /** @syscall System.Storage.Put */
-    put(key: ByteString, value: ByteString): void;
-    /** @syscall System.Storage.Delete */
-    delete(key: ByteString): void;
-}
+// export interface StorageContext extends ReadonlyStorageContext {
+//     /** @syscall System.Storage.AsReadOnly */
+//     readonly asReadonly: ReadonlyStorageContext;
+//     /** @syscall System.Storage.Put */
+//     put(key: ByteString, value: ByteString): void;
+//     /** @syscall System.Storage.Delete */
+//     delete(key: ByteString): void;
+// }
 
 
 /** @syscall System.Runtime.GetScriptContainer */
