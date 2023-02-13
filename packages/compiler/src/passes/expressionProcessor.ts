@@ -2,7 +2,7 @@
 import * as tsm from "ts-morph";
 import { CompileError } from "../compiler";
 import { ConstantSymbolDef, IntrinsicValueSymbolDef, isCallable, ReadonlyScope, SymbolDef, VariableSymbolDef } from "../scope";
-import { dispatch } from "../utility/nodeDispatch";
+import { dispatch, NodeDispatchMap } from "../utility/nodeDispatch";
 import { ProcessMethodOptions } from "./processFunctionDeclarations";
 
 function resolveIdentifier(node: tsm.Identifier, scope: ReadonlyScope) {
@@ -228,23 +228,25 @@ export function processPrefixUnaryExpression(node: tsm.PrefixUnaryExpression, op
     // SyntaxKind.TildeToken 
 }
 
+const expressionDispatchMap: NodeDispatchMap<ProcessMethodOptions> = {
+    [tsm.SyntaxKind.AsExpression]: processAsExpression,
+    [tsm.SyntaxKind.BigIntLiteral]: processBigIntLiteral,
+    [tsm.SyntaxKind.BinaryExpression]: processBinaryExpression,
+    [tsm.SyntaxKind.CallExpression]: processCallExpression,
+    [tsm.SyntaxKind.FalseKeyword]: processBooleanLiteral,
+    [tsm.SyntaxKind.Identifier]: processIdentifier,
+    [tsm.SyntaxKind.NonNullExpression]: (node, options) => { processExpression(node.getExpression(), options); },
+    [tsm.SyntaxKind.NullKeyword]: (_node, options) => { options.builder.emitPushNull(); },
+    [tsm.SyntaxKind.NumericLiteral]: processNumericLiteral,
+    [tsm.SyntaxKind.ParenthesizedExpression]: (node, options) => { processExpression(node.getExpression(), options); },
+    [tsm.SyntaxKind.PrefixUnaryExpression]: processPrefixUnaryExpression,
+    [tsm.SyntaxKind.PropertyAccessExpression]: processPropertyAccessExpression,
+    [tsm.SyntaxKind.StringLiteral]: processStringLiteral,
+    [tsm.SyntaxKind.TrueKeyword]: processBooleanLiteral,
+};
+
 export function processExpression(node: tsm.Expression, options: ProcessMethodOptions) {
-    dispatch(node, options, {
-        [tsm.SyntaxKind.AsExpression]: processAsExpression,
-        [tsm.SyntaxKind.BigIntLiteral]: processBigIntLiteral,
-        [tsm.SyntaxKind.BinaryExpression]: processBinaryExpression,
-        [tsm.SyntaxKind.CallExpression]: processCallExpression,
-        [tsm.SyntaxKind.FalseKeyword]: processBooleanLiteral,
-        [tsm.SyntaxKind.Identifier]: processIdentifier,
-        [tsm.SyntaxKind.NonNullExpression]: (node, options) => { processExpression(node.getExpression(), options); },
-        [tsm.SyntaxKind.NullKeyword]: (_node, options) => { options.builder.emitPushNull(); },
-        [tsm.SyntaxKind.NumericLiteral]: processNumericLiteral,
-        [tsm.SyntaxKind.ParenthesizedExpression]: (node, options) => { processExpression(node.getExpression(), options); },
-        [tsm.SyntaxKind.PrefixUnaryExpression]: processPrefixUnaryExpression,
-        [tsm.SyntaxKind.PropertyAccessExpression]: processPropertyAccessExpression,
-        [tsm.SyntaxKind.StringLiteral]: processStringLiteral,
-        [tsm.SyntaxKind.TrueKeyword]: processBooleanLiteral,
-    });
+    dispatch(node, options, expressionDispatchMap);
 }
 
 // case SyntaxKind.AnyKeyword:

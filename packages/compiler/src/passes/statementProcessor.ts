@@ -1,7 +1,7 @@
 import * as tsm from "ts-morph";
 import { ProcessMethodOptions } from "./processFunctionDeclarations";
 import { CompileError } from "../compiler";
-import { dispatch } from "../utility/nodeDispatch";
+import { dispatch, NodeDispatchMap } from "../utility/nodeDispatch";
 import { BlockScope, isScope as isWritableScope, VariableSymbolDef } from "../scope";
 import { processExpression } from "./expressionProcessor";
 import { TargetOffset } from "./MethodBuilder";
@@ -100,15 +100,17 @@ export function processVariableStatement(node: tsm.VariableStatement, options: P
     }
 }
 
+const statementDispatchMap: NodeDispatchMap<ProcessMethodOptions> = {
+    [tsm.SyntaxKind.Block]: processBlock,
+    [tsm.SyntaxKind.ExpressionStatement]: processExpressionStatement,
+    [tsm.SyntaxKind.IfStatement]: processIfStatement,
+    [tsm.SyntaxKind.ReturnStatement]: processReturnStatement,
+    [tsm.SyntaxKind.ThrowStatement]: processThrowStatement,
+    [tsm.SyntaxKind.VariableStatement]: processVariableStatement,
+};
+
 export function processStatement(node: tsm.Statement, options: ProcessMethodOptions): void {
-    dispatch(node, options, {
-        [tsm.SyntaxKind.Block]: processBlock,
-        [tsm.SyntaxKind.ExpressionStatement]: processExpressionStatement,
-        [tsm.SyntaxKind.IfStatement]: processIfStatement,
-        [tsm.SyntaxKind.ReturnStatement]: processReturnStatement,
-        [tsm.SyntaxKind.ThrowStatement]: processThrowStatement,
-        [tsm.SyntaxKind.VariableStatement]: processVariableStatement,
-    });
+    dispatch(node, options, statementDispatchMap);
 }
 
 

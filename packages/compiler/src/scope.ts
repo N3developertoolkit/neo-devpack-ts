@@ -1,7 +1,7 @@
 import './ext';
 import * as tsm from "ts-morph";
 import { CompileContext, CompileError } from "./compiler";
-import { dispatch } from "./utility/nodeDispatch";
+import { dispatch, NodeDispatchMap } from "./utility/nodeDispatch";
 import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
 import { createDiagnostic, getConstantValue, getJSDocTag, isVoidLike } from "./utils";
 import { from } from 'ix/iterable';
@@ -437,16 +437,17 @@ function processInterfaceDeclaration(node: tsm.InterfaceDeclaration, { diagnosti
 //     }
 // }
 
+const scopeDispatchMap:NodeDispatchMap<ScopeOptions> = {
+    [tsm.SyntaxKind.FunctionDeclaration]: processFunctionDeclaration,
+    [tsm.SyntaxKind.InterfaceDeclaration]: processInterfaceDeclaration,
+    [tsm.SyntaxKind.ImportDeclaration]: processImportDeclaration,
+    [tsm.SyntaxKind.VariableDeclaration]: processVariableDeclaration,
+    [tsm.SyntaxKind.VariableStatement]: processVariableStatement,
+    [tsm.SyntaxKind.EndOfFileToken]: () => { },
+};
+
 function processScopeNode(node: tsm.Node, options: ScopeOptions) {
-    dispatch(node, options, {
-        // [tsm.SyntaxKind.EnumDeclaration]: processEnumDeclaration,
-        [tsm.SyntaxKind.FunctionDeclaration]: processFunctionDeclaration,
-        [tsm.SyntaxKind.InterfaceDeclaration]: processInterfaceDeclaration,
-        [tsm.SyntaxKind.ImportDeclaration]: processImportDeclaration,
-        [tsm.SyntaxKind.VariableDeclaration]: processVariableDeclaration,
-        [tsm.SyntaxKind.VariableStatement]: processVariableStatement,
-        [tsm.SyntaxKind.EndOfFileToken]: () => { },
-    });
+    dispatch(node, options, scopeDispatchMap);
 }
 
 interface Declarations {
