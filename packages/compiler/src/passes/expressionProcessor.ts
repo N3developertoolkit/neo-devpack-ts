@@ -11,6 +11,21 @@ function resolveIdentifier(node: tsm.Identifier, scope: ReadonlyScope) {
     return resolved ?? scope.resolve(symbol.getValueDeclaration()?.getSymbol());
 }
 
+function resolveCallChain(node: tsm.Expression, chain?: Array<tsm.Expression>): ReadonlyArray<tsm.Expression> {
+    chain ??= [];
+    chain.push(node);
+    switch (node.getKind()) {
+        case tsm.SyntaxKind.Identifier:
+            return chain.slice().reverse();
+        case tsm.SyntaxKind.PropertyAccessExpression: {
+            const expr = (node as tsm.PropertyAccessExpression).getExpression();
+            return resolveCallChain(expr, chain);
+        }
+        default:
+            throw new CompileError(`resolveCallChain ${node.getKindName} not supported`, node);
+    }
+}
+
 export function processArguments(args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions) {
     for (let i = args.length - 1; i >= 0; i--) {
         processExpression(args[i], options);
