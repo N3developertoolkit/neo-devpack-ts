@@ -240,7 +240,16 @@ function processNonNullExpression(node: tsm.NonNullExpression, options: ProcessM
     processExpression(node.getExpression(), options);
 }
 
+function processArrayLiteralExpression(node: tsm.ArrayLiteralExpression, options: ProcessMethodOptions) {
+    const elements = node.getElements();
+    elements.forEach(v => processExpression(v, options));
+    const { builder } = options;
+    builder.emitPushInt(elements.length);
+    builder.emit('pack');
+}
+
 const expressionDispatchMap: NodeDispatchMap<ProcessMethodOptions> = {
+    [tsm.SyntaxKind.ArrayLiteralExpression]: processArrayLiteralExpression,
     [tsm.SyntaxKind.AsExpression]: processAsExpression,
     [tsm.SyntaxKind.BigIntLiteral]: processBigIntLiteral,
     [tsm.SyntaxKind.BinaryExpression]: processBinaryExpression,
