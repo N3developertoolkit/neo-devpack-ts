@@ -228,6 +228,18 @@ export function processPrefixUnaryExpression(node: tsm.PrefixUnaryExpression, op
     // SyntaxKind.TildeToken 
 }
 
+function processParenthesizedExpression(node: tsm.ParenthesizedExpression, options: ProcessMethodOptions) {
+    processExpression(node.getExpression(), options);
+}
+
+function processNullKeyword(node: tsm.NullLiteral, { builder }: ProcessMethodOptions) {
+    builder.emitPushNull();
+}
+
+function processNonNullExpression(node: tsm.NonNullExpression, options: ProcessMethodOptions) {
+    processExpression(node.getExpression(), options);
+}
+
 const expressionDispatchMap: NodeDispatchMap<ProcessMethodOptions> = {
     [tsm.SyntaxKind.AsExpression]: processAsExpression,
     [tsm.SyntaxKind.BigIntLiteral]: processBigIntLiteral,
@@ -235,15 +247,16 @@ const expressionDispatchMap: NodeDispatchMap<ProcessMethodOptions> = {
     [tsm.SyntaxKind.CallExpression]: processCallExpression,
     [tsm.SyntaxKind.FalseKeyword]: processBooleanLiteral,
     [tsm.SyntaxKind.Identifier]: processIdentifier,
-    [tsm.SyntaxKind.NonNullExpression]: (node, options) => { processExpression(node.getExpression(), options); },
-    [tsm.SyntaxKind.NullKeyword]: (_node, options) => { options.builder.emitPushNull(); },
+    [tsm.SyntaxKind.NonNullExpression]: processNonNullExpression,
+    [tsm.SyntaxKind.NullKeyword]: processNullKeyword,
     [tsm.SyntaxKind.NumericLiteral]: processNumericLiteral,
-    [tsm.SyntaxKind.ParenthesizedExpression]: (node, options) => { processExpression(node.getExpression(), options); },
+    [tsm.SyntaxKind.ParenthesizedExpression]: processParenthesizedExpression,
     [tsm.SyntaxKind.PrefixUnaryExpression]: processPrefixUnaryExpression,
     [tsm.SyntaxKind.PropertyAccessExpression]: processPropertyAccessExpression,
     [tsm.SyntaxKind.StringLiteral]: processStringLiteral,
     [tsm.SyntaxKind.TrueKeyword]: processBooleanLiteral,
 };
+
 
 export function processExpression(node: tsm.Expression, options: ProcessMethodOptions) {
     dispatch(node, options, expressionDispatchMap);
