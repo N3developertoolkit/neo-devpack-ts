@@ -87,7 +87,8 @@ export function processVariableStatement(node: tsm.VariableStatement, options: P
         const decls = node.getDeclarations();
         for (const decl of decls) {
             const index = builder.addLocal(decl);
-            const def = scope.define(s => new VariableSymbolDef(decl.getSymbolOrThrow(), s, 'local', index));
+            const def = new VariableSymbolDef(decl.getSymbolOrThrow(), 'local', index);
+            scope.define(def);
 
             const init = decl.getInitializer();
             if (init) {

@@ -6,11 +6,11 @@ import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
 import { createDiagnostic, getConstantValue, getJSDocTag, isVoidLike } from "./utils";
 import { from } from 'ix/iterable';
 import { map, orderBy } from 'ix/iterable/operators';
-import { emitError, emitU8ArrayFrom } from './passes/builtins';
+import { defineErrorObj, defineUint8ArrayObj } from './passes/builtins';
 import { ProcessMethodOptions } from './passes/processFunctionDeclarations';
 import { sc, u } from '@cityofzion/neon-core';
 import { Operation, parseOperation } from './types/Operation';
-import { processArguments } from './passes/expressionProcessor';
+
 
 export interface ReadonlyScope {
     readonly parentScope: ReadonlyScope | undefined;
@@ -19,30 +19,43 @@ export interface ReadonlyScope {
 }
 
 export interface Scope extends ReadonlyScope {
-    define<T extends SymbolDef>(factory: T | ((scope: Scope) => T)): T;
+    define(def: SymbolDef): void;
 }
 
 export function isScope(scope: ReadonlyScope): scope is Scope {
     return 'define' in scope && typeof scope.define === 'function';
 }
 
-
 export interface SymbolDef {
     readonly symbol: tsm.Symbol;
-    readonly parentScope: ReadonlyScope;
 }
 
-export interface CallableSymbolDef extends SymbolDef {
+export type Resolver = (options: ProcessMethodOptions) => SymbolDef;
+
+export interface ObjectSymbolDef extends SymbolDef {
+    getProp(name: string): Resolver | undefined;
+}
+
+export interface FunctionSymbolDef extends ObjectSymbolDef {
     emitCall(args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions): void;
+    // emitCtor(args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions): void;
 }
 
-export function isCallable(def: SymbolDef): def is CallableSymbolDef {
-    return 'emitCall' in def && typeof def.emitCall === 'function';
+export function isObjectDef(def: SymbolDef): def is ObjectSymbolDef {
+    return 'getProp' in def && typeof def.getProp === 'function';
 }
 
-export function canResolve(def: SymbolDef): def is SymbolDef & ReadonlyScope {
+export function isFunctionDef(def: SymbolDef): def is FunctionSymbolDef {
+    return isObjectDef(def) && 'emitCall' in def && typeof def.emitCall === 'function';
+}
+
+export function canResolve(def: SymbolDef): def is SymbolDef & Scope {
     return 'resolve' in def && typeof def.resolve === 'function';
 }
+
+
+
+
 
 function resolve(map: ReadonlyMap<tsm.Symbol, SymbolDef>, symbol?: tsm.Symbol, parent?: ReadonlyScope) {
     if (!symbol) return undefined;
@@ -50,22 +63,12 @@ function resolve(map: ReadonlyMap<tsm.Symbol, SymbolDef>, symbol?: tsm.Symbol, p
     return symbolDef ?? parent?.resolve(symbol);
 }
 
-function define<T extends SymbolDef>(scope: ReadonlyScope, map: Map<tsm.Symbol, SymbolDef>, factory: T | ((scope: ReadonlyScope) => T)): T {
-    const instance = typeof factory === 'function' ? factory(scope) : factory;
-    if (instance.parentScope !== scope) {
-        throw new Error(`Invalid scope for ${instance.symbol.getName()}`);
+function define(map: Map<tsm.Symbol, SymbolDef>, def: SymbolDef) {
+    if (map.has(def.symbol)) {
+        throw new Error(`${def.symbol.getName()} already defined in this scope`);
     }
-    if (map.has(instance.symbol)) {
-        throw new Error(`${instance.symbol.getName()} already defined in this scope`);
-    }
-    map.set(instance.symbol, instance);
-    return instance;
+    map.set(def.symbol, def);
 }
-
-
-
-
-
 
 
 
@@ -83,8 +86,8 @@ export class GlobalScope implements Scope {
         return resolve(this.map, symbol);
     }
 
-    define<T extends SymbolDef>(factory: T | ((scope: ReadonlyScope) => T)) {
-        return define(this, this.map, factory);
+    define<T extends SymbolDef>(def: T) {
+        return define(this.map, def);
     }
 }
 
@@ -105,39 +108,43 @@ export class BlockScope implements Scope {
         return resolve(this.map, symbol, this.parentScope);
     }
 
-    define<T extends SymbolDef>(factory: T | ((scope: ReadonlyScope) => T)) {
-        return define(this, this.map, factory);
+    define(def: SymbolDef) {
+        return define(this.map, def);
     }
 }
 
-export class MethodSymbolDef implements CallableSymbolDef, ReadonlyScope {
+export class MethodSymbolDef implements FunctionSymbolDef, ReadonlyScope {
     private readonly map: ReadonlyMap<tsm.Symbol, SymbolDef>;
+
+    get parentScope() { return this.scope; }
 
     constructor(
         readonly symbol: tsm.Symbol,
-        readonly parentScope: ReadonlyScope,
+        readonly scope: ReadonlyScope,
         readonly node: tsm.FunctionDeclaration,
     ) {
         const params = node.getParameters();
         const map = new Map<tsm.Symbol, SymbolDef>();
         for (let index = 0; index < params.length; index++) {
             const param = params[index];
-            define(this, map, new VariableSymbolDef(param.getSymbolOrThrow(), this, 'arg', index));
+            define(map, new VariableSymbolDef(param.getSymbolOrThrow(), 'arg', index));
         }
         this.map = map;
     }
 
-    emitCall(args: readonly tsm.Expression<tsm.ts.Expression>[], options: ProcessMethodOptions): void {
-        processArguments(args, options);
+    emitCall(args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions): void {
+        // processArguments(args, options);
         options.builder.emitCall(this);
     }
+
+    getProp(_name: string) { return undefined; }
 
     get symbols(): IterableIterator<SymbolDef> {
         return this.map.values();
     }
 
     resolve(symbol?: tsm.Symbol): SymbolDef | undefined {
-        return resolve(this.map, symbol, this.parentScope);
+        return resolve(this.map, symbol, this.scope);
     }
 }
 
@@ -153,29 +160,29 @@ export class MethodSymbolDef implements CallableSymbolDef, ReadonlyScope {
 
 
 
-export class IntrinsicValueSymbolDef implements SymbolDef {
-    readonly symbol: tsm.Symbol;
+// export class IntrinsicValueSymbolDef implements SymbolDef {
+//     readonly symbol: tsm.Symbol;
 
-    constructor(
-        readonly node: tsm.VariableDeclaration,
-        readonly parentScope: ReadonlyScope
-    ) {
-        this.symbol = node.getSymbolOrThrow();
-    }
-}
+//     constructor(
+//         readonly node: tsm.VariableDeclaration,
+//     ) {
+//         this.symbol = node.getSymbolOrThrow();
+//     }
+// }
 
-export class IntrinsicMethodDef implements CallableSymbolDef {
-    constructor(
-        readonly symbol: tsm.Symbol,
-        readonly parentScope: ReadonlyScope,
-        readonly emitCall: (args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions) => void
-    ) { }
-}
+// export class IntrinsicMethodDef implements FunctionSymbolDef {
+//     constructor(
+//         readonly symbol: tsm.Symbol,
+//         readonly emitCall: ($this: tsm.Expression, args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions) => void
+//     ) { }
+//     getProp(name: string): SymbolDef | undefined {
+//         return undefined;
+//     }
+// }
 
 export class ConstantSymbolDef implements SymbolDef {
     constructor(
         readonly symbol: tsm.Symbol,
-        readonly parentScope: ReadonlyScope,
         readonly value: boolean | bigint | null | ReadonlyUint8Array
     ) { }
 
@@ -184,73 +191,76 @@ export class ConstantSymbolDef implements SymbolDef {
 export class VariableSymbolDef implements SymbolDef {
     constructor(
         readonly symbol: tsm.Symbol,
-        readonly parentScope: ReadonlyScope,
         readonly kind: 'arg' | 'local' | 'static',
         readonly index: number
     ) { }
 }
 
-export class EventSymbolDef implements CallableSymbolDef {
+export class EventSymbolDef implements FunctionSymbolDef {
     constructor(
         readonly symbol: tsm.Symbol,
-        readonly parentScope: ReadonlyScope,
         readonly name: string,
         readonly parameters: ReadonlyArray<tsm.ParameterDeclaration>,
     ) { }
 
-    emitCall(args: readonly tsm.Expression<tsm.ts.Expression>[], options: ProcessMethodOptions): void {
+    emitCall(args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions): void {
         // NCCS creates an empty array and then APPENDs each notification arg in turn
         // However, APPEND is 4x more expensive than PACK and is called once per arg
         // instead of once per Notify call as PACK is. 
-        const { builder } = options;
-        processArguments(args, options);
+        // processArguments(args, options);
+        const builder = options.builder;
         builder.emitPushInt(this.parameters.length);
         builder.emit('pack');
         builder.emitPushData(this.name);
         builder.emitSysCall("System.Runtime.Notify");
     }
+
+    getProp(_name: string) { return undefined; }
 }
 
-export class SysCallSymbolDef implements CallableSymbolDef {
+export class SysCallSymbolDef implements FunctionSymbolDef {
     constructor(
         readonly symbol: tsm.Symbol,
-        readonly parentScope: ReadonlyScope,
         readonly name: string,
     ) { }
 
-    emitCall(args: readonly tsm.Expression<tsm.ts.Expression>[], options: ProcessMethodOptions): void {
-        processArguments(args, options);
+    emitCall(args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions): void {
+        // processArguments(args, options);
         options.builder.emitSysCall(this.name);
     }
+
+    getProp(_name: string) { return undefined; }
 }
 
-export class MethodTokenSymbolDef implements CallableSymbolDef {
+export class MethodTokenSymbolDef implements FunctionSymbolDef {
     constructor(
         readonly symbol: tsm.Symbol,
-        readonly parentScope: ReadonlyScope,
         readonly token: sc.MethodToken
     ) { }
 
-    emitCall(args: readonly tsm.Expression<tsm.ts.Expression>[], options: ProcessMethodOptions): void {
-        processArguments(args, options);
+    emitCall(args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions): void {
+        // processArguments(args, options);
         options.builder.emitCallToken(this.token);
     }
+
+    getProp(_name: string) { return undefined; }
 }
 
-export class OperationsSymbolDef implements CallableSymbolDef {
+export class OperationsSymbolDef implements FunctionSymbolDef {
     constructor(
         readonly symbol: tsm.Symbol,
-        readonly parentScope: ReadonlyScope,
         readonly operations: ReadonlyArray<Operation>
     ) { }
 
-    emitCall(args: readonly tsm.Expression<tsm.ts.Expression>[], options: ProcessMethodOptions): void {
-        const { builder } = options;
-        processArguments(args, options);
+    emitCall(args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions): void {
+        // processArguments(args, options);
+        const builder = options.builder;
         for (const op of this.operations) {
             builder.emit(op);
         }
     }
+
+    getProp(_name: string) { return undefined; }
 }
 
 
@@ -346,25 +356,25 @@ function processFunctionDeclaration(node: tsm.FunctionDeclaration, options: Scop
                 if (!isVoidLike(node.getReturnType())) throw new CompileError('event functions cannot have return values', node);
                 const eventName = tag.getCommentText() ?? symbol.getName();
                 if (eventName.length === 0) throw new CompileError('invalid event tag', node);
-                scope.define(s => new EventSymbolDef(symbol, s, eventName, node.getParameters()));
+                scope.define(new EventSymbolDef(symbol, eventName, node.getParameters()));
                 return;
             }
             case 'methodToken': {
                 if (jsTags.length !== 1) throw new CompileError('methodToken functions must only have one JSDoc tag', node);
                 const token = parseMethodTokenTag(node, tag);
-                scope.define(s => new MethodTokenSymbolDef(symbol, s, token));
+                scope.define(new MethodTokenSymbolDef(symbol, token));
                 return;
             }
             case 'operation': {
                 const operations = parseOperationTags(node, jsTags);
-                scope.define(s => new OperationsSymbolDef(symbol, s, operations));
+                scope.define(new OperationsSymbolDef(symbol, operations));
                 return;
             }
             case 'syscall': {
                 if (jsTags.length !== 1) throw new CompileError('syscall functions must only have one JSDoc tag', node);
                 const serviceName = tag.getCommentText() ?? "";
                 if (serviceName.length === 0) throw new CompileError('invalid syscall tag', node);
-                scope.define(s => new SysCallSymbolDef(symbol, s, serviceName));
+                scope.define(new SysCallSymbolDef(symbol, serviceName));
                 return;
             }
             default:
@@ -373,7 +383,7 @@ function processFunctionDeclaration(node: tsm.FunctionDeclaration, options: Scop
 
         throw new CompileError("not supported", node);
     } else {
-        scope.define(s => new MethodSymbolDef(symbol, s, node));
+        scope.define(new MethodSymbolDef(symbol, scope, node));
     }
 }
 
@@ -410,7 +420,7 @@ function processVariableDeclaration(node: tsm.VariableDeclaration, options: Scop
         const init = node.getInitializer();
         if (!init) { throw new CompileError("missing initializer", node); }
         const value = getConstantValue(init);
-        options.scope.define(s => new ConstantSymbolDef(symbol, s, value));
+        options.scope.define(new ConstantSymbolDef(symbol, value));
     } else {
         throw new CompileError(`not implemented`, node);
     }
@@ -437,7 +447,7 @@ function processInterfaceDeclaration(node: tsm.InterfaceDeclaration, { diagnosti
 //     }
 // }
 
-const scopeDispatchMap:NodeDispatchMap<ScopeOptions> = {
+const scopeDispatchMap: NodeDispatchMap<ScopeOptions> = {
     [tsm.SyntaxKind.FunctionDeclaration]: processFunctionDeclaration,
     [tsm.SyntaxKind.InterfaceDeclaration]: processInterfaceDeclaration,
     [tsm.SyntaxKind.ImportDeclaration]: processImportDeclaration,
@@ -545,19 +555,13 @@ function getDeclarations(project: tsm.Project) {
 
 export function createSymbolTrees({ project, diagnostics, scopes }: CompileContext): void {
 
-    const decls = getDeclarations(project);
-
-    // intrinsics:
-    const error = decls.variables.get("Error");
-    const u8array = decls.variables.get("Uint8Array");
-    const u8arrayFrom = u8array?.getType()?.getProperty("from");
-
+    const { variables } = getDeclarations(project);
     for (const src of project.getSourceFiles()) {
         if (src.isDeclarationFile()) continue;
         const scope = new GlobalScope();
-        if (error) scope.define(s => new IntrinsicMethodDef(error.getSymbolOrThrow(), s, emitError));
-        if (u8array) scope.define(s => new IntrinsicValueSymbolDef(u8array, s));
-        if (u8arrayFrom) scope.define(s => new IntrinsicMethodDef(u8arrayFrom, s, emitU8ArrayFrom));
+        defineErrorObj(scope, variables);
+        defineUint8ArrayObj(scope, variables);
+
         src.forEachChild(node => processScopeNode(node, { diagnostics, scope }));
         scopes.push(scope);
     }

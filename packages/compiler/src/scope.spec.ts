@@ -17,7 +17,9 @@ export function createTestProject(source: string) {
     const project = createProject();
     project.getFileSystem()
         .writeFileSync('/node_modules/@neo-project/neo-contract-framework/index.d.ts', scfx.get());
-    return project;
+    const sourceFile = project.createSourceFile("contract.ts", source);
+    // project.resolveSourceFileDependencies();
+    return { project, sourceFile };
 }
 
 // export async function createTestProject(source: string) {
