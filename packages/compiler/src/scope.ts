@@ -9,7 +9,9 @@ import { map, orderBy } from 'ix/iterable/operators';
 import { defineErrorObj, defineUint8ArrayObj } from './passes/builtins';
 import { ProcessMethodOptions } from './passes/processFunctionDeclarations';
 import { sc, u } from '@cityofzion/neon-core';
-import { Operation, parseOperation } from './types/Operation';
+import { LoadStoreOperation, Operation, parseOperation, PushBoolOperation, PushDataOperation, PushIntOperation } from './types/Operation';
+import { createErr, ParseExpressionResult } from './passes/expressionProcessor';
+import { Ok } from '@sniptt/monads';
 
 
 export interface ReadonlyScope {
@@ -186,6 +188,28 @@ export class ConstantSymbolDef implements SymbolDef {
         readonly value: boolean | bigint | null | ReadonlyUint8Array
     ) { }
 
+    loadOperations(): ParseExpressionResult {
+        if (this.value === null) {
+            const op: Operation = { kind: 'pushnull' };
+            return Ok([op]);
+        }
+        if (this.value instanceof Uint8Array) {
+            const op: PushDataOperation = { kind: 'pushdata', value: this.value };
+            return Ok([op]);
+        }
+        switch (typeof this.value) {
+            case 'boolean': {
+                const op: PushBoolOperation = { kind: 'pushbool', value: this.value };
+                return Ok([op]);
+            }
+            case 'bigint': {
+                const op: PushIntOperation = { kind: 'pushint', value: this.value };
+                return Ok([op]);
+            }
+            default:
+                return createErr(`ConstantSymbolDef load ${this.value}`);
+        }
+    }
 }
 
 export class VariableSymbolDef implements SymbolDef {
@@ -194,6 +218,16 @@ export class VariableSymbolDef implements SymbolDef {
         readonly kind: 'arg' | 'local' | 'static',
         readonly index: number
     ) { }
+
+    loadOperations(): ParseExpressionResult {
+        const kind = this.kind === 'arg'
+            ? "loadarg"
+            : this.kind === 'local'
+                ? 'loadlocal'
+                : 'loadstatic';
+        const op: LoadStoreOperation = { kind, index: this.index };
+        return Ok([op]);
+    }
 }
 
 export class EventSymbolDef implements FunctionSymbolDef {

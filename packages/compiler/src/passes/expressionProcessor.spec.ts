@@ -1,10 +1,10 @@
 import { instance, mock, when } from 'ts-mockito';
 import 'mocha';
 import * as tsm from "ts-morph";
-import { ReadonlyScope, SymbolDef } from '../scope';
+import { ConstantSymbolDef, ReadonlyScope, SymbolDef } from '../scope';
 import { createTestProject } from '../scope.spec'
-import { parseArrayLiteral, parseBinaryExpression, ParseResult, parseStringLiteral } from './expressionProcessor';
-import { expect } from 'chai';
+import { parseArrayLiteral, parseBinaryExpression, parseCallExpression, parseIdentifier, ParseExpressionResult, parseStringLiteral } from './expressionProcessor';
+import { assert, expect } from 'chai';
 import { Operation } from '../types/Operation';
 
 export function testScope(def: SymbolDef): ReadonlyScope {
@@ -13,8 +13,17 @@ export function testScope(def: SymbolDef): ReadonlyScope {
     return instance(scope);
 }
 
-function expectOk(result: ParseResult): Operation[] {
-    expect(result.isOk()).true;
+function failDiag(diag: tsm.ts.Diagnostic): Operation[] {
+    const msg = typeof diag.messageText =='string'
+        ? diag.messageText
+        : diag.messageText.messageText;
+    assert.fail(msg);
+}
+
+function expectOk(result: ParseExpressionResult): ReadonlyArray<Operation> {
+    if (result.isErr()) {
+        failDiag(result.unwrapErr());
+    }
     return result.unwrap();
 }
 
@@ -42,21 +51,17 @@ class TestScope implements ReadonlyScope {
         this.map.set(def.symbol, def);
     }
 }
-// class FakeScope implements Scope {
 
-//     readonly parentScope = undefined;
-
-//     define<T extends SymbolDef>(factory: T | ((scope: Scope) => T)): T {
-//         return typeof factory === 'function' ? factory(this) : factory;
-//     }
-
-//     get symbols(): IterableIterator<SymbolDef> {
-//         throw new Error('Method not implemented.');
-//     }
-//     resolve(symbol: tsm.Symbol): SymbolDef | undefined {
-//         throw new Error('Method not implemented.');
-//     }
-// }
+describe("parseIdentifier", () => {
+    it("ConstantSymbolDef", () => {
+        const js = /*javascript*/`function test() { const varname = 42n; return varname;}`;
+        const { sourceFile } = createTestProject(js)
+        const node = sourceFile.getDescendantsOfKind(tsm.SyntaxKind.Identifier).slice(-1)[0];
+        const scope = new TestScope();
+        scope.define(new ConstantSymbolDef(node.getSymbolOrThrow(), 42n));
+        const result = expectOk(parseIdentifier(node, scope));
+    });
+})
 
 describe("expression parser", () => {
     it("parseStringLiteral", () => {
@@ -87,6 +92,14 @@ describe("expression parser", () => {
         const scope = new TestScope();
         const result = expectOk(parseBinaryExpression(node, scope));
     });
+
+    it("parseCall", () => {
+        const js = /*javascript*/`function test() { return storageGetContext(); }`;
+        const { sourceFile } = createTestProject(js)
+        const node = sourceFile.getFirstDescendantByKindOrThrow(tsm.SyntaxKind.CallExpression);
+        const scope = new TestScope();
+        const result = expectOk(parseCallExpression(node, scope));
+    })
 
     // const builderMock: MethodBuilder = mock(MethodBuilder);
     // const builder = instance(builderMock);
