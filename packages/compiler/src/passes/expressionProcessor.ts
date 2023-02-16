@@ -1,18 +1,12 @@
 import * as tsm from "ts-morph";
 import { SyntaxKind } from "ts-morph";
 import { ConstantSymbolDef, ReadonlyScope, SymbolDef, VariableSymbolDef } from "../scope";
-import { Operation, OperationKind, PushBoolOperation, PushDataOperation, PushIntOperation } from "../types/Operation";
+import { Operation, OperationKind, PushIntOperation } from "../types/Operation";
 import { createDiagnostic } from "../utils";
 import { ProcessMethodOptions } from "./processFunctionDeclarations";
-import * as E from "fp-ts/lib/Either";
+import * as E from "fp-ts/Either";
 import * as ROA from 'fp-ts/ReadonlyArray';
-import * as RONEA from 'fp-ts/ReadonlyNonEmptyArray'
-import { flow, pipe } from 'fp-ts/function'
-import { Semigroup } from "fp-ts/lib/Semigroup";
-import { elem } from "fp-ts/lib/Option";
-import { concat } from "ix/asynciterable";
-import { left } from "fp-ts/lib/EitherT";
-
+import { pipe } from 'fp-ts/function'
 
 
 // export function processArguments(args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions) {
@@ -480,7 +474,7 @@ export type ParseExpressionResult = DiagnosticResult<ReadonlyArray<Operation>>;
 const ok = E.right;
 const opToArray = (r: DiagnosticResult<Operation>) => pipe(r, E.map(ROA.of));
 
-export const createError = <T>(message: string, node?: tsm.Node): DiagnosticResult<T> =>
+export const error = <T>(message: string, node?: tsm.Node): DiagnosticResult<T> =>
     E.left(createDiagnostic(message, { node }));
 
 export const resolveIdentifier = (scope: ReadonlyScope) => (node: tsm.Identifier): DiagnosticResult<SymbolDef> => {
@@ -492,7 +486,7 @@ export const resolveIdentifier = (scope: ReadonlyScope) => (node: tsm.Identifier
     resolved = scope.resolve(valDeclSymbol);
     return resolved
         ? ok(resolved)
-        : createError(`resolveIdentifier ${symbol?.getName()}`, node);
+        : error(`resolveIdentifier ${symbol?.getName()}`, node);
 }
 
 export function resolveChain(node: tsm.Expression): DiagnosticResult<ReadonlyArray<tsm.Expression>> {
@@ -504,11 +498,11 @@ export function resolveChain(node: tsm.Expression): DiagnosticResult<ReadonlyArr
         if (tsm.Node.isIdentifier(node)) return ok(chain);
         else if (tsm.Node.isPropertyAccessExpression(node)) node = node.getExpression();
         else if (tsm.Node.isCallExpression(node)) node = node.getExpression();
-        else return createError(`resolveChain ${node.getKindName()}`, node);
+        else return error(`resolveChain ${node.getKindName()}`, node);
     }
 }
 
-export function concatParseExpressionResults(...results: ParseExpressionResult[]): ParseExpressionResult {
+export function concatParseExpressionResults(...results: ReadonlyArray<ParseExpressionResult>): ParseExpressionResult {
     const monoid = ROA.getMonoid<Operation>();
     let operations = monoid.empty;
     for (const result of results) {
@@ -542,19 +536,18 @@ export const parseExpression = (scope: ReadonlyScope) => (node: tsm.Expression):
         if (tsm.Node.isPropertyAccessExpression(node)) return parsePropertyAccessExpression(node, scope);
         if (tsm.Node.isStringLiteral(node)) return opToArray(parseStringLiteral(node));
         if (tsm.Node.isTrueLiteral(node)) return opToArray(parseBooleanLiteral(node));
-        return createError(`parseExpression ${node.getKindName()}`, node);
-    } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return createError(message, node);
+        return error(`parseExpression ${node.getKindName()}`, node);
+    } catch ($error) {
+        const message = $error instanceof Error ? $error.message : String($error);
+        return error(message, node);
     }
 }
 
 export function parseArrayLiteral(node: tsm.ArrayLiteralExpression, scope: ReadonlyScope): ParseExpressionResult {
     const $parseExpression = parseExpression(scope);
     const elements = node.getElements();
-    const results = elements.map(e => $parseExpression(e));
     return concatParseExpressionResults(
-        ...results,
+        ...pipe(elements, ROA.map($parseExpression)),
         ok([
             { kind: "pushint", value: BigInt(elements.length) } as PushIntOperation,
             { kind: 'pack' }
@@ -566,7 +559,7 @@ export function parseBigIntLiteral(node: tsm.BigIntLiteral): DiagnosticResult<Op
     return ok({ kind: "pushint", value, location: node });
 }
 
-const binaryOpTokenMap = new Map<SyntaxKind, OperationKind>([
+const binaryOpTokenMap: ReadonlyMap<SyntaxKind, OperationKind> = new Map([
     [SyntaxKind.AsteriskAsteriskToken, 'power'],
     [SyntaxKind.AsteriskToken, 'multiply'],
     [SyntaxKind.EqualsEqualsEqualsToken, 'equal'], // TODO: Should == and === be the same?
@@ -582,16 +575,17 @@ const binaryOpTokenMap = new Map<SyntaxKind, OperationKind>([
 
 export function parseBinaryOperatorToken(node: tsm.Node<tsm.ts.BinaryOperatorToken>): DiagnosticResult<Operation> {
     const kind = binaryOpTokenMap.get(node.getKind());
-    return kind ? ok({ kind })
-        : createError(`processBinaryExpression ${node.getKindName()}`, node);
+    return kind 
+        ? ok({ kind })
+        : error(`processBinaryExpression ${node.getKindName()}`, node);
 }
 
 export function parseBinaryExpression(node: tsm.BinaryExpression, scope: ReadonlyScope): ParseExpressionResult {
     const $parseExpression = parseExpression(scope);
     return concatParseExpressionResults(
-        $parseExpression(node.getLeft()),
-        $parseExpression(node.getRight()),
-        opToArray(parseBinaryOperatorToken(node.getOperatorToken())));
+        pipe(node.getLeft(), $parseExpression),
+        pipe(node.getRight(), $parseExpression),
+        pipe(node.getOperatorToken(), parseBinaryOperatorToken, opToArray));
 }
 
 export function parseBooleanLiteral(node: tsm.FalseLiteral | tsm.TrueLiteral): DiagnosticResult<Operation> {
@@ -626,22 +620,21 @@ export function parseCallExpression(node: tsm.CallExpression, scope: ReadonlySco
     //         parseExpression(a as tsm.Expression, scope);
     //     }
 
-    return createError('parseCallExpression not impl', node);
+    return error('parseCallExpression not impl', node);
 }
 
 export function parseLoadSymbolDef(def: SymbolDef): ParseExpressionResult {
     if (def instanceof ConstantSymbolDef) return def.loadOperations();
     if (def instanceof VariableSymbolDef) return def.loadOperations();
-    return createError(`parseLoadSymbolDef`);
+    return error(`parseLoadSymbolDef`);
 }
 
 export function parseIdentifier(node: tsm.Identifier, scope: ReadonlyScope): ParseExpressionResult {
     return pipe(
         node,
         resolveIdentifier(scope),
-        E.match(
-            E.left,
-            parseLoadSymbolDef)
+        E.map(parseLoadSymbolDef),
+        E.flatten
     );
 }
 
@@ -653,29 +646,31 @@ export function parseNumericLiteral(node: tsm.NumericLiteral): DiagnosticResult<
     const value = node.getLiteralValue();
     return (Number.isInteger(value))
         ? ok({ kind: "pushint", value: BigInt(value), location: node })
-        : createError(`invalid non-integer numeric literal ${value}`, node);
+        : error(`invalid non-integer numeric literal ${value}`, node);
 }
 
-const prefixUnaryOperatorMap = new Map<SyntaxKind, OperationKind>([
+
+const prefixUnaryOperatorMap: ReadonlyMap<SyntaxKind, OperationKind> = new Map([
     [SyntaxKind.ExclamationToken, 'not'],
     [SyntaxKind.MinusToken, 'negate']
 ]);
 
 export function parsePrefixUnaryOperator(token: tsm.ts.PrefixUnaryOperator): DiagnosticResult<Operation> {
     const kind = prefixUnaryOperatorMap.get(token);
-    return kind ? ok({ kind })
-        : createError(`parsePrefixUnaryOperator ${tsm.ts.SyntaxKind[token]}`)
+    return kind 
+        ? ok({ kind })
+        : error(`parsePrefixUnaryOperator ${tsm.ts.SyntaxKind[token]}`)
 }
 
 export function parsePrefixUnaryExpression(node: tsm.PrefixUnaryExpression, scope: ReadonlyScope): ParseExpressionResult {
     const $parseExpression = parseExpression(scope);
     return concatParseExpressionResults(
-        $parseExpression(node.getOperand()),
-        opToArray(parsePrefixUnaryOperator(node.getOperatorToken())));
+        pipe(node.getOperand(), $parseExpression),
+        pipe(node.getOperatorToken(), parsePrefixUnaryOperator, opToArray));
 }
 
 export function parsePropertyAccessExpression(node: tsm.PropertyAccessExpression, scope: ReadonlyScope): ParseExpressionResult {
-    return createError('parsePropertyAccessExpression not impl', node);
+    return error('parsePropertyAccessExpression not impl', node);
 }
 
 export function parseStringLiteral(node: tsm.StringLiteral): DiagnosticResult<Operation> {

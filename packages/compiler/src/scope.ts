@@ -10,7 +10,7 @@ import { defineErrorObj, defineUint8ArrayObj } from './passes/builtins';
 import { ProcessMethodOptions } from './passes/processFunctionDeclarations';
 import { sc, u } from '@cityofzion/neon-core';
 import { LoadStoreOperation, Operation, parseOperation, PushBoolOperation, PushDataOperation, PushIntOperation } from './types/Operation';
-import { createError, ParseExpressionResult } from './passes/expressionProcessor';
+import { error, ParseExpressionResult } from './passes/expressionProcessor';
 import * as E from "fp-ts/lib/Either";
 
 
@@ -207,7 +207,7 @@ export class ConstantSymbolDef implements SymbolDef {
                 return E.right([op]);
             }
             default:
-                return createError(`ConstantSymbolDef load ${this.value}`);
+                return error(`ConstantSymbolDef load ${this.value}`);
         }
     }
 }
