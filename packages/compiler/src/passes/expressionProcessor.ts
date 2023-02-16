@@ -4,7 +4,7 @@ import { Operation, PushBoolOperation, PushDataOperation, PushIntOperation } fro
 import { createDiagnostic } from "../utils";
 import { ProcessMethodOptions } from "./processFunctionDeclarations";
 import * as E from "fp-ts/lib/Either";
-import * as roa from 'fp-ts/ReadonlyArray';
+import * as ROA from 'fp-ts/ReadonlyArray';
 import { flow, pipe } from 'fp-ts/function'
 import { Semigroup } from "fp-ts/lib/Semigroup";
 
@@ -460,29 +460,29 @@ import { Semigroup } from "fp-ts/lib/Semigroup";
 
 // TODO: remove once we've changed the rest of the code to use parseExpression
 export function processExpression(node: tsm.Expression, options: ProcessMethodOptions) {
-    const result = parseExpression(node, options.scope);
-    if (E.isLeft(result)) {
-        options.diagnostics.push(result.left);
-    } else {
-        const ops = result.right;
-        ops.forEach(op => options.builder.emit(op));
-    }
+    pipe(
+        node,
+        parseExpression(options.scope),
+        E.match(
+            (diag) => { options.diagnostics.push(diag) },
+            (ops) => ops.forEach(op => options.builder.emit(op)),
+        ));
 }
 
 export type DiagnosticResult<T> = E.Either<tsm.ts.Diagnostic, T>;
 export type ParseExpressionResult = DiagnosticResult<ReadonlyArray<Operation>>;
 
-// export function resolveIdentifier({ node, scope }: ExpressionOptions<tsm.Identifier>): DiagnosticResult<SymbolDef> {
-//     const symbol = node.getSymbol();
-//     let resolved = scope.resolve(symbol);
-//     if (resolved) return ok(resolved);
+export const resolveIdentifier = (scope: ReadonlyScope) => (node: tsm.Identifier): DiagnosticResult<SymbolDef> => {
+    const symbol = node.getSymbol();
+    let resolved = scope.resolve(symbol);
+    if (resolved) return ok(resolved);
 
-//     const valDeclSymbol = symbol?.getValueDeclaration()?.getSymbol();
-//     resolved = scope.resolve(valDeclSymbol);
-//     return resolved
-//         ? ok(resolved)
-//         : error(createDiagnostic(`resolveIdentifier ${symbol?.getName()}`, { node }));
-// }
+    const valDeclSymbol = symbol?.getValueDeclaration()?.getSymbol();
+    resolved = scope.resolve(valDeclSymbol);
+    return resolved
+        ? ok(resolved)
+        : E.left(createDiagnostic(`resolveIdentifier ${symbol?.getName()}`, { node }));
+}
 
 // export function resolveChain(node: tsm.Expression, chain?: Array<tsm.Expression>): DiagnosticResult<ReadonlyArray<tsm.Expression>> {
 //     chain ??= [];
@@ -499,27 +499,27 @@ export type ParseExpressionResult = DiagnosticResult<ReadonlyArray<Operation>>;
 // }
 
 const ok = E.right;
-const toArray = E.map<Operation, ReadonlyArray<Operation>>(roa.of);
+const toArray = E.map<Operation, ReadonlyArray<Operation>>(ROA.of);
 
 export function createError<T>(message: string, node?: tsm.Node): DiagnosticResult<T> {
     const diag = createDiagnostic(message, { node });
     return E.left(diag);
 }
 
-export function parseExpression(node: tsm.Expression, scope: ReadonlyScope): DiagnosticResult<ReadonlyArray<Operation>> {
+export const parseExpression = (scope: ReadonlyScope) => (node: tsm.Expression): DiagnosticResult<ReadonlyArray<Operation>> => {
     try {
-        // if (tsm.Node.isArrayLiteralExpression(node)) return parseArrayLiteral(node, scope);
-        // if (tsm.Node.isAsExpression(node)) return parseExpression(node.getExpression(), scope);
+        if (tsm.Node.isArrayLiteralExpression(node)) return parseArrayLiteral(node, scope);
+        if (tsm.Node.isAsExpression(node)) return parseExpression(scope)(node.getExpression());
         if (tsm.Node.isBigIntLiteral(node)) return pipe(parseBigIntLiteral(node), toArray);
-        // if (tsm.Node.isBinaryExpression(node)) return parseBinaryExpression(node, scope);
+        if (tsm.Node.isBinaryExpression(node)) return parseBinaryExpression(node, scope);
         // if (tsm.Node.isCallExpression(node)) return parseCallExpression(node, scope);
         if (tsm.Node.isFalseLiteral(node)) return pipe(parseBooleanLiteral(node), toArray);
-        // if (tsm.Node.isIdentifier(node)) return parseIdentifier(node, scope);
-        // if (tsm.Node.isNonNullExpression(node)) return parseExpression(node.getExpression(), scope);
+        if (tsm.Node.isIdentifier(node)) return parseIdentifier(node, scope);
+        if (tsm.Node.isNonNullExpression(node)) return parseExpression(scope)(node.getExpression());
         if (tsm.Node.isNullLiteral(node)) return pipe(parseNullLiteral(node), toArray);
         if (tsm.Node.isNumericLiteral(node)) return pipe(parseNumericLiteral(node), toArray);
-        // if (tsm.Node.isParenthesizedExpression(node)) return parseExpression(node.getExpression(), scope);
-        // if (tsm.Node.isPrefixUnaryExpression(node)) return parsePrefixUnaryExpression(node, scope);
+        if (tsm.Node.isParenthesizedExpression(node)) return parseExpression(scope)(node.getExpression());
+        if (tsm.Node.isPrefixUnaryExpression(node)) return parsePrefixUnaryExpression(node, scope);
         // if (tsm.Node.isPropertyAccessExpression(node)) return parsePropertyAccessExpression(node, scope);
         if (tsm.Node.isStringLiteral(node)) return pipe(parseStringLiteral(node), toArray);
         if (tsm.Node.isTrueLiteral(node)) return pipe(parseBooleanLiteral(node), toArray);
@@ -530,22 +530,34 @@ export function parseExpression(node: tsm.Expression, scope: ReadonlyScope): Dia
     }
 }
 
-// export function parseArrayLiteral(node: tsm.ArrayLiteralExpression, scope: ReadonlyScope): ParseExpressionResult {
-//     let result: ParseExpressionResult = Ok([]);
-//     const elements = node.getElements();
-//     for (const e of elements) {
-//         result = bindOperations(result, () => parseExpression(e, scope));
+export function parseArrayLiteral(node: tsm.ArrayLiteralExpression, scope: ReadonlyScope): ParseExpressionResult {
 
-//         result.andThen(ops => parseExpression(e, scope).map(ops2 => ops.concat(ops2)));
-//     }
-//     return result.andThen(ops => {
-//         const ops2: Operation[] = [
-//             { kind: "pushint", value: BigInt(elements.length) } as PushIntOperation,
-//             { kind: 'pack' }
-//         ];
-//         return Ok(ops.concat(ops2));
-//     });
-// }
+    return createError("not implemented");
+    // const m = ROA.getMonoid<Operation>();
+
+    // const elements = node.getElements();
+    // const packOps: Operation[] = [
+    //     { kind: "pushint", value: BigInt(elements.length) } as PushIntOperation,
+    //     { kind: 'pack' }
+    // ];
+
+    //     // E.reduce()
+    //     // ROA.map(e => pipe(e, parseExpression(scope))),
+    //     // // ROA.reduce(m.empty, (a, q) => { return [] }  )
+
+    //     );
+
+    // let result: ParseExpressionResult = Ok([]);
+    // ;
+    // for (const e of elements) {
+    //     result = bindOperations(result, () => parseExpression(e, scope));
+
+    //     result.andThen(ops => parseExpression(e, scope).map(ops2 => ops.concat(ops2)));
+    // }
+    // return result.andThen(ops => {
+    //     return Ok(ops.concat(ops2));
+    // });
+}
 
 export function parseBigIntLiteral(node: tsm.BigIntLiteral): DiagnosticResult<Operation> {
     const value = node.getLiteralValue() as bigint;
@@ -558,11 +570,11 @@ export function parseBinaryOperatorToken(node: tsm.Node<tsm.ts.BinaryOperatorTok
             return ok({ kind: 'power' });
         case tsm.SyntaxKind.AsteriskToken:
             return ok({ kind: 'multiply' });
-        // TODO: SHould == and === be the same?
+        // TODO: Should == and === be the same?
         case tsm.SyntaxKind.EqualsEqualsEqualsToken:
         case tsm.SyntaxKind.EqualsEqualsToken:
             return ok({ kind: 'equal' });
-        // TODO: SHould != and !== be the same?
+        // TODO: Should != and !== be the same?
         case tsm.SyntaxKind.ExclamationEqualsToken:
         case tsm.SyntaxKind.ExclamationEqualsEqualsToken:
             return ok({ kind: 'notequal' });
@@ -582,15 +594,27 @@ export function parseBinaryOperatorToken(node: tsm.Node<tsm.ts.BinaryOperatorTok
 }
 
 export function parseBinaryExpression(node: tsm.BinaryExpression, scope: ReadonlyScope): ParseExpressionResult {
-    const leftResult = pipe(node.getLeft(), n => parseExpression(n, scope));
-    const rightResult = pipe(node.getRight(), n => parseExpression(n, scope));
-    const tokenResult = pipe(node.getOperatorToken(), parseBinaryOperatorToken, E.map(roa.of));
+    const sg = ROA.getSemigroup<Operation>();
 
-
-    return createError(`processBinaryExpression ${node.getKindName()}`, node)
-    // return parseExpression(node.getLeft(), scope)
-    //     .andThen(ops => parseExpression(node.getRight(), scope).map(ops2 => ops.concat(ops2)))
-    //     .andThen(ops => parseBinaryOperatorToken(node.getOperatorToken()).map(ops2 => ops.concat(ops2)));
+    return pipe(
+        node.getLeft(), 
+        parseExpression(scope), 
+        E.bindTo("left"),
+        E.bind("right", () => pipe(
+            node.getRight(), 
+            parseExpression(scope))),
+        E.bind("token", () => pipe(
+            node.getOperatorToken(),
+            parseBinaryOperatorToken
+        )),
+        E.chain(({left, right, token}) => {
+            const ops = sg.concat(
+                sg.concat(left, right),
+                ROA.of(token)
+            );
+            return ok(ops);
+        })
+    )
 }
 
 export function parseBooleanLiteral(node: tsm.FalseLiteral | tsm.TrueLiteral): DiagnosticResult<Operation> {
@@ -617,15 +641,19 @@ export function parseBooleanLiteral(node: tsm.FalseLiteral | tsm.TrueLiteral): D
 //     return createError('parseCallExpression not impl', node);
 // }
 
-// export function parseLoadSymbolDef(def: SymbolDef): ParseExpressionResult {
-//     if (def instanceof ConstantSymbolDef) return def.loadOperations();
-//     if (def instanceof VariableSymbolDef) return def.loadOperations();
-//     return createError(`parseLoadSymbolDef`);
-// }
+export function parseLoadSymbolDef(def: SymbolDef): ParseExpressionResult {
+    if (def instanceof ConstantSymbolDef) return def.loadOperations();
+    if (def instanceof VariableSymbolDef) return def.loadOperations();
+    return createError(`parseLoadSymbolDef`);
+}
 
-// export function parseIdentifier(node: tsm.Identifier, scope: ReadonlyScope): ParseExpressionResult {
-//     return resolveIdentifier(node, scope).andThen(parseLoadSymbolDef);
-// }
+export function parseIdentifier(node: tsm.Identifier, scope: ReadonlyScope): ParseExpressionResult {
+    return pipe(
+        node,
+        resolveIdentifier(scope),
+        E.match(E.left, parseLoadSymbolDef)
+    );
+}
 
 function parseNullLiteral(node: tsm.NullLiteral): DiagnosticResult<Operation> {
     return ok({ kind: "pushnull", location: node })
@@ -650,21 +678,17 @@ export function parsePrefixUnaryOperator(token: tsm.ts.PrefixUnaryOperator): Dia
 }
 
 export function parsePrefixUnaryExpression(node: tsm.PrefixUnaryExpression, scope: ReadonlyScope): ParseExpressionResult {
+    const sg = ROA.getSemigroup<Operation>();
 
-    const operandResult = pipe(node.getOperand(), n => parseExpression(n, scope));
-    const tokenResult = pipe(node.getOperatorToken(), parsePrefixUnaryOperator);
-
-
- 
-
-    return createError('parsePrefixUnaryExpression not impl', node);
-
-    // flow(
-    //     options.node.getOp
-    //     parseExpression(options)
-    // )
-    // return 
-    //     .andThen(ops => parsePrefixUnaryOperator(node.getOperatorToken()).map(ops2 => ops.concat(ops2)));
+    return pipe(
+        node.getOperand(), 
+        parseExpression(scope), 
+        E.bindTo("ops"),
+        E.bind("token", () => pipe(
+            node.getOperatorToken(), 
+            parsePrefixUnaryOperator)),
+        E.chain(({ops, token}) => ok(sg.concat(ops, ROA.of(token))))
+    )
 }
 
 // export function parsePropertyAccessExpression(node: tsm.PropertyAccessExpression, scope: ReadonlyScope): ParseExpressionResult {

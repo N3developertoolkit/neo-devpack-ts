@@ -11,7 +11,7 @@ import { ProcessMethodOptions } from './passes/processFunctionDeclarations';
 import { sc, u } from '@cityofzion/neon-core';
 import { LoadStoreOperation, Operation, parseOperation, PushBoolOperation, PushDataOperation, PushIntOperation } from './types/Operation';
 import { createError, ParseExpressionResult } from './passes/expressionProcessor';
-import { Ok } from '@sniptt/monads';
+import * as E from "fp-ts/lib/Either";
 
 
 export interface ReadonlyScope {
@@ -191,20 +191,20 @@ export class ConstantSymbolDef implements SymbolDef {
     loadOperations(): ParseExpressionResult {
         if (this.value === null) {
             const op: Operation = { kind: 'pushnull' };
-            return Ok([op]);
+            return E.right([op]);
         }
         if (this.value instanceof Uint8Array) {
             const op: PushDataOperation = { kind: 'pushdata', value: this.value };
-            return Ok([op]);
+            return E.right([op]);
         }
         switch (typeof this.value) {
             case 'boolean': {
                 const op: PushBoolOperation = { kind: 'pushbool', value: this.value };
-                return Ok([op]);
+                return E.right([op]);
             }
             case 'bigint': {
                 const op: PushIntOperation = { kind: 'pushint', value: this.value };
-                return Ok([op]);
+                return E.right([op]);
             }
             default:
                 return createError(`ConstantSymbolDef load ${this.value}`);
@@ -226,7 +226,7 @@ export class VariableSymbolDef implements SymbolDef {
                 ? 'loadlocal'
                 : 'loadstatic';
         const op: LoadStoreOperation = { kind, index: this.index };
-        return Ok([op]);
+        return E.right([op]);
     }
 }
 
