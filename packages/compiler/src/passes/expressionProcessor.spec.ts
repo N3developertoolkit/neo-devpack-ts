@@ -5,7 +5,7 @@ import { ConstantSymbolDef, ReadonlyScope, SymbolDef } from '../scope';
 import { createTestProject } from '../scope.spec'
 import { assert, expect } from 'chai';
 import { Operation } from '../types/Operation';
-import { DiagnosticResult, parseBinaryExpression, parseStringLiteral } from './expressionProcessor';
+import { DiagnosticResult, parseArrayLiteral, parseBinaryExpression, parseStringLiteral } from './expressionProcessor';
 import * as E from "fp-ts/lib/Either";
 
 export function testScope(def: SymbolDef): ReadonlyScope {
@@ -80,7 +80,7 @@ describe("expression parser", () => {
         const { sourceFile } = createTestProject(js)
         const node = sourceFile.getFirstDescendantByKindOrThrow(tsm.SyntaxKind.ArrayLiteralExpression);
         const scope = new TestScope();
-        // const result = expectOk(parseArrayLiteral(node, scope));
+        const result = expectOk(parseArrayLiteral(node, scope));
 
     });
 

@@ -9,6 +9,8 @@ import * as ROA from 'fp-ts/ReadonlyArray';
 import { flow, pipe } from 'fp-ts/function'
 import { Semigroup } from "fp-ts/lib/Semigroup";
 import { elem } from "fp-ts/lib/Option";
+import { concat } from "ix/asynciterable";
+import { left } from "fp-ts/lib/EitherT";
 
 
 
@@ -486,22 +488,20 @@ export const resolveIdentifier = (scope: ReadonlyScope) => (node: tsm.Identifier
         : E.left(createDiagnostic(`resolveIdentifier ${symbol?.getName()}`, { node }));
 }
 
-// export function resolveChain(node: tsm.Expression, chain?: Array<tsm.Expression>): DiagnosticResult<ReadonlyArray<tsm.Expression>> {
-//     chain ??= [];
-//     chain.push(node);
-//     if (tsm.Node.isIdentifier(node)) return Ok(chain.slice().reverse());
-//     if (tsm.Node.isPropertyAccessExpression(node)) return resolveChain(node.getExpression(), chain);
-//     if (tsm.Node.isCallExpression(node)) return resolveChain(node.getExpression(), chain);
-//     return Err(createDiagnostic(`resolveChain ${node.getKindName()}`, { node }));
-// }
+export function resolveChain(node: tsm.Expression): DiagnosticResult<ReadonlyArray<tsm.Expression>> {
+    return $resolveChain(node, []);
 
-
-// function bindOperations(result: ParseExpressionResult, func: () => ParseExpressionResult): ParseExpressionResult {
-//     return result.andThen(ops => func().map(ops2 => ops.concat(ops2)));
-// }
+    function $resolveChain(node: tsm.Expression, chain: tsm.Expression[]): DiagnosticResult<ReadonlyArray<tsm.Expression>> {
+        chain.push(node);
+        if (tsm.Node.isIdentifier(node)) return ok(chain.slice().reverse());
+        if (tsm.Node.isPropertyAccessExpression(node)) return $resolveChain(node.getExpression(), chain);
+        if (tsm.Node.isCallExpression(node)) return $resolveChain(node.getExpression(), chain);
+        return createError(`resolveChain ${node.getKindName()}`, node);
+    }
+}
 
 const ok = E.right;
-const opToArray = (r: DiagnosticResult<Operation>) => 
+const opToArray = (r: DiagnosticResult<Operation>) =>
     pipe(r, E.map<Operation, ReadonlyArray<Operation>>(ROA.of));
 
 
@@ -513,7 +513,6 @@ export function createError<T>(message: string, node?: tsm.Node): DiagnosticResu
 // type NodeDispatchMap<TOptions, TReturn> = {
 //     [TKind in tsm.SyntaxKind]?: (node: tsm.KindToNodeMappings[TKind], options: TOptions) => TReturn;
 // };
-
 
 export const parseExpression = (scope: ReadonlyScope) => (node: tsm.Expression): ParseExpressionResult => {
     const $parseExpression = parseExpression(scope);
@@ -542,23 +541,27 @@ export const parseExpression = (scope: ReadonlyScope) => (node: tsm.Expression):
     }
 }
 
+function concatOperations(...results: ParseExpressionResult[]): ParseExpressionResult {
+    const monoid = ROA.getMonoid<Operation>();
+
+    let operations = monoid.empty;
+    for (const result of results) {
+        if (E.isLeft(result)) return result;
+        operations = monoid.concat(operations, result.right);
+    }
+    return ok(operations);
+}
+
 export function parseArrayLiteral(node: tsm.ArrayLiteralExpression, scope: ReadonlyScope): ParseExpressionResult {
 
     const $parseExpression = parseExpression(scope);
 
-    // TODO: functional approach
-    let operations = new Array<Operation>();
     const elements = node.getElements();
-    for (const e of elements) {
-        const r = $parseExpression(e);
-        if (E.isLeft(r)) { return r; }
-        operations = operations.concat(r.right);
-    }
-    operations = operations.concat([
+    const results = elements.map(e => $parseExpression(e));
+    return concatOperations(...results, ok([
         { kind: "pushint", value: BigInt(elements.length) } as PushIntOperation,
         { kind: 'pack' }
-    ]);
-    return ok(operations);
+    ]));
 }
 
 export function parseBigIntLiteral(node: tsm.BigIntLiteral): DiagnosticResult<Operation> {
@@ -582,35 +585,16 @@ const binaryOpTokenMap = new Map<SyntaxKind, OperationKind>([
 
 export function parseBinaryOperatorToken(node: tsm.Node<tsm.ts.BinaryOperatorToken>): DiagnosticResult<Operation> {
     const kind = binaryOpTokenMap.get(node.getKind());
-    return kind ? ok({kind}) 
+    return kind ? ok({ kind })
         : createError(`processBinaryExpression ${node.getKindName()}`, node);
 }
 
 export function parseBinaryExpression(node: tsm.BinaryExpression, scope: ReadonlyScope): ParseExpressionResult {
-    const sg = ROA.getSemigroup<Operation>();
     const $parseExpression = parseExpression(scope);
-
-
-    // TODO: could this be more functional?
-    return pipe(
-        node.getLeft(), 
-        $parseExpression, 
-        E.bindTo("left"),
-        E.bind("right", () => pipe(
-            node.getRight(), 
-            $parseExpression)),
-        E.bind("token", () => pipe(
-            node.getOperatorToken(),
-            parseBinaryOperatorToken
-        )),
-        E.chain(({left, right, token}) => {
-            const ops = sg.concat(
-                sg.concat(left, right),
-                ROA.of(token)
-            );
-            return ok(ops);
-        })
-    )
+    return concatOperations(
+        $parseExpression(node.getLeft()), 
+        $parseExpression(node.getRight()), 
+        opToArray(parseBinaryOperatorToken(node.getOperatorToken())));
 }
 
 export function parseBooleanLiteral(node: tsm.FalseLiteral | tsm.TrueLiteral): DiagnosticResult<Operation> {
@@ -623,21 +607,24 @@ export function parseCallExpression(node: tsm.CallExpression, scope: ReadonlySco
     const args = node.getArguments() as tsm.Expression[];
     const argResults = args.map(a => $parseExpression(a))
 
+    const chainResult = resolveChain(node.getExpression());
+    if (E.isLeft(chainResult)) return chainResult;
 
-//     const chain = resolveChain(node);
-//     if (chain.isErr()) return Err(chain.unwrapErr());
-//     const foo = chain.unwrap();
 
-//     const args = node.getArguments().reverse();
+    //     const chain = resolveChain(node);
+    //     if (chain.isErr()) return Err(chain.unwrapErr());
+    //     const foo = chain.unwrap();
 
-//     let result: ParseExpressionResult = Ok([]);
-//     // for (const a of args) {
-//     //     result.andThen()
-//     // }
+    //     const args = node.getArguments().reverse();
 
-//     for (const a of args) {
-//         parseExpression(a as tsm.Expression, scope);
-//     }
+    //     let result: ParseExpressionResult = Ok([]);
+    //     // for (const a of args) {
+    //     //     result.andThen()
+    //     // }
+
+    //     for (const a of args) {
+    //         parseExpression(a as tsm.Expression, scope);
+    //     }
 
     return createError('parseCallExpression not impl', node);
 }
@@ -653,7 +640,7 @@ export function parseIdentifier(node: tsm.Identifier, scope: ReadonlyScope): Par
         node,
         resolveIdentifier(scope),
         E.match(
-            E.left, 
+            E.left,
             parseLoadSymbolDef)
     );
 }
@@ -676,23 +663,15 @@ const prefixUnaryOperatorMap = new Map<SyntaxKind, OperationKind>([
 
 export function parsePrefixUnaryOperator(token: tsm.ts.PrefixUnaryOperator): DiagnosticResult<Operation> {
     const kind = prefixUnaryOperatorMap.get(token);
-    return kind ? ok({kind}) 
+    return kind ? ok({ kind })
         : createError(`parsePrefixUnaryOperator ${tsm.ts.SyntaxKind[token]}`)
 }
 
 export function parsePrefixUnaryExpression(node: tsm.PrefixUnaryExpression, scope: ReadonlyScope): ParseExpressionResult {
-    const sg = ROA.getSemigroup<Operation>();
-
-    // TODO: could this be more functional?
-    return pipe(
-        node.getOperand(), 
-        parseExpression(scope), 
-        E.bindTo("ops"),
-        E.bind("token", () => pipe(
-            node.getOperatorToken(), 
-            parsePrefixUnaryOperator)),
-        E.chain(({ops, token}) => ok(sg.concat(ops, ROA.of(token))))
-    )
+    const $parseExpression = parseExpression(scope);
+    return concatOperations(
+        $parseExpression(node.getOperand()), 
+        opToArray(parsePrefixUnaryOperator(node.getOperatorToken())));
 }
 
 export function parsePropertyAccessExpression(node: tsm.PropertyAccessExpression, scope: ReadonlyScope): ParseExpressionResult {
