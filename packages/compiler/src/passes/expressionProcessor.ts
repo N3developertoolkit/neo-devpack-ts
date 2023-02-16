@@ -1,12 +1,14 @@
 import * as tsm from "ts-morph";
+import { SyntaxKind } from "ts-morph";
 import { ConstantSymbolDef, ReadonlyScope, SymbolDef, VariableSymbolDef } from "../scope";
-import { Operation, PushBoolOperation, PushDataOperation, PushIntOperation } from "../types/Operation";
+import { Operation, OperationKind, PushBoolOperation, PushDataOperation, PushIntOperation } from "../types/Operation";
 import { createDiagnostic } from "../utils";
 import { ProcessMethodOptions } from "./processFunctionDeclarations";
 import * as E from "fp-ts/lib/Either";
 import * as ROA from 'fp-ts/ReadonlyArray';
 import { flow, pipe } from 'fp-ts/function'
 import { Semigroup } from "fp-ts/lib/Semigroup";
+import { elem } from "fp-ts/lib/Option";
 
 
 
@@ -53,13 +55,13 @@ import { Semigroup } from "fp-ts/lib/Semigroup";
 // //         remaining = remaining.slice(1);
 
 // //         switch (head.getKind()) {
-// //             case tsm.SyntaxKind.Identifier: {
+// //             case SyntaxKind.Identifier: {
 // //                 if (resolved) throw new CompileError(`already resolved ${resolved.symbol.getName()}`, head);
 // //                 resolved = resolveIdentifier(head as tsm.Identifier, options.scope);
 // //                 if (!resolved) throw new CompileError(`failed to resolve`, head);
 // //                 break;
 // //             }
-// //             case tsm.SyntaxKind.PropertyAccessExpression: {
+// //             case SyntaxKind.PropertyAccessExpression: {
 // //                 if (!resolved) throw new CompileError(`unresolved`, head);
 // //                 if (isObjectDef(resolved)) {
 // //                     resolved = resolved.getProp((head as tsm.PropertyAccessExpression).getName(), options);
@@ -125,7 +127,7 @@ import { Semigroup } from "fp-ts/lib/Semigroup";
 
 
 
-//     // const id = chain[0].asKindOrThrow(tsm.SyntaxKind.Identifier)
+//     // const id = chain[0].asKindOrThrow(SyntaxKind.Identifier)
 
 
 //     // let resolved = resolveIdentifier(id, options.scope);
@@ -156,7 +158,7 @@ import { Semigroup } from "fp-ts/lib/Semigroup";
 //     //     return;
 //     // } else if (chain.length === 2) {
 //     //     const resolved = resolveIdentifier(first, options.scope);
-//     //     const second = chain[1].asKind(tsm.SyntaxKind.PropertyAccessExpression);
+//     //     const second = chain[1].asKind(SyntaxKind.PropertyAccessExpression);
 //     //     if (resolved && isObjectDef(resolved) && second) {
 //     //         const prop = resolved.getProp(second.getName());
 //     //         if (prop && isFunctionDef(prop)) {
@@ -170,10 +172,10 @@ import { Semigroup } from "fp-ts/lib/Semigroup";
 //     throw new CompileError("processCallExpression", node);
 //     // callIdentifier(chain.first, args, options);
 //     // switch (expr.getKind()) {
-//     //     case tsm.SyntaxKind.Identifier:
+//     //     case SyntaxKind.Identifier:
 //     //         callIdentifier(expr as tsm.Identifier, args, options);
 //     //         break;
-//     //     case tsm.SyntaxKind.PropertyAccessExpression:
+//     //     case SyntaxKind.PropertyAccessExpression:
 //     //         callPropertyAccessExpression(expr as tsm.PropertyAccessExpression, args, options);
 //     //         break;
 //     //     default:
@@ -258,35 +260,35 @@ import { Semigroup } from "fp-ts/lib/Semigroup";
 //     const { builder } = options;
 //     const opToken = node.getOperatorToken();
 //     switch (opToken.getKind()) {
-//         case tsm.SyntaxKind.AsteriskAsteriskToken:
+//         case SyntaxKind.AsteriskAsteriskToken:
 //             builder.emit('power');
 //             break;
-//         case tsm.SyntaxKind.AsteriskToken:
+//         case SyntaxKind.AsteriskToken:
 //             builder.emit('multiply');
 //             break;
 //         // TODO: SHould == and === be the same?
-//         case tsm.SyntaxKind.EqualsEqualsEqualsToken:
-//         case tsm.SyntaxKind.EqualsEqualsToken:
+//         case SyntaxKind.EqualsEqualsEqualsToken:
+//         case SyntaxKind.EqualsEqualsToken:
 //             builder.emit('equal');
 //             break;
 //         // TODO: SHould != and !== be the same?
-//         case tsm.SyntaxKind.ExclamationEqualsToken:
-//         case tsm.SyntaxKind.ExclamationEqualsEqualsToken:
+//         case SyntaxKind.ExclamationEqualsToken:
+//         case SyntaxKind.ExclamationEqualsEqualsToken:
 //             builder.emit('notequal');
 //             break;
-//         case tsm.SyntaxKind.GreaterThanEqualsToken:
+//         case SyntaxKind.GreaterThanEqualsToken:
 //             builder.emit('greaterthanorequal');
 //             break;
-//         case tsm.SyntaxKind.GreaterThanToken:
+//         case SyntaxKind.GreaterThanToken:
 //             builder.emit('greaterthan');
 //             break;
-//         case tsm.SyntaxKind.LessThanEqualsToken:
+//         case SyntaxKind.LessThanEqualsToken:
 //             builder.emit('lessthanorequal');
 //             break;
-//         case tsm.SyntaxKind.LessThanToken:
+//         case SyntaxKind.LessThanToken:
 //             builder.emit('lessthan');
 //             break;
-//         case tsm.SyntaxKind.PlusToken:
+//         case SyntaxKind.PlusToken:
 //             builder.emit('add');
 //             break;
 //         default:
@@ -330,11 +332,11 @@ import { Semigroup } from "fp-ts/lib/Semigroup";
 
 //     const token = node.getOperatorToken();
 //     switch (token) {
-//         case tsm.SyntaxKind.ExclamationToken:
+//         case SyntaxKind.ExclamationToken:
 //             processExpression(node.getOperand(), options);
 //             options.builder.emit('not');
 //             break;
-//         case tsm.SyntaxKind.MinusToken:
+//         case SyntaxKind.MinusToken:
 //             processExpression(node.getOperand(), options);
 //             options.builder.emit('negate');
 //             break;
@@ -369,21 +371,21 @@ import { Semigroup } from "fp-ts/lib/Semigroup";
 // }
 
 // const expressionDispatchMap: NodeDispatchMap<ProcessMethodOptions> = {
-//         [tsm.SyntaxKind.ArrayLiteralExpression]: processArrayLiteralExpression,
-//         [tsm.SyntaxKind.AsExpression]: processAsExpression,
-//         [tsm.SyntaxKind.BigIntLiteral]: processBigIntLiteral,
-//         [tsm.SyntaxKind.BinaryExpression]: processBinaryExpression,
-//         [tsm.SyntaxKind.CallExpression]: processCallExpression,
-//         [tsm.SyntaxKind.FalseKeyword]: processBooleanLiteral,
-//         [tsm.SyntaxKind.Identifier]: processIdentifier,
-//         [tsm.SyntaxKind.NonNullExpression]: processNonNullExpression,
-//         [tsm.SyntaxKind.NullKeyword]: processNullKeyword,
-//         [tsm.SyntaxKind.NumericLiteral]: processNumericLiteral,
-//         [tsm.SyntaxKind.ParenthesizedExpression]: processParenthesizedExpression,
-//         [tsm.SyntaxKind.PrefixUnaryExpression]: processPrefixUnaryExpression,
-//     [tsm.SyntaxKind.PropertyAccessExpression]: processPropertyAccessExpression,
-//         [tsm.SyntaxKind.StringLiteral]: processStringLiteral,
-//         [tsm.SyntaxKind.TrueKeyword]: processBooleanLiteral,
+//         [SyntaxKind.ArrayLiteralExpression]: processArrayLiteralExpression,
+//         [SyntaxKind.AsExpression]: processAsExpression,
+//         [SyntaxKind.BigIntLiteral]: processBigIntLiteral,
+//         [SyntaxKind.BinaryExpression]: processBinaryExpression,
+//         [SyntaxKind.CallExpression]: processCallExpression,
+//         [SyntaxKind.FalseKeyword]: processBooleanLiteral,
+//         [SyntaxKind.Identifier]: processIdentifier,
+//         [SyntaxKind.NonNullExpression]: processNonNullExpression,
+//         [SyntaxKind.NullKeyword]: processNullKeyword,
+//         [SyntaxKind.NumericLiteral]: processNumericLiteral,
+//         [SyntaxKind.ParenthesizedExpression]: processParenthesizedExpression,
+//         [SyntaxKind.PrefixUnaryExpression]: processPrefixUnaryExpression,
+//     [SyntaxKind.PropertyAccessExpression]: processPropertyAccessExpression,
+//         [SyntaxKind.StringLiteral]: processStringLiteral,
+//         [SyntaxKind.TrueKeyword]: processBooleanLiteral,
 // };
 
 
@@ -499,30 +501,40 @@ export const resolveIdentifier = (scope: ReadonlyScope) => (node: tsm.Identifier
 // }
 
 const ok = E.right;
-const toArray = E.map<Operation, ReadonlyArray<Operation>>(ROA.of);
+const opToArray = (r: DiagnosticResult<Operation>) => 
+    pipe(r, E.map<Operation, ReadonlyArray<Operation>>(ROA.of));
+
 
 export function createError<T>(message: string, node?: tsm.Node): DiagnosticResult<T> {
     const diag = createDiagnostic(message, { node });
     return E.left(diag);
 }
 
-export const parseExpression = (scope: ReadonlyScope) => (node: tsm.Expression): DiagnosticResult<ReadonlyArray<Operation>> => {
+// type NodeDispatchMap<TOptions, TReturn> = {
+//     [TKind in tsm.SyntaxKind]?: (node: tsm.KindToNodeMappings[TKind], options: TOptions) => TReturn;
+// };
+
+
+export const parseExpression = (scope: ReadonlyScope) => (node: tsm.Expression): ParseExpressionResult => {
+    const $parseExpression = parseExpression(scope);
+
     try {
+        // TODO more functional
         if (tsm.Node.isArrayLiteralExpression(node)) return parseArrayLiteral(node, scope);
-        if (tsm.Node.isAsExpression(node)) return parseExpression(scope)(node.getExpression());
-        if (tsm.Node.isBigIntLiteral(node)) return pipe(parseBigIntLiteral(node), toArray);
+        if (tsm.Node.isAsExpression(node)) return $parseExpression(node.getExpression());
+        if (tsm.Node.isBigIntLiteral(node)) return opToArray(parseBigIntLiteral(node));
         if (tsm.Node.isBinaryExpression(node)) return parseBinaryExpression(node, scope);
-        // if (tsm.Node.isCallExpression(node)) return parseCallExpression(node, scope);
-        if (tsm.Node.isFalseLiteral(node)) return pipe(parseBooleanLiteral(node), toArray);
+        if (tsm.Node.isCallExpression(node)) return parseCallExpression(node, scope);
+        if (tsm.Node.isFalseLiteral(node)) return opToArray(parseBooleanLiteral(node));
         if (tsm.Node.isIdentifier(node)) return parseIdentifier(node, scope);
-        if (tsm.Node.isNonNullExpression(node)) return parseExpression(scope)(node.getExpression());
-        if (tsm.Node.isNullLiteral(node)) return pipe(parseNullLiteral(node), toArray);
-        if (tsm.Node.isNumericLiteral(node)) return pipe(parseNumericLiteral(node), toArray);
-        if (tsm.Node.isParenthesizedExpression(node)) return parseExpression(scope)(node.getExpression());
+        if (tsm.Node.isNonNullExpression(node)) return $parseExpression(node.getExpression());
+        if (tsm.Node.isNullLiteral(node)) return opToArray(parseNullLiteral(node));
+        if (tsm.Node.isNumericLiteral(node)) return opToArray(parseNumericLiteral(node));
+        if (tsm.Node.isParenthesizedExpression(node)) return $parseExpression(node.getExpression());
         if (tsm.Node.isPrefixUnaryExpression(node)) return parsePrefixUnaryExpression(node, scope);
-        // if (tsm.Node.isPropertyAccessExpression(node)) return parsePropertyAccessExpression(node, scope);
-        if (tsm.Node.isStringLiteral(node)) return pipe(parseStringLiteral(node), toArray);
-        if (tsm.Node.isTrueLiteral(node)) return pipe(parseBooleanLiteral(node), toArray);
+        if (tsm.Node.isPropertyAccessExpression(node)) return parsePropertyAccessExpression(node, scope);
+        if (tsm.Node.isStringLiteral(node)) return opToArray(parseStringLiteral(node));
+        if (tsm.Node.isTrueLiteral(node)) return opToArray(parseBooleanLiteral(node));
         return createError(`parseExpression ${node.getKindName()}`, node);
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -532,31 +544,21 @@ export const parseExpression = (scope: ReadonlyScope) => (node: tsm.Expression):
 
 export function parseArrayLiteral(node: tsm.ArrayLiteralExpression, scope: ReadonlyScope): ParseExpressionResult {
 
-    return createError("not implemented");
-    // const m = ROA.getMonoid<Operation>();
+    const $parseExpression = parseExpression(scope);
 
-    // const elements = node.getElements();
-    // const packOps: Operation[] = [
-    //     { kind: "pushint", value: BigInt(elements.length) } as PushIntOperation,
-    //     { kind: 'pack' }
-    // ];
-
-    //     // E.reduce()
-    //     // ROA.map(e => pipe(e, parseExpression(scope))),
-    //     // // ROA.reduce(m.empty, (a, q) => { return [] }  )
-
-    //     );
-
-    // let result: ParseExpressionResult = Ok([]);
-    // ;
-    // for (const e of elements) {
-    //     result = bindOperations(result, () => parseExpression(e, scope));
-
-    //     result.andThen(ops => parseExpression(e, scope).map(ops2 => ops.concat(ops2)));
-    // }
-    // return result.andThen(ops => {
-    //     return Ok(ops.concat(ops2));
-    // });
+    // TODO: functional approach
+    let operations = new Array<Operation>();
+    const elements = node.getElements();
+    for (const e of elements) {
+        const r = $parseExpression(e);
+        if (E.isLeft(r)) { return r; }
+        operations = operations.concat(r.right);
+    }
+    operations = operations.concat([
+        { kind: "pushint", value: BigInt(elements.length) } as PushIntOperation,
+        { kind: 'pack' }
+    ]);
+    return ok(operations);
 }
 
 export function parseBigIntLiteral(node: tsm.BigIntLiteral): DiagnosticResult<Operation> {
@@ -564,45 +566,39 @@ export function parseBigIntLiteral(node: tsm.BigIntLiteral): DiagnosticResult<Op
     return ok({ kind: "pushint", value, location: node });
 }
 
+const binaryOpTokenMap = new Map<SyntaxKind, OperationKind>([
+    [SyntaxKind.AsteriskAsteriskToken, 'power'],
+    [SyntaxKind.AsteriskToken, 'multiply'],
+    [SyntaxKind.EqualsEqualsEqualsToken, 'equal'], // TODO: Should == and === be the same?
+    [SyntaxKind.EqualsEqualsToken, 'equal'],
+    [SyntaxKind.ExclamationEqualsToken, 'notequal'], // TODO: Should != and !== be the same?
+    [SyntaxKind.ExclamationEqualsEqualsToken, 'notequal'],
+    [SyntaxKind.GreaterThanEqualsToken, 'greaterthanorequal'],
+    [SyntaxKind.GreaterThanToken, 'greaterthan'],
+    [SyntaxKind.LessThanEqualsToken, 'lessthanorequal'],
+    [SyntaxKind.LessThanToken, 'lessthan'],
+    [SyntaxKind.PlusToken, 'add']
+]);
+
 export function parseBinaryOperatorToken(node: tsm.Node<tsm.ts.BinaryOperatorToken>): DiagnosticResult<Operation> {
-    switch (node.getKind()) {
-        case tsm.SyntaxKind.AsteriskAsteriskToken:
-            return ok({ kind: 'power' });
-        case tsm.SyntaxKind.AsteriskToken:
-            return ok({ kind: 'multiply' });
-        // TODO: Should == and === be the same?
-        case tsm.SyntaxKind.EqualsEqualsEqualsToken:
-        case tsm.SyntaxKind.EqualsEqualsToken:
-            return ok({ kind: 'equal' });
-        // TODO: Should != and !== be the same?
-        case tsm.SyntaxKind.ExclamationEqualsToken:
-        case tsm.SyntaxKind.ExclamationEqualsEqualsToken:
-            return ok({ kind: 'notequal' });
-        case tsm.SyntaxKind.GreaterThanEqualsToken:
-            return ok({ kind: 'greaterthanorequal' });
-        case tsm.SyntaxKind.GreaterThanToken:
-            return ok({ kind: 'greaterthan' });
-        case tsm.SyntaxKind.LessThanEqualsToken:
-            return ok({ kind: 'lessthanorequal' });
-        case tsm.SyntaxKind.LessThanToken:
-            return ok({ kind: 'lessthan' });
-        case tsm.SyntaxKind.PlusToken:
-            return ok({ kind: 'add' });
-        default:
-            return createError(`processBinaryExpression ${node.getKindName()}`, node)
-    }
+    const kind = binaryOpTokenMap.get(node.getKind());
+    return kind ? ok({kind}) 
+        : createError(`processBinaryExpression ${node.getKindName()}`, node);
 }
 
 export function parseBinaryExpression(node: tsm.BinaryExpression, scope: ReadonlyScope): ParseExpressionResult {
     const sg = ROA.getSemigroup<Operation>();
+    const $parseExpression = parseExpression(scope);
 
+
+    // TODO: could this be more functional?
     return pipe(
         node.getLeft(), 
-        parseExpression(scope), 
+        $parseExpression, 
         E.bindTo("left"),
         E.bind("right", () => pipe(
             node.getRight(), 
-            parseExpression(scope))),
+            $parseExpression)),
         E.bind("token", () => pipe(
             node.getOperatorToken(),
             parseBinaryOperatorToken
@@ -622,7 +618,12 @@ export function parseBooleanLiteral(node: tsm.FalseLiteral | tsm.TrueLiteral): D
     return ok({ kind: "pushbool", value, location: node });
 }
 
-// export function parseCallExpression(node: tsm.CallExpression, scope: ReadonlyScope): ParseExpressionResult {
+export function parseCallExpression(node: tsm.CallExpression, scope: ReadonlyScope): ParseExpressionResult {
+    const $parseExpression = parseExpression(scope);
+    const args = node.getArguments() as tsm.Expression[];
+    const argResults = args.map(a => $parseExpression(a))
+
+
 //     const chain = resolveChain(node);
 //     if (chain.isErr()) return Err(chain.unwrapErr());
 //     const foo = chain.unwrap();
@@ -638,8 +639,8 @@ export function parseBooleanLiteral(node: tsm.FalseLiteral | tsm.TrueLiteral): D
 //         parseExpression(a as tsm.Expression, scope);
 //     }
 
-//     return createError('parseCallExpression not impl', node);
-// }
+    return createError('parseCallExpression not impl', node);
+}
 
 export function parseLoadSymbolDef(def: SymbolDef): ParseExpressionResult {
     if (def instanceof ConstantSymbolDef) return def.loadOperations();
@@ -651,7 +652,9 @@ export function parseIdentifier(node: tsm.Identifier, scope: ReadonlyScope): Par
     return pipe(
         node,
         resolveIdentifier(scope),
-        E.match(E.left, parseLoadSymbolDef)
+        E.match(
+            E.left, 
+            parseLoadSymbolDef)
     );
 }
 
@@ -666,20 +669,21 @@ export function parseNumericLiteral(node: tsm.NumericLiteral): DiagnosticResult<
         : createError(`invalid non-integer numeric literal ${value}`, node);
 }
 
+const prefixUnaryOperatorMap = new Map<SyntaxKind, OperationKind>([
+    [SyntaxKind.ExclamationToken, 'not'],
+    [SyntaxKind.MinusToken, 'negate']
+]);
+
 export function parsePrefixUnaryOperator(token: tsm.ts.PrefixUnaryOperator): DiagnosticResult<Operation> {
-    switch (token) {
-        case tsm.SyntaxKind.ExclamationToken:
-            return ok({ kind: 'not' });
-        case tsm.SyntaxKind.MinusToken:
-            return ok({ kind: 'negate' });
-        default:
-            return createError(`parsePrefixUnaryOperator ${tsm.ts.SyntaxKind[token]}`)
-    }
+    const kind = prefixUnaryOperatorMap.get(token);
+    return kind ? ok({kind}) 
+        : createError(`parsePrefixUnaryOperator ${tsm.ts.SyntaxKind[token]}`)
 }
 
 export function parsePrefixUnaryExpression(node: tsm.PrefixUnaryExpression, scope: ReadonlyScope): ParseExpressionResult {
     const sg = ROA.getSemigroup<Operation>();
 
+    // TODO: could this be more functional?
     return pipe(
         node.getOperand(), 
         parseExpression(scope), 
@@ -691,12 +695,11 @@ export function parsePrefixUnaryExpression(node: tsm.PrefixUnaryExpression, scop
     )
 }
 
-// export function parsePropertyAccessExpression(node: tsm.PropertyAccessExpression, scope: ReadonlyScope): ParseExpressionResult {
-//     return createError('parsePropertyAccessExpression not impl', node);
-// }
+export function parsePropertyAccessExpression(node: tsm.PropertyAccessExpression, scope: ReadonlyScope): ParseExpressionResult {
+    return createError('parsePropertyAccessExpression not impl', node);
+}
 
 export function parseStringLiteral(node: tsm.StringLiteral): DiagnosticResult<Operation> {
-    const value = node.getLiteralValue();
-    const data = Buffer.from(value, 'utf8');
-    return ok({ kind: "pushdata", value: data, location: node });
+    const value = Buffer.from(node.getLiteralValue(), 'utf8');
+    return ok({ kind: "pushdata", value, location: node });
 }
