@@ -6,6 +6,7 @@ import { createDiagnostic } from "../utils";
 import { ProcessMethodOptions } from "./processFunctionDeclarations";
 import * as E from "fp-ts/lib/Either";
 import * as ROA from 'fp-ts/ReadonlyArray';
+import * as RONEA from 'fp-ts/ReadonlyNonEmptyArray'
 import { flow, pipe } from 'fp-ts/function'
 import { Semigroup } from "fp-ts/lib/Semigroup";
 import { elem } from "fp-ts/lib/Option";
@@ -476,6 +477,12 @@ export function processExpression(node: tsm.Expression, options: ProcessMethodOp
 export type DiagnosticResult<T> = E.Either<tsm.ts.Diagnostic, T>;
 export type ParseExpressionResult = DiagnosticResult<ReadonlyArray<Operation>>;
 
+const ok = E.right;
+const opToArray = (r: DiagnosticResult<Operation>) => pipe(r, E.map(ROA.of));
+
+export const createError = <T>(message: string, node?: tsm.Node): DiagnosticResult<T> =>
+    E.left(createDiagnostic(message, { node }));
+
 export const resolveIdentifier = (scope: ReadonlyScope) => (node: tsm.Identifier): DiagnosticResult<SymbolDef> => {
     const symbol = node.getSymbol();
     let resolved = scope.resolve(symbol);
@@ -485,29 +492,30 @@ export const resolveIdentifier = (scope: ReadonlyScope) => (node: tsm.Identifier
     resolved = scope.resolve(valDeclSymbol);
     return resolved
         ? ok(resolved)
-        : E.left(createDiagnostic(`resolveIdentifier ${symbol?.getName()}`, { node }));
+        : createError(`resolveIdentifier ${symbol?.getName()}`, node);
 }
 
 export function resolveChain(node: tsm.Expression): DiagnosticResult<ReadonlyArray<tsm.Expression>> {
-    return $resolveChain(node, []);
+    const monoid = ROA.getMonoid<tsm.Expression>();
 
-    function $resolveChain(node: tsm.Expression, chain: tsm.Expression[]): DiagnosticResult<ReadonlyArray<tsm.Expression>> {
-        chain.push(node);
-        if (tsm.Node.isIdentifier(node)) return ok(chain.slice().reverse());
-        if (tsm.Node.isPropertyAccessExpression(node)) return $resolveChain(node.getExpression(), chain);
-        if (tsm.Node.isCallExpression(node)) return $resolveChain(node.getExpression(), chain);
-        return createError(`resolveChain ${node.getKindName()}`, node);
+    let chain = monoid.empty;
+    while(true) {
+        chain = monoid.concat([node], chain);
+        if (tsm.Node.isIdentifier(node)) return ok(chain);
+        else if (tsm.Node.isPropertyAccessExpression(node)) node = node.getExpression();
+        else if (tsm.Node.isCallExpression(node)) node = node.getExpression();
+        else return createError(`resolveChain ${node.getKindName()}`, node);
     }
 }
 
-const ok = E.right;
-const opToArray = (r: DiagnosticResult<Operation>) =>
-    pipe(r, E.map<Operation, ReadonlyArray<Operation>>(ROA.of));
-
-
-export function createError<T>(message: string, node?: tsm.Node): DiagnosticResult<T> {
-    const diag = createDiagnostic(message, { node });
-    return E.left(diag);
+export function concatParseExpressionResults(...results: ParseExpressionResult[]): ParseExpressionResult {
+    const monoid = ROA.getMonoid<Operation>();
+    let operations = monoid.empty;
+    for (const result of results) {
+        if (E.isLeft(result)) return result;
+        operations = monoid.concat(operations, result.right);
+    }
+    return ok(operations);
 }
 
 // type NodeDispatchMap<TOptions, TReturn> = {
@@ -541,27 +549,16 @@ export const parseExpression = (scope: ReadonlyScope) => (node: tsm.Expression):
     }
 }
 
-function concatOperations(...results: ParseExpressionResult[]): ParseExpressionResult {
-    const monoid = ROA.getMonoid<Operation>();
-
-    let operations = monoid.empty;
-    for (const result of results) {
-        if (E.isLeft(result)) return result;
-        operations = monoid.concat(operations, result.right);
-    }
-    return ok(operations);
-}
-
 export function parseArrayLiteral(node: tsm.ArrayLiteralExpression, scope: ReadonlyScope): ParseExpressionResult {
-
     const $parseExpression = parseExpression(scope);
-
     const elements = node.getElements();
     const results = elements.map(e => $parseExpression(e));
-    return concatOperations(...results, ok([
-        { kind: "pushint", value: BigInt(elements.length) } as PushIntOperation,
-        { kind: 'pack' }
-    ]));
+    return concatParseExpressionResults(
+        ...results,
+        ok([
+            { kind: "pushint", value: BigInt(elements.length) } as PushIntOperation,
+            { kind: 'pack' }
+        ]));
 }
 
 export function parseBigIntLiteral(node: tsm.BigIntLiteral): DiagnosticResult<Operation> {
@@ -591,9 +588,9 @@ export function parseBinaryOperatorToken(node: tsm.Node<tsm.ts.BinaryOperatorTok
 
 export function parseBinaryExpression(node: tsm.BinaryExpression, scope: ReadonlyScope): ParseExpressionResult {
     const $parseExpression = parseExpression(scope);
-    return concatOperations(
-        $parseExpression(node.getLeft()), 
-        $parseExpression(node.getRight()), 
+    return concatParseExpressionResults(
+        $parseExpression(node.getLeft()),
+        $parseExpression(node.getRight()),
         opToArray(parseBinaryOperatorToken(node.getOperatorToken())));
 }
 
@@ -609,6 +606,9 @@ export function parseCallExpression(node: tsm.CallExpression, scope: ReadonlySco
 
     const chainResult = resolveChain(node.getExpression());
     if (E.isLeft(chainResult)) return chainResult;
+    const chain = chainResult.right;
+    const id = chain[0].asKindOrThrow(SyntaxKind.Identifier);
+    const resolved = resolveIdentifier(scope)(id);
 
 
     //     const chain = resolveChain(node);
@@ -669,8 +669,8 @@ export function parsePrefixUnaryOperator(token: tsm.ts.PrefixUnaryOperator): Dia
 
 export function parsePrefixUnaryExpression(node: tsm.PrefixUnaryExpression, scope: ReadonlyScope): ParseExpressionResult {
     const $parseExpression = parseExpression(scope);
-    return concatOperations(
-        $parseExpression(node.getOperand()), 
+    return concatParseExpressionResults(
+        $parseExpression(node.getOperand()),
         opToArray(parsePrefixUnaryOperator(node.getOperatorToken())));
 }
 
