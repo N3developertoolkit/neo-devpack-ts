@@ -9,7 +9,7 @@ import { getConstantValue } from "./utils";
 import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
 import * as S from "fp-ts/lib/Semigroup";
 
-interface ParseError { message: string, node?: Node  }
+interface ParseError { message: string, node?: Node }
 type DiagnosticResult<T> = E.Either<ParseError, T>;
 
 const asParseError = (node?: Node) => (e: string | unknown): ParseError => {
@@ -20,13 +20,18 @@ const asParseError = (node?: Node) => (e: string | unknown): ParseError => {
 const tryCatch = (node?: Node) => <T>(f: Lazy<T>): DiagnosticResult<T> => E.tryCatch(f, asParseError(node));
 
 const getSymbol = (symbol?: Symbol) => (node: Node) => pipe(
-    symbol, 
+    symbol,
     O.fromNullable,
     O.match(
-        () => tryCatch(node)(node.getSymbolOrThrow),
-        (s) => E.right(s)
-    )
-)
+        () => pipe(node.getSymbol(), O.fromNullable),
+        (s) => O.some(s)));
+
+const parseSymbol = (symbol?: Symbol) => (node: Node) => pipe(
+    node,
+    getSymbol(symbol),
+    O.match(
+        () => E.left(asParseError(node)('invalid symbol')),
+        (s) => E.right(s)));
 
 type ConstValue = bigint | boolean | ReadonlyUint8Array | null;
 
@@ -56,20 +61,27 @@ function parseConstantValue(node: Expression): DiagnosticResult<ConstValue> {
 }
 
 
-const parseConstVariableDeclaration = (symbol?: Symbol) => (node: VariableDeclaration): DiagnosticResult<SymbolDef> => 
-    pipe(
+const parseConstVariableDeclaration = (symbol?: Symbol) => (node: VariableDeclaration): DiagnosticResult<SymbolDef> => {
+    return pipe(
         node.getInitializer(),
         O.fromNullable,
         E.fromOption(() => asParseError(node)("missing initializer")),
         E.map(parseConstantValue),
         E.flatten,
         E.bindTo("value"),
-        E.bind("symbol", () => pipe(node, getSymbol(symbol))),
-        E.chain(({value, symbol}) => E.right(new ConstantSymbolDef(symbol, value)))
+        E.bind("symbol", () => pipe(node, parseSymbol(symbol))),
+        E.chain(({ value, symbol }) => E.right(new ConstantSymbolDef(symbol, value)))
     );
+}
 
-const createResultSemigroup = <T>(sg: S.Semigroup<T>): S.Semigroup<DiagnosticResult<T>> => E.getSemigroup<ParseError, T>(sg);
-const createResultMonoid = <T>(monoid: M.Monoid<T>): M.Monoid<DiagnosticResult<T>> =>({
+const createResultSemigroup = <T>(sg: S.Semigroup<T>): S.Semigroup<DiagnosticResult<T>> => ({
+    concat: (x, y) => pipe(
+        x, 
+        E.bindTo('x'), 
+        E.bind('y', () => y),
+        E.chain(({x, y}) => E.right(sg.concat(x, y))))
+});
+const createResultMonoid = <T>(monoid: M.Monoid<T>): M.Monoid<DiagnosticResult<T>> => ({
     concat: createResultSemigroup(monoid).concat,
     empty: E.right(monoid.empty)
 });
@@ -87,10 +99,14 @@ function parseVariableStatement(node: VariableStatement): DiagnosticResult<reado
     );
 }
 
-function parseNodeScope(node: Node) {
-    // if (Node.isFunctionDeclaration(node)) return parseFunctionDeclaration(node);
-    if (Node.isVariableStatement(node)) return parseVariableStatement(node);
 
+function parseNodeScope(node: Node): DiagnosticResult<readonly SymbolDef[]> {
+    if (Node.isFunctionDeclaration(node)) return E.right([]);
+    if (Node.isInterfaceDeclaration(node)) return E.right([]);
+    if (Node.isImportDeclaration(node)) return E.right([]);
+    if (Node.isVariableStatement(node)) return parseVariableStatement(node);
+    if (node.getKind() == SyntaxKind.EndOfFileToken) return E.right([]);
+    return E.left(asParseError(node)(`parseNodeScope ${node.getKindName()}`));
 }
 
 // [tsm.SyntaxKind.FunctionDeclaration]: processFunctionDeclaration,
@@ -101,7 +117,8 @@ function parseNodeScope(node: Node) {
 // [tsm.SyntaxKind.EndOfFileToken]: () => { },
 
 
-function createROScope(map: ReadonlyMap<Symbol, SymbolDef>, parentScope?: ReadonlyScope): ReadonlyScope {
+function createROScope(symbols: ReadonlyArray<SymbolDef>, parentScope?: ReadonlyScope): ReadonlyScope {
+    const map = new Map(symbols.map(def => [def.symbol, def]));
     return {
         parentScope,
         symbols: map.values(),
@@ -110,13 +127,18 @@ function createROScope(map: ReadonlyMap<Symbol, SymbolDef>, parentScope?: Readon
 
 }
 
-function parseSourceFileScope(src: SourceFile): DiagnosticResult<ReadonlyScope> {
-    if (src.isDeclarationFile()) return E.right(createROScope(new Map()));
+function parseSourceFileScope(src: SourceFile):E.Either<ReadonlyArray<ParseError>, ReadonlyArray<SymbolDef>> {
+    if (src.isDeclarationFile()) return E.right([]);
 
+    const errors = new Array<ParseError>();
+    const results = new Array<SymbolDef>();
+    src.forEachChild(node => {
+        const parseResult = pipe(node, parseNodeScope);
+        if (E.isLeft(parseResult)) errors.push(parseResult.left);
+        else results.push(...parseResult.right);
+    });
 
-    else { src.forEachChild(parseNodeScope);}
-
-    return E.left({ message: 'not implemented', node: src });
+    return errors.length > 0 ? E.left(errors) : E.right(results);
 }
 
 export function parseProjectScope(project: Project) {
@@ -126,7 +148,9 @@ export function parseProjectScope(project: Project) {
         sources,
         ROA.map(parseSourceFileScope),
     )
-    
+
+    console.log();
+
 
     // pipe(srcs, ROA.filter())
 }
