@@ -1,16 +1,14 @@
 import * as tsm from "ts-morph";
 import { SyntaxKind } from "ts-morph";
-import { ConstantSymbolDef, isFunctionDef, ReadonlyScope, SymbolDef, VariableSymbolDef } from "../scope";
-import { Operation, OperationKind, PushIntOperation } from "../types/Operation";
+import { ConstantSymbolDef, FunctionSymbolDef, isFunctionDef, ReadonlyScope, SymbolDef, VariableSymbolDef } from "../scope";
+import { Operation, OperationKind } from "../types/Operation";
 import { createDiagnostic } from "../utils";
 import { ProcessMethodOptions } from "./processFunctionDeclarations";
 import * as E from "fp-ts/Either";
 import * as ROA from 'fp-ts/ReadonlyArray';
 import { flow, pipe } from 'fp-ts/function'
 import * as M from "fp-ts/Monoid";
-import * as SG from "fp-ts/Semigroup";
-import * as O from 'fp-ts/Option';
-import * as ROM from 'fp-ts/ReadonlyMap';
+import * as O from 'fp-ts/Option'
 
 // TODO: remove once we've changed the rest of the code to use parseExpression
 export function processExpression(node: tsm.Expression, { builder, diagnostics, scope }: ProcessMethodOptions) {
@@ -23,9 +21,15 @@ export function processExpression(node: tsm.Expression, { builder, diagnostics, 
         ));
 }
 
-export function createInvocation(call: ParseExpressionResult, args: ReadonlyArray<ParseExpressionResult>) {
-    return pipe(args, ROA.reverse, ROA.append(call), concatPERs);
-    
+export const parseCallArguments = (scope: ReadonlyScope) => (node: tsm.CallExpression) => {
+    const args = node.getArguments() as tsm.Expression[];
+    return parseArguments(scope)(args);
+
+}
+
+export const parseArguments = (scope: ReadonlyScope) => (args: ReadonlyArray<tsm.Expression>) => {
+    const $parseExpression = parseExpression(scope);
+    return pipe(args, ROA.reverse, ROA.map($parseExpression), concatPERs);
 }
 
 export const ok = <T>(value: T) => E.right<tsm.ts.Diagnostic, T>(value);
@@ -43,15 +47,23 @@ export type ParseExpressionResult = DiagnosticResult<ReadonlyArray<Operation>>;
 
 
 export const resolveIdentifier = (scope: ReadonlyScope) => (node: tsm.Identifier): DiagnosticResult<SymbolDef> => {
-    const symbol = node.getSymbol();
-    let resolved = scope.resolve(symbol);
-    if (resolved) return ok(resolved);
+    return pipe(
+        node.getSymbol(),
+        scope.resolve,
+        O.fromNullable,
+        E.fromOption(() => createDiagnostic(`resolveIdentifier ${node.getSymbol()?.getName()}`, { node })));
+}
 
-    const valDeclSymbol = symbol?.getValueDeclaration()?.getSymbol();
-    resolved = scope.resolve(valDeclSymbol);
-    return resolved
-        ? ok(resolved)
-        : error(`resolveIdentifier ${symbol?.getName()}`, node);
+export const resolveCallIdentifier = (scope: ReadonlyScope) => (node: tsm.Identifier): DiagnosticResult<FunctionSymbolDef> => {
+    return pipe(
+        node,
+        resolveIdentifier(scope),
+        E.map(def => isFunctionDef(def)
+            ? ok(def)
+            : error<FunctionSymbolDef>(`${def.symbol.getName()} is not callable`, node)
+        ),
+        E.flatten
+    );
 }
 
 export function resolveChain(node: tsm.Expression): DiagnosticResult<ReadonlyArray<tsm.Expression>> {
@@ -155,31 +167,32 @@ export function parseBooleanLiteral(node: tsm.FalseLiteral | tsm.TrueLiteral): D
     return ok({ kind: "pushbool", value, location: node });
 }
 
-export const parseArguments = (scope: ReadonlyScope) => (args: ReadonlyArray<tsm.Expression>) => {
-    const $parseExpression = parseExpression(scope);
-    return pipe(args, ROA.reverse, ROA.map($parseExpression));
+function resolveFunctionDef(node: tsm.Identifier, scope: ReadonlyScope) {
+    const resolved = scope.resolve(node.getSymbol());
+    const zz = (resolved && isFunctionDef(resolved)) ? resolved : undefined;
+    return O.fromNullable(zz);
 }
-
 
 export function parseCallExpression(node: tsm.CallExpression, scope: ReadonlyScope): ParseExpressionResult {
     // const $parseExpression = parseExpression(scope);
     // const monoid = ROA.getMonoid<Operation>();
 
-    // const argsResults = pipe(node.getArguments() as tsm.Expression[], ROA.map($parseExpression));
-
-    // const chainResult = resolveChain(node.getExpression());
-    // if (E.isLeft(chainResult)) return chainResult;
-    // const chain = chainResult.right;
-    // const head = ROA.head(chain);
-    // const id = chain[0].asKindOrThrow(SyntaxKind.Identifier);
-    // const resolvedResult = resolveIdentifier(scope)(id);
-
-
-    // const foo = chain.slice(1);
-    // if (E.isLeft(resolvedResult)) return resolvedResult;
-    // if (isFunctionDef(resolvedResult.right)) {
-    //     return resolvedResult.right.parseCall(argsResults, scope);
-    // }
+    const chainResult = resolveChain(node.getExpression());
+    if (E.isLeft(chainResult)) return chainResult;
+    const chain = chainResult.right;
+    if (chain.length === 1) {
+        const head = ROA.head(chain);
+        if (O.isSome(head)) {
+            const id = head.value.asKind(SyntaxKind.Identifier);
+            if (id) {
+                let resolvedResult = resolveCallIdentifier(scope)(id);
+                if (E.isLeft(resolvedResult)) { return E.left(resolvedResult.left) }
+                const resolved = resolvedResult.right;
+                const { args, call } = resolved.parseCall(node, scope);
+                return concatPERs([args, call]);
+            }
+        }
+    }
 
     return error('parseCallExpression not impl', node);
 }

@@ -2,7 +2,7 @@ import * as tsm from "ts-morph";
 import { ProcessMethodOptions } from "./processFunctionDeclarations";
 import { CompileError } from "../compiler";
 import { dispatch, NodeDispatchMap } from "../utility/nodeDispatch";
-import { BlockScope, isScope as isWritableScope, VariableSymbolDef } from "../scope";
+import { createBlockScope, isScope as isWritableScope, ReadonlyScope, VariableSymbolDef } from "../scope";
 import { processExpression } from "./expressionProcessor";
 import { TargetOffset } from "./MethodBuilder";
 import { isVoidLike } from "../utils";
@@ -11,7 +11,7 @@ export function processBlock(node: tsm.Block, { diagnostics, builder, scope }: P
     var open = node.getFirstChildByKind(tsm.SyntaxKind.OpenBraceToken);
     if (open) builder.emit('noop', open);
 
-    const blockScope = new BlockScope(node, scope);
+    const blockScope = createBlockScope(node, scope);
     const options = { diagnostics, builder, scope: blockScope };
     for (const stmt of node.getStatements()) {
         processStatement(stmt, options);
@@ -113,6 +113,8 @@ const statementDispatchMap: NodeDispatchMap<ProcessMethodOptions> = {
 export function processStatement(node: tsm.Statement, options: ProcessMethodOptions): void {
     dispatch(node, options, statementDispatchMap);
 }
+
+
 
 
 // case SyntaxKind.BreakStatement:
