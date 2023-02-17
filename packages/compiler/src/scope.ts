@@ -6,13 +6,13 @@ import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
 import { createDiagnostic, getConstantValue, getJSDocTag, isVoidLike } from "./utils";
 import { from } from 'ix/iterable';
 import { map, orderBy } from 'ix/iterable/operators';
-import { defineErrorObj, defineUint8ArrayObj } from './passes/builtins';
+// import { defineErrorObj, defineUint8ArrayObj } from './passes/builtins';
 import { ProcessMethodOptions } from './passes/processFunctionDeclarations';
 import { sc, u } from '@cityofzion/neon-core';
-import { LoadStoreOperation, Operation, parseOperation, PushBoolOperation, PushDataOperation, PushIntOperation } from './types/Operation';
-import { error, ParseExpressionResult } from './passes/expressionProcessor';
-import * as E from "fp-ts/lib/Either";
-
+import { CallOperation, CallTokenOperation, LoadStoreOperation, Operation, parseOperation, PushBoolOperation, PushDataOperation, PushIntOperation, SysCallOperation } from './types/Operation';
+import { concatPERs, ok as parseOK, error as parseError, ParseExpressionResult, createInvocation as $createInvocation } from './passes/expressionProcessor';
+import * as ROA from 'fp-ts/ReadonlyArray';
+import { pipe } from 'fp-ts/lib/function';
 
 export interface ReadonlyScope {
     readonly parentScope: ReadonlyScope | undefined;
@@ -39,8 +39,7 @@ export interface ObjectSymbolDef extends SymbolDef {
 }
 
 export interface FunctionSymbolDef extends ObjectSymbolDef {
-    emitCall(args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions): void;
-    // emitCtor(args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions): void;
+    parseCall(args: ReadonlyArray<ParseExpressionResult>): ParseExpressionResult;
 }
 
 export function isObjectDef(def: SymbolDef): def is ObjectSymbolDef {
@@ -48,7 +47,7 @@ export function isObjectDef(def: SymbolDef): def is ObjectSymbolDef {
 }
 
 export function isFunctionDef(def: SymbolDef): def is FunctionSymbolDef {
-    return isObjectDef(def) && 'emitCall' in def && typeof def.emitCall === 'function';
+    return isObjectDef(def) && 'parseCall' in def && typeof def.parseCall === 'function';
 }
 
 export function canResolve(def: SymbolDef): def is SymbolDef & Scope {
@@ -99,8 +98,7 @@ export class BlockScope implements Scope {
     constructor(
         readonly node: tsm.Block,
         readonly parentScope: ReadonlyScope,
-    ) {
-    }
+    ) { }
 
     get symbols() {
         return this.map.values();
@@ -113,6 +111,11 @@ export class BlockScope implements Scope {
     define(def: SymbolDef) {
         return define(this.map, def);
     }
+}
+
+function createInvocation(call: Operation | ReadonlyArray<Operation>, args: ReadonlyArray<ParseExpressionResult>) {
+    const callResult = parseOK(Array.isArray(call) ? call : [call]) as ParseExpressionResult;
+    return $createInvocation(callResult, args);
 }
 
 export class MethodSymbolDef implements FunctionSymbolDef, ReadonlyScope {
@@ -134,9 +137,8 @@ export class MethodSymbolDef implements FunctionSymbolDef, ReadonlyScope {
         this.map = map;
     }
 
-    emitCall(args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions): void {
-        // processArguments(args, options);
-        options.builder.emitCall(this);
+    parseCall(args: ReadonlyArray<ParseExpressionResult>): ParseExpressionResult {
+        return createInvocation({ kind: 'call', method: this } as CallOperation, args);
     }
 
     getProp(_name: string) { return undefined; }
@@ -150,38 +152,6 @@ export class MethodSymbolDef implements FunctionSymbolDef, ReadonlyScope {
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-// export class IntrinsicValueSymbolDef implements SymbolDef {
-//     readonly symbol: tsm.Symbol;
-
-//     constructor(
-//         readonly node: tsm.VariableDeclaration,
-//     ) {
-//         this.symbol = node.getSymbolOrThrow();
-//     }
-// }
-
-// export class IntrinsicMethodDef implements FunctionSymbolDef {
-//     constructor(
-//         readonly symbol: tsm.Symbol,
-//         readonly emitCall: ($this: tsm.Expression, args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions) => void
-//     ) { }
-//     getProp(name: string): SymbolDef | undefined {
-//         return undefined;
-//     }
-// }
-
 export class ConstantSymbolDef implements SymbolDef {
     constructor(
         readonly symbol: tsm.Symbol,
@@ -190,24 +160,20 @@ export class ConstantSymbolDef implements SymbolDef {
 
     loadOperations(): ParseExpressionResult {
         if (this.value === null) {
-            const op: Operation = { kind: 'pushnull' };
-            return E.right([op]);
+            return parseOK([{ kind: 'pushnull' }]);
         }
         if (this.value instanceof Uint8Array) {
-            const op: PushDataOperation = { kind: 'pushdata', value: this.value };
-            return E.right([op]);
+            return parseOK([{ kind: 'pushdata', value: this.value } as PushDataOperation]);
         }
         switch (typeof this.value) {
             case 'boolean': {
-                const op: PushBoolOperation = { kind: 'pushbool', value: this.value };
-                return E.right([op]);
+                return parseOK([{ kind: 'pushbool', value: this.value } as PushBoolOperation]);
             }
             case 'bigint': {
-                const op: PushIntOperation = { kind: 'pushint', value: this.value };
-                return E.right([op]);
+                return parseOK([{ kind: 'pushint', value: this.value } as PushIntOperation]);
             }
             default:
-                return error(`ConstantSymbolDef load ${this.value}`);
+                return parseError(`ConstantSymbolDef load ${this.value}`);
         }
     }
 }
@@ -225,8 +191,7 @@ export class VariableSymbolDef implements SymbolDef {
             : this.kind === 'local'
                 ? 'loadlocal'
                 : 'loadstatic';
-        const op: LoadStoreOperation = { kind, index: this.index };
-        return E.right([op]);
+        return parseOK([{ kind, index: this.index } as LoadStoreOperation]);
     }
 }
 
@@ -237,16 +202,19 @@ export class EventSymbolDef implements FunctionSymbolDef {
         readonly parameters: ReadonlyArray<tsm.ParameterDeclaration>,
     ) { }
 
-    emitCall(args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions): void {
+    parseCall(args: ReadonlyArray<ParseExpressionResult>): ParseExpressionResult {
+
         // NCCS creates an empty array and then APPENDs each notification arg in turn
         // However, APPEND is 4x more expensive than PACK and is called once per arg
         // instead of once per Notify call as PACK is. 
-        // processArguments(args, options);
-        const builder = options.builder;
-        builder.emitPushInt(this.parameters.length);
-        builder.emit('pack');
-        builder.emitPushData(this.name);
-        builder.emitSysCall("System.Runtime.Notify");
+        const callOps: Operation[] = [
+            { kind: "pushint", value: BigInt(args.length) } as PushIntOperation,
+            { kind: 'pack' },
+            { kind: 'pushdata', value: Buffer.from(this.name, 'utf8') } as PushDataOperation,
+            { kind: 'syscall', name: "System.Runtime.Notify" } as SysCallOperation
+        ]
+
+        return pipe(args, ROA.append(parseOK(callOps) as ParseExpressionResult), concatPERs)
     }
 
     getProp(_name: string) { return undefined; }
@@ -258,9 +226,8 @@ export class SysCallSymbolDef implements FunctionSymbolDef {
         readonly name: string,
     ) { }
 
-    emitCall(args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions): void {
-        // processArguments(args, options);
-        options.builder.emitSysCall(this.name);
+    parseCall(args: ReadonlyArray<ParseExpressionResult>): ParseExpressionResult {
+        return createInvocation({ kind: 'syscall', name: this.name } as SysCallOperation, args);
     }
 
     getProp(_name: string) { return undefined; }
@@ -272,9 +239,8 @@ export class MethodTokenSymbolDef implements FunctionSymbolDef {
         readonly token: sc.MethodToken
     ) { }
 
-    emitCall(args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions): void {
-        // processArguments(args, options);
-        options.builder.emitCallToken(this.token);
+    parseCall(args: ReadonlyArray<ParseExpressionResult>): ParseExpressionResult {
+        return createInvocation({ kind: 'calltoken', token: this.token } as CallTokenOperation, args);
     }
 
     getProp(_name: string) { return undefined; }
@@ -286,12 +252,8 @@ export class OperationsSymbolDef implements FunctionSymbolDef {
         readonly operations: ReadonlyArray<Operation>
     ) { }
 
-    emitCall(args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions): void {
-        // processArguments(args, options);
-        const builder = options.builder;
-        for (const op of this.operations) {
-            builder.emit(op);
-        }
+    parseCall(args: ReadonlyArray<ParseExpressionResult>): ParseExpressionResult {
+        return createInvocation(this.operations, args);
     }
 
     getProp(_name: string) { return undefined; }
@@ -593,8 +555,8 @@ export function createSymbolTrees({ project, diagnostics, scopes }: CompileConte
     for (const src of project.getSourceFiles()) {
         if (src.isDeclarationFile()) continue;
         const scope = new GlobalScope();
-        defineErrorObj(scope, variables);
-        defineUint8ArrayObj(scope, variables);
+        // defineErrorObj(scope, variables);
+        // defineUint8ArrayObj(scope, variables);
 
         src.forEachChild(node => processScopeNode(node, { diagnostics, scope }));
         scopes.push(scope);
