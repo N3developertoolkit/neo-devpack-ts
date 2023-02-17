@@ -15,6 +15,7 @@ import { flow, pipe } from 'fp-ts/lib/function';
 import * as E from "fp-ts/Either";
 import * as M from "fp-ts/Monoid";
 import * as O from 'fp-ts/Option'
+import { parseProjectScope } from './scope2';
 
 export interface ReadonlyScope {
     readonly parentScope: ReadonlyScope | undefined;
@@ -61,7 +62,7 @@ export function canResolve(def: SymbolDef): def is SymbolDef & Scope {
 
 
 
-function resolve(map: ReadonlyMap<tsm.Symbol, SymbolDef>, symbol?: tsm.Symbol, parent?: ReadonlyScope) {
+export function $resolve(map: ReadonlyMap<tsm.Symbol, SymbolDef>, symbol?: tsm.Symbol, parent?: ReadonlyScope) {
     if (!symbol) { return undefined; }
     else {
         const def = map.get(symbol);
@@ -95,7 +96,7 @@ export class GlobalScope implements Scope {
     }
 
     resolve(symbol?: tsm.Symbol): SymbolDef | undefined {
-        return resolve(this.map, symbol);
+        return $resolve(this.map, symbol);
     }
 
     define<T extends SymbolDef>(def: T) {
@@ -117,7 +118,7 @@ export function createBlockScope(node: tsm.Block, parentScope: ReadonlyScope): S
     return {
         parentScope,
         symbols: map.values(),
-        resolve: (symbol) => resolve(map, symbol, parentScope),
+        resolve: (symbol) => $resolve(map, symbol, parentScope),
         define: (def) => define(map, def),
     }
 }
@@ -154,9 +155,10 @@ export class MethodSymbolDef implements FunctionSymbolDef, ReadonlyScope {
     }
 
     resolve(symbol?: tsm.Symbol): SymbolDef | undefined {
-        return resolve(this.map, symbol, this.scope);
+        return $resolve(this.map, symbol, this.scope);
     }
 }
+
 
 export class ConstantSymbolDef implements SymbolDef {
     constructor(
@@ -568,6 +570,8 @@ function getDeclarations(project: tsm.Project) {
 
 export function createSymbolTrees({ project, diagnostics, scopes }: CompileContext): void {
 
+    parseProjectScope(project);
+
     const { variables } = getDeclarations(project);
     for (const src of project.getSourceFiles()) {
         if (src.isDeclarationFile()) continue;
@@ -579,3 +583,30 @@ export function createSymbolTrees({ project, diagnostics, scopes }: CompileConte
         scopes.push(scope);
     }
 }
+
+
+function parseFunctionDeclaration(node: tsm.FunctionDeclaration) {
+
+}
+
+// function processVariableDeclaration(node: tsm.VariableDeclaration, options: ScopeOptions) {
+//     const declKind = node.getVariableStatementOrThrow().getDeclarationKind();
+//     const symbol = options.symbol ?? node.getSymbolOrThrow();
+
+//     if (declKind === tsm.VariableDeclarationKind.Const) {
+//         const init = node.getInitializer();
+//         if (!init) { throw new CompileError("missing initializer", node); }
+//         const value = getConstantValue(init);
+//         options.scope.define(new ConstantSymbolDef(symbol, value));
+//     } else {
+//         throw new CompileError(`not implemented`, node);
+//     }
+// }
+
+// function processVariableStatement(node: tsm.VariableStatement, { diagnostics, scope }: ScopeOptions) {
+//     for (const decl of node.getDeclarations()) {
+//         processVariableDeclaration(decl, { diagnostics, scope });
+//     }
+// }
+
+
