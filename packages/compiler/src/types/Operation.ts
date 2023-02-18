@@ -154,7 +154,7 @@ export interface LoadStoreOperation extends Operation {
 //     return loadStoreOperationKinds.includes(ins.kind as LoadStoreOperationKind);
 // }
 
-export function parseOperation(kind: string, operand: string | undefined): Operation {
+export function parseOperation(kind: string, operand: string | undefined): Operation | undefined {
     if (jumpOperationKinds.includes(kind as JumpOperationKind)) {
         if (!operand) throw new Error(`${kind} missing jump offset operand`);
         return { kind: kind as JumpOperationKind, offset: parseInt(operand) } as JumpOperation;
@@ -177,6 +177,6 @@ export function parseOperation(kind: string, operand: string | undefined): Opera
         return { kind: kind as OperationKind };
     }
 
-    throw new Error(`Invalid operation kind ${kind}`);
-}
+    return undefined;
+} 
 

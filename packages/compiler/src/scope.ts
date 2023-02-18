@@ -348,7 +348,10 @@ function parseOperationTags(node: tsm.FunctionDeclaration, tags: ReadonlyArray<t
         const comment = tag.getCommentText() ?? "";
         const matches = comment.match(regexOperation) ?? [];
         if (matches.length !== 3) throw new CompileError("invalid operation tag comment", tag);
-        operations.push(parseOperation(matches[1], matches[2]));
+        const kind = matches[1];
+        const op = parseOperation(kind, matches[2])
+        if (!op) throw new Error(`Invalid operation kind ${kind}`);
+        operations.push(op);
     }
     return operations;
 }
