@@ -15,7 +15,7 @@ import { flow, pipe } from 'fp-ts/lib/function';
 import * as E from "fp-ts/Either";
 import * as M from "fp-ts/Monoid";
 import * as O from 'fp-ts/Option'
-import { parseProjectScope } from './scope2';
+import { parseProject } from './scope2';
 
 export interface ReadonlyScope {
     readonly parentScope: ReadonlyScope | undefined;
@@ -85,7 +85,15 @@ function define(map: Map<tsm.Symbol, SymbolDef>, def: SymbolDef) {
 
 
 
-
+const createScope = (parentScope?: ReadonlyScope) =>
+    (symbols: ReadonlyArray<SymbolDef>): ReadonlyScope => {
+        const map = new Map(symbols.map(def => [def.symbol, def]));
+        return {
+            parentScope,
+            symbols: map.values(),
+            resolve: (symbol) => $resolve(map, symbol, parentScope)
+        }
+    }
 
 export class GlobalScope implements Scope {
     private readonly map = new Map<tsm.Symbol, SymbolDef>();
@@ -573,7 +581,7 @@ function getDeclarations(project: tsm.Project) {
 
 export function createSymbolTrees({ project, diagnostics, scopes }: CompileContext): void {
 
-    parseProjectScope(project);
+    const q = parseProject(project);
 
     const { variables } = getDeclarations(project);
     for (const src of project.getSourceFiles()) {
