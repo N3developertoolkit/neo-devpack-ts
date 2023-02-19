@@ -18,10 +18,10 @@ export function notImpl(options: DiagnosticOptions) {
     return createDiagnostic("not implemented", options);
 }
 
-export function createDiagnostic(messageText: string, options: DiagnosticOptions): tsm.ts.Diagnostic {
-    const node = options.node;
-    const category = options.category ?? tsm.ts.DiagnosticCategory.Error;
-    const code = options.code ?? 0;
+export function createDiagnostic(messageText: string, options?: DiagnosticOptions): tsm.ts.Diagnostic {
+    const node = options?.node;
+    const category = options?.category ?? tsm.ts.DiagnosticCategory.Error;
+    const code = options?.code ?? 0;
     return {
         category,
         code,

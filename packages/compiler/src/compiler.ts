@@ -9,6 +9,8 @@ import * as path from 'path';
 import { DebugInfoJson } from "./types/DebugInfo";
 import { parseSourceFile } from "./symbolDef";
 import { parseProjectLib } from "./projectLib";
+import * as ROA from 'fp-ts/ReadonlyArray'
+import * as S from 'fp-ts/State'
 
 export const DEFAULT_ADDRESS_VALUE = 53;
 
@@ -29,7 +31,7 @@ export interface CompileOptions {
 }
 
 export interface CompileArtifacts {
-    readonly diagnostics: Array<tsm.ts.Diagnostic>;
+    readonly diagnostics: ReadonlyArray<tsm.ts.Diagnostic>;
     // readonly methods: ReadonlyArray<ContractMethod>;
     readonly nef?: sc.NEF;
     readonly manifest?: sc.ContractManifest;
@@ -44,39 +46,42 @@ export interface CompileContext {
     // readonly methods: Array<ContractMethod>;
 }
 
+export type ParserState<T> = S.State<ReadonlyArray<tsm.ts.Diagnostic>, T>;
+
 export function compile(
     project: tsm.Project, 
     contractName: string, 
     options?: CompileOptions
 ): CompileArtifacts {
 
-    const diagnostics = new Array<tsm.ts.Diagnostic>();
-    // const methods = new Array<ContractMethod>();
-    const context: CompileContext = {
-        project,
-        diagnostics,
-        options: {
-            addressVersion: options?.addressVersion ?? DEFAULT_ADDRESS_VALUE,
-            inline: options?.inline ?? false,
-            optimize: options?.optimize ?? false,
-            standards: options?.standards ?? [],
-        },
-        // scopes: new Array<ReadonlyScope>(),
-        // methods,
-    }
+    // const diagnostics = new Array<tsm.ts.Diagnostic>();
+    // // const methods = new Array<ContractMethod>();
+    // const context: CompileContext = {
+    //     project,
+    //     diagnostics,
+    //     options: {
+    //         addressVersion: options?.addressVersion ?? DEFAULT_ADDRESS_VALUE,
+    //         inline: options?.inline ?? false,
+    //         optimize: options?.optimize ?? false,
+    //         standards: options?.standards ?? [],
+    //     },
+    //     // scopes: new Array<ReadonlyScope>(),
+    //     // methods,
+    // }
 
     // read project lib
 
-    parseProjectLib(project);
+    let [builtins, diagnostics] = parseProjectLib(project)(ROA.getMonoid<tsm.ts.Diagnostic>().empty)
+    if (hasErrors(diagnostics)) return { diagnostics }
 
-    for (const src of project.getSourceFiles()) {
-        if (src.isDeclarationFile()) continue;
-        const symbols = parseSourceFile(src);
-        if (hasErrors(symbols.diagnostics)) {
-            return { diagnostics: diagnostics.concat(symbols.diagnostics) }
-        }
+    // for (const src of project.getSourceFiles()) {
+    //     if (src.isDeclarationFile()) continue;
+    //     const symbols = parseSourceFile(src);
+    //     if (hasErrors(symbols.diagnostics)) {
+    //         return { diagnostics: diagnostics.concat(symbols.diagnostics) }
+    //     }
 
-    }
+    // }
 
     // try {
     //     createSymbolTrees(context);
