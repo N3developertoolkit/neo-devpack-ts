@@ -106,38 +106,38 @@ export function isCompoundAssignment(kind: tsm.SyntaxKind) {
     }
 }
 
-export function hasErrors(diagnostics: tsm.ts.Diagnostic[]) {
+export function hasErrors(diagnostics: readonly tsm.ts.Diagnostic[]) {
     for (const diag of diagnostics) {
         if (diag.category === tsm.ts.DiagnosticCategory.Error) return true;
     }
     return false;
 }
 
-export function getConstantValue(node: tsm.Expression) {
-    switch (node.getKind()) {
-        case tsm.SyntaxKind.NullKeyword:
-            return null;
-        case tsm.SyntaxKind.FalseKeyword:
-            return false;
-        case tsm.SyntaxKind.TrueKeyword:
-            return true;
-        case tsm.SyntaxKind.BigIntLiteral:
-            return (node as tsm.BigIntLiteral).getLiteralValue() as bigint;
-        case tsm.SyntaxKind.NumericLiteral: {
-            const literal = (node as tsm.NumericLiteral).getLiteralValue();
-            if (!Number.isInteger(literal)) throw new CompileError(`invalid non-integer numeric literal`, node);
-            return BigInt(literal);
-        }
-        case tsm.SyntaxKind.StringLiteral: {
-            const literal = (node as tsm.StringLiteral).getLiteralValue();
-            return <ReadonlyUint8Array>Buffer.from(literal, 'utf8');
-        }
-        // case tsm.SyntaxKind.ArrayLiteralExpression: 
-        // case tsm.SyntaxKind.ObjectLiteralExpression:
-        default:
-            throw new CompileError(`Unsupported const type ${node.getKindName()}`, node);
-    }
-}
+// export function getConstantValue(node: tsm.Expression) {
+//     switch (node.getKind()) {
+//         case tsm.SyntaxKind.NullKeyword:
+//             return null;
+//         case tsm.SyntaxKind.FalseKeyword:
+//             return false;
+//         case tsm.SyntaxKind.TrueKeyword:
+//             return true;
+//         case tsm.SyntaxKind.BigIntLiteral:
+//             return (node as tsm.BigIntLiteral).getLiteralValue() as bigint;
+//         case tsm.SyntaxKind.NumericLiteral: {
+//             const literal = (node as tsm.NumericLiteral).getLiteralValue();
+//             if (!Number.isInteger(literal)) throw new CompileError(`invalid non-integer numeric literal`, node);
+//             return BigInt(literal);
+//         }
+//         case tsm.SyntaxKind.StringLiteral: {
+//             const literal = (node as tsm.StringLiteral).getLiteralValue();
+//             return <ReadonlyUint8Array>Buffer.from(literal, 'utf8');
+//         }
+//         // case tsm.SyntaxKind.ArrayLiteralExpression: 
+//         // case tsm.SyntaxKind.ObjectLiteralExpression:
+//         default:
+//             throw new CompileError(`Unsupported const type ${node.getKindName()}`, node);
+//     }
+// }
 
 export function getJSDocTag(node: tsm.JSDocableNode, tagName: string): tsm.JSDocTag | undefined {
     for (const doc of node.getJsDocs()) {

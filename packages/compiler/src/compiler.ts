@@ -4,10 +4,10 @@ import { createDiagnostic, hasErrors, toDiagnostic } from "./utils";
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
-import { createSymbolTrees, ReadonlyScope } from "./scope";
-import { ContractMethod, processMethodDefinitions } from "./passes/processFunctionDeclarations";
-import { collectArtifacts } from "./collectArtifacts";
+// import { ContractMethod, processMethodDefinitions } from "./passes/processFunctionDeclarations";
+// import { collectArtifacts } from "./collectArtifacts";
 import { DebugInfoJson } from "./types/DebugInfo";
+import { parseSourceFile } from "./symbolDef";
 
 export const DEFAULT_ADDRESS_VALUE = 53;
 
@@ -29,7 +29,7 @@ export interface CompileOptions {
 
 export interface CompileArtifacts {
     readonly diagnostics: Array<tsm.ts.Diagnostic>;
-    readonly methods: ReadonlyArray<ContractMethod>;
+    // readonly methods: ReadonlyArray<ContractMethod>;
     readonly nef?: sc.NEF;
     readonly manifest?: sc.ContractManifest;
     readonly debugInfo?: DebugInfoJson;
@@ -39,8 +39,8 @@ export interface CompileContext {
     readonly diagnostics: Array<tsm.ts.Diagnostic>;
     readonly options: Readonly<Required<CompileOptions>>;
     readonly project: tsm.Project;
-    readonly scopes: Array<ReadonlyScope>;
-    readonly methods: Array<ContractMethod>;
+    // readonly scopes: Array<ReadonlyScope>;
+    // readonly methods: Array<ContractMethod>;
 }
 
 export function compile(
@@ -50,7 +50,7 @@ export function compile(
 ): CompileArtifacts {
 
     const diagnostics = new Array<tsm.ts.Diagnostic>();
-    const methods = new Array<ContractMethod>();
+    // const methods = new Array<ContractMethod>();
     const context: CompileContext = {
         project,
         diagnostics,
@@ -60,23 +60,35 @@ export function compile(
             optimize: options?.optimize ?? false,
             standards: options?.standards ?? [],
         },
-        scopes: new Array<ReadonlyScope>(),
-        methods,
+        // scopes: new Array<ReadonlyScope>(),
+        // methods,
     }
 
-    try {
-        createSymbolTrees(context);
-        if (hasErrors(diagnostics)) return { diagnostics, methods };
-        processMethodDefinitions(context);
-        if (hasErrors(diagnostics)) return { diagnostics, methods };
-        const { nef, manifest, debugInfo } = collectArtifacts(contractName, context);
-        if (hasErrors(diagnostics)) return { diagnostics, methods };
-        return { nef, manifest, debugInfo, diagnostics, methods };
-    } catch (error) {
-        diagnostics.push(toDiagnostic(error));
+    // read project lib
+
+    for (const src of project.getSourceFiles()) {
+        if (src.isDeclarationFile()) continue;
+        const symbols = parseSourceFile(src);
+        if (hasErrors(symbols.diagnostics)) {
+            return { diagnostics: diagnostics.concat(symbols.diagnostics) }
+        }
+
     }
 
-    return { diagnostics, methods };
+    // try {
+    //     createSymbolTrees(context);
+    //     if (hasErrors(diagnostics)) return { diagnostics, methods };
+    //     processMethodDefinitions(context);
+    //     if (hasErrors(diagnostics)) return { diagnostics, methods };
+    //     const { nef, manifest, debugInfo } = collectArtifacts(contractName, context);
+    //     if (hasErrors(diagnostics)) return { diagnostics, methods };
+    //     return { nef, manifest, debugInfo, diagnostics, methods };
+    // } catch (error) {
+    //     diagnostics.push(toDiagnostic(error));
+    // }
+
+    // return { diagnostics, methods };
+    return { diagnostics };
 }
 
 async function exists(rootPath: fs.PathLike) {

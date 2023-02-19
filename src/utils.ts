@@ -1,20 +1,20 @@
 import * as tsm from "ts-morph";
-import { ContractMethod } from "../packages/compiler/src/passes/processFunctionDeclarations";
+// import { ContractMethod } from "../packages/compiler/src/passes/processFunctionDeclarations";
 import { CallOperation, CallTokenOperation, ConvertOperation, InitSlotOperation, JumpOperation, LoadStoreOperation, Location, Operation, PushBoolOperation, PushDataOperation, PushIntOperation, SysCallOperation } from "../packages/compiler/src/types/Operation";
 import { sc, u } from "@cityofzion/neon-core";
 
 function typeToString(type: tsm.Type) {
     return type.getSymbol()?.getName() ?? 'unknown';
 }
-export function dumpContractMethod(method: ContractMethod) {
-    const node = method.def.node;
-    const params = node.getParameters().map(p => `${p.getName()}: ${typeToString(p.getType())}`);
-    console.log(green, `Method: ${node.getSymbolOrThrow().getName()}(${params.join(", ")}): ${typeToString(node.getReturnType())}`);
-    method.operations.forEach((v, i) => {
-        if (v.location) { console.log(cyan, `  ${dumpLocation(v.location)}`); }
-        console.log(`    ${i}: ${dumpOperation(v, i)}`);
-    })
-}
+// export function dumpContractMethod(method: ContractMethod) {
+//     const node = method.def.node;
+//     const params = node.getParameters().map(p => `${p.getName()}: ${typeToString(p.getType())}`);
+//     console.log(green, `Method: ${node.getSymbolOrThrow().getName()}(${params.join(", ")}): ${typeToString(node.getReturnType())}`);
+//     method.operations.forEach((v, i) => {
+//         if (v.location) { console.log(cyan, `  ${dumpLocation(v.location)}`); }
+//         console.log(`    ${i}: ${dumpOperation(v, i)}`);
+//     })
+// }
 
 function dumpLocation(location: Location) {
     if (tsm.Node.isNode(location)) {
@@ -42,8 +42,9 @@ function dumpOperation(op: Operation, currentIndex: number) {
             return `${op.kind} ${locals} locals ${params} params`
         }
         case 'call': {
-            const { method } = op as CallOperation;
-            return `${op.kind} ${method.symbol.getName()}`
+            // const { method } = op as CallOperation;
+            // return `${op.kind} ${method.symbol.getName()}`
+            return `${op.kind} {method.symbol.getName()}`
         }
         case 'jump':
         case 'jumpif':

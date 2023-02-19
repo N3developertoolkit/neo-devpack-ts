@@ -3,7 +3,7 @@ import { ts } from "ts-morph";
 import { compile, CompileOptions, createContractProject, hasErrors, toDiagnostic } from '../packages/compiler/';
 import * as fsp from 'fs/promises';
 import * as fs from 'fs';
-import { blue, dumpContractMethod } from "./utils";
+import { blue } from "./utils";
 
 function printDiagnostics(diags: ReadonlyArray<ts.Diagnostic>) {
     const formatHost: ts.FormatDiagnosticsHost = {
@@ -41,7 +41,7 @@ async function main() {
 
             const options: CompileOptions = contractName.startsWith('nep17')
                 ? { standards: ["NEP-17"] } : {}
-            const { diagnostics, methods, nef, manifest, debugInfo } = compile(project, contractName, options);
+            const { diagnostics, nef, manifest, debugInfo } = compile(project, contractName, options);
 
             if (diagnostics.length > 0) printDiagnostics(diagnostics);
 

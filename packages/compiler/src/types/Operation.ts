@@ -1,7 +1,6 @@
 import * as tsm from "ts-morph";
 import { ReadonlyUint8Array } from '../utility/ReadonlyArrays';
 import { sc } from '@cityofzion/neon-core';
-import { MethodSymbolDef } from "../scope";
 
 export const allowedOperations = [
     'add',
@@ -82,7 +81,7 @@ export interface CallTokenOperation extends Operation {
 
 export interface CallOperation extends Operation {
     readonly kind: 'call',
-    readonly method: MethodSymbolDef,
+    // readonly method: MethodSymbolDef,
 
 }
 
