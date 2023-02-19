@@ -8,6 +8,7 @@ import * as path from 'path';
 // import { collectArtifacts } from "./collectArtifacts";
 import { DebugInfoJson } from "./types/DebugInfo";
 import { parseSourceFile } from "./symbolDef";
+import { parseProjectLib } from "./projectLib";
 
 export const DEFAULT_ADDRESS_VALUE = 53;
 
@@ -65,6 +66,8 @@ export function compile(
     }
 
     // read project lib
+
+    parseProjectLib(project);
 
     for (const src of project.getSourceFiles()) {
         if (src.isDeclarationFile()) continue;

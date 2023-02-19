@@ -20,7 +20,7 @@ export interface ObjectSymbolDef extends SymbolDef {
 //     // getProp(name: string): Resolver | undefined;
 }
 
-export interface FunctionSymbolDef extends ObjectSymbolDef {
+export interface CallableSymbolDef extends ObjectSymbolDef {
 //     // parseCall(node: tsm.CallExpression, scope: ReadonlyScope): {
 //     //     args: ParseExpressionResult, call: ParseExpressionResult };
 }
@@ -40,7 +40,7 @@ export class InterfaceSymbolDef implements SymbolDef {
     ) { }
 }
 
-export class FunctionDeclSymbolDef implements FunctionSymbolDef {
+export class FunctionSymbolDef implements CallableSymbolDef {
     constructor(
         readonly symbol: Symbol,
         readonly node: FunctionDeclaration,
@@ -92,7 +92,7 @@ export class VariableSymbolDef implements SymbolDef {
     // }
 }
 
-export class EventSymbolDef implements FunctionSymbolDef {
+export class EventSymbolDef implements CallableSymbolDef {
     constructor(
         readonly symbol: Symbol,
         readonly name: string,
@@ -122,7 +122,7 @@ export class EventSymbolDef implements FunctionSymbolDef {
     // getProp(_name: string) { return undefined; }
 }
 
-export class SysCallSymbolDef implements FunctionSymbolDef {
+export class SysCallSymbolDef implements CallableSymbolDef {
     constructor(
         readonly symbol: Symbol,
         readonly name: string,
@@ -137,7 +137,7 @@ export class SysCallSymbolDef implements FunctionSymbolDef {
     // getProp(_name: string) { return undefined; }
 }
 
-export class MethodTokenSymbolDef implements FunctionSymbolDef {
+export class MethodTokenSymbolDef implements CallableSymbolDef {
     constructor(
         readonly symbol: Symbol,
         readonly token: sc.MethodToken
@@ -152,7 +152,7 @@ export class MethodTokenSymbolDef implements FunctionSymbolDef {
     // getProp(_name: string) { return undefined; }
 }
 
-export class OperationsSymbolDef implements FunctionSymbolDef {
+export class OperationsSymbolDef implements CallableSymbolDef {
     constructor(
         readonly symbol: Symbol,
         readonly operations: ReadonlyArray<Operation>
@@ -395,7 +395,7 @@ const parseFunctionDeclaration =
                 )
                 : pipe(node,
                     parseSymbol(symbol),
-                    E.map(s => new FunctionDeclSymbolDef(s, node))
+                    E.map(s => new FunctionSymbolDef(s, node))
                 );
 
 const parseImportSpecifier =
@@ -421,6 +421,8 @@ const parseImportSpecifier =
                         : E.left($makeError(`multiple exported declarations ${name} not implemented`))),
                     E.flatten)),
                 E.chain(({ symbol, decl: node }) => {
+                    // TODO: Eventually, it may be important to distinguish between
+                    //       imported functions and declared functions
                     if (Node.isFunctionDeclaration(node)) return pipe(node, parseFunctionDeclaration(symbol));
                     if (Node.isVariableDeclaration(node)) return pipe(node, parseVariableDeclaration(symbol));
                     if (Node.isInterfaceDeclaration(node)) return pipe(node, parseInterfaceDeclaration(symbol));
@@ -485,65 +487,3 @@ export function parseSourceFile(src: SourceFile): {
         symbolDefs: pipe(defs, M.concatAll(ROA.getMonoid<SymbolDef>()))
     }
 }
-
-
-
-// interface LibState {
-//     readonly functions: ReadonlyArray<FunctionDeclaration>,
-//     readonly interfaces: ReadonlyArray<InterfaceDeclaration>,
-//     readonly variables: ReadonlyArray<VariableDeclaration>
-// }
-
-// const parseLibSourceFile =
-//     (src: SourceFile) => {
-
-//         const children = src.forEachChildAsArray();
-//         const functions = pipe(children,
-//             ROA.filterMap(node => Node.isFunctionDeclaration(node)
-//                 ? O.some(node) : O.none),
-//         );
-//         const interfaces = pipe(children,
-//             ROA.filterMap(node => Node.isInterfaceDeclaration(node)
-//                 ? O.some(node) : O.none)
-//         );
-//         const variables = pipe(children,
-//             ROA.filterMap(node => Node.isVariableStatement(node)
-//                 ? O.some(node.getDeclarations()) : O.none),
-//             ROA.flatten
-//         );
-//         const references = pipe(
-//             src.getLibReferenceDirectives(),
-//             ROA.map(ref => `lib.${ref.getFileName()}.d.ts`)
-//         );
-//         return { functions, interfaces, variables, references };
-//     }
-
-// export const parseProjectLib =
-//     (project: Project) => {
-
-//         const LIB_PATH = `/node_modules/typescript/lib/`;
-
-//         const libSources = pipe(
-//             project.compilerOptions.get().lib,
-//             O.fromNullable,
-//             O.getOrElse(() => [] as ReadonlyArray<string>)
-//         )
-
-//         const loadSource = (filename: string) => pipe(project.getSourceFile(LIB_PATH + filename), O.fromNullable);
-
-//         let sources = libSources;
-//         let functions: ReadonlyArray<FunctionDeclaration> = [];
-//         let interfaces: ReadonlyArray<InterfaceDeclaration> = [];
-//         let variables: ReadonlyArray<VariableDeclaration> = [];
-//         let processedFiles: ReadonlySet<string> = new Set();
-
-//         while (sources.length > 0) {
-
-
-//         }
-//     }
-
-// pipe(project.getSourceFile(LIB_PATH + path),
-// O.fromNullable,
-// O.map(src => src)
-// ))
