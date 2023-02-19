@@ -33,8 +33,12 @@ export function createDiagnostic(messageText: string, options?: DiagnosticOption
     };
 }
 
-export function toDiagnostic(error: unknown): tsm.ts.Diagnostic {
-    const message = error instanceof Error ? error.message : String(error);
+export function toDiagnostic(error: string | unknown): tsm.ts.Diagnostic {
+    const message = typeof error === 'string'
+        ? error
+        : error instanceof Error 
+            ? error.message 
+            : String(error);
     const node = error instanceof CompileError ? error.node : undefined;
     return createDiagnostic(message, { node });
 }
