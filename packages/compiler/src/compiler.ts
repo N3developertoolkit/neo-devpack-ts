@@ -77,7 +77,7 @@ export function compile(
     // )
 
     // TODO: use pipe
-    let [builtins, diagnostics] = parseProjectLibrary(project)(ROA.getMonoid<tsm.ts.Diagnostic>().empty)
+    let [library, diagnostics] = parseProjectLibrary(project)(ROA.getMonoid<tsm.ts.Diagnostic>().empty)
     let symbols: ReadonlyArray<ReadonlyArray<SymbolDef>>;
     [symbols, diagnostics] = parseProjectSymbols(project)(diagnostics);
 
