@@ -59,8 +59,6 @@ const parseLibrarySourceFile =
 export const parseProjectLibrary =
     (project: Project): ParserState<LibraryDeclarations> =>
         (diagnostics: ReadonlyArray<ts.Diagnostic>) => {
-
-            const diagMonoid = ROA.getMonoid<ts.Diagnostic>();
             const LIB_PATH = `/node_modules/typescript/lib/`;
             const loadSource = (filename: string) => project.getSourceFile(LIB_PATH + filename);
 
@@ -84,9 +82,9 @@ export const parseProjectLibrary =
                 }
             }
 
-            diagnostics = diagMonoid.concat(
+            diagnostics = ROA.getMonoid<ts.Diagnostic>().concat(
                 diagnostics,
-                loadFailures.map(f => createDiagnostic(`failed to load ${f}`))
+                loadFailures.map(f => createDiagnostic(`failed to load ${f} library file`))
             );
 
             return [state, diagnostics];
