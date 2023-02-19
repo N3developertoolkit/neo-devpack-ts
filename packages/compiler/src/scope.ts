@@ -1,5 +1,7 @@
-// import './ext';
-// import * as tsm from "ts-morph";
+import { create } from "domain";
+import * as tsm from "ts-morph";
+import { SymbolDef } from "./symbolDef";
+
 // import { CompileContext, CompileError } from "./compiler";
 // import { dispatch, NodeDispatchMap } from "./utility/nodeDispatch";
 // import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
@@ -16,19 +18,19 @@
 // import * as M from "fp-ts/Monoid";
 // import * as O from 'fp-ts/Option'
 
-// export interface ReadonlyScope {
-//     readonly parentScope: ReadonlyScope | undefined;
-//     readonly symbols: IterableIterator<SymbolDef>;
-//     resolve(symbol?: tsm.Symbol): SymbolDef | undefined;
-// }
+export interface ReadonlyScope {
+    readonly parentScope: ReadonlyScope | undefined;
+    readonly symbols: IterableIterator<SymbolDef>;
+    resolve(symbol?: tsm.Symbol): SymbolDef | undefined;
+}
 
-// export interface Scope extends ReadonlyScope {
-//     define(def: SymbolDef): void;
-// }
+export interface Scope extends ReadonlyScope {
+    define(def: SymbolDef): void;
+}
 
-// export function isScope(scope: ReadonlyScope): scope is Scope {
-//     return 'define' in scope && typeof scope.define === 'function';
-// }
+export function isScope(scope: ReadonlyScope): scope is Scope {
+    return 'define' in scope && typeof scope.define === 'function';
+}
 
 // export interface SymbolDef {
 //     readonly symbol: tsm.Symbol;
@@ -61,19 +63,19 @@
 
 
 
-// export function $resolve(map: ReadonlyMap<tsm.Symbol, SymbolDef>, symbol?: tsm.Symbol, parent?: ReadonlyScope) {
-//     if (!symbol) { return undefined; }
-//     else {
-//         const def = map.get(symbol);
-//         if (def) return def;
+export function $resolve(map: ReadonlyMap<tsm.Symbol, SymbolDef>, symbol?: tsm.Symbol, parent?: ReadonlyScope) {
+    if (!symbol) { return undefined; }
+    else {
+        const def = map.get(symbol);
+        if (def) return def;
 
-//         const valDeclSymbol = symbol.getValueDeclaration()?.getSymbol();
-//         const valDeclDef = valDeclSymbol 
-//             ? map.get(valDeclSymbol) 
-//             : undefined
-//         return valDeclDef ?? parent?.resolve();
-//     }
-// }
+        const valDeclSymbol = symbol.getValueDeclaration()?.getSymbol();
+        const valDeclDef = valDeclSymbol
+            ? map.get(valDeclSymbol)
+            : undefined
+        return valDeclDef ?? parent?.resolve();
+    }
+}
 
 // function define(map: Map<tsm.Symbol, SymbolDef>, def: SymbolDef) {
 //     if (map.has(def.symbol)) {
@@ -111,13 +113,20 @@
 //     }
 // }
 
-// // export function createGlobalScope(map: ReadonlyMap<tsm.Symbol, SymbolDef>): ReadonlyScope {
-// //     return {
-// //         parentScope: undefined,
-// //         symbols: map.values(),
-// //         resolve: (symbol) => resolve(map, symbol),
-// //     }
-// // }
+export const createReadonlyScope = (parentScope?: ReadonlyScope) =>
+    (defs: ReadonlyArray<SymbolDef>): ReadonlyScope => {
+        const map = new Map<tsm.Symbol, SymbolDef>(defs.map(v => [v.symbol, v]));
+        return {
+            parentScope,
+            symbols: map.values(),
+            resolve: (symbol) => $resolve(map, symbol),
+        }
+    }
+
+export const createGlobalScope = createReadonlyScope();
+
+// export function createReadonlyScope(defs: ReadonlyArray<SymbolDef>): ReadonlyScope {
+// }
 
 // export function createBlockScope(node: tsm.Block, parentScope: ReadonlyScope): Scope {
 //     const map = new Map<tsm.Symbol, SymbolDef>();
@@ -220,11 +229,11 @@
 //     parseCall(node: tsm.CallExpression, scope: ReadonlyScope) {
 //         // NCCS creates an empty array and then APPENDs each notification arg in turn
 //         // However, APPEND is 4x more expensive than PACK and is called once per arg
-//         // instead of once per Notify call as PACK is. 
+//         // instead of once per Notify call as PACK is.
 
 //         const argNodes = node.getArguments() as tsm.Expression[];
 //         const args = pipe(
-//             argNodes, 
+//             argNodes,
 //             parseArguments(scope),
 //             E.map(flow(
 //                 ROA.concat([
@@ -564,7 +573,7 @@
 //     //     map(x => x.getSymbolOrThrow()),
 //     //     orderBy(x => x.getName()),
 //     //     map(x => [x.getName(), x])));
-//     // // note, interfaces can have multiple declarations which are merged 
+//     // // note, interfaces can have multiple declarations which are merged
 //     // // each declaration has a unique symbol, but the interface Type and type's symbol) is
 //     // // shared across all the declarations. So for interfaces, first create a set of type symbols
 //     // // to weed out duplicates, then create a string -> symbol map from the set values

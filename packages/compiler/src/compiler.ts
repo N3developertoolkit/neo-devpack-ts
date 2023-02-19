@@ -11,6 +11,8 @@ import { parseProjectSymbols, SymbolDef } from "./symbolDef";
 import { parseProjectLibrary } from "./projectLib";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as S from 'fp-ts/State'
+import { parseSourceFileDefs } from "./passes/processFunctionDeclarations";
+import { createGlobalScope, createReadonlyScope } from "./scope";
 
 export const DEFAULT_ADDRESS_VALUE = 53;
 
@@ -78,8 +80,15 @@ export function compile(
 
     // TODO: use pipe
     let [library, diagnostics] = parseProjectLibrary(project)(ROA.getMonoid<tsm.ts.Diagnostic>().empty)
-    let symbols: ReadonlyArray<ReadonlyArray<SymbolDef>>;
-    [symbols, diagnostics] = parseProjectSymbols(project)(diagnostics);
+    const globalScope = createGlobalScope([]);
+    let symbolDefs: ReadonlyArray<ReadonlyArray<SymbolDef>>;
+    [symbolDefs, diagnostics] = parseProjectSymbols(project)(diagnostics);
+
+    for (const def of symbolDefs) {
+        let q: any;
+        [q, diagnostics] = parseSourceFileDefs(globalScope)(def)(diagnostics);
+
+    }
 
     // try {
     //     createSymbolTrees(context);

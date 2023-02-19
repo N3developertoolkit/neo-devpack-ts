@@ -24,8 +24,8 @@ export interface ObjectSymbolDef extends SymbolDef {
 }
 
 export interface CallableSymbolDef extends ObjectSymbolDef {
-    //     // parseCall(node: tsm.CallExpression, scope: ReadonlyScope): {
-    //     //     args: ParseExpressionResult, call: ParseExpressionResult };
+    // parseCall(node: tsm.CallExpression, scope: ReadonlyScope): {
+    //     args: ParseExpressionResult, call: ParseExpressionResult };
 }
 
 // export function isObjectDef(def: SymbolDef): def is ObjectSymbolDef {
@@ -176,10 +176,10 @@ export class OperationsSymbolDef implements CallableSymbolDef {
 }
 
 
-interface ParseError { message: string, node?: Node }
-type DiagnosticResult<T> = E.Either<ParseError, T>;
+export interface ParseError { message: string, node?: Node }
+export type DiagnosticResult<T> = E.Either<ParseError, T>;
 
-const makeParseError =
+export const makeParseError =
     (node?: Node) =>
         (e: string | unknown): ParseError => {
             const message = typeof e === 'string'
@@ -188,7 +188,7 @@ const makeParseError =
             return { message, node };
         }
 
-const getResultSemigroup =
+export const getResultSemigroup =
     <T>(sg: SG.Semigroup<T>): SG.Semigroup<DiagnosticResult<T>> => ({
         concat: (x, y) =>
             pipe(
@@ -199,7 +199,7 @@ const getResultSemigroup =
             )
     });
 
-const getResultMonoid =
+export const getResultMonoid =
     <T>(monoid: M.Monoid<T>): M.Monoid<DiagnosticResult<T>> => ({
         concat: getResultSemigroup(monoid).concat,
         empty: E.right(monoid.empty)
@@ -266,8 +266,7 @@ const parseConstVariableDeclaration =
                 O.fromNullable,
                 E.fromOption(() =>
                     makeParseError(node)("missing initializer")),
-                E.map(parseConstantValue),
-                E.flatten,
+                E.chain(parseConstantValue),
                 E.bindTo("value"),
                 E.bind("symbol", () =>
                     pipe(
@@ -285,10 +284,9 @@ const parseVariableDeclaration =
                 node.getVariableStatement(),
                 E.fromNullable(makeParseError(node)("failed to get DeclarationKind")),
                 E.map(stmt => stmt.getDeclarationKind()),
-                E.map(kind => kind === VariableDeclarationKind.Const
+                E.chain(kind => kind === VariableDeclarationKind.Const
                     ? parseConstVariableDeclaration(symbol)(node)
                     : E.left(makeParseError(node)(`${kind} VariableDeclaration not implemented`))),
-                E.flatten
             );
 
 const parseVariableStatement =
@@ -363,8 +361,7 @@ const parseDeclareFunctionDeclaration =
                         ROA.map(flow(
                             t => t.getCommentText(),
                             E.fromNullable(makeError("missing operation JSDoc tag comment")),
-                            E.map($parseOperation(node)),
-                            E.flatten,
+                            E.chain($parseOperation(node)),
                             E.map(ROA.of),
                         )),
                         M.concatAll(getResultMonoid(ROA.getMonoid<Operation>())),
@@ -394,8 +391,7 @@ const parseFunctionDeclaration = (symbol?: Symbol) =>
                 ? pipe(
                     node.getJsDocs(),
                     ROA.head,
-                    O.map(d => pipe(d.getTags(), RONEA.fromArray)),
-                    O.flatten,
+                    O.chain(d => pipe(d.getTags(), RONEA.fromArray)),
                     E.fromOption(() =>
                         makeParseError(node)('declared functions must have a JSDoc block tag')),
                     E.bindTo('tags'),
@@ -422,13 +418,15 @@ const parseImportSpecifier =
                     O.fromNullable,
                     O.getOrElse(() => symbol),
                     ($symbol) => $symbol.getName(),
-                    E.right) as DiagnosticResult<string>),
+                    E.right
+                ) as DiagnosticResult<string>),
                 E.bind('decl', ({ name }) => pipe(exportMap.get(name),
                     E.fromNullable($makeError(`missing export ${name}`)),
-                    E.map(decls => decls.length === 1
+                    E.chain(decls => decls.length === 1
                         ? E.right(decls[0])
-                        : E.left($makeError(`multiple exported declarations ${name} not implemented`))),
-                    E.flatten)),
+                        : E.left($makeError(`multiple exported declarations ${name} not implemented`))
+                    ),
+                )),
                 E.chain(({ symbol, decl: node }) => {
                     if (Node.isFunctionDeclaration(node))
                         return pipe(
@@ -456,14 +454,13 @@ const parseImportDeclaration =
             E.fromNullable(makeParseError(node)(`getModuleSpecifierSourceFile failed`)),
             E.bindTo("$module"),
             E.bind("$imports", () => E.right(node.getNamedImports())),
-            E.map(({ $module, $imports }) =>
+            E.chain(({ $module, $imports }) =>
                 pipe(
                     $imports,
                     ROA.map(flow(parseImportSpecifier($module), E.map(ROA.of))),
                     M.concatAll(getResultMonoid(ROA.getMonoid<SymbolDef>()))
                 )
             ),
-            E.flatten
         );
 
 export const parseSourceFile =
