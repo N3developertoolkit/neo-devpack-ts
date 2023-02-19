@@ -1,14 +1,14 @@
 import { sc } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
-import { createDiagnostic, hasErrors, toDiagnostic } from "./utils";
+import { createDiagnostic } from "./utils";
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
 // import { ContractMethod, processMethodDefinitions } from "./passes/processFunctionDeclarations";
 // import { collectArtifacts } from "./collectArtifacts";
 import { DebugInfoJson } from "./types/DebugInfo";
-import { parseSourceFile, SymbolDef } from "./symbolDef";
-import { parseProjectLib } from "./projectLib";
+import { parseProjectSymbols, SymbolDef } from "./symbolDef";
+import { parseProjectLibrary } from "./projectLib";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as S from 'fp-ts/State'
 
@@ -71,17 +71,15 @@ export function compile(
 
     // read project lib
 
-    let [builtins, diagnostics] = parseProjectLib(project)(ROA.getMonoid<tsm.ts.Diagnostic>().empty)
-    if (hasErrors(diagnostics)) return { diagnostics }
+    // const q = pipe(
+    //     ROA.getMonoid<tsm.ts.Diagnostic>().empty,
+    //     // S.map(parseProjectLib(project))
+    // )
 
-    const symbolMap = new Map<tsm.SourceFile, ReadonlyArray<SymbolDef>>();
-    for (const src of project.getSourceFiles()) {
-        if (src.isDeclarationFile()) continue;
-        let symbols: ReadonlyArray<SymbolDef>;
-        [symbols, diagnostics] = parseSourceFile(src)(diagnostics);
-        if (hasErrors(diagnostics)) return { diagnostics };
-        symbolMap.set(src, symbols);
-    }
+    // TODO: use pipe
+    let [builtins, diagnostics] = parseProjectLibrary(project)(ROA.getMonoid<tsm.ts.Diagnostic>().empty)
+    let symbols: ReadonlyArray<ReadonlyArray<SymbolDef>>;
+    [symbols, diagnostics] = parseProjectSymbols(project)(diagnostics);
 
     // try {
     //     createSymbolTrees(context);

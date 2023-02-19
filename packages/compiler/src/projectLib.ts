@@ -6,13 +6,13 @@ import * as O from 'fp-ts/Option';
 import * as M from 'fp-ts/Monoid'
 import { ParserState } from "./compiler";
 
-type State = {
+type LibraryDeclarations = {
     readonly functions: ReadonlyArray<FunctionDeclaration>,
     readonly interfaces: ReadonlyArray<InterfaceDeclaration>,
     readonly variables: ReadonlyArray<VariableDeclaration>,
 }
 
-const stateMonoid: M.Monoid<State> = {
+const stateMonoid: M.Monoid<LibraryDeclarations> = {
     concat: (x, y) => ({
         functions: x.functions.concat(y.functions),
         interfaces: x.interfaces.concat(y.interfaces),
@@ -25,7 +25,7 @@ const stateMonoid: M.Monoid<State> = {
     }
 }
 
-function parseLibSourceFile(src: SourceFile): [ReadonlyArray<string>, State] {
+function parseLibrarySourceFile(src: SourceFile): [ReadonlyArray<string>, LibraryDeclarations] {
     const children = src.forEachChildAsArray();
     const functions = pipe(children,
         ROA.filterMap(node => Node.isFunctionDeclaration(node)
@@ -49,7 +49,7 @@ function parseLibSourceFile(src: SourceFile): [ReadonlyArray<string>, State] {
     return [references, state];
 }
 
-export const parseProjectLib = (project: Project): ParserState<State> =>
+export const parseProjectLibrary = (project: Project): ParserState<LibraryDeclarations> =>
     (diagnostics: ReadonlyArray<ts.Diagnostic>) => {
 
     const diagMonoid = ROA.getMonoid<ts.Diagnostic>();
@@ -67,7 +67,7 @@ export const parseProjectLib = (project: Project): ParserState<State> =>
         parsedFiles.add(head);
         const src = loadSource(head);
         if (src) {
-            const [srcRefs, srcState] = parseLibSourceFile(src);
+            const [srcRefs, srcState] = parseLibrarySourceFile(src);
             state = stateMonoid.concat(state, srcState);
             srcRefs.forEach(r => sources.push(r));
         } else {

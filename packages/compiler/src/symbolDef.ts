@@ -10,8 +10,8 @@ import * as E from "fp-ts/Either";
 import * as M from "fp-ts/Monoid";
 import * as O from 'fp-ts/Option'
 import * as SG from "fp-ts/Semigroup";
+import * as S from 'fp-ts/State';
 import { ParserState } from "./compiler";
-import { Func } from "mocha";
 
 
 export interface SymbolDef {
@@ -465,7 +465,6 @@ const parseImportDeclaration =
             E.flatten
         );
 
-
 export const parseSourceFile =
     (src: SourceFile): ParserState<ReadonlyArray<SymbolDef>> =>
         (diagnostics: ReadonlyArray<ts.Diagnostic>) => {
@@ -516,4 +515,17 @@ export const parseSourceFile =
                 pipe(defs, M.concatAll(ROA.getMonoid<SymbolDef>())),
                 diagnostics
             ];
+        }
+
+export const parseProjectSymbols =
+    (prj: Project): ParserState<ReadonlyArray<ReadonlyArray<SymbolDef>>> =>
+        (diagnostics: ReadonlyArray<ts.Diagnostic>) => {
+
+            const sourceParsers = pipe(
+                prj.getSourceFiles(),
+                ROA.filter(s => !s.isDeclarationFile()),
+                ROA.map(parseSourceFile)
+            )
+
+            return S.sequenceArray(sourceParsers)(diagnostics);
         }
