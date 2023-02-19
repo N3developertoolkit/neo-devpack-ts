@@ -97,11 +97,6 @@ export const parseProjectLib =
             }
         }
 
-        console.log();
+        return state;
 
     }
-
-// pipe(project.getSourceFile(LIB_PATH + path),
-// O.fromNullable,
-// O.map(src => src)
-// ))
