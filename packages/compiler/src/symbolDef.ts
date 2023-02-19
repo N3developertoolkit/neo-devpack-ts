@@ -2,7 +2,7 @@ import { Operation, parseOperation } from "./types/Operation";
 import { createDiagnostic, isVoidLike } from "./utils";
 
 import { sc, u } from '@cityofzion/neon-core';
-import { ts, Node, VariableStatement, VariableDeclarationKind, SourceFile, Project, Symbol, VariableDeclaration, Expression, SyntaxKind, BigIntLiteral, NumericLiteral, StringLiteral, FunctionDeclaration, ImportDeclaration, ImportSpecifier, JSDocTag, InterfaceDeclaration, DiagnosticCategory, Diagnostic, ParameterDeclaration } from "ts-morph";
+import { ts, Node, VariableStatement, VariableDeclarationKind, SourceFile, Project, Symbol, VariableDeclaration, Expression, SyntaxKind, BigIntLiteral, NumericLiteral, StringLiteral, FunctionDeclaration, ImportDeclaration, ImportSpecifier, JSDocTag, InterfaceDeclaration, DiagnosticCategory, ParameterDeclaration } from "ts-morph";
 import { flow, pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as RONEA from 'fp-ts/ReadonlyNonEmptyArray';
@@ -13,6 +13,7 @@ import * as SG from "fp-ts/Semigroup";
 import * as S from 'fp-ts/State';
 import { ParserState } from "./compiler";
 
+type Diagnostic = ts.Diagnostic;
 
 export interface SymbolDef {
     readonly symbol: Symbol;
@@ -467,7 +468,9 @@ const parseImportDeclaration =
 
 export const parseSourceFile =
     (src: SourceFile): ParserState<ReadonlyArray<SymbolDef>> =>
-        (diagnostics: ReadonlyArray<ts.Diagnostic>) => {
+        (diagnostics: ReadonlyArray<Diagnostic>) => {
+            const diagnosticsSG = ROA.getSemigroup<Diagnostic>();
+
             if (src.isDeclarationFile()) {
                 const diag = createDiagnostic(
                     `${src.getFilePath()} is a declaration file`,
@@ -476,7 +479,7 @@ export const parseSourceFile =
                         node: src
                     });
 
-                diagnostics = ROA.getSemigroup<ts.Diagnostic>().concat(diagnostics, [diag]);
+                diagnostics = diagnosticsSG.concat(diagnostics, [diag]);
                 return [[], diagnostics];
             }
 
@@ -506,7 +509,7 @@ export const parseSourceFile =
                 ROA.partitionMap(q => q)
             );
 
-            diagnostics = ROA.getSemigroup<ts.Diagnostic>().concat(
+            diagnostics = diagnosticsSG.concat(
                 diagnostics,
                 errors.map(e => createDiagnostic(e.message, { node: e.node }))
             );
@@ -519,7 +522,7 @@ export const parseSourceFile =
 
 export const parseProjectSymbols =
     (prj: Project): ParserState<ReadonlyArray<ReadonlyArray<SymbolDef>>> =>
-        (diagnostics: ReadonlyArray<ts.Diagnostic>) => {
+        (diagnostics: ReadonlyArray<Diagnostic>) => {
 
             const sourceParsers = pipe(
                 prj.getSourceFiles(),

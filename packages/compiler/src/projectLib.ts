@@ -7,6 +7,8 @@ import * as M from 'fp-ts/Monoid'
 import { ParserState } from "./compiler";
 import * as S from 'fp-ts/State';
 
+type Diagnostic = ts.Diagnostic;
+
 export type LibraryDeclarations = {
     readonly functions: ReadonlyArray<FunctionDeclaration>,
     readonly interfaces: ReadonlyArray<InterfaceDeclaration>,
@@ -58,7 +60,7 @@ const parseLibrarySourceFile =
 
 export const parseProjectLibrary =
     (project: Project): ParserState<LibraryDeclarations> =>
-        (diagnostics: ReadonlyArray<ts.Diagnostic>) => {
+        (diagnostics: ReadonlyArray<Diagnostic>) => {
             const LIB_PATH = `/node_modules/typescript/lib/`;
             const loadSource = (filename: string) => project.getSourceFile(LIB_PATH + filename);
 
