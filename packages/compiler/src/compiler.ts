@@ -7,7 +7,7 @@ import * as path from 'path';
 // import { ContractMethod, processMethodDefinitions } from "./passes/processFunctionDeclarations";
 // import { collectArtifacts } from "./collectArtifacts";
 import { DebugInfoJson } from "./types/DebugInfo";
-import { parseSourceFile } from "./symbolDef";
+import { parseSourceFile, SymbolDef } from "./symbolDef";
 import { parseProjectLib } from "./projectLib";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as S from 'fp-ts/State'
@@ -74,14 +74,14 @@ export function compile(
     let [builtins, diagnostics] = parseProjectLib(project)(ROA.getMonoid<tsm.ts.Diagnostic>().empty)
     if (hasErrors(diagnostics)) return { diagnostics }
 
-    // for (const src of project.getSourceFiles()) {
-    //     if (src.isDeclarationFile()) continue;
-    //     const symbols = parseSourceFile(src);
-    //     if (hasErrors(symbols.diagnostics)) {
-    //         return { diagnostics: diagnostics.concat(symbols.diagnostics) }
-    //     }
-
-    // }
+    const symbolMap = new Map<tsm.SourceFile, ReadonlyArray<SymbolDef>>();
+    for (const src of project.getSourceFiles()) {
+        if (src.isDeclarationFile()) continue;
+        let symbols: ReadonlyArray<SymbolDef>;
+        [symbols, diagnostics] = parseSourceFile(src)(diagnostics);
+        if (hasErrors(diagnostics)) return { diagnostics };
+        symbolMap.set(src, symbols);
+    }
 
     // try {
     //     createSymbolTrees(context);

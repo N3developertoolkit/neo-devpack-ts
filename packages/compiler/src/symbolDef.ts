@@ -10,6 +10,8 @@ import * as E from "fp-ts/Either";
 import * as M from "fp-ts/Monoid";
 import * as O from 'fp-ts/Option'
 import * as SG from "fp-ts/Semigroup";
+import { ParserState } from "./compiler";
+import { Func } from "mocha";
 
 
 export interface SymbolDef {
@@ -17,12 +19,12 @@ export interface SymbolDef {
 }
 
 export interface ObjectSymbolDef extends SymbolDef {
-//     // getProp(name: string): Resolver | undefined;
+    //     // getProp(name: string): Resolver | undefined;
 }
 
 export interface CallableSymbolDef extends ObjectSymbolDef {
-//     // parseCall(node: tsm.CallExpression, scope: ReadonlyScope): {
-//     //     args: ParseExpressionResult, call: ParseExpressionResult };
+    //     // parseCall(node: tsm.CallExpression, scope: ReadonlyScope): {
+    //     //     args: ParseExpressionResult, call: ParseExpressionResult };
 }
 
 // export function isObjectDef(def: SymbolDef): def is ObjectSymbolDef {
@@ -44,7 +46,12 @@ export class FunctionSymbolDef implements CallableSymbolDef {
     constructor(
         readonly symbol: Symbol,
         readonly node: FunctionDeclaration,
+        readonly $import: boolean,
     ) { }
+
+    static create = ($import: boolean) =>
+        (node: FunctionDeclaration, symbol: Symbol) =>
+            new FunctionSymbolDef(symbol, node, $import);
 }
 
 type ConstantValue = bigint | boolean | Uint8Array | null;
@@ -379,8 +386,8 @@ const parseInterfaceDeclaration =
             );
 
 
-const parseFunctionDeclaration =
-    (symbol?: Symbol) =>
+const parseFunctionDeclaration = (symbol?: Symbol) =>
+    (create: (node: FunctionDeclaration, symbol: Symbol) => SymbolDef) =>
         (node: FunctionDeclaration): DiagnosticResult<SymbolDef> =>
             node.hasDeclareKeyword()
                 ? pipe(
@@ -388,14 +395,15 @@ const parseFunctionDeclaration =
                     ROA.head,
                     O.map(d => pipe(d.getTags(), RONEA.fromArray)),
                     O.flatten,
-                    E.fromOption(() => makeParseError(node)('declared functions must have a JSDoc block tag')),
+                    E.fromOption(() =>
+                        makeParseError(node)('declared functions must have a JSDoc block tag')),
                     E.bindTo('tags'),
                     E.bind('symbol', () => pipe(node, parseSymbol(symbol))),
                     E.chain(parseDeclareFunctionDeclaration(node))
                 )
                 : pipe(node,
                     parseSymbol(symbol),
-                    E.map(s => new FunctionSymbolDef(s, node))
+                    E.map(symbol => create(node, symbol))
                 );
 
 const parseImportSpecifier =
@@ -421,11 +429,20 @@ const parseImportSpecifier =
                         : E.left($makeError(`multiple exported declarations ${name} not implemented`))),
                     E.flatten)),
                 E.chain(({ symbol, decl: node }) => {
-                    // TODO: Eventually, it may be important to distinguish between
-                    //       imported functions and declared functions
-                    if (Node.isFunctionDeclaration(node)) return pipe(node, parseFunctionDeclaration(symbol));
-                    if (Node.isVariableDeclaration(node)) return pipe(node, parseVariableDeclaration(symbol));
-                    if (Node.isInterfaceDeclaration(node)) return pipe(node, parseInterfaceDeclaration(symbol));
+                    if (Node.isFunctionDeclaration(node))
+                        return pipe(
+                            node,
+                            parseFunctionDeclaration(symbol)(FunctionSymbolDef.create(true))
+                        );
+                    if (Node.isVariableDeclaration(node))
+                        return pipe(
+                            node,
+                            parseVariableDeclaration(symbol)
+                        );
+                    if (Node.isInterfaceDeclaration(node))
+                        return pipe(
+                            node, parseInterfaceDeclaration(symbol)
+                        );
                     return E.left(makeParseError(node)(`parseImportSpecifier ${node.getKindName()}`));
                 })
             );
@@ -449,41 +466,54 @@ const parseImportDeclaration =
         );
 
 
+export const parseSourceFile =
+    (src: SourceFile): ParserState<ReadonlyArray<SymbolDef>> =>
+        (diagnostics: ReadonlyArray<ts.Diagnostic>) => {
+            if (src.isDeclarationFile()) {
+                const diag = createDiagnostic(
+                    `${src.getFilePath()} is a declaration file`,
+                    {
+                        category: DiagnosticCategory.Warning,
+                        node: src
+                    });
 
-export function parseSourceFile(src: SourceFile): {
-    readonly diagnostics: ReadonlyArray<ts.Diagnostic>;
-    readonly symbolDefs: ReadonlyArray<SymbolDef>;
-} {
-    if (src.isDeclarationFile()) {
-        const diag = createDiagnostic(
-            `${src.getFilePath()} is a declaration file`,
-            {
-                category: DiagnosticCategory.Warning,
-                node: src
-            });
-        return { diagnostics: [diag], symbolDefs: [] };
-    }
+                diagnostics = ROA.getSemigroup<ts.Diagnostic>().concat(diagnostics, [diag]);
+                return [[], diagnostics];
+            }
 
-    const { left: errors, right: defs } = pipe(
-        src.forEachChildAsArray(),
-        ROA.map(node => {
-            if (Node.isFunctionDeclaration(node))
-                return pipe(node, parseFunctionDeclaration(), E.map(ROA.of));
-            if (Node.isImportDeclaration(node))
-                return parseImportDeclaration(node);
-            if (Node.isVariableStatement(node))
-                return parseVariableStatement(node);
-            if (Node.isInterfaceDeclaration(node))
-                return pipe(node, parseInterfaceDeclaration(), E.map(ROA.of));
-            if (node.getKind() == SyntaxKind.EndOfFileToken)
-                return E.right([]);
-            return E.left(makeParseError(node)(`parseSourceFileSymbols ${node.getKindName()}`));
-        }),
-        ROA.partitionMap(q => q)
-    );
+            const { left: errors, right: defs } = pipe(
+                src.forEachChildAsArray(),
+                ROA.map(node => {
+                    if (Node.isFunctionDeclaration(node))
+                        return pipe(
+                            node,
+                            parseFunctionDeclaration()(FunctionSymbolDef.create(false)),
+                            E.map(ROA.of)
+                        );
+                    if (Node.isImportDeclaration(node))
+                        return parseImportDeclaration(node);
+                    if (Node.isVariableStatement(node))
+                        return parseVariableStatement(node);
+                    if (Node.isInterfaceDeclaration(node))
+                        return pipe(
+                            node,
+                            parseInterfaceDeclaration(),
+                            E.map(ROA.of)
+                        );
+                    if (node.getKind() == SyntaxKind.EndOfFileToken)
+                        return E.right([]);
+                    return E.left(makeParseError(node)(`parseSourceFileSymbols ${node.getKindName()}`));
+                }),
+                ROA.partitionMap(q => q)
+            );
 
-    return { 
-        diagnostics: errors.map(e => createDiagnostic(e.message, { node: e.node })),
-        symbolDefs: pipe(defs, M.concatAll(ROA.getMonoid<SymbolDef>()))
-    }
-}
+            diagnostics = ROA.getSemigroup<ts.Diagnostic>().concat(
+                diagnostics,
+                errors.map(e => createDiagnostic(e.message, { node: e.node }))
+            );
+
+            return [
+                pipe(defs, M.concatAll(ROA.getMonoid<SymbolDef>())),
+                diagnostics
+            ];
+        }
