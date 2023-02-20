@@ -58,6 +58,7 @@ const parseLibrarySourceFile =
         }
 
 
+// TODO: At some point, I should rewrite this to be functional and recursive
 export const parseProjectLibrary =
     (project: Project): ParserState<LibraryDeclarations> =>
         (diagnostics: ReadonlyArray<Diagnostic>) => {

@@ -2,7 +2,7 @@ import { Operation, parseOperation } from "./types/Operation";
 import { createDiagnostic, isVoidLike } from "./utils";
 
 import { sc, u } from '@cityofzion/neon-core';
-import { ts, Node, VariableStatement, VariableDeclarationKind, SourceFile, Project, Symbol, VariableDeclaration, Expression, SyntaxKind, BigIntLiteral, NumericLiteral, StringLiteral, FunctionDeclaration, ImportDeclaration, ImportSpecifier, JSDocTag, InterfaceDeclaration, DiagnosticCategory, ParameterDeclaration } from "ts-morph";
+import { ts, Node, VariableStatement, VariableDeclarationKind, SourceFile, Project, Symbol, VariableDeclaration, Expression, SyntaxKind, BigIntLiteral, NumericLiteral, StringLiteral, FunctionDeclaration, ImportDeclaration, ImportSpecifier, JSDocTag, InterfaceDeclaration, DiagnosticCategory, ParameterDeclaration, CallExpression, ExportedDeclarations } from "ts-morph";
 import { flow, pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as RONEA from 'fp-ts/ReadonlyNonEmptyArray';
@@ -12,6 +12,7 @@ import * as O from 'fp-ts/Option'
 import * as SG from "fp-ts/Semigroup";
 import * as S from 'fp-ts/State';
 import { ParserState } from "./compiler";
+import { ReadonlyScope } from "./scope";
 
 type Diagnostic = ts.Diagnostic;
 
@@ -20,21 +21,23 @@ export interface SymbolDef {
 }
 
 export interface ObjectSymbolDef extends SymbolDef {
-    //     // getProp(name: string): Resolver | undefined;
+    parseGet(name: string): E.Either<ParseError, ReadonlyArray<Operation>>
 }
 
 export interface CallableSymbolDef extends ObjectSymbolDef {
-    // parseCall(node: tsm.CallExpression, scope: ReadonlyScope): {
-    //     args: ParseExpressionResult, call: ParseExpressionResult };
+    parseCall(node: CallExpression, scope: ReadonlyScope): E.Either<ParseError, {
+        args: ReadonlyArray<Operation>,
+        call: ReadonlyArray<Operation>,
+    }>
 }
 
-// export function isObjectDef(def: SymbolDef): def is ObjectSymbolDef {
-//     return 'getProp' in def && typeof def.getProp === 'function';
-// }
+export function isObjectDef(def: SymbolDef): def is ObjectSymbolDef {
+    return 'parseGet' in def && typeof def.parseGet === 'function';
+}
 
-// export function isFunctionDef(def: SymbolDef): def is FunctionDeclSymbolDef {
-//     return isObjectDef(def) && 'parseCall' in def && typeof def.parseCall === 'function';
-// }
+export function isCallableDef(def: SymbolDef): def is CallableSymbolDef {
+    return isObjectDef(def) && 'parseCall' in def && typeof def.parseCall === 'function';
+}
 
 export class InterfaceSymbolDef implements SymbolDef {
     constructor(
@@ -49,6 +52,13 @@ export class FunctionSymbolDef implements CallableSymbolDef {
         readonly node: FunctionDeclaration,
         readonly $import: boolean,
     ) { }
+
+    parseCall(node: CallExpression<ts.CallExpression>, scope: ReadonlyScope): E.Either<ParseError, { args: readonly Operation[]; call: readonly Operation[]; }> {
+        throw new Error("Method not implemented.");
+    }
+    parseGet(name: string): E.Either<ParseError, readonly Operation[]> {
+        throw new Error("Method not implemented.");
+    }
 
     static create = ($import: boolean) =>
         (node: FunctionDeclaration, symbol: Symbol) =>
@@ -107,6 +117,13 @@ export class EventSymbolDef implements CallableSymbolDef {
         readonly parameters: ReadonlyArray<ParameterDeclaration>,
     ) { }
 
+    parseCall(node: CallExpression<ts.CallExpression>, scope: ReadonlyScope): E.Either<ParseError, { args: readonly Operation[]; call: readonly Operation[]; }> {
+        throw new Error("Method not implemented.");
+    }
+    parseGet(name: string): E.Either<ParseError, readonly Operation[]> {
+        throw new Error("Method not implemented.");
+    }
+
     // parseCall(node: tsm.CallExpression, scope: ReadonlyScope) {
     //     // NCCS creates an empty array and then APPENDs each notification arg in turn
     //     // However, APPEND is 4x more expensive than PACK and is called once per arg
@@ -126,8 +143,6 @@ export class EventSymbolDef implements CallableSymbolDef {
     //     const call = parseOK([{ kind: 'syscall', name: "System.Runtime.Notify" } as SysCallOperation]);
     //     return { call, args }
     // }
-
-    // getProp(_name: string) { return undefined; }
 }
 
 export class SysCallSymbolDef implements CallableSymbolDef {
@@ -136,13 +151,18 @@ export class SysCallSymbolDef implements CallableSymbolDef {
         readonly name: string,
     ) { }
 
+    parseCall(node: CallExpression<ts.CallExpression>, scope: ReadonlyScope): E.Either<ParseError, { args: readonly Operation[]; call: readonly Operation[]; }> {
+        throw new Error("Method not implemented.");
+    }
+    parseGet(name: string): E.Either<ParseError, readonly Operation[]> {
+        throw new Error("Method not implemented.");
+    }
+
     // parseCall(node: tsm.CallExpression, scope: ReadonlyScope) {
     //     const args = parseCallArguments(scope)(node);
     //     const call = parseOK([{ kind: 'syscall', name: this.name } as SysCallOperation]);
     //     return { call, args }
     // }
-
-    // getProp(_name: string) { return undefined; }
 }
 
 export class MethodTokenSymbolDef implements CallableSymbolDef {
@@ -150,6 +170,13 @@ export class MethodTokenSymbolDef implements CallableSymbolDef {
         readonly symbol: Symbol,
         readonly token: sc.MethodToken
     ) { }
+
+    parseCall(node: CallExpression<ts.CallExpression>, scope: ReadonlyScope): E.Either<ParseError, { args: readonly Operation[]; call: readonly Operation[]; }> {
+        throw new Error("Method not implemented.");
+    }
+    parseGet(name: string): E.Either<ParseError, readonly Operation[]> {
+        throw new Error("Method not implemented.");
+    }
 
     // parseCall(node: tsm.CallExpression, scope: ReadonlyScope) {
     //     const args = parseCallArguments(scope)(node);
@@ -166,6 +193,13 @@ export class OperationsSymbolDef implements CallableSymbolDef {
         readonly operations: ReadonlyArray<Operation>
     ) { }
 
+    parseCall(node: CallExpression<ts.CallExpression>, scope: ReadonlyScope): E.Either<ParseError, { args: readonly Operation[]; call: readonly Operation[]; }> {
+        throw new Error("Method not implemented.");
+    }
+    parseGet(name: string): E.Either<ParseError, readonly Operation[]> {
+        throw new Error("Method not implemented.");
+    }
+
     // parseCall(node: tsm.CallExpression, scope: ReadonlyScope) {
     //     const args = parseCallArguments(scope)(node);
     //     const call = parseOK(this.operations);
@@ -177,7 +211,7 @@ export class OperationsSymbolDef implements CallableSymbolDef {
 
 
 export interface ParseError { message: string, node?: Node }
-export type DiagnosticResult<T> = E.Either<ParseError, T>;
+export type ParseResult<T> = E.Either<ParseError, T>;
 
 export const makeParseError =
     (node?: Node) =>
@@ -189,7 +223,7 @@ export const makeParseError =
         }
 
 export const getResultSemigroup =
-    <T>(sg: SG.Semigroup<T>): SG.Semigroup<DiagnosticResult<T>> => ({
+    <T>(sg: SG.Semigroup<T>): SG.Semigroup<ParseResult<T>> => ({
         concat: (x, y) =>
             pipe(
                 x,
@@ -200,40 +234,33 @@ export const getResultSemigroup =
     });
 
 export const getResultMonoid =
-    <T>(monoid: M.Monoid<T>): M.Monoid<DiagnosticResult<T>> => ({
+    <T>(monoid: M.Monoid<T>): M.Monoid<ParseResult<T>> => ({
         concat: getResultSemigroup(monoid).concat,
         empty: E.right(monoid.empty)
     });
 
 const getSymbol =
     (symbol?: Symbol) =>
-        (node: Node): O.Option<Symbol> =>
-            pipe(
+        (node: Node): O.Option<Symbol> => {
+            return pipe(
                 symbol,
                 O.fromNullable,
-                O.match(
-                    () => pipe(
-                        node.getSymbol(),
-                        O.fromNullable
-                    ),
-                    (s) => O.some(s)
-                )
+                O.alt(() => O.fromNullable(node.getSymbol()))
             );
+        }
 
-const parseSymbol =
+export const parseSymbol =
     (symbol?: Symbol) =>
-        (node: Node): DiagnosticResult<Symbol> =>
-            pipe(
+        (node: Node): ParseResult<Symbol> => {
+            return pipe(
                 node,
                 getSymbol(symbol),
-                O.match(
-                    () => E.left(makeParseError(node)('invalid symbol')),
-                    (s) => E.right(s)
-                )
+                E.fromOption(() => makeParseError(node)('undefined symbol'))
             );
+        }
 
 const parseConstantValue =
-    (node: Expression): DiagnosticResult<ConstantValue> => {
+    (node: Expression): ParseResult<ConstantValue> => {
         switch (node.getKind()) {
             case SyntaxKind.NullKeyword:
                 return E.right(null);
@@ -241,16 +268,20 @@ const parseConstantValue =
                 return E.right(false);
             case SyntaxKind.TrueKeyword:
                 return E.right(true);
-            case SyntaxKind.BigIntLiteral:
-                return E.right((node as BigIntLiteral).getLiteralValue() as bigint);
+            case SyntaxKind.BigIntLiteral: {
+                const literal = (node as BigIntLiteral).getLiteralValue() as bigint;
+                return E.right(literal);
+            }
             case SyntaxKind.NumericLiteral: {
                 const literal = (node as NumericLiteral).getLiteralValue();
                 return Number.isInteger(literal)
                     ? E.right(BigInt(literal))
                     : E.left(makeParseError(node)(`invalid non-integer numeric literal ${literal}`));
             }
-            case SyntaxKind.StringLiteral:
-                return E.right(Buffer.from((node as StringLiteral).getLiteralValue(), 'utf8'));
+            case SyntaxKind.StringLiteral: {
+                const literal = (node as StringLiteral).getLiteralValue();
+                return E.right(Buffer.from(literal, 'utf8'));
+            }
             // case tsm.SyntaxKind.ArrayLiteralExpression: 
             // case tsm.SyntaxKind.ObjectLiteralExpression:
             default:
@@ -260,7 +291,7 @@ const parseConstantValue =
 
 const parseConstVariableDeclaration =
     (symbol?: Symbol) =>
-        (node: VariableDeclaration): DiagnosticResult<SymbolDef> =>
+        (node: VariableDeclaration): ParseResult<SymbolDef> =>
             pipe(
                 node.getInitializer(),
                 O.fromNullable,
@@ -279,7 +310,7 @@ const parseConstVariableDeclaration =
 
 const parseVariableDeclaration =
     (symbol?: Symbol) =>
-        (node: VariableDeclaration): DiagnosticResult<SymbolDef> =>
+        (node: VariableDeclaration): ParseResult<SymbolDef> =>
             pipe(
                 node.getVariableStatement(),
                 E.fromNullable(makeParseError(node)("failed to get DeclarationKind")),
@@ -290,17 +321,18 @@ const parseVariableDeclaration =
             );
 
 const parseVariableStatement =
-    (node: VariableStatement): DiagnosticResult<ReadonlyArray<SymbolDef>> => 
-        pipe(
+    (node: VariableStatement): ParseResult<ReadonlyArray<SymbolDef>> => {
+        return pipe(
             node.getDeclarations(),
             ROA.map(parseVariableDeclaration()),
             ROA.sequence(E.Applicative)
         );
+    }
 
 const regexMethodToken = /\{((?:0x)?[0-9a-fA-F]{40})\} ([_a-zA-Z0-9]+)/
 const parseMethodToken =
     (node: FunctionDeclaration) =>
-        (tag: JSDocTag): DiagnosticResult<sc.MethodToken> => {
+        (tag: JSDocTag): ParseResult<sc.MethodToken> => {
             const comment = tag.getCommentText() ?? "";
             const matches = comment.match(regexMethodToken) ?? [];
             return matches.length === 3
@@ -320,7 +352,7 @@ const parseMethodToken =
 const regexOperation = /(\S+)\s?(\S+)?/
 const $parseOperation =
     (node: Node) =>
-        (comment: string): DiagnosticResult<Operation> => {
+        (comment: string): ParseResult<Operation> => {
             const matches = comment.match(regexOperation) ?? [];
             const error = makeParseError(node)(`invalid operation tag comment "${comment}"`);
             return matches.length === 3
@@ -331,14 +363,9 @@ const $parseOperation =
                 : E.left(error);
         }
 
-interface DeclareFunctionDeclarationOptions {
-    readonly symbol: Symbol,
-    readonly tags: RONEA.ReadonlyNonEmptyArray<JSDocTag>
-}
-
 const parseDeclareFunctionDeclaration =
     (node: FunctionDeclaration) =>
-        ({ symbol, tags }: DeclareFunctionDeclarationOptions): DiagnosticResult<SymbolDef> => {
+        ({ symbol, tags }: { symbol: Symbol, tags: RONEA.ReadonlyNonEmptyArray<JSDocTag> }): ParseResult<SymbolDef> => {
             const makeError = makeParseError(node)
             const head = RONEA.head(tags);
             switch (head.getTagName()) {
@@ -370,7 +397,7 @@ const parseDeclareFunctionDeclaration =
 
 const parseInterfaceDeclaration =
     (symbol?: Symbol) =>
-        (node: InterfaceDeclaration): DiagnosticResult<SymbolDef> =>
+        (node: InterfaceDeclaration): ParseResult<SymbolDef> =>
             pipe(
                 node,
                 parseSymbol(symbol),
@@ -380,7 +407,7 @@ const parseInterfaceDeclaration =
 
 const parseFunctionDeclaration = (symbol?: Symbol) =>
     (create: (node: FunctionDeclaration, symbol: Symbol) => SymbolDef) =>
-        (node: FunctionDeclaration): DiagnosticResult<SymbolDef> =>
+        (node: FunctionDeclaration): ParseResult<SymbolDef> =>
             node.hasDeclareKeyword()
                 ? pipe(
                     node.getJsDocs(),
@@ -398,10 +425,9 @@ const parseFunctionDeclaration = (symbol?: Symbol) =>
                 );
 
 const parseImportSpecifier =
-    ($module: SourceFile) =>
-        (node: ImportSpecifier): DiagnosticResult<SymbolDef> => {
+    (exportMap: ReadonlyMap<string, ExportedDeclarations[]>) =>
+        (node: ImportSpecifier): ParseResult<SymbolDef> => {
             const $makeError = makeParseError(node);
-            const exportMap = $module.getExportedDeclarations();
 
             return pipe(
                 node.getSymbol(),
@@ -413,7 +439,7 @@ const parseImportSpecifier =
                     O.getOrElse(() => symbol),
                     ($symbol) => $symbol.getName(),
                     E.right
-                ) as DiagnosticResult<string>),
+                ) as ParseResult<string>),
                 E.bind('decl', ({ name }) => pipe(exportMap.get(name),
                     E.fromNullable($makeError(`missing export ${name}`)),
                     E.chain(decls => decls.length === 1
@@ -442,20 +468,22 @@ const parseImportSpecifier =
         }
 
 const parseImportDeclaration =
-    (node: ImportDeclaration): DiagnosticResult<ReadonlyArray<SymbolDef>> =>
-        pipe(
+    (node: ImportDeclaration): ParseResult<ReadonlyArray<SymbolDef>> => {
+        return pipe(
             node.getModuleSpecifierSourceFile(),
             E.fromNullable(makeParseError(node)(`getModuleSpecifierSourceFile failed`)),
-            E.bindTo("$module"),
-            E.bind("$imports", () => E.right(node.getNamedImports())),
-            E.chain(({ $module, $imports }) =>
+            E.map(src => src.getExportedDeclarations()),
+            E.bindTo("exportMap"),
+            E.bind("imports", () => E.right(node.getNamedImports())),
+            E.chain(({ exportMap, imports }) =>
                 pipe(
-                    $imports,
-                    ROA.map(parseImportSpecifier($module)),
+                    imports,
+                    ROA.map(parseImportSpecifier(exportMap)),
                     ROA.sequence(E.Applicative),
                 )
             ),
         );
+    }
 
 export const parseSourceFile =
     (src: SourceFile): ParserState<ReadonlyArray<SymbolDef>> =>
@@ -518,7 +546,7 @@ export const parseProjectSymbols =
             const sourceParsers = pipe(
                 prj.getSourceFiles(),
                 ROA.filter(s => !s.isDeclarationFile()),
-                ROA.map(parseSourceFile)
+                ROA.map(parseSourceFile),
             )
 
             return S.sequenceArray(sourceParsers)(diagnostics);

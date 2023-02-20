@@ -28,7 +28,7 @@ export interface Scope extends ReadonlyScope {
     define(def: SymbolDef): void;
 }
 
-export function isScope(scope: ReadonlyScope): scope is Scope {
+export function isWritableScope(scope: ReadonlyScope): scope is Scope {
     return 'define' in scope && typeof scope.define === 'function';
 }
 
@@ -63,7 +63,7 @@ export function isScope(scope: ReadonlyScope): scope is Scope {
 
 
 
-export function $resolve(map: ReadonlyMap<tsm.Symbol, SymbolDef>, symbol?: tsm.Symbol, parent?: ReadonlyScope) {
+const $resolve = (parent?: ReadonlyScope) => (map: ReadonlyMap<tsm.Symbol, SymbolDef>) => (symbol?: tsm.Symbol) => {
     if (!symbol) { return undefined; }
     else {
         const def = map.get(symbol);
@@ -77,12 +77,12 @@ export function $resolve(map: ReadonlyMap<tsm.Symbol, SymbolDef>, symbol?: tsm.S
     }
 }
 
-// function define(map: Map<tsm.Symbol, SymbolDef>, def: SymbolDef) {
-//     if (map.has(def.symbol)) {
-//         throw new Error(`${def.symbol.getName()} already defined in this scope`);
-//     }
-//     map.set(def.symbol, def);
-// }
+const $define = (map: Map<tsm.Symbol, SymbolDef>) => (def: SymbolDef) => {
+    if (map.has(def.symbol)) {
+        throw new Error(`${def.symbol.getName()} already defined in this scope`);
+    }
+    map.set(def.symbol, def);
+}
 
 
 
@@ -113,13 +113,24 @@ export function $resolve(map: ReadonlyMap<tsm.Symbol, SymbolDef>, symbol?: tsm.S
 //     }
 // }
 
+export const createScope = (parentScope?: ReadonlyScope) =>
+    (defs?: ReadonlyArray<SymbolDef>): Scope => {
+        const map = new Map<tsm.Symbol, SymbolDef>((defs ?? []).map(v => [v.symbol, v]));
+        return {
+            parentScope,
+            symbols: map.values(),
+            resolve: $resolve(parentScope)(map),
+            define: $define(map),
+        }
+    }
+
 export const createReadonlyScope = (parentScope?: ReadonlyScope) =>
     (defs: ReadonlyArray<SymbolDef>): ReadonlyScope => {
         const map = new Map<tsm.Symbol, SymbolDef>(defs.map(v => [v.symbol, v]));
         return {
             parentScope,
             symbols: map.values(),
-            resolve: (symbol) => $resolve(map, symbol),
+            resolve: $resolve(parentScope)(map),
         }
     }
 
