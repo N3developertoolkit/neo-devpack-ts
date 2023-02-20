@@ -290,16 +290,11 @@ const parseVariableDeclaration =
             );
 
 const parseVariableStatement =
-    (node: VariableStatement): DiagnosticResult<ReadonlyArray<SymbolDef>> =>
+    (node: VariableStatement): DiagnosticResult<ReadonlyArray<SymbolDef>> => 
         pipe(
             node.getDeclarations(),
-            ROA.map(flow(
-                parseVariableDeclaration(),
-                E.map(ROA.of)
-            )),
-            M.concatAll(
-                getResultMonoid(
-                    ROA.getMonoid<SymbolDef>()))
+            ROA.map(parseVariableDeclaration()),
+            ROA.sequence(E.Applicative)
         );
 
 const regexMethodToken = /\{((?:0x)?[0-9a-fA-F]{40})\} ([_a-zA-Z0-9]+)/
@@ -362,9 +357,8 @@ const parseDeclareFunctionDeclaration =
                             t => t.getCommentText(),
                             E.fromNullable(makeError("missing operation JSDoc tag comment")),
                             E.chain($parseOperation(node)),
-                            E.map(ROA.of),
                         )),
-                        M.concatAll(getResultMonoid(ROA.getMonoid<Operation>())),
+                        ROA.sequence(E.Applicative),
                         E.map(ops => new OperationsSymbolDef(symbol, ops))
                     )
                 case 'syscall':
@@ -457,8 +451,8 @@ const parseImportDeclaration =
             E.chain(({ $module, $imports }) =>
                 pipe(
                     $imports,
-                    ROA.map(flow(parseImportSpecifier($module), E.map(ROA.of))),
-                    M.concatAll(getResultMonoid(ROA.getMonoid<SymbolDef>()))
+                    ROA.map(parseImportSpecifier($module)),
+                    ROA.sequence(E.Applicative),
                 )
             ),
         );
