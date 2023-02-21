@@ -211,8 +211,9 @@ const parseBody =
                 returnTarget: { operation: undefined }
             }
 
-            throw new Error();
-
+            if (tsm.Node.isStatement(body)) {
+            }
+            return E.left(ROA.of(makeParseError(body)(`parseBody ${body.getKindName()} not implemented`)));
         }
 
 export interface ContractMethod {
@@ -225,7 +226,14 @@ export interface ContractMethod {
 const makeContractMethod =
     (def: FunctionSymbolDef) =>
         (parseState: FunctionParserState): E.Either<ReadonlyArray<ParseError>, ContractMethod> => {
-            throw new Error();
+            const method: ContractMethod = {
+                name: def.symbol.getName(),
+                node: def.node,
+                operations: [],
+                variables: [],
+            };
+
+            return E.right(method);
         }
 
 export const parseFunctionDeclaration =
