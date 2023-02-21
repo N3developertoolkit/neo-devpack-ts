@@ -3,21 +3,23 @@ import { ParserState } from "../compiler";
 
 import { flow, pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
+import * as ROM from 'fp-ts/ReadonlyMap';
 import * as RONEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
 import * as M from "fp-ts/Monoid";
 import * as O from 'fp-ts/Option'
 import * as SG from "fp-ts/Semigroup";
 import * as S from 'fp-ts/State';
+import * as fpts from 'fp-ts';
 
 type Diagnostic = tsm.ts.Diagnostic;
-import { ParseResult, FunctionSymbolDef, getResultMonoid, makeParseError, parseSymbol as $parseSymbol, SymbolDef, VariableSymbolDef } from "../symbolDef";
+
+import { FunctionSymbolDef, getResultMonoid, makeParseError, parseSymbol as $parseSymbol, SymbolDef, VariableSymbolDef, ParseError, createDiagnostic } from "../symbolDef";
 import { createReadonlyScope, createScope, isWritableScope, ReadonlyScope } from "../scope";
 import { JumpOperation, Operation } from "../types/Operation";
+import { append } from "fp-ts/lib/Array";
 
-// export interface TargetOffset {
-//     operation: Operation | undefined
-// }
+
 
 // interface FunctionParserModel {
 //     readonly operations: ReadonlyArray<Operation>,
@@ -29,36 +31,21 @@ import { JumpOperation, Operation } from "../types/Operation";
 
 // export type FunctionParserState<T> = S.State<FunctionParserModel, T>;
 
+// type ParseResult<T> = E.Either<ParseError, T>;
+// type ParseResultS<T> = E.Either<RONEA.ReadonlyNonEmptyArray<ParseError>, T>;
 
-export interface ContractMethod {
-    symbol: tsm.Symbol,
-    node: tsm.FunctionDeclaration,
-    operations: ReadonlyArray<Operation>,
-    variables: ReadonlyArray<{ name: string, type: tsm.Type }>,
-}
 
 const parseSymbol = $parseSymbol();
+const concatDiags = (diagnostics: ReadonlyArray<Diagnostic>) =>
+    (errors: ReadonlyArray<ParseError>) => ROA.concat(errors.map(createDiagnostic))(diagnostics);
+const appendDiag = (diagnostics: ReadonlyArray<Diagnostic>) =>
+    (error: ParseError) => ROA.append(createDiagnostic(error))(diagnostics);
 
-function toVariableSymbolDef(index: number, node: tsm.ParameterDeclaration): ParseResult<VariableSymbolDef> {
-    return pipe(
-        node,
-        parseSymbol,
-        E.map(s => new VariableSymbolDef(s, "local", index)));
-}
 
-function getParameters(node: tsm.ParameteredNode) {
-    return ROA.fromArray(node.getParameters());
-}
-
-const getBody = (node: tsm.FunctionDeclaration): ParseResult<tsm.Node> => {
-    return pipe(
-        node.getBody(),
-        E.fromNullable(makeParseError(node)('undefined body')));
-}
 
 function parseBlock(node: tsm.Block, scope: ReadonlyScope) {
     var open = node.getFirstChildByKind(tsm.SyntaxKind.OpenBraceToken);
-//     if (open) builder.emit('noop', open);
+    //     if (open) builder.emit('noop', open);
 
     const blockScope = createScope(scope)([]);
     for (const stmt of node.getStatements()) {
@@ -66,7 +53,7 @@ function parseBlock(node: tsm.Block, scope: ReadonlyScope) {
     }
 
     var close = node.getLastChildByKind(tsm.SyntaxKind.CloseBraceToken);
-//     if (close) builder.emit('noop', close);
+    //     if (close) builder.emit('noop', close);
 }
 
 // export function processVariableStatement(node: tsm.VariableStatement, options: ProcessMethodOptions): void {
@@ -173,7 +160,7 @@ function parseThrowStatement(node: tsm.ThrowStatement, scope: ReadonlyScope) {
     return E.left(makeParseError(node)(`parseThrowStatement not implemented`));
 }
 
-function parseStatement(node: tsm.Statement, scope: ReadonlyScope)  {
+function parseStatement(node: tsm.Statement, scope: ReadonlyScope) {
     if (tsm.Node.isBlock(node)) return parseBlock(node, scope);
     if (tsm.Node.isExpressionStatement(node)) return parseExpressionStatement(node, scope);
     if (tsm.Node.isIfStatement(node)) return parseIfStatement(node, scope);
@@ -183,43 +170,92 @@ function parseStatement(node: tsm.Statement, scope: ReadonlyScope)  {
     return E.left(makeParseError(node)(`parseStatement ${node.getKindName()} not implemented`));
 }
 
-const parseBody = ({ scope, body: node }: {
-    readonly scope: ReadonlyScope;
-    readonly body: tsm.Node<tsm.ts.Node>;
-}) => {
-    if (tsm.Node.isStatement(node)) return parseStatement(node, scope)
-    return E.left(makeParseError(node)(`parseBody ${node.getKindName} not implemented`));
+// const parseBody = ({ scope, body: node }: {
+//     readonly scope: ReadonlyScope;
+//     readonly body: tsm.Node<tsm.ts.Node>;
+// }) => {
+//     if (tsm.Node.isStatement(node)) return parseStatement(node, scope)
+//     return E.left(makeParseError(node)(`parseBody ${node.getKindName} not implemented`));
+// }
+
+
+export interface TargetOffset {
+    operation: Operation | undefined
 }
+
+interface FunctionParserState {
+    readonly operations: ReadonlyArray<Operation>,
+    readonly locals: ReadonlyArray<tsm.VariableDeclaration>;
+    readonly jumpTargets: ReadonlyMap<JumpOperation, TargetOffset>;
+    readonly returnTarget: TargetOffset,
+    readonly diagnostics: ReadonlyArray<tsm.ts.Diagnostic>
+}
+
+// const parseBody =
+//     (scope: ReadonlyScope) =>
+//         (node: tsm.Node): E.Either<ReadonlyArray<ParseError>, FunctionParserState> => {
+//             if (tsm.Node.isStatement(node)) { } //return parseStatement(node, scope)
+//             return E.left([makeParseError(node)(`parseBody ${node.getKindName} not implemented`)]);
+//         }
+
+
+const parseBody =
+    (scope: ReadonlyScope) =>
+        (body: tsm.Node): E.Either<ReadonlyArray<ParseError>, FunctionParserState> => {
+
+            const state: FunctionParserState = {
+                diagnostics: [],
+                jumpTargets: new Map(),
+                locals: [],
+                operations: [],
+                returnTarget: { operation: undefined }
+            }
+
+            throw new Error();
+
+        }
+
+export interface ContractMethod {
+    name: string,
+    node: tsm.FunctionDeclaration,
+    operations: ReadonlyArray<Operation>,
+    variables: ReadonlyArray<{ name: string, type: tsm.Type }>,
+}
+
+const makeContractMethod =
+    (def: FunctionSymbolDef) =>
+        (parseState: FunctionParserState): E.Either<ReadonlyArray<ParseError>, ContractMethod> => {
+            throw new Error();
+        }
 
 export const parseFunctionDeclaration =
     (parentScope: ReadonlyScope) =>
-        (def: FunctionSymbolDef): ParserState<O.Option<ContractMethod>> =>
-            (diagnostics: ReadonlyArray<Diagnostic>) => {
-
-                const q = pipe(
-                    def.node,
-                    getParameters,
-                    ROA.mapWithIndex(toVariableSymbolDef),
-                    ROA.sequence(E.Applicative),
+        (def: FunctionSymbolDef): S.State<ReadonlyArray<Diagnostic>, O.Option<ContractMethod>> =>
+            (diagnostics) => {
+                return pipe(
+                    def.node.getParameters(),
+                    ROA.mapWithIndex((index, node) => pipe(
+                        node,
+                        parseSymbol,
+                        E.map(s => new VariableSymbolDef(s, 'local', index))
+                    )),
+                    ROA.separate,
+                    a => ROA.isEmpty(a.left) ? E.right(a.right) : E.left(a.left),
                     E.map(createReadonlyScope(parentScope)),
-                    E.bindTo("scope"),
-                    E.bind("body", () => getBody(def.node)),
-                    E.chain(parseBody)
-                )
-
-
-                const contractMethod = {
-                    node: def.node,
-                    symbol: def.symbol,
-                    operations: [],
-                    variables: []
-                };
-
-                return [O.some(contractMethod), diagnostics]
+                    E.bindTo('scope'),
+                    E.bind('body', () => pipe(
+                        def.node.getBody(),
+                        E.fromNullable(
+                            ROA.of(makeParseError(def.node)("undefined body")))
+                    )),
+                    E.chain(o => parseBody(o.scope)(o.body)),
+                    E.chain(makeContractMethod(def)),
+                    E.match(
+                        left => [O.none, concatDiags(diagnostics)(left)],
+                        right => [O.some(right), diagnostics]
+                    )
+                );
             }
-
-
-
 
 
 // export const parseSourceFileDefs =

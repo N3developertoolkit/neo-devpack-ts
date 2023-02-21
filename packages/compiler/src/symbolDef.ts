@@ -1,5 +1,5 @@
 import { Operation, parseOperation } from "./types/Operation";
-import { createDiagnostic, isVoidLike } from "./utils";
+import { createDiagnostic as $createDiagnostic,  isVoidLike } from "./utils";
 
 import { sc, u } from '@cityofzion/neon-core';
 import { ts, Node, VariableStatement, VariableDeclarationKind, SourceFile, Project, Symbol, VariableDeclaration, Expression, SyntaxKind, BigIntLiteral, NumericLiteral, StringLiteral, FunctionDeclaration, ImportDeclaration, ImportSpecifier, JSDocTag, InterfaceDeclaration, DiagnosticCategory, ParameterDeclaration, CallExpression, ExportedDeclarations } from "ts-morph";
@@ -15,6 +15,8 @@ import { ParserState } from "./compiler";
 import { ReadonlyScope } from "./scope";
 
 type Diagnostic = ts.Diagnostic;
+
+export const createDiagnostic = (e: ParseError) => $createDiagnostic(e.message, { node: e.node });
 
 export interface SymbolDef {
     readonly symbol: Symbol;
@@ -491,7 +493,7 @@ export const parseSourceFile =
             const diagnosticsSG = ROA.getSemigroup<Diagnostic>();
 
             if (src.isDeclarationFile()) {
-                const diag = createDiagnostic(
+                const diag = $createDiagnostic(
                     `${src.getFilePath()} is a declaration file`,
                     {
                         category: DiagnosticCategory.Warning,
@@ -525,12 +527,12 @@ export const parseSourceFile =
                         return E.right([]);
                     return E.left(makeParseError(node)(`parseSourceFileSymbols ${node.getKindName()}`));
                 }),
-                ROA.partitionMap(q => q)
+                ROA.separate
             );
 
             diagnostics = diagnosticsSG.concat(
                 diagnostics,
-                errors.map(e => createDiagnostic(e.message, { node: e.node }))
+                errors.map(createDiagnostic)
             );
 
             return [
