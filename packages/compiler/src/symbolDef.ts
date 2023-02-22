@@ -12,7 +12,7 @@ import * as O from 'fp-ts/Option'
 import * as SG from "fp-ts/Semigroup";
 import * as S from 'fp-ts/State';
 import { ParserState } from "./compiler";
-import { ReadonlyScope } from "./scope";
+import { Scope } from "./scope";
 
 type Diagnostic = ts.Diagnostic;
 
@@ -27,7 +27,7 @@ export interface ObjectSymbolDef extends SymbolDef {
 }
 
 export interface CallableSymbolDef extends ObjectSymbolDef {
-    parseCall(node: CallExpression, scope: ReadonlyScope): E.Either<ParseError, {
+    parseCall(node: CallExpression, scope: Scope): E.Either<ParseError, {
         args: ReadonlyArray<Operation>,
         call: ReadonlyArray<Operation>,
     }>
@@ -55,7 +55,7 @@ export class FunctionSymbolDef implements CallableSymbolDef {
         readonly $import: boolean,
     ) { }
 
-    parseCall(node: CallExpression<ts.CallExpression>, scope: ReadonlyScope): E.Either<ParseError, { args: readonly Operation[]; call: readonly Operation[]; }> {
+    parseCall(node: CallExpression<ts.CallExpression>, scope: Scope): E.Either<ParseError, { args: readonly Operation[]; call: readonly Operation[]; }> {
         throw new Error("Method not implemented.");
     }
     parseGet(name: string): E.Either<ParseError, readonly Operation[]> {
@@ -119,14 +119,14 @@ export class EventSymbolDef implements CallableSymbolDef {
         readonly parameters: ReadonlyArray<ParameterDeclaration>,
     ) { }
 
-    parseCall(node: CallExpression<ts.CallExpression>, scope: ReadonlyScope): E.Either<ParseError, { args: readonly Operation[]; call: readonly Operation[]; }> {
+    parseCall(node: CallExpression<ts.CallExpression>, scope: Scope): E.Either<ParseError, { args: readonly Operation[]; call: readonly Operation[]; }> {
         throw new Error("Method not implemented.");
     }
     parseGet(name: string): E.Either<ParseError, readonly Operation[]> {
         throw new Error("Method not implemented.");
     }
 
-    // parseCall(node: tsm.CallExpression, scope: ReadonlyScope) {
+    // parseCall(node: tsm.CallExpression, scope: Scope) {
     //     // NCCS creates an empty array and then APPENDs each notification arg in turn
     //     // However, APPEND is 4x more expensive than PACK and is called once per arg
     //     // instead of once per Notify call as PACK is. 
@@ -153,14 +153,14 @@ export class SysCallSymbolDef implements CallableSymbolDef {
         readonly name: string,
     ) { }
 
-    parseCall(node: CallExpression<ts.CallExpression>, scope: ReadonlyScope): E.Either<ParseError, { args: readonly Operation[]; call: readonly Operation[]; }> {
+    parseCall(node: CallExpression<ts.CallExpression>, scope: Scope): E.Either<ParseError, { args: readonly Operation[]; call: readonly Operation[]; }> {
         throw new Error("Method not implemented.");
     }
     parseGet(name: string): E.Either<ParseError, readonly Operation[]> {
         throw new Error("Method not implemented.");
     }
 
-    // parseCall(node: tsm.CallExpression, scope: ReadonlyScope) {
+    // parseCall(node: tsm.CallExpression, scope: Scope) {
     //     const args = parseCallArguments(scope)(node);
     //     const call = parseOK([{ kind: 'syscall', name: this.name } as SysCallOperation]);
     //     return { call, args }
@@ -173,14 +173,14 @@ export class MethodTokenSymbolDef implements CallableSymbolDef {
         readonly token: sc.MethodToken
     ) { }
 
-    parseCall(node: CallExpression<ts.CallExpression>, scope: ReadonlyScope): E.Either<ParseError, { args: readonly Operation[]; call: readonly Operation[]; }> {
+    parseCall(node: CallExpression<ts.CallExpression>, scope: Scope): E.Either<ParseError, { args: readonly Operation[]; call: readonly Operation[]; }> {
         throw new Error("Method not implemented.");
     }
     parseGet(name: string): E.Either<ParseError, readonly Operation[]> {
         throw new Error("Method not implemented.");
     }
 
-    // parseCall(node: tsm.CallExpression, scope: ReadonlyScope) {
+    // parseCall(node: tsm.CallExpression, scope: Scope) {
     //     const args = parseCallArguments(scope)(node);
     //     const call = parseOK([{ kind: 'calltoken', token: this.token } as CallTokenOperation]);
     //     return { call, args }
@@ -195,14 +195,14 @@ export class OperationsSymbolDef implements CallableSymbolDef {
         readonly operations: ReadonlyArray<Operation>
     ) { }
 
-    parseCall(node: CallExpression<ts.CallExpression>, scope: ReadonlyScope): E.Either<ParseError, { args: readonly Operation[]; call: readonly Operation[]; }> {
+    parseCall(node: CallExpression<ts.CallExpression>, scope: Scope): E.Either<ParseError, { args: readonly Operation[]; call: readonly Operation[]; }> {
         throw new Error("Method not implemented.");
     }
     parseGet(name: string): E.Either<ParseError, readonly Operation[]> {
         throw new Error("Method not implemented.");
     }
 
-    // parseCall(node: tsm.CallExpression, scope: ReadonlyScope) {
+    // parseCall(node: tsm.CallExpression, scope: Scope) {
     //     const args = parseCallArguments(scope)(node);
     //     const call = parseOK(this.operations);
     //     return { call, args }

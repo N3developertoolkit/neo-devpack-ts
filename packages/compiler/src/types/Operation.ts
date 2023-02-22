@@ -129,14 +129,31 @@ const jumpOperationKinds = [
 
 export type JumpOperationKind = typeof jumpOperationKinds[number];
 
-export interface JumpOperation extends Operation {
+// during function parsing, it's typically easier to specify the jump target
+// via the target operation instead of via the index offset. However,
+// @operation functions require specifying the index offset. 
+
+export interface JumpOffsetOperation extends Operation {
     readonly kind: JumpOperationKind;
     readonly offset: number;
 }
 
-// export function isJumpOperation(ins: Operation): ins is JumpOperation {
-//     return jumpOperationKinds.includes(ins.kind as JumpOperationKind);
-// }
+export interface JumpTargetOperation extends Operation {
+    readonly kind: JumpOperationKind;
+    readonly target: Operation;
+}
+
+export function isJumpOffsetOperation(ins: Operation): ins is JumpOffsetOperation {
+    return jumpOperationKinds.includes(ins.kind as JumpOperationKind)
+        && 'offset' in ins 
+        && typeof ins.offset === 'number';
+}
+
+export function isJumpTargetOperation(ins: Operation): ins is JumpTargetOperation {
+    return jumpOperationKinds.includes(ins.kind as JumpOperationKind)
+        && 'target' in ins 
+        && typeof ins.target === 'object';
+}
 
 const loadStoreOperationKinds = [
     'loadarg', 'storearg', 'loadlocal', 'storelocal', 'loadstatic', 'storestatic'
@@ -156,7 +173,7 @@ export interface LoadStoreOperation extends Operation {
 export function parseOperation(kind: string, operand: string | undefined): Operation | undefined {
     if (jumpOperationKinds.includes(kind as JumpOperationKind)) {
         if (!operand) throw new Error(`${kind} missing jump offset operand`);
-        return { kind: kind as JumpOperationKind, offset: parseInt(operand) } as JumpOperation;
+        return { kind: kind as JumpOperationKind, offset: parseInt(operand) } as JumpOffsetOperation;
     }
 
     switch (kind) {

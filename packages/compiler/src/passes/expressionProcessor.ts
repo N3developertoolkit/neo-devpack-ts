@@ -1,14 +1,24 @@
-// import * as tsm from "ts-morph";
+import * as tsm from "ts-morph";
 // import { SyntaxKind } from "ts-morph";
 // import { ConstantSymbolDef, FunctionSymbolDef, isFunctionDef, ReadonlyScope, SymbolDef, VariableSymbolDef } from "../symbolDef";
 // import { Operation, OperationKind } from "../types/Operation";
 // import { createDiagnostic } from "../utils";
 // import { ProcessMethodOptions } from "./processFunctionDeclarations";
-// import * as E from "fp-ts/Either";
-// import * as ROA from 'fp-ts/ReadonlyArray';
-// import { flow, pipe } from 'fp-ts/function'
-// import * as M from "fp-ts/Monoid";
-// import * as O from 'fp-ts/Option'
+import { flow, pipe } from 'fp-ts/function';
+import * as ROA from 'fp-ts/ReadonlyArray';
+import * as ROM from 'fp-ts/ReadonlyMap';
+import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
+import * as E from "fp-ts/Either";
+import * as M from "fp-ts/Monoid";
+import * as O from 'fp-ts/Option'
+import * as SG from "fp-ts/Semigroup";
+import * as S from 'fp-ts/State';
+import * as FP from 'fp-ts';
+import * as SEP from 'fp-ts/Separated';
+import { Operation } from "../types/Operation";
+import { Scope } from "../scope";
+import { ParseError } from "../symbolDef";
+
 
 // // TODO: remove once we've changed the rest of the code to use parseExpression
 // export function processExpression(node: tsm.Expression, { builder, diagnostics, scope }: ProcessMethodOptions) {
@@ -84,6 +94,15 @@
 // //     [TKind in tsm.SyntaxKind]?: (node: tsm.KindToNodeMappings[TKind], options: TOptions) => TReturn;
 // // };
 
+type ExpressionParseState = S.State<ReadonlyArray<ParseError>, ReadonlyArray<Operation>>
+
+
+export const parseExpression =
+    (scope: Scope) =>
+        (node: tsm.Expression): ExpressionParseState =>
+            (state) => {
+                throw new Error();
+            }
 // export const parseExpression = (scope: ReadonlyScope) => (node: tsm.Expression): ParseExpressionResult => {
 //     const $parseExpression = parseExpression(scope);
 
