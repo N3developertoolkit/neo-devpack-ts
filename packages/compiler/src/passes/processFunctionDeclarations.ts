@@ -4,7 +4,7 @@ import { ParserState } from "../compiler";
 import { flow, pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as ROM from 'fp-ts/ReadonlyMap';
-import * as RONEA from 'fp-ts/ReadonlyNonEmptyArray';
+import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
 import * as M from "fp-ts/Monoid";
 import * as O from 'fp-ts/Option'
@@ -17,31 +17,15 @@ type Diagnostic = tsm.ts.Diagnostic;
 import { FunctionSymbolDef, getResultMonoid, makeParseError, parseSymbol as $parseSymbol, SymbolDef, VariableSymbolDef, ParseError, createDiagnostic } from "../symbolDef";
 import { createReadonlyScope, createScope, isWritableScope, ReadonlyScope } from "../scope";
 import { JumpOperation, Operation } from "../types/Operation";
-import { append } from "fp-ts/lib/Array";
-
-
-
-// interface FunctionParserModel {
-//     readonly operations: ReadonlyArray<Operation>,
-//     readonly locals: ReadonlyArray<tsm.VariableDeclaration>;
-//     readonly jumpTargets: ReadonlyMap<JumpOperation, TargetOffset>;
-//     readonly returnTarget: TargetOffset,
-//     readonly diagnostics: ReadonlyArray<tsm.ts.Diagnostic>
-// }
-
-// export type FunctionParserState<T> = S.State<FunctionParserModel, T>;
-
-// type ParseResult<T> = E.Either<ParseError, T>;
-// type ParseResultS<T> = E.Either<RONEA.ReadonlyNonEmptyArray<ParseError>, T>;
-
+import { setAll } from "@cityofzion/neon-core/lib/logging";
 
 const parseSymbol = $parseSymbol();
 const concatDiags = (diagnostics: ReadonlyArray<Diagnostic>) =>
-    (errors: ReadonlyArray<ParseError>) => ROA.concat(errors.map(createDiagnostic))(diagnostics);
+    (errors: ReadonlyArray<ParseError>) =>
+        ROA.concat(ROA.map(createDiagnostic)(errors))(diagnostics);
 const appendDiag = (diagnostics: ReadonlyArray<Diagnostic>) =>
-    (error: ParseError) => ROA.append(createDiagnostic(error))(diagnostics);
-
-
+    (error: ParseError) =>
+        ROA.append(createDiagnostic(error))(diagnostics);
 
 function parseBlock(node: tsm.Block, scope: ReadonlyScope) {
     var open = node.getFirstChildByKind(tsm.SyntaxKind.OpenBraceToken);
@@ -191,6 +175,20 @@ interface FunctionParserState {
     readonly diagnostics: ReadonlyArray<tsm.ts.Diagnostic>
 }
 
+
+interface FunctionParseContext {
+    readonly locals: ReadonlyArray<tsm.VariableDeclaration>;
+    readonly returnTarget: TargetOffset;
+    readonly errors: ReadonlyArray<ParseError>
+}
+
+interface FunctionParseResult {
+    readonly operations: ReadonlyArray<Operation>,
+    readonly jumpTargets: ReadonlyMap<JumpOperation, TargetOffset>;
+
+}
+
+
 // const parseBody =
 //     (scope: ReadonlyScope) =>
 //         (node: tsm.Node): E.Either<ReadonlyArray<ParseError>, FunctionParserState> => {
@@ -224,43 +222,53 @@ export interface ContractMethod {
 }
 
 const makeContractMethod =
-    (def: FunctionSymbolDef) =>
+    (node: tsm.FunctionDeclaration) =>
         (parseState: FunctionParserState): E.Either<ReadonlyArray<ParseError>, ContractMethod> => {
-            const method: ContractMethod = {
-                name: def.symbol.getName(),
-                node: def.node,
-                operations: [],
-                variables: [],
-            };
 
-            return E.right(method);
+            return pipe(
+                node,
+                parseSymbol,
+                E.map(symbol => ({
+                    name: symbol.getName(),
+                    node,
+                    operations: [],
+                    variables: [],
+                } as ContractMethod)),
+                E.mapLeft(ROA.of)
+            );
         }
 
 export const parseFunctionDeclaration =
     (parentScope: ReadonlyScope) =>
-        (def: FunctionSymbolDef): S.State<ReadonlyArray<Diagnostic>, O.Option<ContractMethod>> =>
+        (node: tsm.FunctionDeclaration): S.State<ReadonlyArray<Diagnostic>, ContractMethod> =>
             (diagnostics) => {
                 return pipe(
-                    def.node.getParameters(),
+                    node.getParameters(),
                     ROA.mapWithIndex((index, node) => pipe(
                         node,
                         parseSymbol,
                         E.map(s => new VariableSymbolDef(s, 'local', index))
                     )),
                     ROA.separate,
-                    a => ROA.isEmpty(a.left) ? E.right(a.right) : E.left(a.left),
+                    s => ROA.isNonEmpty(s.left) ? E.left(s.left) : E.of(s.right),
                     E.map(createReadonlyScope(parentScope)),
                     E.bindTo('scope'),
                     E.bind('body', () => pipe(
-                        def.node.getBody(),
+                        node.getBody(),
                         E.fromNullable(
-                            ROA.of(makeParseError(def.node)("undefined body")))
+                            ROA.of(
+                                makeParseError(node)("undefined body")
+                            )
+                        )
                     )),
-                    E.chain(o => parseBody(o.scope)(o.body)),
-                    E.chain(makeContractMethod(def)),
+                    E.chain((o) => parseBody(o.scope)(o.body)),
+                    E.chain(makeContractMethod(node)),
                     E.match(
-                        left => [O.none, concatDiags(diagnostics)(left)],
-                        right => [O.some(right), diagnostics]
+                        left => [
+                            { node, name: "", operations: [], variables: [] },
+                            concatDiags(diagnostics)(left)
+                        ],
+                        right => [right, diagnostics]
                     )
                 );
             }
