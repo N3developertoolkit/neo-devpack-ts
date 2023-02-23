@@ -127,13 +127,8 @@ const parseVariableDeclarations =
 const parseVariableStatement =
     (node: tsm.VariableStatement): StatementParseState =>
         (state) => {
-
             const declarations = node.getDeclarations();
-            const declKind = node.getDeclarationKind();
-            return declKind === tsm.VariableDeclarationKind.Const
-                // return parseConstVariableDeclarations(declarations)(state);
-                ? appendError(makeParseError(node)(`parseVariableStatement ${declKind}not implemented`))(state)
-                : parseVariableDeclarations(declarations)(state);
+            return parseVariableDeclarations(declarations)(state);
         }
 
 const parseExpressionStatement =
