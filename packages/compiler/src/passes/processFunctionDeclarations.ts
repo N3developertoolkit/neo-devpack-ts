@@ -43,7 +43,10 @@ const updateLocation =
                 : ops;
 
 
-const opsMonoid = ROA.getMonoid<Operation>();
+const opsMonoid = {
+    ...ROA.getMonoid<Operation>(),
+    append: (ops: ReadonlyArray<Operation>) => (op: Operation) => ROA.append(op)(ops)
+}
 
 const parseBlock =
     (node: tsm.Block): StatementParseState =>
@@ -78,7 +81,6 @@ const parseBlock =
 //         (state) => {
 //             throw new Error();
 //         }
-
 
 const parseVariableDeclarations =
     (declarations: ReadonlyArray<tsm.VariableDeclaration>): StatementParseState =>
@@ -128,12 +130,10 @@ const parseVariableStatement =
 
             const declarations = node.getDeclarations();
             const declKind = node.getDeclarationKind();
-            if (declKind === tsm.VariableDeclarationKind.Const) {
+            return declKind === tsm.VariableDeclarationKind.Const
                 // return parseConstVariableDeclarations(declarations)(state);
-                return appendError(makeParseError(node)(`parseVariableStatement ${declKind}not implemented`))(state);
-            } else {
-                return parseVariableDeclarations(declarations)(state);
-            }
+                ? appendError(makeParseError(node)(`parseVariableStatement ${declKind}not implemented`))(state)
+                : parseVariableDeclarations(declarations)(state);
         }
 
 const parseExpressionStatement =
@@ -160,7 +160,7 @@ const parseExpressionStatement =
 //     if (closeParen) setLocation(node, closeParen);
 //     else setLocation(expr);
 //     builder.emitJump('jumpifnot', elseTarget);
-//     const $then = node.getThenStatement();
+//     const $then = ;
 //     const $else = node.getElseStatement();
 //     processStatement($then, options);
 //     if ($else) {
@@ -177,36 +177,60 @@ const parseExpressionStatement =
 const parseIfStatement =
     (node: tsm.IfStatement): StatementParseState =>
         (state) => {
-            const qExpr = parseExpression(node.getExpression())(state);
-            const qThen = parseStatement(node.getThenStatement())(state);
-            const qElse = pipe(
-                node.getElseStatement(),
-                O.fromNullable,
-                O.map(s => parseStatement(s)(state))
-            );
-            throw new Error();
+            const expr = node.getExpression();
+
+            let operations: ReadonlyArray<Operation>;
+            [operations, state] = parseExpression(expr)(state);
+            const closeParen = node.getLastChildByKind(tsm.SyntaxKind.CloseParenToken);
+            operations = updateLocation(closeParen ? { start: node, end: closeParen } : expr)(operations);
+
+            let $thenOps: ReadonlyArray<Operation>;
+            [$thenOps, state] = parseStatement(node.getThenStatement())(state);
+            const thenOps = opsMonoid.append($thenOps)({ kind: 'noop' });
+
+            const $else = node.getElseStatement();
+            if ($else) {
+                const elseJumpOp: JumpTargetOperation = { 'kind': "jumpifnot", target: RNEA.last(thenOps) };
+
+                let $elseOps: ReadonlyArray<Operation>;
+                [$elseOps, state] = parseStatement(node.getThenStatement())(state);
+                const elseOps = opsMonoid.append($elseOps)({ kind: 'noop' });
+                const endJumpOp:  JumpTargetOperation = { 'kind': "jump", target: RNEA.last(elseOps) };
+
+                operations = opsMonoid.append(operations)(elseJumpOp);
+                operations = opsMonoid.concat(operations, thenOps);
+                operations = opsMonoid.append(operations)(endJumpOp);
+                operations = opsMonoid.concat(operations, elseOps);
+            } else {
+                const jumpOp: JumpTargetOperation = { 'kind': "jumpifnot", target: RNEA.last(thenOps) };
+
+                operations = opsMonoid.append(operations)(jumpOp);
+                operations = opsMonoid.concat(operations, thenOps);
+            }
+
+            return [operations, state];
         }
 
 const parseReturnStatement =
     (node: tsm.ReturnStatement): StatementParseState =>
         (state) => {
-            let ops = opsMonoid.empty;
+            let operations = opsMonoid.empty;
             const expr = node.getExpression();
             if (expr) {
-                [ops, state] = parseExpression(expr)(state);
+                [operations, state] = parseExpression(expr)(state);
             }
             const op: JumpTargetOperation = { kind: 'jump', target: returnOp };
-            ops = ROA.append<Operation>(op)(ops);
-            return [updateLocation(node)(ops), state]
+            operations = opsMonoid.append(operations)(op);
+            return [updateLocation(node)(operations), state]
         }
 
 const parseThrowStatement =
     (node: tsm.ThrowStatement): StatementParseState =>
         (state) => {
-            let ops = opsMonoid.empty;
-            [ops, state] = parseExpression(node.getExpression())(state)
-            ops = ROA.append<Operation>({ kind: 'throw' })(ops);
-            return [updateLocation(node)(ops), state]
+            let operations: ReadonlyArray<Operation>;
+            [operations, state] = parseExpression(node.getExpression())(state)
+            operations = opsMonoid.append(operations)({ kind: 'throw' });
+            return [updateLocation(node)(operations), state]
         }
 
 // Sentinel returnTarget 
