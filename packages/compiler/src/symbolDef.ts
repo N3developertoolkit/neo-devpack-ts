@@ -22,8 +22,21 @@ export interface SymbolDef {
     readonly symbol: Symbol;
 }
 
+export interface LoadSymbolDef extends SymbolDef {
+    readonly loadOperations: ReadonlyArray<Operation>
+}
+
+export function isLoadableDef(def: SymbolDef): def is LoadSymbolDef {
+    return 'loadOperations' in def;
+}
+
+
 export interface ObjectSymbolDef extends SymbolDef {
     parseGet(name: string): E.Either<ParseError, ReadonlyArray<Operation>>
+}
+
+export function isObjectDef(def: SymbolDef): def is ObjectSymbolDef {
+    return 'parseGet' in def && typeof def.parseGet === 'function';
 }
 
 export interface CallableSymbolDef extends ObjectSymbolDef {
@@ -33,9 +46,6 @@ export interface CallableSymbolDef extends ObjectSymbolDef {
     }>
 }
 
-export function isObjectDef(def: SymbolDef): def is ObjectSymbolDef {
-    return 'parseGet' in def && typeof def.parseGet === 'function';
-}
 
 export function isCallableDef(def: SymbolDef): def is CallableSymbolDef {
     return isObjectDef(def) && 'parseCall' in def && typeof def.parseCall === 'function';
@@ -69,7 +79,7 @@ export class FunctionSymbolDef implements CallableSymbolDef {
 
 type ConstantValue = bigint | boolean | Uint8Array | null;
 
-export class ConstantSymbolDef implements SymbolDef {
+export class ConstantSymbolDef implements LoadSymbolDef {
     constructor(
         readonly symbol: Symbol,
         readonly value: ConstantValue
@@ -89,7 +99,7 @@ export class ConstantSymbolDef implements SymbolDef {
     }
 }
 
-export class VariableSymbolDef implements SymbolDef {
+export class VariableSymbolDef implements LoadSymbolDef {
     constructor(
         readonly symbol: Symbol,
         readonly kind: 'arg' | 'local' | 'static',

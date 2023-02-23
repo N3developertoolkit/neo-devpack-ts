@@ -16,7 +16,7 @@ import * as FP from 'fp-ts';
 import * as SEP from 'fp-ts/Separated';
 import { Operation, OperationKind, PushBoolOperation, PushDataOperation, PushIntOperation } from "../types/Operation";
 import { resolve, Scope } from "../scope";
-import { ConstantSymbolDef, makeParseError, ParseError, VariableSymbolDef } from "../symbolDef";
+import { ConstantSymbolDef, isLoadableDef, makeParseError, ParseError, VariableSymbolDef } from "../symbolDef";
 import { fail } from "assert";
 
 
@@ -256,9 +256,7 @@ export const parseIdentifier =
                 const symbolDef = resolve(scope)(symbol);
                 if (O.isNone(symbolDef)) 
                     return failState(node)(`unresolved symbol ${symbol.getName()}`)(state);
-                if (symbolDef.value instanceof ConstantSymbolDef)
-                    return [symbolDef.value.loadOperations, state];
-                if (symbolDef.value instanceof VariableSymbolDef)
+                if (isLoadableDef(symbolDef.value)) 
                     return [symbolDef.value.loadOperations, state];
                 return failState(node)(`unknown symboldef ${symbol.getName()}`)(state);
             }
