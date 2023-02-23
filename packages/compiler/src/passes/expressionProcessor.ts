@@ -1,5 +1,4 @@
 import * as tsm from "ts-morph";
-// import { SyntaxKind } from "ts-morph";
 // import { ConstantSymbolDef, FunctionSymbolDef, isFunctionDef, ReadonlyScope, SymbolDef, VariableSymbolDef } from "../symbolDef";
 // import { Operation, OperationKind } from "../types/Operation";
 // import { createDiagnostic } from "../utils";
@@ -15,9 +14,10 @@ import * as SG from "fp-ts/Semigroup";
 import * as S from 'fp-ts/State';
 import * as FP from 'fp-ts';
 import * as SEP from 'fp-ts/Separated';
-import { Operation, PushBoolOperation, PushDataOperation, PushIntOperation } from "../types/Operation";
-import { Scope } from "../scope";
-import { makeParseError, ParseError } from "../symbolDef";
+import { Operation, OperationKind, PushBoolOperation, PushDataOperation, PushIntOperation } from "../types/Operation";
+import { resolve, Scope } from "../scope";
+import { ConstantSymbolDef, makeParseError, ParseError, VariableSymbolDef } from "../symbolDef";
+import { fail } from "assert";
 
 
 // // TODO: remove once we've changed the rest of the code to use parseExpression
@@ -106,50 +106,38 @@ export const parseExpression =
     (scope: Scope) =>
         (node: tsm.Expression): ExpressionParseState =>
             (state) => {
-                // if (tsm.Node.isArrayLiteralExpression(node)) return parseArrayLiteral(node, scope);
+                if (tsm.Node.isArrayLiteralExpression(node)) return parseArrayLiteral(scope)(node)(state);
                 if (tsm.Node.isAsExpression(node)) return parseExpression(scope)(node.getExpression())(state);
                 if (tsm.Node.isBigIntLiteral(node)) return parseBigIntLiteral(node)(state);
-                // if (tsm.Node.isBinaryExpression(node)) return parseBinaryExpression(node, scope);
+                if (tsm.Node.isBinaryExpression(node)) return parseBinaryExpression(scope)(node)(state);
                 // if (tsm.Node.isCallExpression(node)) return parseCallExpression(node, scope);
                 if (tsm.Node.isFalseLiteral(node)) return parseBooleanLiteral(node)(state);
-                // if (tsm.Node.isIdentifier(node)) return parseIdentifier(node, scope);
+                if (tsm.Node.isIdentifier(node)) return parseIdentifier(scope)(node)(state);
                 if (tsm.Node.isNonNullExpression(node)) return parseExpression(scope)(node.getExpression())(state);
                 if (tsm.Node.isNullLiteral(node)) return parseNullLiteral(node)(state);
                 if (tsm.Node.isNumericLiteral(node)) return parseNumericLiteral(node)(state);
                 if (tsm.Node.isParenthesizedExpression(node)) return parseExpression(scope)(node.getExpression())(state);
-                // if (tsm.Node.isPrefixUnaryExpression(node)) return parsePrefixUnaryExpression(node, scope);
+                if (tsm.Node.isPrefixUnaryExpression(node)) return parsePrefixUnaryExpression(scope)(node)(state);
                 // if (tsm.Node.isPropertyAccessExpression(node)) return parsePropertyAccessExpression(node, scope);
                 if (tsm.Node.isStringLiteral(node)) return parseStringLiteral(node)(state);
                 if (tsm.Node.isTrueLiteral(node)) return parseBooleanLiteral(node)(state);
                 return failState(node)(`parseExpression ${node.getKindName()}`)(state);
             }
-// export const parseExpression = (scope: ReadonlyScope) => (node: tsm.Expression): ParseExpressionResult => {
-//     const $parseExpression = parseExpression(scope);
 
-//     try {
-//         // TODO can/should this be more functional?
-//         if (tsm.Node.isArrayLiteralExpression(node)) return parseArrayLiteral(node, scope);
-//         if (tsm.Node.isAsExpression(node)) return $parseExpression(node.getExpression());
-//         if (tsm.Node.isBigIntLiteral(node)) return opToArray(parseBigIntLiteral(node));
-//         if (tsm.Node.isBinaryExpression(node)) return parseBinaryExpression(node, scope);
-//         if (tsm.Node.isCallExpression(node)) return parseCallExpression(node, scope);
-//         if (tsm.Node.isFalseLiteral(node)) return opToArray(parseBooleanLiteral(node));
-//         if (tsm.Node.isIdentifier(node)) return parseIdentifier(node, scope);
-//         if (tsm.Node.isNonNullExpression(node)) return $parseExpression(node.getExpression());
-//         if (tsm.Node.isNullLiteral(node)) return opToArray(parseNullLiteral(node));
-//         if (tsm.Node.isNumericLiteral(node)) return opToArray(parseNumericLiteral(node));
-//         if (tsm.Node.isParenthesizedExpression(node)) return $parseExpression(node.getExpression());
-//         if (tsm.Node.isPrefixUnaryExpression(node)) return parsePrefixUnaryExpression(node, scope);
-//         if (tsm.Node.isPropertyAccessExpression(node)) return parsePropertyAccessExpression(node, scope);
-//         if (tsm.Node.isStringLiteral(node)) return opToArray(parseStringLiteral(node));
-//         if (tsm.Node.isTrueLiteral(node)) return opToArray(parseBooleanLiteral(node));
-//         return error(`parseExpression ${node.getKindName()}`, node);
-//     } catch ($error) {
-//         const message = $error instanceof Error ? $error.message : String($error);
-//         return error(message, node);
-//     }
-// }
+export const parseArrayLiteral =
+    (scope: Scope) =>
+        (node: tsm.ArrayLiteralExpression): ExpressionParseState =>
+            (state) => {
 
+                const monoid = ROA.getMonoid<Operation>();
+                let operations = monoid.empty;
+                for (const e of node.getElements()) {
+                    let ops = monoid.empty;
+                    [ops, state] = parseExpression(scope)(e)(state);
+                    operations = monoid.concat(operations, ops);
+                }
+                return [operations, state];
+            }
 // export function parseArrayLiteral(node: tsm.ArrayLiteralExpression, scope: ReadonlyScope): ParseExpressionResult {
 //     const $parseExpression = parseExpression(scope);
 //     const elements = node.getElements();
@@ -172,39 +160,39 @@ export const parseBigIntLiteral =
             return [[op], state];
         }
 
+const binaryOpTokenMap: ReadonlyMap<tsm.SyntaxKind, OperationKind> = new Map([
+    [tsm.SyntaxKind.AsteriskAsteriskToken, 'power'],
+    [tsm.SyntaxKind.AsteriskToken, 'multiply'],
+    [tsm.SyntaxKind.EqualsEqualsEqualsToken, 'equal'], // TODO: Should == and === be the same?
+    [tsm.SyntaxKind.EqualsEqualsToken, 'equal'],
+    [tsm.SyntaxKind.ExclamationEqualsToken, 'notequal'], // TODO: Should != and !== be the same?
+    [tsm.SyntaxKind.ExclamationEqualsEqualsToken, 'notequal'],
+    [tsm.SyntaxKind.GreaterThanEqualsToken, 'greaterthanorequal'],
+    [tsm.SyntaxKind.GreaterThanToken, 'greaterthan'],
+    [tsm.SyntaxKind.LessThanEqualsToken, 'lessthanorequal'],
+    [tsm.SyntaxKind.LessThanToken, 'lessthan'],
+    [tsm.SyntaxKind.PlusToken, 'add']
+]);
 
+export const parseBinaryExpression =
+    (scope: Scope) =>
+        (node: tsm.BinaryExpression): ExpressionParseState =>
+            (state) => {
+                const opToken = node.getOperatorToken();
+                const opKind = binaryOpTokenMap.get(opToken.getKind());
+                if (!opKind) {
+                    return failState(node)(`parseBinaryExpression ${opToken.getKindName()}`)(state);
+                }
 
-// const binaryOpTokenMap: ReadonlyMap<SyntaxKind, OperationKind> = new Map([
-//     [SyntaxKind.AsteriskAsteriskToken, 'power'],
-//     [SyntaxKind.AsteriskToken, 'multiply'],
-//     [SyntaxKind.EqualsEqualsEqualsToken, 'equal'], // TODO: Should == and === be the same?
-//     [SyntaxKind.EqualsEqualsToken, 'equal'],
-//     [SyntaxKind.ExclamationEqualsToken, 'notequal'], // TODO: Should != and !== be the same?
-//     [SyntaxKind.ExclamationEqualsEqualsToken, 'notequal'],
-//     [SyntaxKind.GreaterThanEqualsToken, 'greaterthanorequal'],
-//     [SyntaxKind.GreaterThanToken, 'greaterthan'],
-//     [SyntaxKind.LessThanEqualsToken, 'lessthanorequal'],
-//     [SyntaxKind.LessThanToken, 'lessthan'],
-//     [SyntaxKind.PlusToken, 'add']
-// ]);
+                const left = parseExpression(scope)(node.getLeft())(state);
+                const right = parseExpression(scope)(node.getRight())(left[1]);
+                state = right[1];
 
-// export function parseBinaryOperatorToken(node: tsm.Node<tsm.ts.BinaryOperatorToken>): DiagnosticResult<Operation> {
-//     const kind = binaryOpTokenMap.get(node.getKind());
-//     return kind
-//         ? ok({ kind })
-//         : error(`parseBinaryOperatorToken ${node.getKindName()}`, node);
-// }
+                const monoid = ROA.getMonoid<Operation>();
+                const operations = monoid.concat(left[0], right[0]).concat([{ kind: opKind }]);
 
-// export function parseBinaryExpression(node: tsm.BinaryExpression, scope: ReadonlyScope): ParseExpressionResult {
-//     const $parseExpression = parseExpression(scope);
-
-//     // TODO IMPROVE
-//     return concatPERs([
-//         pipe(node.getLeft(), $parseExpression),
-//         pipe(node.getRight(), $parseExpression),
-//         pipe(node.getOperatorToken(), parseBinaryOperatorToken, opToArray)
-//     ]);
-// }
+                return [operations, state];
+            }
 
 export const parseBooleanLiteral =
     (node: tsm.FalseLiteral | tsm.TrueLiteral): ExpressionParseState =>
@@ -259,6 +247,22 @@ export const parseBooleanLiteral =
 //     );
 // }
 
+export const parseIdentifier =
+    (scope: Scope) =>
+        (node: tsm.Identifier): ExpressionParseState =>
+            (state) => {
+                const symbol = node.getSymbol();
+                if (!symbol) return failState(node)('undefined symbol')(state);
+                const symbolDef = resolve(scope)(symbol);
+                if (O.isNone(symbolDef)) 
+                    return failState(node)(`unresolved symbol ${symbol.getName()}`)(state);
+                if (symbolDef.value instanceof ConstantSymbolDef)
+                    return [symbolDef.value.loadOperations, state];
+                if (symbolDef.value instanceof VariableSymbolDef)
+                    return [symbolDef.value.loadOperations, state];
+                return failState(node)(`unknown symboldef ${symbol.getName()}`)(state);
+            }
+
 export const parseNullLiteral =
     (node: tsm.NullLiteral): ExpressionParseState =>
         (state) => {
@@ -278,24 +282,30 @@ export const parseNumericLiteral =
             return failState(node)(`invalid non-integer numeric literal ${value}`)(state);
         }
 
-// const prefixUnaryOperatorMap: ReadonlyMap<SyntaxKind, OperationKind> = new Map([
-//     [SyntaxKind.ExclamationToken, 'not'],
-//     [SyntaxKind.MinusToken, 'negate']
-// ]);
+const prefixUnaryOperatorMap: ReadonlyMap<tsm.SyntaxKind, OperationKind> = new Map([
+    [tsm.SyntaxKind.ExclamationToken, 'not'],
+    [tsm.SyntaxKind.MinusToken, 'negate']
+]);
 
-// export function parsePrefixUnaryOperator(token: tsm.ts.PrefixUnaryOperator): DiagnosticResult<Operation> {
-//     const kind = prefixUnaryOperatorMap.get(token);
-//     return kind
-//         ? ok({ kind })
-//         : error(`parsePrefixUnaryOperator ${tsm.ts.SyntaxKind[token]}`)
-// }
+export const parsePrefixUnaryExpression = (scope: Scope) =>
+    (node: tsm.PrefixUnaryExpression): ExpressionParseState =>
+        (state) => {
 
-// export function parsePrefixUnaryExpression(node: tsm.PrefixUnaryExpression, scope: ReadonlyScope): ParseExpressionResult {
-//     const $parseExpression = parseExpression(scope);
-//     return concatPERs([
-//         pipe(node.getOperand(), $parseExpression),
-//         pipe(node.getOperatorToken(), parsePrefixUnaryOperator, opToArray)]);
-// }
+            const opToken = node.getOperatorToken();
+            const opKind = binaryOpTokenMap.get(opToken);
+            if (!opKind) {
+                return failState(node)(`parsePrefixUnaryExpression ${tsm.SyntaxKind[opToken]}`)(state);
+            }
+
+            const operand = parseExpression(scope)(node.getOperand())(state);
+
+            const monoid = ROA.getMonoid<Operation>();
+            const operations = monoid.concat(operand[0], [{ kind: opKind }]);
+            state = operand[1];
+
+            return [operations, state];
+        }
+
 
 // export function parsePropertyAccessExpression(node: tsm.PropertyAccessExpression, scope: ReadonlyScope): ParseExpressionResult {
 //     return error('parsePropertyAccessExpression not impl', node);

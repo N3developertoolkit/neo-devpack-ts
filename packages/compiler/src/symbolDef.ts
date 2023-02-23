@@ -1,5 +1,5 @@
-import { Operation, parseOperation } from "./types/Operation";
-import { createDiagnostic as $createDiagnostic,  isVoidLike } from "./utils";
+import { LoadStoreOperation, Operation, parseOperation, PushBoolOperation, PushDataOperation, PushIntOperation } from "./types/Operation";
+import { createDiagnostic as $createDiagnostic, isVoidLike } from "./utils";
 
 import { sc, u } from '@cityofzion/neon-core';
 import { ts, Node, VariableStatement, VariableDeclarationKind, SourceFile, Project, Symbol, VariableDeclaration, Expression, SyntaxKind, BigIntLiteral, NumericLiteral, StringLiteral, FunctionDeclaration, ImportDeclaration, ImportSpecifier, JSDocTag, InterfaceDeclaration, DiagnosticCategory, ParameterDeclaration, CallExpression, ExportedDeclarations } from "ts-morph";
@@ -75,24 +75,18 @@ export class ConstantSymbolDef implements SymbolDef {
         readonly value: ConstantValue
     ) { }
 
-    // loadOperations(): ParseExpressionResult {
-    //     if (this.value === null) {
-    //         return parseOK([{ kind: 'pushnull' }]);
-    //     }
-    //     if (this.value instanceof Uint8Array) {
-    //         return parseOK([{ kind: 'pushdata', value: this.value } as PushDataOperation]);
-    //     }
-    //     switch (typeof this.value) {
-    //         case 'boolean': {
-    //             return parseOK([{ kind: 'pushbool', value: this.value } as PushBoolOperation]);
-    //         }
-    //         case 'bigint': {
-    //             return parseOK([{ kind: 'pushint', value: this.value } as PushIntOperation]);
-    //         }
-    //         default:
-    //             return parseError(`ConstantSymbolDef load ${this.value}`);
-    //     }
-    // }
+    get loadOperations(): ReadonlyArray<Operation> {
+        if (this.value === null) return [{ kind: 'pushnull' }];
+        if (this.value instanceof Uint8Array)
+            return [{ kind: 'pushdata', value: this.value } as PushDataOperation];
+        const type = typeof this.value;
+        if (type === 'bigint')
+            return [{ kind: 'pushint', value: this.value } as PushIntOperation];
+        if (type === 'boolean')
+            return [{ kind: 'pushbool', value: this.value } as PushBoolOperation];
+
+        throw new Error(`Invalid ConstantValue ${this.value}`);
+    }
 }
 
 export class VariableSymbolDef implements SymbolDef {
@@ -102,14 +96,14 @@ export class VariableSymbolDef implements SymbolDef {
         readonly index: number
     ) { }
 
-    // loadOperations(): ParseExpressionResult {
-    //     const kind = this.kind === 'arg'
-    //         ? "loadarg"
-    //         : this.kind === 'local'
-    //             ? 'loadlocal'
-    //             : 'loadstatic';
-    //     return parseOK([{ kind, index: this.index } as LoadStoreOperation]);
-    // }
+    get loadOperations(): ReadonlyArray<Operation> {
+        const kind = this.kind === 'arg'
+            ? "loadarg"
+            : this.kind === 'local'
+                ? 'loadlocal'
+                : 'loadstatic';
+        return [{ kind, index: this.index } as LoadStoreOperation];
+    }
 }
 
 export class EventSymbolDef implements CallableSymbolDef {
