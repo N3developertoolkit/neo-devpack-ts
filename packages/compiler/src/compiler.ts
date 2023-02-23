@@ -11,8 +11,10 @@ import { parseProjectSymbols, SymbolDef } from "./symbolDef";
 import { parseProjectLibrary } from "./projectLib";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as S from 'fp-ts/State'
+import * as O from 'fp-ts/Option'
+import { Scope } from "./scope";
+import { ContractMethod, parseFunctionDeclarations } from "./passes/processFunctionDeclarations";
 // import { parseSourceFileDefs } from "./passes/processFunctionDeclarations";
-import { createGlobalScope, createReadonlyScope } from "./scope";
 
 export const DEFAULT_ADDRESS_VALUE = 53;
 
@@ -34,7 +36,7 @@ export interface CompileOptions {
 
 export interface CompileArtifacts {
     readonly diagnostics: ReadonlyArray<tsm.ts.Diagnostic>;
-    // readonly methods: ReadonlyArray<ContractMethod>;
+    readonly methods: ReadonlyArray<ContractMethod>;
     readonly nef?: sc.NEF;
     readonly manifest?: sc.ContractManifest;
     readonly debugInfo?: DebugInfoJson;
@@ -80,9 +82,17 @@ export function compile(
 
     // TODO: use pipe
     let [library, diagnostics] = parseProjectLibrary(project)(ROA.getMonoid<tsm.ts.Diagnostic>().empty)
-    const globalScope = createGlobalScope([]);
+    const globalScope: Scope = { parentScope: O.none, symbols: new Map() };
     let symbolDefs: ReadonlyArray<ReadonlyArray<SymbolDef>>;
     [symbolDefs, diagnostics] = parseProjectSymbols(project)(diagnostics);
+
+    let monoid = ROA.getMonoid<ContractMethod>();
+    let methods = monoid.empty;
+    for (const defs of symbolDefs) {
+        let $methods: ReadonlyArray<ContractMethod>;
+        [$methods, diagnostics] = parseFunctionDeclarations(globalScope)(defs)(diagnostics)
+        methods = monoid.concat(methods, $methods);
+    }
 
     // for (const def of symbolDefs) {
     //     let q: any;
@@ -103,7 +113,7 @@ export function compile(
     // }
 
     // return { diagnostics, methods };
-    return { diagnostics };
+    return { diagnostics, methods };
 }
 
 async function exists(rootPath: fs.PathLike) {

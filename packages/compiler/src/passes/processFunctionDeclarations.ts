@@ -9,7 +9,7 @@ import * as S from 'fp-ts/State';
 import * as SEP from 'fp-ts/Separated';
 import * as FP from 'fp-ts'
 
-import { makeParseError, parseSymbol as $parseSymbol, VariableSymbolDef, ParseError, createDiagnostic } from "../symbolDef";
+import { makeParseError, parseSymbol as $parseSymbol, VariableSymbolDef, ParseError, createDiagnostic, SymbolDef, FunctionSymbolDef } from "../symbolDef";
 import { $createScope, Scope, updateScope } from "../scope";
 import { JumpTargetOperation, LoadStoreOperation, Location, Operation } from "../types/Operation";
 import { parseExpression as $parseExpression } from "./expressionProcessor";
@@ -195,7 +195,7 @@ const parseIfStatement =
                 let $elseOps: ReadonlyArray<Operation>;
                 [$elseOps, state] = parseStatement(node.getThenStatement())(state);
                 const elseOps = opsMonoid.append($elseOps)({ kind: 'noop' });
-                const endJumpOp:  JumpTargetOperation = { 'kind': "jump", target: RNEA.last(elseOps) };
+                const endJumpOp: JumpTargetOperation = { 'kind': "jump", target: RNEA.last(elseOps) };
 
                 operations = opsMonoid.append(operations)(elseJumpOp);
                 operations = opsMonoid.concat(operations, thenOps);
@@ -343,33 +343,24 @@ export const parseFunctionDeclaration =
             }
 
 
-// export const parseSourceFileDefs =
-//     (parentScope: ReadonlyScope) =>
-//         (defs: ReadonlyArray<SymbolDef>): ParserState<any> =>
-//             (diagnostics: ReadonlyArray<Diagnostic>) => {
 
-//                 for (const def of defs) {
-//                     if (def instanceof FunctionSymbolDef && !def.$import) {
+export const parseFunctionDeclarations =
+    (scope: Scope) =>
+        (defs: ReadonlyArray<SymbolDef>): S.State<ReadonlyArray<Diagnostic>, ReadonlyArray<ContractMethod>> =>
+            (diagnostics) => {
 
-//                         const pp = pipe(
-//                             def.node.getParameters(),
-//                             ROA.mapWithIndex((index, node) => pipe(
-//                                 node.getSymbol(),
-//                                 E.fromNullable(makeParseError(node)("undefined symbol")),
-//                                 E.map(symbol => ROA.of(new VariableSymbolDef(symbol, 'arg', index))),
-//                             )),
-//                             M.concatAll(
-//                                 getResultMonoid(
-//                                     ROA.getMonoid<VariableSymbolDef>())),
-//                             E.map(createReadonlyScope(parentScope))
+                const monoid = ROA.getMonoid<ContractMethod>();
+                const functionDefs = pipe(defs,
+                    ROA.filterMap(def => def instanceof FunctionSymbolDef && !def.$import
+                        ? O.some(def) : O.none)
+                );
+                let methods = monoid.empty;
 
-//                         )
+                for (const def of functionDefs) {
+                    let method: ContractMethod;
+                    [method, diagnostics] = parseFunctionDeclaration(scope)(def.node)(diagnostics);
+                    methods = monoid.concat(methods, [method]);
+                }
 
-
-
-//                     }
-//                 }
-
-
-//                 return [42, diagnostics]
-//             }
+                return [methods, diagnostics];
+            }

@@ -17,7 +17,7 @@ import * as FP from 'fp-ts';
 import * as SEP from 'fp-ts/Separated';
 import { Operation } from "../types/Operation";
 import { Scope } from "../scope";
-import { ParseError } from "../symbolDef";
+import { makeParseError, ParseError } from "../symbolDef";
 
 
 // // TODO: remove once we've changed the rest of the code to use parseExpression
@@ -101,7 +101,8 @@ export const parseExpression =
     (scope: Scope) =>
         (node: tsm.Expression): ExpressionParseState =>
             (state) => {
-                throw new Error();
+                state = state.concat([makeParseError(node)(`parseExpression ${node.getKindName()} not implemented`)]);
+                return [[], state];
             }
 // export const parseExpression = (scope: ReadonlyScope) => (node: tsm.Expression): ParseExpressionResult => {
 //     const $parseExpression = parseExpression(scope);
