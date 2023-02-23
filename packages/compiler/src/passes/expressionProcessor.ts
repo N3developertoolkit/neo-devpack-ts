@@ -138,19 +138,6 @@ export const parseArrayLiteral =
                 }
                 return [operations, state];
             }
-// export function parseArrayLiteral(node: tsm.ArrayLiteralExpression, scope: ReadonlyScope): ParseExpressionResult {
-//     const $parseExpression = parseExpression(scope);
-//     const elements = node.getElements();
-//     return pipe(
-//         elements,
-//         ROA.map($parseExpression),
-//         concatPERs,
-//         E.map(flow(
-//             ROA.append({ kind: "pushint", value: BigInt(elements.length) } as Operation),
-//             ROA.append({ kind: 'pack' } as Operation)
-//         ))
-//     );
-// }
 
 export const parseBigIntLiteral =
     (node: tsm.BigIntLiteral): ExpressionParseState =>
@@ -202,12 +189,6 @@ export const parseBooleanLiteral =
             return [[op], state];
         }
 
-// function resolveFunctionDef(node: tsm.Identifier, scope: ReadonlyScope) {
-//     const resolved = scope.resolve(node.getSymbol());
-//     const zz = (resolved && isFunctionDef(resolved)) ? resolved : undefined;
-//     return O.fromNullable(zz);
-// }
-
 // export function parseCallExpression(node: tsm.CallExpression, scope: ReadonlyScope): ParseExpressionResult {
 //     // const $parseExpression = parseExpression(scope);
 //     // const monoid = ROA.getMonoid<Operation>();
@@ -232,33 +213,29 @@ export const parseBooleanLiteral =
 //     return error('parseCallExpression not impl', node);
 // }
 
-// export function parseLoadSymbolDef(def: SymbolDef): ParseExpressionResult {
-//     if (def instanceof ConstantSymbolDef) return def.loadOperations();
-//     if (def instanceof VariableSymbolDef) return def.loadOperations();
-//     return error(`parseLoadSymbolDef`);
-// }
-
-// export function parseIdentifier(node: tsm.Identifier, scope: ReadonlyScope): ParseExpressionResult {
-//     return pipe(
-//         node,
-//         resolveIdentifier(scope),
-//         E.map(parseLoadSymbolDef),
-//         E.flatten
-//     );
-// }
-
 export const parseIdentifier =
     (scope: Scope) =>
         (node: tsm.Identifier): ExpressionParseState =>
             (state) => {
-                const symbol = node.getSymbol();
-                if (!symbol) return failState(node)('undefined symbol')(state);
-                const symbolDef = resolve(scope)(symbol);
-                if (O.isNone(symbolDef)) 
-                    return failState(node)(`unresolved symbol ${symbol.getName()}`)(state);
-                if (isLoadableDef(symbolDef.value)) 
-                    return [symbolDef.value.loadOperations, state];
-                return failState(node)(`unknown symboldef ${symbol.getName()}`)(state);
+
+                const error = makeParseError(node);
+                return pipe(
+                    node.getSymbol(),
+                    E.fromNullable(error('undefined symbol')),
+                    E.chain(symbol => pipe(
+                        symbol,
+                        resolve(scope),
+                        E.fromOption(() => error(`unresolved symbol ${symbol.getName()}`))
+                    )),
+                    E.chain(def => isLoadableDef(def)
+                        ? E.of(def.loadOperations)
+                        : E.left(error(`unresolved symbol ${def.symbol.getName()}`))
+                    ),
+                    E.match(
+                        error => [[], state.concat([error])],
+                        ops => [ops, state]
+                    )
+                )
             }
 
 export const parseNullLiteral =
@@ -288,7 +265,6 @@ const prefixUnaryOperatorMap: ReadonlyMap<tsm.SyntaxKind, OperationKind> = new M
 export const parsePrefixUnaryExpression = (scope: Scope) =>
     (node: tsm.PrefixUnaryExpression): ExpressionParseState =>
         (state) => {
-
             const opToken = node.getOperatorToken();
             const opKind = binaryOpTokenMap.get(opToken);
             if (!opKind) {
