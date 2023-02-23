@@ -1,17 +1,17 @@
 import * as tsm from "ts-morph";
 
-import { pipe } from 'fp-ts/function';
+import { flow, pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option'
 import * as S from 'fp-ts/State';
 import * as SEP from 'fp-ts/Separated';
-
+import * as FP from 'fp-ts'
 
 import { makeParseError, parseSymbol as $parseSymbol, VariableSymbolDef, ParseError, createDiagnostic } from "../symbolDef";
-import { $createScope, Scope } from "../scope";
-import { JumpTargetOperation, Location, Operation } from "../types/Operation";
+import { $createScope, Scope, updateScope } from "../scope";
+import { JumpTargetOperation, LoadStoreOperation, Location, Operation } from "../types/Operation";
 import { parseExpression as $parseExpression } from "./expressionProcessor";
 import { isVoidLike } from "../utils";
 
@@ -59,7 +59,7 @@ const parseBlock =
 
             let ops: ReadonlyArray<Operation>;
             for (const stmt of node.getStatements()) {
-                [ops, state] = parseStatement(stmt)($state);
+                [ops, state] = parseStatement(stmt)(state);
                 operations = opsMonoid.concat(operations, ops);
             }
 
@@ -73,68 +73,67 @@ const parseBlock =
             return [operations, { ...state, scope: $state.scope }];
         }
 
-
-// export function processVariableStatement(node: tsm.VariableStatement, options: ProcessMethodOptions): void {
-//     const { builder, scope } = options;
-
-//     if (!isWritableScope(scope)) {
-//         throw new CompileError(`can't declare variables in read only scope`, node);
-//     } else {
-//         const decls = node.getDeclarations();
-//         for (const decl of decls) {
-//             const index = builder.addLocal(decl);
-//             const def = new VariableSymbolDef(decl.getSymbolOrThrow(), 'local', index);
-//             scope.define(def);
-
-//             const init = decl.getInitializer();
-//             if (init) {
-//                 const setLocation = builder.getLocationSetter();
-//                 processExpression(init, options);
-//                 builder.emitStore(def.kind, def.index);
-//                 setLocation(decl, init);
-//             }
+// const parseConstVariableDeclarations =
+//     (declarations: ReadonlyArray<tsm.VariableDeclaration>): StatementParseState =>
+//         (state) => {
+//             throw new Error();
 //         }
-//     }
-// }
 
 
+const parseVariableDeclarations =
+    (declarations: ReadonlyArray<tsm.VariableDeclaration>): StatementParseState =>
+        (state) => {
+            // create an Either containing an array of VariableSymbolDefs and the operations
+            // needed to initialize each variable
+            const parseDeclsResult = pipe(
+                declarations,
+                ROA.mapWithIndex((index, decl) => pipe(
+                    decl,
+                    parseSymbol,
+                    E.map(symbol => ({
+                        def: new VariableSymbolDef(symbol, 'local', index + state.locals.length),
+                        node: decl
+                    }))
+                )),
+                ROA.separate,
+                E_fromSeparated,
+                E.map(ROA.map(({ node, def }) => {
+                    const init = node.getInitializer();
+                    let operations = opsMonoid.empty;
+                    if (init) {
+                        [operations, state] = parseExpression(init)(state);
+                        const op: LoadStoreOperation = { kind: "storelocal", index: def.index, location: node };
+                        operations = ROA.append<Operation>(op)(operations);
+                    }
+                    return { operations, def: def }
+                }))
+            )
+
+            // bail out if there were any issues parsing the declarations
+            if (E.isLeft(parseDeclsResult)) return appendErrors(parseDeclsResult.left)(state);
+
+            // concat all the initialization instructions 
+            const operations = FP.monoid.concatAll(opsMonoid)(parseDeclsResult.right.map(o => o.operations))
+
+            // update the current scope with the new declarations
+            const defs = parseDeclsResult.right.map(o => o.def);
+            state = { ...state, scope: updateScope(state.scope)(defs) };
+
+            return [operations, state];
+        }
 
 const parseVariableStatement =
     (node: tsm.VariableStatement): StatementParseState =>
         (state) => {
 
+            const declarations = node.getDeclarations();
             const declKind = node.getDeclarationKind();
-            if (declKind === 'const') {
-                return appendError(makeParseError(node)(`${declKind} not implemented`))(state);
+            if (declKind === tsm.VariableDeclarationKind.Const) {
+                // return parseConstVariableDeclarations(declarations)(state);
+                return appendError(makeParseError(node)(`parseVariableStatement ${declKind}not implemented`))(state);
+            } else {
+                return parseVariableDeclarations(declarations)(state);
             }
-
-            const decls = pipe(
-                node.getDeclarations(),
-                ROA.mapWithIndex((i, decl) => pipe(
-                    decl,
-                    parseSymbol,
-                    E.map(s => new VariableSymbolDef(s, 'local', i + state.locals.length)),
-                    E.bindTo('def'),
-                    E.bind('init', () => E.right(O.fromNullable(decl.getInitializer())))
-                )),
-                ROA.separate,
-                E_fromSeparated,
-            )
-
-            if (E.isRight(decls)) {
-                for (const d of decls.right) {
-
-                }
-            }
-            //     if (E.isLeft(decls)) {
-            //         return appendErrors(decls.left)(state);
-            //     } else {
-
-
-            //     }
-            // } else {
-            return appendError(makeParseError(node)(`can't declare variables in read only scope`))(state);
-            // }
         }
 
 const parseExpressionStatement =
