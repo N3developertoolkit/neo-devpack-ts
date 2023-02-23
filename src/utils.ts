@@ -1,6 +1,6 @@
 import * as tsm from "ts-morph";
 // import { ContractMethod } from "../packages/compiler/src/passes/processFunctionDeclarations";
-import { CallOperation, CallTokenOperation, ConvertOperation, InitSlotOperation, JumpOperation, LoadStoreOperation, Location, Operation, PushBoolOperation, PushDataOperation, PushIntOperation, SysCallOperation } from "../packages/compiler/src/types/Operation";
+import { CallOperation, CallTokenOperation, ConvertOperation, InitSlotOperation, LoadStoreOperation, Location, Operation, PushBoolOperation, PushDataOperation, PushIntOperation, SysCallOperation } from "../packages/compiler/src/types/Operation";
 import { sc, u } from "@cityofzion/neon-core";
 
 function typeToString(type: tsm.Type) {
@@ -46,18 +46,18 @@ function dumpOperation(op: Operation, currentIndex: number) {
             // return `${op.kind} ${method.symbol.getName()}`
             return `${op.kind} {method.symbol.getName()}`
         }
-        case 'jump':
-        case 'jumpif':
-        case 'jumpifnot':
-        case 'jumpeq':
-        case "jumpne":
-        case "jumpgt":
-        case "jumpge":
-        case "jumplt":
-        case "jumple": {
-            const { offset } = op as JumpOperation;
-            return `${op.kind} ${offset} (${offset + currentIndex})`
-        }
+        // case 'jump':
+        // case 'jumpif':
+        // case 'jumpifnot':
+        // case 'jumpeq':
+        // case "jumpne":
+        // case "jumpgt":
+        // case "jumpge":
+        // case "jumplt":
+        // case "jumple": {
+        //     const { offset } = op as JumpOperation;
+        //     return `${op.kind} ${offset} (${offset + currentIndex})`
+        // }
         case 'syscall':{
             const { name } = op as SysCallOperation;
             return `${op.kind} ${name}`

@@ -13,16 +13,15 @@ const prefixContractOwner = 0xFF;
 
 /** @safe */
 export function get() { 
-    return storageGet(
-        storageGetContext(), 
-        Uint8Array.from([prefixSampleValue]));
+    let context = storageGetContext();
+    let key = Uint8Array.from([prefixSampleValue])
+    return storageGet(context, key);
 }
 
 export function set(value: ByteString) {
-    storagePut(
-        storageGetContext(), 
-        Uint8Array.from([prefixSampleValue]), 
-        value);
+    let context = storageGetContext();
+    let key = Uint8Array.from([prefixSampleValue])
+    storagePut(context, key, value);
 }
 
 export function remove() {

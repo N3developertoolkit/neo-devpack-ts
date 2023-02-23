@@ -15,7 +15,7 @@ import * as SG from "fp-ts/Semigroup";
 import * as S from 'fp-ts/State';
 import * as FP from 'fp-ts';
 import * as SEP from 'fp-ts/Separated';
-import { Operation } from "../types/Operation";
+import { Operation, PushBoolOperation, PushDataOperation, PushIntOperation } from "../types/Operation";
 import { Scope } from "../scope";
 import { makeParseError, ParseError } from "../symbolDef";
 
@@ -96,13 +96,32 @@ import { makeParseError, ParseError } from "../symbolDef";
 
 type ExpressionParseState = S.State<ReadonlyArray<ParseError>, ReadonlyArray<Operation>>
 
+const failState =
+    (node: tsm.Node) =>
+        (message: string): ExpressionParseState =>
+            (state) => [[], state.concat([makeParseError(node)(message)])];
+
 
 export const parseExpression =
     (scope: Scope) =>
         (node: tsm.Expression): ExpressionParseState =>
             (state) => {
-                state = state.concat([makeParseError(node)(`parseExpression ${node.getKindName()} not implemented`)]);
-                return [[], state];
+                // if (tsm.Node.isArrayLiteralExpression(node)) return parseArrayLiteral(node, scope);
+                if (tsm.Node.isAsExpression(node)) return parseExpression(scope)(node.getExpression())(state);
+                if (tsm.Node.isBigIntLiteral(node)) return parseBigIntLiteral(node)(state);
+                // if (tsm.Node.isBinaryExpression(node)) return parseBinaryExpression(node, scope);
+                // if (tsm.Node.isCallExpression(node)) return parseCallExpression(node, scope);
+                if (tsm.Node.isFalseLiteral(node)) return parseBooleanLiteral(node)(state);
+                // if (tsm.Node.isIdentifier(node)) return parseIdentifier(node, scope);
+                if (tsm.Node.isNonNullExpression(node)) return parseExpression(scope)(node.getExpression())(state);
+                if (tsm.Node.isNullLiteral(node)) return parseNullLiteral(node)(state);
+                if (tsm.Node.isNumericLiteral(node)) return parseNumericLiteral(node)(state);
+                if (tsm.Node.isParenthesizedExpression(node)) return parseExpression(scope)(node.getExpression())(state);
+                // if (tsm.Node.isPrefixUnaryExpression(node)) return parsePrefixUnaryExpression(node, scope);
+                // if (tsm.Node.isPropertyAccessExpression(node)) return parsePropertyAccessExpression(node, scope);
+                if (tsm.Node.isStringLiteral(node)) return parseStringLiteral(node)(state);
+                if (tsm.Node.isTrueLiteral(node)) return parseBooleanLiteral(node)(state);
+                return failState(node)(`parseExpression ${node.getKindName()}`)(state);
             }
 // export const parseExpression = (scope: ReadonlyScope) => (node: tsm.Expression): ParseExpressionResult => {
 //     const $parseExpression = parseExpression(scope);
@@ -145,10 +164,15 @@ export const parseExpression =
 //     );
 // }
 
-// export function parseBigIntLiteral(node: tsm.BigIntLiteral): DiagnosticResult<Operation> {
-//     const value = node.getLiteralValue() as bigint;
-//     return ok({ kind: "pushint", value, location: node });
-// }
+export const parseBigIntLiteral =
+    (node: tsm.BigIntLiteral): ExpressionParseState =>
+        (state) => {
+            const value = node.getLiteralValue() as bigint;
+            const op: PushIntOperation = { kind: "pushint", value, location: node };
+            return [[op], state];
+        }
+
+
 
 // const binaryOpTokenMap: ReadonlyMap<SyntaxKind, OperationKind> = new Map([
 //     [SyntaxKind.AsteriskAsteriskToken, 'power'],
@@ -182,10 +206,13 @@ export const parseExpression =
 //     ]);
 // }
 
-// export function parseBooleanLiteral(node: tsm.FalseLiteral | tsm.TrueLiteral): DiagnosticResult<Operation> {
-//     const value = node.getLiteralValue();
-//     return ok({ kind: "pushbool", value, location: node });
-// }
+export const parseBooleanLiteral =
+    (node: tsm.FalseLiteral | tsm.TrueLiteral): ExpressionParseState =>
+        (state) => {
+            const value = node.getLiteralValue();
+            const op: PushBoolOperation = { kind: "pushbool", value, location: node };
+            return [[op], state];
+        }
 
 // function resolveFunctionDef(node: tsm.Identifier, scope: ReadonlyScope) {
 //     const resolved = scope.resolve(node.getSymbol());
@@ -232,17 +259,24 @@ export const parseExpression =
 //     );
 // }
 
-// function parseNullLiteral(node: tsm.NullLiteral): DiagnosticResult<Operation> {
-//     return ok({ kind: "pushnull", location: node })
-// }
+export const parseNullLiteral =
+    (node: tsm.NullLiteral): ExpressionParseState =>
+        (state) => {
+            const op: Operation = { kind: "pushnull", location: node };
+            return [[op], state];
+        }
 
-// export function parseNumericLiteral(node: tsm.NumericLiteral): DiagnosticResult<Operation> {
-//     const value = node.getLiteralValue();
-//     return (Number.isInteger(value))
-//         ? ok({ kind: "pushint", value: BigInt(value), location: node })
-//         : error(`invalid non-integer numeric literal ${value}`, node);
-// }
+export const parseNumericLiteral =
+    (node: tsm.NumericLiteral): ExpressionParseState =>
+        (state) => {
+            const value = node.getLiteralValue();
+            if (Number.isInteger(value)) {
+                const op: PushIntOperation = { kind: "pushint", value: BigInt(value), location: node };
+                return [[op], state];
+            }
 
+            return failState(node)(`invalid non-integer numeric literal ${value}`)(state);
+        }
 
 // const prefixUnaryOperatorMap: ReadonlyMap<SyntaxKind, OperationKind> = new Map([
 //     [SyntaxKind.ExclamationToken, 'not'],
@@ -267,7 +301,12 @@ export const parseExpression =
 //     return error('parsePropertyAccessExpression not impl', node);
 // }
 
-// export function parseStringLiteral(node: tsm.StringLiteral): DiagnosticResult<Operation> {
-//     const value = Buffer.from(node.getLiteralValue(), 'utf8');
-//     return ok({ kind: "pushdata", value, location: node });
-// }
+
+export const parseStringLiteral =
+    (node: tsm.StringLiteral): ExpressionParseState =>
+        (state) => {
+            const literal = node.getLiteralValue();
+            const value = Buffer.from(literal, 'utf8');
+            const op: PushDataOperation = { kind: "pushdata", value, location: node };
+            return [[op], state];
+        }
