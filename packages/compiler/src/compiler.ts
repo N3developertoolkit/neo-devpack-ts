@@ -113,41 +113,17 @@ export function compile(
     let [library, diagnostics] = parseProjectLibrary(project)(ROA.empty);
     let globalScope;
     [globalScope, diagnostics] = makeGlobalScope(library)(diagnostics);
-
-
-    const q = O.of(globalScope);
-
     let symbolDefs;
     [symbolDefs, diagnostics] = parseProjectSymbols(project)(diagnostics);
 
-    // let monoid = ROA.getMonoid<ContractMethod>();
-    // let methods = monoid.empty;
-    // for (const defs of symbolDefs) {
-    //     let $methods: ReadonlyArray<ContractMethod>;
-    //     [$methods, diagnostics] = parseFunctionDeclarations(globalScope)(defs)(diagnostics)
-    //     methods = monoid.concat(methods, $methods);
-    // }
+    let methods: ReadonlyArray<ContractMethod> = ROA.empty;
+    for (const defs of symbolDefs) {
+        let $methods;
+        [$methods, diagnostics] = parseFunctionDeclarations(globalScope)(defs)(diagnostics);
+        methods = ROA.concat($methods)(methods);
+    }
 
-    // for (const def of symbolDefs) {
-    //     let q: any;
-    //     [q, diagnostics] = parseSourceFileDefs(globalScope)(def)(diagnostics);
-
-    // }
-
-    // try {
-    //     createSymbolTrees(context);
-    //     if (hasErrors(diagnostics)) return { diagnostics, methods };
-    //     processMethodDefinitions(context);
-    //     if (hasErrors(diagnostics)) return { diagnostics, methods };
-    //     const { nef, manifest, debugInfo } = collectArtifacts(contractName, context);
-    //     if (hasErrors(diagnostics)) return { diagnostics, methods };
-    //     return { nef, manifest, debugInfo, diagnostics, methods };
-    // } catch (error) {
-    //     diagnostics.push(toDiagnostic(error));
-    // }
-
-    // return { diagnostics, methods };
-    return { diagnostics, methods: [] };
+    return { diagnostics, methods };
 }
 
 async function exists(rootPath: fs.PathLike) {

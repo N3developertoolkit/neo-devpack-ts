@@ -12,7 +12,7 @@ import * as FP from 'fp-ts';
 import * as SEP from 'fp-ts/Separated';
 import { Operation, OperationKind, PushBoolOperation, PushDataOperation, PushIntOperation } from "../types/Operation";
 import { resolve, Scope } from "../scope";
-import { ConstantSymbolDef, isLoadableDef, makeParseError, ParseError, SymbolDef, VariableSymbolDef } from "../symbolDef";
+import { ConstantSymbolDef, isCallableDef, isLoadableDef, makeParseError, ParseError, SymbolDef, VariableSymbolDef } from "../symbolDef";
 
 const resolveIdentifier =
     (scope: Scope) =>
@@ -44,7 +44,6 @@ const resolveCallChain =
             }
         }
     }
-
 
 export const parseExpression =
     (scope: Scope) =>
@@ -157,8 +156,21 @@ export const parseCallExpression =
             //      * the storage get context syscall
             //      * the storage get syscall
 
-            const chain = resolveCallChain(node);
-            const id = resolveIdentifier(scope)(chain.head);
+            const q = pipe(
+                node,
+                resolveCallChain,
+                // temporary
+                E.fromPredicate(
+                    c => ROA.isEmpty(c.tail),
+                    c => makeParseError(node)('parseCallExpression not impl for PropertyAccessExpression')
+                ),
+                E.chain(c => resolveIdentifier(scope)(c.head)),
+                E.chain(E.fromPredicate(
+                    isCallableDef,
+                    c => makeParseError(node)(`${c.symbol.getName()} not callable`)
+                )),
+                E.chain(c => c.parseCall(node, scope))
+            )
 
             return E.left(makeParseError(node)('parseCallExpression not impl'));
         }

@@ -51,7 +51,7 @@ export interface CallableSymbolDef extends ObjectSymbolDef {
 
 
 export function isCallableDef(def: SymbolDef): def is CallableSymbolDef {
-    return isObjectDef(def) && 'parseCall' in def && typeof def.parseCall === 'function';
+    return  /*isObjectDef(def) &&*/ 'parseCall' in def && typeof def.parseCall === 'function';
 }
 
 export class InterfaceSymbolDef implements SymbolDef {

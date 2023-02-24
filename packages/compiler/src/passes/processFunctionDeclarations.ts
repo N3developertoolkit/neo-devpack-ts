@@ -125,7 +125,10 @@ const parseVariableDeclarations =
 
             // update the current scope with the new declarations
             const defs = parseDeclsResult.right.map(o => o.def);
-            state = { ...state, scope: updateScope(state.scope)(defs) };
+            state = { 
+                ...state,
+                locals: ROA.concat(declarations)(state.locals),                
+                scope: updateScope(state.scope)(defs) };
 
             return [operations, state];
         }
@@ -305,9 +308,11 @@ export const parseFunctionDeclaration =
             }
 
 export const parseFunctionDeclarations =
-    (scope: Scope) =>
+    ($scope: Scope) =>
         (defs: ReadonlyArray<SymbolDef>): S.State<ReadonlyArray<Diagnostic>, ReadonlyArray<ContractMethod>> =>
             diagnostics => {
+
+                const scope = createScope($scope)(defs);
 
                 const functionDefs = pipe(defs,
                     ROA.filterMap(def => def instanceof FunctionSymbolDef && !def.$import
