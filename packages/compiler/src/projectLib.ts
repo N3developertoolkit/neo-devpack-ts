@@ -2,6 +2,7 @@ import { createDiagnostic } from "./utils";
 import { FunctionDeclaration, InterfaceDeclaration, VariableDeclaration, SourceFile, Node, Project, ts } from "ts-morph";
 import { pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
+import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as O from 'fp-ts/Option';
 import * as M from 'fp-ts/Monoid'
 import { CompilerState } from "./compiler";
@@ -9,6 +10,7 @@ import * as S from 'fp-ts/State';
 import * as FP from 'fp-ts';
 import * as ROS from 'fp-ts/ReadonlySet';
 import * as E from 'fp-ts/Either';
+import { fail } from "assert";
 
 type Diagnostic = ts.Diagnostic;
 
@@ -60,53 +62,36 @@ const parseLibrarySourceFile =
             return [references, declarations];
         }
 
-
 const LIB_PATH = `/node_modules/typescript/lib/`;
-export const parseProjectLibrary2 =
-    (project: Project): CompilerState<LibraryDeclarations> =>
-        (diagnostics: ReadonlyArray<Diagnostic>) => {
-            const loadSource =
-                (filename: string) =>
-                    pipe(
-                        project.getSourceFile(LIB_PATH + filename),
-                        E.fromNullable(filename)
-                    );
 
-            let sources = ROA.fromArray(project.compilerOptions.get().lib ?? [])
-            let parsedFiles: ReadonlySet<string> = ROS.empty;
-            let failures: ReadonlyArray<string> = ROA.empty;
-
-        }
 // TODO: At some point, I should rewrite this to be functional and recursive
 export const parseProjectLibrary =
     (project: Project): CompilerState<LibraryDeclarations> =>
         (diagnostics: ReadonlyArray<Diagnostic>) => {
             const loadSource = (filename: string) => project.getSourceFile(LIB_PATH + filename);
+            const strEq = FP.string.Eq;
 
             let state = declarationsMonoid.empty;
-            const sources = project.compilerOptions.get().lib ?? [];
-            const parsedFiles = new Set<string>();
-            const loadFailures = new Array<string>();
+            let sources = ROA.fromArray(project.compilerOptions.get().lib ?? []);
+            let parsed: ReadonlySet<string> = ROS.empty;
+            let failures: ReadonlyArray<Diagnostic> = ROA.empty;
+            let declarations = declarationsMonoid.empty;
 
-            while (sources.length > 0) {
-                const head = sources.shift()!;
-                if (parsedFiles.has(head))
-                    continue;
-                parsedFiles.add(head);
+            while (ROA.isNonEmpty(sources)) {
+                const head = RNEA.head(sources);
+                sources = RNEA.tail(sources);
+                if (ROS.elem(strEq)(head)(parsed)) continue;
+                parsed = ROS.insert(strEq)(head)(parsed);
+
                 const src = loadSource(head);
                 if (src) {
-                    let srcRefs: ReadonlyArray<string>;
-                    [srcRefs, state] = parseLibrarySourceFile(src)(state);
-                    srcRefs.forEach(r => sources.push(r));
+                    let references;
+                    [references, declarations] = parseLibrarySourceFile(src)(declarations);
+                    sources = ROA.concat(references)(sources);
                 } else {
-                    loadFailures.push(head);
+                    failures = ROA.append(createDiagnostic(`failed to load ${head} library file`))(failures);
                 }
             }
 
-            diagnostics = ROA.getMonoid<ts.Diagnostic>().concat(
-                diagnostics,
-                loadFailures.map(f => createDiagnostic(`failed to load ${f} library file`))
-            );
-
-            return [state, diagnostics];
+            return [state,  ROA.concat(failures)(diagnostics)];
         }
