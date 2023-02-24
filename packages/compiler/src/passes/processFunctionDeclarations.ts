@@ -146,6 +146,8 @@ const parseExpressionStatement =
             const expr = node.getExpression();
             let ops: ReadonlyArray<Operation>;
             [ops, state] = parseExpression(expr)(state);
+
+            // The store command should be *here* not in the expression parser!
             if (!isVoidLike(expr.getType())) {
                 ops = ROA.append<Operation>({ kind: 'drop' })(ops);
             }

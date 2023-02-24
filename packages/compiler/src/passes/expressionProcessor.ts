@@ -158,22 +158,32 @@ export const parseCallExpression =
             return E.left(makeParseError(node)('parseCallExpression not impl'));
         }
 
+const resolveIdentifier =
+    (scope: Scope) =>
+        (node: tsm.Identifier): E.Either<ParseError, SymbolDef> => {
+            return pipe(
+                node.getSymbol(),
+                O.fromNullable,
+                E.fromOption(() => makeParseError(node)('undefined symbol')),
+                E.chain(symbol => pipe(
+                    symbol,
+                    resolve(scope),
+                    E.fromOption(() => makeParseError(node)(`unresolved symbol ${symbol.getName()}`))
+                )),
+            );
+        }
+
 export const parseIdentifier =
     (scope: Scope) =>
         (node: tsm.Identifier): E.Either<ParseError, readonly Operation[]> => {
             const error = makeParseError(node);
             return pipe(
-                node.getSymbol(),
-                E.fromNullable(error('undefined symbol')),
-                E.chain(symbol => pipe(
-                    symbol,
-                    resolve(scope),
-                    E.fromOption(() => error(`unresolved symbol ${symbol.getName()}`))
-                )),
+                node,
+                resolveIdentifier(scope),
                 E.chain(flow(
                     E.fromPredicate(
                         isLoadableDef,
-                        (def) => error(`${def.symbol.getName()} symbol not loadable`)))
+                        (def) => makeParseError(node)(`${def.symbol.getName()} symbol not loadable`)))
                 ),
                 E.map(def => def.loadOperations)
             );

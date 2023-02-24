@@ -5,14 +5,15 @@
  * @extra Description "this is a prototype contract written in TypeScript"
  */
 
-import { ByteString, storageGetContext, storageGet, runtimeCheckWitness, contractManagementUpdate, storagePut, runtimeGetScriptContainer, storageDelete, Transaction } from "@neo-project/neo-contract-framework";
+import { ByteString, storageGetContext, storageGet, runtimeCheckWitness, contractManagementUpdate, storagePut, runtimeGetScriptContainer, storageDelete, Transaction, StorageContext } from "@neo-project/neo-contract-framework";
 
 const prefixSampleValue = 0x00;
 const prefixContractOwner = 0xFF;
 
 /** @safe */
 export function get() { 
-    const context = storageGetContext();
+    let context: StorageContext;
+    context = storageGetContext();
     const key = Uint8Array.from([prefixSampleValue])
     return storageGet(context, key);
 }
