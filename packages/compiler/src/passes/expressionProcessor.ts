@@ -51,7 +51,7 @@ export const parseExpression =
             if (tsm.Node.isAsExpression(node)) return parseExpression(scope)(node.getExpression());
             if (tsm.Node.isBigIntLiteral(node)) return pipe(node, parseBigIntLiteral, E.map(ROA.of));
             if (tsm.Node.isBinaryExpression(node)) return parseBinaryExpression(scope)(node);
-            // // if (tsm.Node.isCallExpression(node)) return parseCallExpression(node, scope);
+            if (tsm.Node.isCallExpression(node)) return parseCallExpression(scope)(node);
             if (tsm.Node.isFalseLiteral(node)) return pipe(node, parseBooleanLiteral, E.map(ROA.of));
             if (tsm.Node.isIdentifier(node)) return parseIdentifier(scope)(node);
             if (tsm.Node.isNonNullExpression(node)) return parseExpression(scope)(node.getExpression());
@@ -59,7 +59,7 @@ export const parseExpression =
             if (tsm.Node.isNumericLiteral(node)) return pipe(node, parseNumericLiteral, E.map(ROA.of));
             if (tsm.Node.isParenthesizedExpression(node)) return parseExpression(scope)(node.getExpression());
             if (tsm.Node.isPrefixUnaryExpression(node)) return parsePrefixUnaryExpression(scope)(node);
-            // // if (tsm.Node.isPropertyAccessExpression(node)) return parsePropertyAccessExpression(node, scope);
+            if (tsm.Node.isPropertyAccessExpression(node)) return parsePropertyAccessExpression(scope)(node);
             if (tsm.Node.isStringLiteral(node)) return pipe(node, parseStringLiteral, E.map(ROA.of));
             if (tsm.Node.isTrueLiteral(node)) return pipe(node, parseBooleanLiteral, E.map(ROA.of));
 
@@ -101,7 +101,7 @@ export const parseBinaryOperatorToken =
     (node: tsm.Node<tsm.ts.BinaryOperatorToken>): E.Either<ParseError, Operation> => {
         return pipe(
             node.getKind(),
-            binaryOpTokenMap.get,
+            k => binaryOpTokenMap.get(k),
             E.fromNullable(
                 makeParseError()(`parseBinaryOperatorToken ${node.getKindName()} not supported`)
             ),
@@ -141,29 +141,22 @@ export const parseBooleanLiteral =
         return E.right({ kind: "pushbool", value, location: node });
     }
 
-// export function parseCallExpression(node: tsm.CallExpression, scope: ReadonlyScope): ParseExpressionResult {
-//     // const $parseExpression = parseExpression(scope);
-//     // const monoid = ROA.getMonoid<Operation>();
 
-//     const chainResult = resolveChain(node.getExpression());
-//     if (E.isLeft(chainResult)) return chainResult;
-//     const chain = chainResult.right;
-//     if (chain.length === 1) {
-//         const head = ROA.head(chain);
-//         if (O.isSome(head)) {
-//             const id = head.value.asKind(SyntaxKind.Identifier);
-//             if (id) {
-//                 let resolvedResult = resolveCallIdentifier(scope)(id);
-//                 if (E.isLeft(resolvedResult)) { return E.left(resolvedResult.left) }
-//                 const resolved = resolvedResult.right;
-//                 const { args, call } = resolved.parseCall(node, scope);
-//                 return concatPERs([args, call]);
-//             }
-//         }
-//     }
+export const parseCallExpression =
+    (scope: Scope) =>
+        (node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
 
-//     return error('parseCallExpression not impl', node);
-// }
+            // Callable objects take scope + node and return the operations for the args + the call
+            // inside an Either. This enables certain callables to customize the argument parsing
+            // (example: Uint8Array.from can convert an array into a bytestring). They are returned
+            // as separate Operation arrays because any object navigation has to occur *between*
+            // the args and the call. For example, Storage.context.get(key) needs to push:
+            //      * the arguments
+            //      * the storage get context syscall
+            //      * the storage get syscall
+
+            return E.left(makeParseError(node)('parseCallExpression not impl'));
+        }
 
 export const parseIdentifier =
     (scope: Scope) =>
@@ -207,7 +200,7 @@ export const parseUnaryOperatorToken =
     (token: tsm.ts.PrefixUnaryOperator): E.Either<ParseError, Operation> => {
         return pipe(
             token,
-            prefixUnaryOperatorMap.get,
+            k => prefixUnaryOperatorMap.get(k),
             E.fromNullable(
                 makeParseError()(`parseUnaryOperatorToken ${tsm.SyntaxKind[token]} not supported`)
             ),
@@ -232,11 +225,11 @@ export const parsePrefixUnaryExpression = (scope: Scope) =>
         )
     }
 
-
-// export function parsePropertyAccessExpression(node: tsm.PropertyAccessExpression, scope: ReadonlyScope): ParseExpressionResult {
-//     return error('parsePropertyAccessExpression not impl', node);
-// }
-
+export const parsePropertyAccessExpression =
+    (scope: Scope) =>
+        (node: tsm.PropertyAccessExpression): E.Either<ParseError, readonly Operation[]> => {
+            return E.left(makeParseError(node)('parsePropertyAccessExpression not impl'));
+        }
 
 export const parseStringLiteral =
     (node: tsm.StringLiteral): E.Either<ParseError, Operation> => {

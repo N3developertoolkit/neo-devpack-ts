@@ -10,7 +10,6 @@ import { ByteString, storageGetContext, storageGet, runtimeCheckWitness, contrac
 const prefixSampleValue = 0x00;
 const prefixContractOwner = 0xFF;
 
-
 /** @safe */
 export function get() { 
     const context = storageGetContext();
@@ -32,17 +31,17 @@ export function remove() {
 
 export function _deploy(_data: any, update: boolean): void { 
     if (update) return;
+    const context = storageGetContext();
+    const key = Uint8Array.from([prefixContractOwner])
     const tx = runtimeGetScriptContainer() as Transaction;
-    storagePut(
-        storageGetContext(), 
-        Uint8Array.from([prefixContractOwner]), 
-        tx.sender);
+    storagePut(context, key, tx.sender);
 }
 
 export function update(nefFile: ByteString, manifest: string) {
-    const owner = storageGet(
-        storageGetContext(), 
-        Uint8Array.from([prefixContractOwner]))!;
+    const context = storageGetContext();
+    const key = Uint8Array.from([prefixContractOwner])
+    const owner = storageGet(context, key)!;
+    // TODO: support "if (owner && runtimeCheckWitness(owner))"
     if (runtimeCheckWitness(owner)) {
         contractManagementUpdate(nefFile, manifest);
     } else {
