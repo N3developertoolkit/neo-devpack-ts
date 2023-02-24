@@ -78,6 +78,8 @@ export declare function storagePut(context: StorageContext, key: ByteString, val
 export declare function storageDelete(context: StorageContext, key: ByteString): void;
 
 
+
+
 // export declare const Storage: StorageConstructor;
 
 // export interface StorageConstructor {

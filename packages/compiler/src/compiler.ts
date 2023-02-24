@@ -50,7 +50,7 @@ export interface CompileContext {
     // readonly methods: Array<ContractMethod>;
 }
 
-export type ParserState<T> = S.State<ReadonlyArray<tsm.ts.Diagnostic>, T>;
+export type CompilerState<T> = S.State<ReadonlyArray<tsm.ts.Diagnostic>, T>;
 
 export function compile(
     project: tsm.Project, 

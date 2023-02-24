@@ -1,8 +1,4 @@
 import * as tsm from "ts-morph";
-// import { ConstantSymbolDef, FunctionSymbolDef, isFunctionDef, ReadonlyScope, SymbolDef, VariableSymbolDef } from "../symbolDef";
-// import { Operation, OperationKind } from "../types/Operation";
-// import { createDiagnostic } from "../utils";
-// import { ProcessMethodOptions } from "./processFunctionDeclarations";
 import { flow, pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as ROM from 'fp-ts/ReadonlyMap';
@@ -18,30 +14,36 @@ import { Operation, OperationKind, PushBoolOperation, PushDataOperation, PushInt
 import { resolve, Scope } from "../scope";
 import { ConstantSymbolDef, isLoadableDef, makeParseError, ParseError, SymbolDef, VariableSymbolDef } from "../symbolDef";
 
-// Shouldn't use the state monad for expression parsing. The only state expressions return is an ROA of parse errors.
-// Instead, use Either, 
+const resolveIdentifier =
+    (scope: Scope) =>
+        (node: tsm.Identifier): E.Either<ParseError, SymbolDef> => {
+            return pipe(
+                node.getSymbol(),
+                O.fromNullable,
+                E.fromOption(() => makeParseError(node)('undefined symbol')),
+                E.chain(symbol => pipe(
+                    symbol,
+                    resolve(scope),
+                    E.fromOption(() => makeParseError(node)(`unresolved symbol ${symbol.getName()}`))
+                )),
+            );
+        }
 
-type ExpressionParseResult = E.Either<ParseError, ReadonlyArray<Operation>>
-
-// const monoidEPR: M.Monoid<ExpressionParseResult> = {
-//     empty: E.right([]),
-//     concat: (x, y) => {
-
-
-
-
-
-//         if (E.isLeft(x)) {
-//             return E.isLeft(y) 
-//                 ? E.left(ROA.concat(y.left)(x.left)) 
-//                 : x;
-//         } else {
-//             return E.isRight(y) 
-//                 ? E.right(ROA.concat(y.right)(x.right)) 
-//                 : y;
-//         }
-//     }
-// }
+const resolveCallChain =
+    (node: tsm.CallExpression) => {
+        let chain = RNEA.of<tsm.Expression>(node.getExpression());
+        while (true) {
+            const head = RNEA.head(chain);
+            if (tsm.Node.isIdentifier(head)) return { head, tail: RNEA.tail(chain) };
+            else if (tsm.Node.isPropertyAccessExpression(head)) {
+                const expr: tsm.Expression = head.getExpression();
+                chain = ROA.prepend(expr)(chain);
+            }
+            else {
+                throw new Error(`parseCallChain ${head.getKindName()} not impl`);
+            }
+        }
+    }
 
 
 export const parseExpression =
@@ -155,23 +157,12 @@ export const parseCallExpression =
             //      * the storage get context syscall
             //      * the storage get syscall
 
+            const chain = resolveCallChain(node);
+            const id = resolveIdentifier(scope)(chain.head);
+
             return E.left(makeParseError(node)('parseCallExpression not impl'));
         }
 
-const resolveIdentifier =
-    (scope: Scope) =>
-        (node: tsm.Identifier): E.Either<ParseError, SymbolDef> => {
-            return pipe(
-                node.getSymbol(),
-                O.fromNullable,
-                E.fromOption(() => makeParseError(node)('undefined symbol')),
-                E.chain(symbol => pipe(
-                    symbol,
-                    resolve(scope),
-                    E.fromOption(() => makeParseError(node)(`unresolved symbol ${symbol.getName()}`))
-                )),
-            );
-        }
 
 export const parseIdentifier =
     (scope: Scope) =>

@@ -85,12 +85,6 @@ const parseBlock =
             return [operations, { ...state, scope: $state.scope }];
         }
 
-// const parseConstVariableDeclarations =
-//     (declarations: ReadonlyArray<tsm.VariableDeclaration>): StatementParseState =>
-//         (state) => {
-//             throw new Error();
-//         }
-
 const parseVariableDeclarations =
     (declarations: ReadonlyArray<tsm.VariableDeclaration>): StatementParseState =>
         (state) => {
@@ -153,32 +147,6 @@ const parseExpressionStatement =
             }
             return [updateLocation(node)(ops), state]
         }
-
-// export function processIfStatement(node: tsm.IfStatement, options: ProcessMethodOptions): void {
-
-//     const builder = options.builder;
-//     const setLocation = builder.getLocationSetter();
-//     const elseTarget: TargetOffset = { operation: undefined };
-//     const expr = node.getExpression();
-//     processExpression(expr, options);
-
-//     const closeParen = node.getLastChildByKind(tsm.SyntaxKind.CloseParenToken);
-//     if (closeParen) setLocation(node, closeParen);
-//     else setLocation(expr);
-//     builder.emitJump('jumpifnot', elseTarget);
-//     const $then = ;
-//     const $else = node.getElseStatement();
-//     processStatement($then, options);
-//     if ($else) {
-//         const endTarget: TargetOffset = { operation: undefined };
-//         builder.emitJump('jump', endTarget);
-//         elseTarget.operation = builder.emit('noop').operation;
-//         processStatement($else, options);
-//         endTarget.operation = builder.emit('noop').operation;
-//     } else {
-//         elseTarget.operation = builder.emit('noop').operation;
-//     }
-// }
 
 const parseIfStatement =
     (node: tsm.IfStatement): StatementParseState =>

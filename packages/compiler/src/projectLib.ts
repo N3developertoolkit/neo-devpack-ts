@@ -4,8 +4,11 @@ import { pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as O from 'fp-ts/Option';
 import * as M from 'fp-ts/Monoid'
-import { ParserState } from "./compiler";
+import { CompilerState } from "./compiler";
 import * as S from 'fp-ts/State';
+import * as FP from 'fp-ts';
+import * as ROS from 'fp-ts/ReadonlySet';
+import * as E from 'fp-ts/Either';
 
 type Diagnostic = ts.Diagnostic;
 
@@ -58,11 +61,26 @@ const parseLibrarySourceFile =
         }
 
 
+const LIB_PATH = `/node_modules/typescript/lib/`;
+export const parseProjectLibrary2 =
+    (project: Project): CompilerState<LibraryDeclarations> =>
+        (diagnostics: ReadonlyArray<Diagnostic>) => {
+            const loadSource =
+                (filename: string) =>
+                    pipe(
+                        project.getSourceFile(LIB_PATH + filename),
+                        E.fromNullable(filename)
+                    );
+
+            let sources = ROA.fromArray(project.compilerOptions.get().lib ?? [])
+            let parsedFiles: ReadonlySet<string> = ROS.empty;
+            let failures: ReadonlyArray<string> = ROA.empty;
+
+        }
 // TODO: At some point, I should rewrite this to be functional and recursive
 export const parseProjectLibrary =
-    (project: Project): ParserState<LibraryDeclarations> =>
+    (project: Project): CompilerState<LibraryDeclarations> =>
         (diagnostics: ReadonlyArray<Diagnostic>) => {
-            const LIB_PATH = `/node_modules/typescript/lib/`;
             const loadSource = (filename: string) => project.getSourceFile(LIB_PATH + filename);
 
             let state = declarationsMonoid.empty;

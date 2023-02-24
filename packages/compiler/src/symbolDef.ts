@@ -11,7 +11,7 @@ import * as M from "fp-ts/Monoid";
 import * as O from 'fp-ts/Option'
 import * as SG from "fp-ts/Semigroup";
 import * as S from 'fp-ts/State';
-import { ParserState } from "./compiler";
+import { CompilerState } from "./compiler";
 import { Scope } from "./scope";
 
 type Diagnostic = ts.Diagnostic;
@@ -492,7 +492,7 @@ const parseImportDeclaration =
     }
 
 export const parseSourceFile =
-    (src: SourceFile): ParserState<ReadonlyArray<SymbolDef>> =>
+    (src: SourceFile): CompilerState<ReadonlyArray<SymbolDef>> =>
         (diagnostics: ReadonlyArray<Diagnostic>) => {
             const diagnosticsSG = ROA.getSemigroup<Diagnostic>();
 
@@ -546,7 +546,7 @@ export const parseSourceFile =
         }
 
 export const parseProjectSymbols =
-    (prj: Project): ParserState<ReadonlyArray<ReadonlyArray<SymbolDef>>> =>
+    (prj: Project): CompilerState<ReadonlyArray<ReadonlyArray<SymbolDef>>> =>
         (diagnostics: ReadonlyArray<Diagnostic>) => {
 
             const sourceParsers = pipe(
