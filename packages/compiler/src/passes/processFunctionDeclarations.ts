@@ -31,8 +31,17 @@ const E_fromSeparated = <E, A>(s: SEP.Separated<ReadonlyArray<E>, A>): E.Either<
 const parseExpression =
     (node: tsm.Expression): StatementParseState =>
         (state) => {
-            const [ops, errors] = $parseExpression(state.scope)(node)(state.errors);
-            return [ops, { ...state, errors }]
+            return pipe(
+                node,
+                $parseExpression(state.scope),
+                E.match(
+                    error => [[], {
+                        ...state,
+                        errors: ROA.append(error)(state.errors)
+                    }],
+                    ops => [ops, state]
+                )
+            )
         }
 
 const updateLocation =

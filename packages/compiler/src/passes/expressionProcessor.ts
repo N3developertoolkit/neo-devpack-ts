@@ -16,60 +16,72 @@ import * as FP from 'fp-ts';
 import * as SEP from 'fp-ts/Separated';
 import { Operation, OperationKind, PushBoolOperation, PushDataOperation, PushIntOperation } from "../types/Operation";
 import { resolve, Scope } from "../scope";
-import { ConstantSymbolDef, isLoadableDef, makeParseError, ParseError, VariableSymbolDef } from "../symbolDef";
+import { ConstantSymbolDef, isLoadableDef, makeParseError, ParseError, SymbolDef, VariableSymbolDef } from "../symbolDef";
 
-type ExpressionParseState = S.State<ReadonlyArray<ParseError>, ReadonlyArray<Operation>>
+// Shouldn't use the state monad for expression parsing. The only state expressions return is an ROA of parse errors.
+// Instead, use Either, 
 
-const failState =
-    (node: tsm.Node) =>
-        (message: string): ExpressionParseState =>
-            (state) => [[], state.concat([makeParseError(node)(message)])];
+type ExpressionParseResult = E.Either<ParseError, ReadonlyArray<Operation>>
+
+// const monoidEPR: M.Monoid<ExpressionParseResult> = {
+//     empty: E.right([]),
+//     concat: (x, y) => {
+
+
+
+
+
+//         if (E.isLeft(x)) {
+//             return E.isLeft(y) 
+//                 ? E.left(ROA.concat(y.left)(x.left)) 
+//                 : x;
+//         } else {
+//             return E.isRight(y) 
+//                 ? E.right(ROA.concat(y.right)(x.right)) 
+//                 : y;
+//         }
+//     }
+// }
 
 
 export const parseExpression =
     (scope: Scope) =>
-        (node: tsm.Expression): ExpressionParseState =>
-            (state) => {
-                if (tsm.Node.isArrayLiteralExpression(node)) return parseArrayLiteral(scope)(node)(state);
-                if (tsm.Node.isAsExpression(node)) return parseExpression(scope)(node.getExpression())(state);
-                if (tsm.Node.isBigIntLiteral(node)) return parseBigIntLiteral(node)(state);
-                if (tsm.Node.isBinaryExpression(node)) return parseBinaryExpression(scope)(node)(state);
-                // if (tsm.Node.isCallExpression(node)) return parseCallExpression(node, scope);
-                if (tsm.Node.isFalseLiteral(node)) return parseBooleanLiteral(node)(state);
-                if (tsm.Node.isIdentifier(node)) return parseIdentifier(scope)(node)(state);
-                if (tsm.Node.isNonNullExpression(node)) return parseExpression(scope)(node.getExpression())(state);
-                if (tsm.Node.isNullLiteral(node)) return parseNullLiteral(node)(state);
-                if (tsm.Node.isNumericLiteral(node)) return parseNumericLiteral(node)(state);
-                if (tsm.Node.isParenthesizedExpression(node)) return parseExpression(scope)(node.getExpression())(state);
-                if (tsm.Node.isPrefixUnaryExpression(node)) return parsePrefixUnaryExpression(scope)(node)(state);
-                // if (tsm.Node.isPropertyAccessExpression(node)) return parsePropertyAccessExpression(node, scope);
-                if (tsm.Node.isStringLiteral(node)) return parseStringLiteral(node)(state);
-                if (tsm.Node.isTrueLiteral(node)) return parseBooleanLiteral(node)(state);
-                return failState(node)(`parseExpression ${node.getKindName()}`)(state);
-            }
+        (node: tsm.Expression): E.Either<ParseError, readonly Operation[]> => {
+            if (tsm.Node.isArrayLiteralExpression(node)) return parseArrayLiteral(scope)(node);
+            if (tsm.Node.isAsExpression(node)) return parseExpression(scope)(node.getExpression());
+            if (tsm.Node.isBigIntLiteral(node)) return pipe(node, parseBigIntLiteral, E.map(ROA.of));
+            if (tsm.Node.isBinaryExpression(node)) return parseBinaryExpression(scope)(node);
+            // // if (tsm.Node.isCallExpression(node)) return parseCallExpression(node, scope);
+            if (tsm.Node.isFalseLiteral(node)) return pipe(node, parseBooleanLiteral, E.map(ROA.of));
+            if (tsm.Node.isIdentifier(node)) return parseIdentifier(scope)(node);
+            if (tsm.Node.isNonNullExpression(node)) return parseExpression(scope)(node.getExpression());
+            if (tsm.Node.isNullLiteral(node)) return pipe(node, parseNullLiteral, E.map(ROA.of));
+            if (tsm.Node.isNumericLiteral(node)) return pipe(node, parseNumericLiteral, E.map(ROA.of));
+            if (tsm.Node.isParenthesizedExpression(node)) return parseExpression(scope)(node.getExpression());
+            if (tsm.Node.isPrefixUnaryExpression(node)) return parsePrefixUnaryExpression(scope)(node);
+            // // if (tsm.Node.isPropertyAccessExpression(node)) return parsePropertyAccessExpression(node, scope);
+            if (tsm.Node.isStringLiteral(node)) return pipe(node, parseStringLiteral, E.map(ROA.of));
+            if (tsm.Node.isTrueLiteral(node)) return pipe(node, parseBooleanLiteral, E.map(ROA.of));
+
+            return E.left(makeParseError(node)(`parseExpression ${node.getKindName()} not supported`));
+        }
 
 export const parseArrayLiteral =
     (scope: Scope) =>
-        (node: tsm.ArrayLiteralExpression): ExpressionParseState =>
-            (state) => {
-
-                const monoid = ROA.getMonoid<Operation>();
-                let operations = monoid.empty;
-                for (const e of node.getElements()) {
-                    let ops = monoid.empty;
-                    [ops, state] = parseExpression(scope)(e)(state);
-                    operations = monoid.concat(operations, ops);
-                }
-                return [operations, state];
-            }
+        (node: tsm.ArrayLiteralExpression): E.Either<ParseError, readonly Operation[]> => {
+            return pipe(
+                node.getElements(),
+                ROA.map(parseExpression(scope)),
+                ROA.sequence(E.either),
+                E.map(ROA.flatten)
+            )
+        }
 
 export const parseBigIntLiteral =
-    (node: tsm.BigIntLiteral): ExpressionParseState =>
-        (state) => {
-            const value = node.getLiteralValue() as bigint;
-            const op: PushIntOperation = { kind: "pushint", value, location: node };
-            return [[op], state];
-        }
+    (node: tsm.BigIntLiteral): E.Either<ParseError, Operation> => {
+        const value = node.getLiteralValue() as bigint;
+        return E.right({ kind: "pushint", value, location: node });
+    }
 
 const binaryOpTokenMap: ReadonlyMap<tsm.SyntaxKind, OperationKind> = new Map([
     [tsm.SyntaxKind.AsteriskAsteriskToken, 'power'],
@@ -85,33 +97,49 @@ const binaryOpTokenMap: ReadonlyMap<tsm.SyntaxKind, OperationKind> = new Map([
     [tsm.SyntaxKind.PlusToken, 'add']
 ]);
 
+export const parseBinaryOperatorToken =
+    (node: tsm.Node<tsm.ts.BinaryOperatorToken>): E.Either<ParseError, Operation> => {
+        return pipe(
+            node.getKind(),
+            binaryOpTokenMap.get,
+            E.fromNullable(
+                makeParseError()(`parseBinaryOperatorToken ${node.getKindName()} not supported`)
+            ),
+            E.map(kind => ({ kind }) as Operation)
+        );
+    }
+
 export const parseBinaryExpression =
     (scope: Scope) =>
-        (node: tsm.BinaryExpression): ExpressionParseState =>
-            (state) => {
-                const opToken = node.getOperatorToken();
-                const opKind = binaryOpTokenMap.get(opToken.getKind());
-                if (!opKind) {
-                    return failState(node)(`parseBinaryExpression ${opToken.getKindName()}`)(state);
-                }
-
-                const left = parseExpression(scope)(node.getLeft())(state);
-                const right = parseExpression(scope)(node.getRight())(left[1]);
-                state = right[1];
-
-                const monoid = ROA.getMonoid<Operation>();
-                const operations = monoid.concat(left[0], right[0]).concat([{ kind: opKind }]);
-
-                return [operations, state];
-            }
+        (node: tsm.BinaryExpression): E.Either<ParseError, readonly Operation[]> => {
+            return pipe(
+                node.getOperatorToken(),
+                parseBinaryOperatorToken,
+                // map errors to reference the expression node 
+                // instead of the token node
+                E.mapLeft(e => makeParseError(node)(e.message)),
+                E.chain(op => pipe(
+                    node.getRight(),
+                    parseExpression(scope),
+                    E.map(
+                        ROA.append(op)
+                    )
+                )),
+                E.chain(ops => pipe(
+                    node.getLeft(),
+                    parseExpression(scope),
+                    E.map(
+                        ROA.concat(ops)
+                    )
+                )),
+            )
+        }
 
 export const parseBooleanLiteral =
-    (node: tsm.FalseLiteral | tsm.TrueLiteral): ExpressionParseState =>
-        (state) => {
-            const value = node.getLiteralValue();
-            const op: PushBoolOperation = { kind: "pushbool", value, location: node };
-            return [[op], state];
-        }
+    (node: tsm.FalseLiteral | tsm.TrueLiteral): E.Either<ParseError, Operation> => {
+        const value = node.getLiteralValue();
+        return E.right({ kind: "pushbool", value, location: node });
+    }
 
 // export function parseCallExpression(node: tsm.CallExpression, scope: ReadonlyScope): ParseExpressionResult {
 //     // const $parseExpression = parseExpression(scope);
@@ -139,70 +167,70 @@ export const parseBooleanLiteral =
 
 export const parseIdentifier =
     (scope: Scope) =>
-        (node: tsm.Identifier): ExpressionParseState =>
-            (state) => {
-
-                const error = makeParseError(node);
-                return pipe(
-                    node.getSymbol(),
-                    E.fromNullable(error('undefined symbol')),
-                    E.chain(symbol => pipe(
-                        symbol,
-                        resolve(scope),
-                        E.fromOption(() => error(`unresolved symbol ${symbol.getName()}`))
-                    )),
-                    E.chain(def => isLoadableDef(def)
-                        ? E.of(def.loadOperations)
-                        : E.left(error(`unresolved symbol ${def.symbol.getName()}`))
-                    ),
-                    E.match(
-                        error => [[], state.concat([error])],
-                        ops => [ops, state]
-                    )
-                )
-            }
+        (node: tsm.Identifier): E.Either<ParseError, readonly Operation[]> => {
+            const error = makeParseError(node);
+            return pipe(
+                node.getSymbol(),
+                E.fromNullable(error('undefined symbol')),
+                E.chain(symbol => pipe(
+                    symbol,
+                    resolve(scope),
+                    E.fromOption(() => error(`unresolved symbol ${symbol.getName()}`))
+                )),
+                E.chain(flow(
+                    E.fromPredicate(
+                        isLoadableDef,
+                        (def) => error(`${def.symbol.getName()} symbol not loadable`)))
+                ),
+                E.map(def => def.loadOperations)
+            );
+        }
 
 export const parseNullLiteral =
-    (node: tsm.NullLiteral): ExpressionParseState =>
-        (state) => {
-            const op: Operation = { kind: "pushnull", location: node };
-            return [[op], state];
-        }
+    (node: tsm.NullLiteral): E.Either<ParseError, Operation> =>
+        E.right({ kind: "pushnull", location: node });
 
 export const parseNumericLiteral =
-    (node: tsm.NumericLiteral): ExpressionParseState =>
-        (state) => {
-            const value = node.getLiteralValue();
-            if (Number.isInteger(value)) {
-                const op: PushIntOperation = { kind: "pushint", value: BigInt(value), location: node };
-                return [[op], state];
-            }
-
-            return failState(node)(`invalid non-integer numeric literal ${value}`)(state);
-        }
+    (node: tsm.NumericLiteral): E.Either<ParseError, Operation> => {
+        const value = node.getLiteralValue();
+        return Number.isInteger(value)
+            ? E.right({ kind: "pushint", value: BigInt(value), location: node })
+            : E.left(makeParseError(node)(`invalid non-integer numeric literal ${value}`));
+    }
 
 const prefixUnaryOperatorMap: ReadonlyMap<tsm.SyntaxKind, OperationKind> = new Map([
     [tsm.SyntaxKind.ExclamationToken, 'not'],
     [tsm.SyntaxKind.MinusToken, 'negate']
 ]);
 
+export const parseUnaryOperatorToken =
+    (token: tsm.ts.PrefixUnaryOperator): E.Either<ParseError, Operation> => {
+        return pipe(
+            token,
+            prefixUnaryOperatorMap.get,
+            E.fromNullable(
+                makeParseError()(`parseUnaryOperatorToken ${tsm.SyntaxKind[token]} not supported`)
+            ),
+            E.map(kind => ({ kind }) as Operation)
+        );
+    }
+
 export const parsePrefixUnaryExpression = (scope: Scope) =>
-    (node: tsm.PrefixUnaryExpression): ExpressionParseState =>
-        (state) => {
-            const opToken = node.getOperatorToken();
-            const opKind = binaryOpTokenMap.get(opToken);
-            if (!opKind) {
-                return failState(node)(`parsePrefixUnaryExpression ${tsm.SyntaxKind[opToken]}`)(state);
-            }
-
-            const operand = parseExpression(scope)(node.getOperand())(state);
-
-            const monoid = ROA.getMonoid<Operation>();
-            const operations = monoid.concat(operand[0], [{ kind: opKind }]);
-            state = operand[1];
-
-            return [operations, state];
-        }
+    (node: tsm.PrefixUnaryExpression): E.Either<ParseError, readonly Operation[]> => {
+        return pipe(
+            node.getOperatorToken(),
+            parseUnaryOperatorToken,
+            // map errors to reference the expression node 
+            E.mapLeft(e => makeParseError(node)(e.message)),
+            E.chain(op => pipe(
+                node.getOperand(),
+                parseExpression(scope),
+                E.map(
+                    ROA.append(op)
+                )
+            ))
+        )
+    }
 
 
 // export function parsePropertyAccessExpression(node: tsm.PropertyAccessExpression, scope: ReadonlyScope): ParseExpressionResult {
@@ -211,10 +239,8 @@ export const parsePrefixUnaryExpression = (scope: Scope) =>
 
 
 export const parseStringLiteral =
-    (node: tsm.StringLiteral): ExpressionParseState =>
-        (state) => {
-            const literal = node.getLiteralValue();
-            const value = Buffer.from(literal, 'utf8');
-            const op: PushDataOperation = { kind: "pushdata", value, location: node };
-            return [[op], state];
-        }
+    (node: tsm.StringLiteral): E.Either<ParseError, Operation> => {
+        const literal = node.getLiteralValue();
+        const value = Buffer.from(literal, 'utf8');
+        return E.right({ kind: "pushdata", value, location: node });
+    }
