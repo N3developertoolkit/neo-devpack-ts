@@ -10,27 +10,30 @@ import * as SEP from 'fp-ts/Separated';
 import * as FP from 'fp-ts'
 
 import { makeParseError, parseSymbol as $parseSymbol, VariableSymbolDef, ParseError, createDiagnostic, SymbolDef, FunctionSymbolDef } from "../symbolDef";
-import { $createScope, Scope, updateScope } from "../scope";
+import { createScope, Scope, updateScope } from "../scope";
 import { JumpTargetOperation, LoadStoreOperation, Location, Operation } from "../types/Operation";
 import { parseExpression as $parseExpression } from "./expressionProcessor";
 import { isVoidLike } from "../utils";
+import { ContractMethod } from "../compiler";
 
 type Diagnostic = tsm.ts.Diagnostic;
 
+interface FunctionParseState {
+    readonly scope: Scope
+    readonly locals: ReadonlyArray<tsm.VariableDeclaration>
+    readonly errors: ReadonlyArray<ParseError>
+}
+
+type StatementParseState = S.State<FunctionParseState, ReadonlyArray<Operation>>
+
 const parseSymbol = $parseSymbol();
-const concatDiags = (diagnostics: ReadonlyArray<Diagnostic>) =>
-    (errors: ReadonlyArray<ParseError>) =>
-        ROA.concat(ROA.map(createDiagnostic)(errors))(diagnostics);
-const appendDiag = (diagnostics: ReadonlyArray<Diagnostic>) =>
-    (error: ParseError) =>
-        ROA.append(createDiagnostic(error))(diagnostics);
 
 const E_fromSeparated = <E, A>(s: SEP.Separated<ReadonlyArray<E>, A>): E.Either<ReadonlyArray<E>, A> =>
     ROA.isNonEmpty(s.left) ? E.left(s.left) : E.of(s.right)
 
 const parseExpression =
     (node: tsm.Expression): StatementParseState =>
-        (state) => {
+        state => {
             return pipe(
                 node,
                 $parseExpression(state.scope),
@@ -59,9 +62,9 @@ const opsMonoid = {
 
 const parseBlock =
     (node: tsm.Block): StatementParseState =>
-        ($state) => {
+        state => {
             // create a new scope for the statements within the block
-            let state = { ...$state, scope: $createScope($state.scope)([]) }
+            let $state = { ...state, scope: createScope(state.scope)([]) }
             let operations = opsMonoid.empty;
 
             const open = node.getFirstChildByKind(tsm.SyntaxKind.OpenBraceToken);
@@ -71,7 +74,7 @@ const parseBlock =
 
             let ops: ReadonlyArray<Operation>;
             for (const stmt of node.getStatements()) {
-                [ops, state] = parseStatement(stmt)(state);
+                [ops, $state] = parseStatement(stmt)($state);
                 operations = opsMonoid.concat(operations, ops);
             }
 
@@ -82,12 +85,12 @@ const parseBlock =
 
             //  keep the accumulated errors and locals, but swap the original state scope
             //  back in on return
-            return [operations, { ...state, scope: $state.scope }];
+            return [operations, { ...$state, scope: state.scope }];
         }
 
 const parseVariableDeclarations =
     (declarations: ReadonlyArray<tsm.VariableDeclaration>): StatementParseState =>
-        (state) => {
+        state => {
             // create an Either containing an array of VariableSymbolDefs and the operations
             // needed to initialize each variable
             const parseDeclsResult = pipe(
@@ -129,14 +132,14 @@ const parseVariableDeclarations =
 
 const parseVariableStatement =
     (node: tsm.VariableStatement): StatementParseState =>
-        (state) => {
+        state => {
             const declarations = node.getDeclarations();
             return parseVariableDeclarations(declarations)(state);
         }
 
 const parseExpressionStatement =
     (node: tsm.ExpressionStatement): StatementParseState =>
-        (state) => {
+        state => {
             const expr = node.getExpression();
             let ops: ReadonlyArray<Operation>;
             [ops, state] = parseExpression(expr)(state);
@@ -150,7 +153,7 @@ const parseExpressionStatement =
 
 const parseIfStatement =
     (node: tsm.IfStatement): StatementParseState =>
-        (state) => {
+        state => {
             const expr = node.getExpression();
 
             let operations: ReadonlyArray<Operation>;
@@ -187,7 +190,7 @@ const parseIfStatement =
 
 const parseReturnStatement =
     (node: tsm.ReturnStatement): StatementParseState =>
-        (state) => {
+        state => {
             let operations = opsMonoid.empty;
             const expr = node.getExpression();
             if (expr) {
@@ -200,7 +203,7 @@ const parseReturnStatement =
 
 const parseThrowStatement =
     (node: tsm.ThrowStatement): StatementParseState =>
-        (state) => {
+        state => {
             let operations: ReadonlyArray<Operation>;
             [operations, state] = parseExpression(node.getExpression())(state)
             operations = opsMonoid.append(operations)({ kind: 'throw' });
@@ -211,22 +214,14 @@ const parseThrowStatement =
 const returnOp: Operation = { kind: 'return' };
 
 const appendError = (error: ParseError): StatementParseState =>
-    (state) => ([[], { ...state, errors: ROA.append(error)(state.errors) }]);
+    state => ([[], { ...state, errors: ROA.append(error)(state.errors) }]);
 
 const appendErrors = (error: ReadonlyArray<ParseError>): StatementParseState =>
-    (state) => ([[], { ...state, errors: ROA.concat(error)(state.errors) }]);
-
-interface FunctionParseState {
-    readonly scope: Scope
-    readonly locals: ReadonlyArray<tsm.VariableDeclaration>
-    readonly errors: ReadonlyArray<ParseError>
-}
-
-type StatementParseState = S.State<FunctionParseState, ReadonlyArray<Operation>>
+    state => ([[], { ...state, errors: ROA.concat(error)(state.errors) }]);
 
 const parseStatement =
     (node: tsm.Statement): StatementParseState =>
-        (state) => {
+        state => {
             if (tsm.Node.isBlock(node)) return parseBlock(node)(state);
             if (tsm.Node.isExpressionStatement(node)) return parseExpressionStatement(node)(state);
             if (tsm.Node.isIfStatement(node)) return parseIfStatement(node)(state);
@@ -256,17 +251,10 @@ const parseBody =
             return E.left(ROA.of(makeParseError(body)(`parseBody ${body.getKindName()} not implemented`)));
         }
 
-export interface ContractMethod {
-    name: string,
-    node: tsm.FunctionDeclaration,
-    operations: ReadonlyArray<Operation>,
-    variables: ReadonlyArray<{ name: string, type: tsm.Type }>,
-}
-
 const makeContractMethod =
     (node: tsm.FunctionDeclaration) =>
-        (result: BodyParseResult): E.Either<ReadonlyArray<ParseError>, ContractMethod> => {
-
+        (_result: BodyParseResult): E.Either<ReadonlyArray<ParseError>, ContractMethod> => {
+            // TODO: implement this method
             return pipe(
                 node,
                 parseSymbol,
@@ -284,7 +272,7 @@ const makeContractMethod =
 export const parseFunctionDeclaration =
     (parentScope: Scope) =>
         (node: tsm.FunctionDeclaration): S.State<ReadonlyArray<Diagnostic>, ContractMethod> =>
-            (diagnostics) => {
+            diagnostics => {
                 return pipe(
                     node.getParameters(),
                     ROA.mapWithIndex((index, node) => pipe(
@@ -294,7 +282,7 @@ export const parseFunctionDeclaration =
                     )),
                     ROA.separate,
                     E_fromSeparated,
-                    E.map($createScope(parentScope)),
+                    E.map(createScope(parentScope)),
                     E.bindTo('scope'),
                     E.bind('body', () => pipe(
                         node.getBody(),
@@ -307,34 +295,30 @@ export const parseFunctionDeclaration =
                     E.chain((o) => parseBody(o.scope)(o.body)),
                     E.chain(makeContractMethod(node)),
                     E.match(
-                        left => [
+                        errors => [
                             { node, name: "", operations: [], variables: [] },
-                            concatDiags(diagnostics)(left)
+                            ROA.concat(ROA.map(createDiagnostic)(errors))(diagnostics)
                         ],
-                        right => [right, diagnostics]
+                        method => [method, diagnostics]
                     )
                 );
             }
 
-
-
 export const parseFunctionDeclarations =
     (scope: Scope) =>
         (defs: ReadonlyArray<SymbolDef>): S.State<ReadonlyArray<Diagnostic>, ReadonlyArray<ContractMethod>> =>
-            (diagnostics) => {
+            diagnostics => {
 
-                const monoid = ROA.getMonoid<ContractMethod>();
                 const functionDefs = pipe(defs,
                     ROA.filterMap(def => def instanceof FunctionSymbolDef && !def.$import
                         ? O.some(def) : O.none)
                 );
-                let methods = monoid.empty;
 
+                let methods: ReadonlyArray<ContractMethod> = ROA.empty;
                 for (const def of functionDefs) {
                     let method: ContractMethod;
                     [method, diagnostics] = parseFunctionDeclaration(scope)(def.node)(diagnostics);
-                    methods = monoid.concat(methods, [method]);
+                    methods = ROA.append(method)(methods);
                 }
-
                 return [methods, diagnostics];
             }

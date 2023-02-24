@@ -1,16 +1,13 @@
-import { createDiagnostic } from "./utils";
 import { FunctionDeclaration, InterfaceDeclaration, VariableDeclaration, SourceFile, Node, Project, ts } from "ts-morph";
+import { createDiagnostic } from "./utils";
+import { CompilerState } from "./compiler";
 import { pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as O from 'fp-ts/Option';
-import * as M from 'fp-ts/Monoid'
-import { CompilerState } from "./compiler";
 import * as S from 'fp-ts/State';
-import * as FP from 'fp-ts';
 import * as ROS from 'fp-ts/ReadonlySet';
-import * as E from 'fp-ts/Either';
-import { fail } from "assert";
+import * as STR from 'fp-ts/string'
 
 type Diagnostic = ts.Diagnostic;
 
@@ -20,22 +17,9 @@ export type LibraryDeclarations = {
     readonly variables: ReadonlyArray<VariableDeclaration>,
 }
 
-const declarationsMonoid: M.Monoid<LibraryDeclarations> = {
-    concat: (x, y) => ({
-        functions: x.functions.concat(y.functions),
-        interfaces: x.interfaces.concat(y.interfaces),
-        variables: x.variables.concat(y.variables),
-    }),
-    empty: {
-        functions: [],
-        interfaces: [],
-        variables: []
-    }
-}
-
 const parseLibrarySourceFile =
     (src: SourceFile): S.State<LibraryDeclarations, ReadonlyArray<string>> =>
-        (declarations: LibraryDeclarations) => {
+        declarations => {
             const children = src.forEachChildAsArray();
             const functions = pipe(children,
                 ROA.filterMap(node => Node.isFunctionDeclaration(node)
@@ -55,33 +39,34 @@ const parseLibrarySourceFile =
                 ROA.map(ref => `lib.${ref.getFileName()}.d.ts`)
             );
 
-            declarations = declarationsMonoid.concat(
-                declarations,
-                { functions, interfaces, variables }
-            );
-            return [references, declarations];
+            return [references, {
+                functions: ROA.concat(functions)(declarations.functions),
+                interfaces: ROA.concat(interfaces)(declarations.interfaces),
+                variables: ROA.concat(variables)(declarations.variables),
+            }];
         }
 
 const LIB_PATH = `/node_modules/typescript/lib/`;
 
-// TODO: At some point, I should rewrite this to be functional and recursive
 export const parseProjectLibrary =
     (project: Project): CompilerState<LibraryDeclarations> =>
-        (diagnostics: ReadonlyArray<Diagnostic>) => {
+        diagnostics => {
             const loadSource = (filename: string) => project.getSourceFile(LIB_PATH + filename);
-            const strEq = FP.string.Eq;
 
-            let state = declarationsMonoid.empty;
             let sources = ROA.fromArray(project.compilerOptions.get().lib ?? []);
+            let declarations: LibraryDeclarations = {
+                functions: ROA.empty,
+                interfaces: ROA.empty,
+                variables: ROA.empty
+            }
             let parsed: ReadonlySet<string> = ROS.empty;
             let failures: ReadonlyArray<Diagnostic> = ROA.empty;
-            let declarations = declarationsMonoid.empty;
 
             while (ROA.isNonEmpty(sources)) {
                 const head = RNEA.head(sources);
                 sources = RNEA.tail(sources);
-                if (ROS.elem(strEq)(head)(parsed)) continue;
-                parsed = ROS.insert(strEq)(head)(parsed);
+                if (ROS.elem(STR.Eq)(head)(parsed)) continue;
+                parsed = ROS.insert(STR.Eq)(head)(parsed);
 
                 const src = loadSource(head);
                 if (src) {
@@ -93,5 +78,5 @@ export const parseProjectLibrary =
                 }
             }
 
-            return [state,  ROA.concat(failures)(diagnostics)];
+            return [declarations, ROA.concat(failures)(diagnostics)];
         }

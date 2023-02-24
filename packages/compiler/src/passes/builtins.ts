@@ -1,6 +1,43 @@
-// import * as tsm from "ts-morph";
+import * as E from "fp-ts/Either";
+import * as tsm from "ts-morph";
+import { Scope } from "../scope";
+import { CallableSymbolDef, ParseError } from "../symbolDef";
+import { Operation, PushDataOperation } from "../types/Operation";
 // import { FunctionSymbolDef, ObjectSymbolDef, Scope } from "../scope";
 // import { ProcessMethodOptions } from "./processFunctionDeclarations";
+import * as ROA from 'fp-ts/ReadonlyArray'
+import * as ROM from 'fp-ts/ReadonlyMap'
+import * as S from 'fp-ts/State'
+import * as O from 'fp-ts/Option'
+import * as FP from 'fp-ts'
+import { pipe } from "fp-ts/lib/function";
+import { parseExpression } from "./expressionProcessor";
+import { getArguments } from "../utils";
+
+export const makeErrorObj = (symbol: tsm.Symbol): CallableSymbolDef => {
+    return {
+        symbol,
+        parseCall: (node, scope) => {
+            return pipe(
+                node,
+                getArguments,
+                ROA.head, 
+                O.match(
+                    () => E.right([{ kind: 'pushdata', value: Buffer.from("", "utf8") } as Operation]),
+                    parseExpression(scope)
+                ),
+                E.bindTo('args'),
+                E.bind('call', () => E.right([]))
+            )
+        }
+    }
+}
+
+// export function emitError(args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions): void {
+//     // const arg = args[0];
+//     // if (arg) { processExpression(arg, options); }
+//     // else { options.builder.emitPushData(""); }
+// }
 
 
 // type EmitCallFunction = (options: ProcessMethodOptions) => void;
@@ -62,12 +99,6 @@
 //     }
 // }
 
-// export function emitError(args: ReadonlyArray<tsm.Expression>, options: ProcessMethodOptions): void {
-//     // const arg = args[0];
-//     // if (arg) { processExpression(arg, options); }
-//     // else { options.builder.emitPushData(""); }
-// }
-
 // export function defineUint8ArrayObj(scope: Scope, map: ReadonlyMap<string, tsm.VariableDeclaration>) {
 //     const decl = map.get("Uint8Array");
 //     const symbol = decl?.getSymbol();
@@ -114,3 +145,5 @@
 //     // }
 //     throw new Error("not implemented");
 // }
+
+

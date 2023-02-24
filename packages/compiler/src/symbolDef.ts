@@ -1,5 +1,5 @@
-import { LoadStoreOperation, Operation, parseOperation, PushBoolOperation, PushDataOperation, PushIntOperation } from "./types/Operation";
-import { createDiagnostic as $createDiagnostic, isVoidLike } from "./utils";
+import { LoadStoreOperation, Operation, parseOperation, PushBoolOperation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
+import { createDiagnostic as $createDiagnostic, getArguments, isVoidLike } from "./utils";
 
 import { sc, u } from '@cityofzion/neon-core';
 import { ts, Node, VariableStatement, VariableDeclarationKind, SourceFile, Project, Symbol, VariableDeclaration, Expression, SyntaxKind, BigIntLiteral, NumericLiteral, StringLiteral, FunctionDeclaration, ImportDeclaration, ImportSpecifier, JSDocTag, InterfaceDeclaration, DiagnosticCategory, ParameterDeclaration, CallExpression, ExportedDeclarations } from "ts-morph";
@@ -13,6 +13,7 @@ import * as SG from "fp-ts/Semigroup";
 import * as S from 'fp-ts/State';
 import { CompilerState } from "./compiler";
 import { Scope } from "./scope";
+import { parseExpression } from "./passes/expressionProcessor";
 
 type Diagnostic = ts.Diagnostic;
 
@@ -32,18 +33,20 @@ export function isLoadableDef(def: SymbolDef): def is LoadSymbolDef {
 
 
 export interface ObjectSymbolDef extends SymbolDef {
-    parseGet(name: string): E.Either<ParseError, ReadonlyArray<Operation>>
+    // parseGet(name: string): E.Either<ParseError, ReadonlyArray<Operation>>
 }
 
 export function isObjectDef(def: SymbolDef): def is ObjectSymbolDef {
     return 'parseGet' in def && typeof def.parseGet === 'function';
 }
 
+export type CallResult = {
+    args: ReadonlyArray<Operation>,
+    call: ReadonlyArray<Operation>,
+};
+
 export interface CallableSymbolDef extends ObjectSymbolDef {
-    parseCall(node: CallExpression, scope: Scope): E.Either<ParseError, {
-        args: ReadonlyArray<Operation>,
-        call: ReadonlyArray<Operation>,
-    }>
+    parseCall(node: CallExpression, scope: Scope): E.Either<ParseError, CallResult>
 }
 
 
@@ -116,6 +119,29 @@ export class VariableSymbolDef implements LoadSymbolDef {
     }
 }
 
+const parseArguments = (scope: Scope) => (node: CallExpression) => {
+    return pipe(
+        node,
+        getArguments,
+        ROA.map(parseExpression(scope)),
+        ROA.sequence(E.either),
+        E.map(ROA.flatten),
+        E.map(ROA.reverse)
+    );
+}
+
+const parseCall =
+    (scope: Scope) =>
+        (call: readonly Operation[]) =>
+            (node: CallExpression) => {
+                return pipe(
+                    node,
+                    parseArguments(scope),
+                    E.bindTo('args'),
+                    E.bind('call', () => E.right(call))
+                )
+            }
+
 export class EventSymbolDef implements CallableSymbolDef {
     constructor(
         readonly symbol: Symbol,
@@ -123,32 +149,25 @@ export class EventSymbolDef implements CallableSymbolDef {
         readonly parameters: ReadonlyArray<ParameterDeclaration>,
     ) { }
 
-    parseCall(node: CallExpression<ts.CallExpression>, scope: Scope): E.Either<ParseError, { args: readonly Operation[]; call: readonly Operation[]; }> {
-        throw new Error("Method not implemented.");
+    parseCall(node: CallExpression, scope: Scope): E.Either<ParseError, CallResult> {
+        const call = ROA.of({ kind: 'syscall', name: "System.Runtime.Notify" } as Operation)
+        return pipe(
+            node,
+            parseCall(scope)(call),
+            E.map(o => {
+                // NCCS creates an empty array and then APPENDs each notification arg in turn
+                // However, APPEND is 4x more expensive than PACK and is called once per arg
+                // instead of once per Notify call as PACK is. 
+                const args = pipe(o.args,
+                    ROA.concat([
+                        { kind: "pushint", value: BigInt(node.getArguments().length) },
+                        { kind: 'pack' },
+                        { kind: 'pushdata', value: Buffer.from(this.name, 'utf8') }] as Operation[])
+                );
+                return { ...o, args };
+            })
+        )
     }
-    parseGet(name: string): E.Either<ParseError, readonly Operation[]> {
-        throw new Error("Method not implemented.");
-    }
-
-    // parseCall(node: tsm.CallExpression, scope: Scope) {
-    //     // NCCS creates an empty array and then APPENDs each notification arg in turn
-    //     // However, APPEND is 4x more expensive than PACK and is called once per arg
-    //     // instead of once per Notify call as PACK is. 
-
-    //     const argNodes = node.getArguments() as tsm.Expression[];
-    //     const args = pipe(
-    //         argNodes, 
-    //         parseArguments(scope),
-    //         E.map(flow(
-    //             ROA.concat([
-    //                 { kind: "pushint", value: BigInt(argNodes.length) },
-    //                 { kind: 'pack' },
-    //                 { kind: 'pushdata', value: Buffer.from(this.name, 'utf8') },
-    //             ] as Operation[])
-    //         )))
-    //     const call = parseOK([{ kind: 'syscall', name: "System.Runtime.Notify" } as SysCallOperation]);
-    //     return { call, args }
-    // }
 }
 
 export class SysCallSymbolDef implements CallableSymbolDef {
@@ -157,18 +176,10 @@ export class SysCallSymbolDef implements CallableSymbolDef {
         readonly name: string,
     ) { }
 
-    parseCall(node: CallExpression<ts.CallExpression>, scope: Scope): E.Either<ParseError, { args: readonly Operation[]; call: readonly Operation[]; }> {
-        throw new Error("Method not implemented.");
+    parseCall(node: CallExpression, scope: Scope): E.Either<ParseError, CallResult> {
+        const call = ROA.of({ kind: 'syscall', name: this.name } as Operation)
+        return pipe(node, parseCall(scope)(call));
     }
-    parseGet(name: string): E.Either<ParseError, readonly Operation[]> {
-        throw new Error("Method not implemented.");
-    }
-
-    // parseCall(node: tsm.CallExpression, scope: Scope) {
-    //     const args = parseCallArguments(scope)(node);
-    //     const call = parseOK([{ kind: 'syscall', name: this.name } as SysCallOperation]);
-    //     return { call, args }
-    // }
 }
 
 export class MethodTokenSymbolDef implements CallableSymbolDef {
@@ -177,20 +188,10 @@ export class MethodTokenSymbolDef implements CallableSymbolDef {
         readonly token: sc.MethodToken
     ) { }
 
-    parseCall(node: CallExpression<ts.CallExpression>, scope: Scope): E.Either<ParseError, { args: readonly Operation[]; call: readonly Operation[]; }> {
-        throw new Error("Method not implemented.");
+    parseCall(node: CallExpression, scope: Scope): E.Either<ParseError, CallResult> {
+        const call = ROA.of({ kind: 'syscall', token: this.token } as Operation)
+        return pipe(node, parseCall(scope)(call));
     }
-    parseGet(name: string): E.Either<ParseError, readonly Operation[]> {
-        throw new Error("Method not implemented.");
-    }
-
-    // parseCall(node: tsm.CallExpression, scope: Scope) {
-    //     const args = parseCallArguments(scope)(node);
-    //     const call = parseOK([{ kind: 'calltoken', token: this.token } as CallTokenOperation]);
-    //     return { call, args }
-    // }
-
-    // getProp(_name: string) { return undefined; }
 }
 
 export class OperationsSymbolDef implements CallableSymbolDef {
@@ -199,20 +200,9 @@ export class OperationsSymbolDef implements CallableSymbolDef {
         readonly operations: ReadonlyArray<Operation>
     ) { }
 
-    parseCall(node: CallExpression<ts.CallExpression>, scope: Scope): E.Either<ParseError, { args: readonly Operation[]; call: readonly Operation[]; }> {
-        throw new Error("Method not implemented.");
+    parseCall(node: CallExpression, scope: Scope): E.Either<ParseError, CallResult> {
+        return pipe(node, parseCall(scope)(this.operations));
     }
-    parseGet(name: string): E.Either<ParseError, readonly Operation[]> {
-        throw new Error("Method not implemented.");
-    }
-
-    // parseCall(node: tsm.CallExpression, scope: Scope) {
-    //     const args = parseCallArguments(scope)(node);
-    //     const call = parseOK(this.operations);
-    //     return { call, args }
-    // }
-
-    // getProp(_name: string) { return undefined; }
 }
 
 
