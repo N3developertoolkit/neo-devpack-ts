@@ -120,6 +120,8 @@ export interface PushIntOperation {
     location?: Location,
 }
 
+export const isPushInt = (op: Operation): op is PushIntOperation => op.kind === 'pushint';
+
 export interface PushBoolOperation {
     readonly kind: 'pushbool';
     readonly value: boolean;

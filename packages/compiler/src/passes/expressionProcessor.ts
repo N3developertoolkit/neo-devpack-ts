@@ -12,7 +12,7 @@ import * as FP from 'fp-ts';
 import * as SEP from 'fp-ts/Separated';
 import { Operation, SimpleOperationKind } from "../types/Operation";
 import { resolve, Scope } from "../scope";
-import { isCallableDef, isLoadableDef, makeParseError, ParseError, SymbolDef, VariableSymbolDef } from "../symbolDef";
+import { isCallableDef, isLoadableDef, isObjectDef, makeParseError, ObjectSymbolDef, ParseError, parseSymbol, SymbolDef, VariableSymbolDef } from "../symbolDef";
 
 const resolveIdentifier =
     (scope: Scope) =>
@@ -142,6 +142,35 @@ export const parseBooleanLiteral =
         return E.right({ kind: "pushbool", value, location: node });
     }
 
+const getProp = ({ def, symbol }: {
+    readonly symbol: tsm.Symbol;
+    readonly def: ObjectSymbolDef;
+}) => pipe(
+    def.parseGetProp(symbol),
+    E.fromOption(() =>
+        makeParseError()(`invalid ${symbol.getName()} prop on ${def.symbol.getName()}`)
+    )
+)
+
+const asObject = (def: SymbolDef) =>
+    pipe(
+        def,
+        E.fromPredicate(
+            isObjectDef,
+            d => makeParseError()(`${d.symbol.getName()} is not an object`)
+        )
+    );
+
+
+const asCallable = (def: SymbolDef) =>
+    pipe(
+        def,
+        E.fromPredicate(
+            isCallableDef,
+            d => makeParseError()(`${d.symbol.getName()} is not callable`)
+        )
+    );
+
 
 export const parseCallExpression =
     (scope: Scope) =>
@@ -156,23 +185,37 @@ export const parseCallExpression =
             //      * the storage get context syscall
             //      * the storage get syscall
 
-            const q = pipe(
-                node,
-                resolveCallChain,
-                // temporary
-                E.fromPredicate(
-                    c => ROA.isEmpty(c.tail),
-                    c => makeParseError(node)('parseCallExpression not impl for PropertyAccessExpression')
-                ),
-                E.chain(c => resolveIdentifier(scope)(c.head)),
-                E.chain(E.fromPredicate(
-                    isCallableDef,
-                    c => makeParseError(node)(`${c.symbol.getName()} not callable`)
-                )),
-                E.chain(c => c.parseCall(node, scope))
-            )
+            const chain = resolveCallChain(node);
+            let access: ReadonlyArray<Operation> = ROA.empty;
+            let def = resolveIdentifier(scope)(chain.head);
+            let tail = chain.tail;
+            while (E.isRight(def) && ROA.isNonEmpty(tail)) {
+                const next = RNEA.head(tail);
+                tail = RNEA.tail(tail);
 
-            return E.left(makeParseError(node)('parseCallExpression not impl'));
+                if (tsm.Node.isPropertyAccessExpression(next)) {
+                    def = pipe(
+                        next,
+                        parseSymbol(),
+                        E.bindTo('symbol'),
+                        E.bind('def', () => pipe(def, E.chain(asObject))),
+                        E.chain(getProp),
+                        E.map(prop => {
+                            access = ROA.concat(prop.access)(access);
+                            return prop.value
+                        })
+                    );
+                } else {
+                    def = E.left(makeParseError(next)(`${next.getKindName()} not impl`));
+                }
+            }
+
+            return pipe(
+                def,
+                E.chain(asCallable),
+                E.chain(c => c.parseCall(node, scope)),
+                E.map(c => M.concatAll(ROA.getMonoid<Operation>())([c.args, access, c.call]))
+            )
         }
 
 

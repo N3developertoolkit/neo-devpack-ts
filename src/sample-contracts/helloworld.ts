@@ -12,8 +12,7 @@ const prefixContractOwner = 0xFF;
 
 /** @safe */
 export function get() { 
-    let context: StorageContext;
-    context = storageGetContext();
+    const context = storageGetContext();
     const key = Uint8Array.from([prefixSampleValue])
     return storageGet(context, key);
 }

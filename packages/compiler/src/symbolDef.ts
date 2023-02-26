@@ -31,13 +31,23 @@ export function isLoadableDef(def: SymbolDef): def is LoadSymbolDef {
     return 'loadOperations' in def;
 }
 
+// the modelling of this is a little strange. Properties may not exist, so parseGetProp
+// returns an Option. However, I'm wondering - *could* the access codegen fail? In the
+// case of Uint8Array.from, it could not (since there is no code gen in that scenario),
+// so I'm not going to model access with Either. However, this could change as we build
+// out more of the compiler. 
+
+export type GetPropResult = {
+    value: SymbolDef
+    access: readonly Operation[],
+};
 
 export interface ObjectSymbolDef extends SymbolDef {
-    // parseGet(name: string): E.Either<ParseError, ReadonlyArray<Operation>>
+    parseGetProp(prop: Symbol): O.Option<GetPropResult>
 }
 
 export function isObjectDef(def: SymbolDef): def is ObjectSymbolDef {
-    return 'parseGet' in def && typeof def.parseGet === 'function';
+    return 'parseGetProp' in def && typeof def.parseGetProp === 'function';
 }
 
 export type CallResult = {
@@ -68,12 +78,11 @@ export class FunctionSymbolDef implements CallableSymbolDef {
         readonly $import: boolean,
     ) { }
 
-    parseCall(node: CallExpression<ts.CallExpression>, scope: Scope): E.Either<ParseError, { args: readonly Operation[]; call: readonly Operation[]; }> {
+    parseCall(node: CallExpression, scope: Scope): E.Either<ParseError, CallResult> {
         throw new Error("Method not implemented.");
     }
-    parseGet(name: string): E.Either<ParseError, readonly Operation[]> {
-        throw new Error("Method not implemented.");
-    }
+
+    parseGetProp(prop: Symbol) { return O.none; }
 
     static create = ($import: boolean) =>
         (node: FunctionDeclaration, symbol: Symbol) =>
@@ -149,6 +158,8 @@ export class EventSymbolDef implements CallableSymbolDef {
         readonly parameters: ReadonlyArray<ParameterDeclaration>,
     ) { }
 
+    parseGetProp(prop: Symbol) { return O.none; }
+
     parseCall(node: CallExpression, scope: Scope): E.Either<ParseError, CallResult> {
         const call = ROA.of({ kind: 'syscall', name: "System.Runtime.Notify" } as Operation)
         return pipe(
@@ -176,6 +187,8 @@ export class SysCallSymbolDef implements CallableSymbolDef {
         readonly name: string,
     ) { }
 
+    parseGetProp(prop: Symbol) { return O.none; }
+
     parseCall(node: CallExpression, scope: Scope): E.Either<ParseError, CallResult> {
         const call = ROA.of({ kind: 'syscall', name: this.name } as Operation)
         return pipe(node, parseCall(scope)(call));
@@ -188,6 +201,8 @@ export class MethodTokenSymbolDef implements CallableSymbolDef {
         readonly token: sc.MethodToken
     ) { }
 
+    parseGetProp(prop: Symbol) { return O.none; }
+
     parseCall(node: CallExpression, scope: Scope): E.Either<ParseError, CallResult> {
         const call = ROA.of({ kind:"calltoken", token: this.token } as CallTokenOperation)
         return pipe(node, parseCall(scope)(call));
@@ -199,6 +214,8 @@ export class OperationsSymbolDef implements CallableSymbolDef {
         readonly symbol: Symbol,
         readonly operations: ReadonlyArray<Operation>
     ) { }
+
+    parseGetProp(prop: Symbol) { return O.none; }
 
     parseCall(node: CallExpression, scope: Scope): E.Either<ParseError, CallResult> {
         return pipe(node, parseCall(scope)(this.operations));

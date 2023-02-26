@@ -7,7 +7,7 @@ import * as path from 'path';
 // import { ContractMethod, processMethodDefinitions } from "./passes/processFunctionDeclarations";
 // import { collectArtifacts } from "./collectArtifacts";
 import { DebugInfoJson } from "./types/DebugInfo";
-import { parseProjectSymbols, SymbolDef } from "./symbolDef";
+import { makeParseError, ParseError, parseProjectSymbols, SymbolDef } from "./symbolDef";
 import { LibraryDeclarations, parseProjectLibrary } from "./projectLib";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROM from 'fp-ts/ReadonlyMap'
@@ -19,7 +19,7 @@ import * as FP from 'fp-ts'
 import { parseFunctionDeclarations } from "./passes/processFunctionDeclarations";
 import { Operation } from "./types/Operation";
 import { pipe } from "fp-ts/lib/function";
-import { makeErrorObj } from "./passes/builtins";
+import { makeErrorObj, makeU8ArrayObj } from "./passes/builtins";
 // import { parseSourceFileDefs } from "./passes/processFunctionDeclarations";
 
 export const DEFAULT_ADDRESS_VALUE = 53;
@@ -65,33 +65,20 @@ export interface CompileContext {
 
 export type CompilerState<T> = S.State<ReadonlyArray<tsm.ts.Diagnostic>, T>;
 
+
+
 const makeGlobalScope = ({ variables }: LibraryDeclarations): CompilerState<Scope> =>
     state => {
 
-        const findVar = (name: string) => pipe(
-            variables,
-            ROA.findFirst(v => v.getName() === name),
-            O.chain(d => pipe(d.getSymbol(), O.fromNullable))
-        );
-
-        const makeBuiltIn = (name: string) =>
-            (make: (symbol: tsm.Symbol) => SymbolDef): E.Either<string, SymbolDef> => {
-                return pipe(
-                    name,
-                    findVar,
-                    O.map(make),
-                    E.fromOption(() => name)
-                )
-            }
-
-        let symbols: ReadonlyArray<SymbolDef> = ROA.empty;
-        const $error = makeBuiltIn("Error")(makeErrorObj);
-        if (E.isRight($error)) {
-            symbols = ROA.append($error.right)(symbols);
+        function resolve(name: string, make: (decl: tsm.VariableDeclaration) => SymbolDef) {
+            const value = variables.find(v => v.getName() === name);
+            if (!value) throw new Error(`built in variable ${name} not found`);
+            return make(value);
         }
 
-        // const $uint8Array = findVar('Uint8Array');
-
+        const symbols = new Array<SymbolDef>();
+        symbols.push(resolve("Error", makeErrorObj));
+        symbols.push(resolve("Uint8Array", makeU8ArrayObj));
 
         const scope = {
             parentScope: O.none,
@@ -100,8 +87,6 @@ const makeGlobalScope = ({ variables }: LibraryDeclarations): CompilerState<Scop
 
         return [scope, state];
     }
-
-
 
 export function compile(
     project: tsm.Project,
