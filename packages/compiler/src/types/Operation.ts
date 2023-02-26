@@ -144,16 +144,16 @@ export interface JumpTargetOperation {
     location?: Location,
 }
 
-export function isJumpOffsetOperation(ins: Operation): ins is JumpOffsetOperation {
-    return jumpOperationKinds.includes(ins.kind as JumpOperationKind)
-        && 'offset' in ins
-        && typeof ins.offset === 'number';
+export function isJumpOffsetOperation(op: Operation): op is JumpOffsetOperation {
+    return jumpOperationKinds.includes(op.kind as JumpOperationKind)
+        && 'offset' in op
+        && typeof op.offset === 'number';
 }
 
-export function isJumpTargetOperation(ins: Operation): ins is JumpTargetOperation {
-    return jumpOperationKinds.includes(ins.kind as JumpOperationKind)
-        && 'target' in ins
-        && typeof ins.target === 'object';
+export function isJumpTargetOperation(op: Operation): op is JumpTargetOperation {
+    return jumpOperationKinds.includes(op.kind as JumpOperationKind)
+        && 'target' in op
+        && typeof op.target === 'object';
 }
 
 export interface LoadStoreOperation {

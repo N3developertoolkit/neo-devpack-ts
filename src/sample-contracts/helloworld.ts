@@ -29,13 +29,13 @@ export function remove() {
     storageDelete(context, key);
 }
 
-export function _deploy(_data: any, update: boolean): void { 
-    if (update) return;
-    const context = storageGetContext();
-    const key = Uint8Array.from([prefixContractOwner])
-    const tx = runtimeGetScriptContainer() as Transaction;
-    storagePut(context, key, tx.sender);
-}
+// export function _deploy(_data: any, update: boolean): void { 
+//     if (update) return;
+//     const context = storageGetContext();
+//     const key = Uint8Array.from([prefixContractOwner])
+//     const tx = runtimeGetScriptContainer() as Transaction;
+//     storagePut(context, key, tx.sender);
+// }
 
 export function update(nefFile: ByteString, manifest: string) {
     const context = storageGetContext();

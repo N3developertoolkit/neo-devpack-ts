@@ -11,7 +11,7 @@ import * as FP from 'fp-ts'
 
 import { makeParseError, parseSymbol as $parseSymbol, VariableSymbolDef, ParseError, createDiagnostic, SymbolDef, FunctionSymbolDef } from "../symbolDef";
 import { createScope, Scope, updateScope } from "../scope";
-import { JumpTargetOperation, LoadStoreOperation, Location, Operation } from "../types/Operation";
+import { InitSlotOperation, isJumpTargetOperation, JumpOffsetOperation, JumpTargetOperation, LoadStoreOperation, Location, Operation } from "../types/Operation";
 import { parseExpression as $parseExpression } from "./expressionProcessor";
 import { isVoidLike } from "../utils";
 import { ContractMethod } from "../compiler";
@@ -125,10 +125,11 @@ const parseVariableDeclarations =
 
             // update the current scope with the new declarations
             const defs = parseDeclsResult.right.map(o => o.def);
-            state = { 
+            state = {
                 ...state,
-                locals: ROA.concat(declarations)(state.locals),                
-                scope: updateScope(state.scope)(defs) };
+                locals: ROA.concat(declarations)(state.locals),
+                scope: updateScope(state.scope)(defs)
+            };
 
             return [operations, state];
         }
@@ -254,18 +255,61 @@ const parseBody =
             return E.left(ROA.of(makeParseError(body)(`parseBody ${body.getKindName()} not implemented`)));
         }
 
+
 const makeContractMethod =
     (node: tsm.FunctionDeclaration) =>
-        (_result: BodyParseResult): E.Either<ReadonlyArray<ParseError>, ContractMethod> => {
-            // TODO: implement this method
+        (result: BodyParseResult): E.Either<ReadonlyArray<ParseError>, ContractMethod> => {
+            // add return op at end of method
+            let ops: ReadonlyArray<Operation> = pipe(
+                result.operations,
+                ROA.append(returnOp as Operation));
+
+            // add initslot op at start of method if there are locals or parameters
+            const params = node.getParameters().length;
+            const locals = result.locals.length;
+            if (params > 0 || locals > 0) {
+                const op: InitSlotOperation = { kind: 'initslot', locals, params };
+                ops = pipe(ops, ROA.prepend(op as Operation));
+            }
+
+            // map all the jump target to jump offset operations
+            const jumpTargetOps = pipe(
+                ops,
+                ROA.filterMapWithIndex(
+                    (index, op) => isJumpTargetOperation(op)
+                        ?
+                        O.some({ op, index })
+                        : O.none))
+
+            for (const { op, index } of jumpTargetOps) {
+                const targetIndex = ops.findIndex(v => v === op.target)
+                if (targetIndex === -1) return E.left(ROA.of(makeParseError()('fail')));
+
+                const q = pipe(ops, ROA.modifyAt(index, _op => {
+                    const newOp: JumpOffsetOperation = {
+                        kind: op.kind,
+                        offset: targetIndex - index,
+                        location: op.location
+                    };
+                    return newOp;
+                }))
+                if (O.isNone(q)) return E.left(ROA.of(makeParseError()('fail')));
+                ops = q.value;
+            }
+
+            const vars = result.locals.map(l => ({
+                name: l.getSymbolOrThrow().getName(),
+                type: l.getType(),
+            }))
+
             return pipe(
                 node,
                 parseSymbol,
                 E.map(symbol => ({
                     name: symbol.getName(),
                     node,
-                    operations: [],
-                    variables: [],
+                    operations: ops,
+                    variables: vars,
                 } as ContractMethod)),
                 E.mapLeft(ROA.of)
             );
