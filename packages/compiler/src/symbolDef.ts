@@ -1,4 +1,4 @@
-import { LoadStoreOperation, Operation, parseOperation, PushBoolOperation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
+import { CallTokenOperation, LoadStoreOperation, Operation, parseOperation, PushBoolOperation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
 import { createDiagnostic as $createDiagnostic, getArguments, isVoidLike } from "./utils";
 
 import { sc, u } from '@cityofzion/neon-core';
@@ -189,7 +189,7 @@ export class MethodTokenSymbolDef implements CallableSymbolDef {
     ) { }
 
     parseCall(node: CallExpression, scope: Scope): E.Either<ParseError, CallResult> {
-        const call = ROA.of({ kind: 'syscall', token: this.token } as Operation)
+        const call = ROA.of({ kind:"calltoken", token: this.token } as CallTokenOperation)
         return pipe(node, parseCall(scope)(call));
     }
 }

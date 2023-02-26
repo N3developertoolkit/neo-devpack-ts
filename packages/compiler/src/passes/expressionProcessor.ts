@@ -10,9 +10,9 @@ import * as SG from "fp-ts/Semigroup";
 import * as S from 'fp-ts/State';
 import * as FP from 'fp-ts';
 import * as SEP from 'fp-ts/Separated';
-import { Operation, OperationKind, PushBoolOperation, PushDataOperation, PushIntOperation } from "../types/Operation";
+import { Operation, SimpleOperationKind } from "../types/Operation";
 import { resolve, Scope } from "../scope";
-import { ConstantSymbolDef, isCallableDef, isLoadableDef, makeParseError, ParseError, SymbolDef, VariableSymbolDef } from "../symbolDef";
+import { isCallableDef, isLoadableDef, makeParseError, ParseError, SymbolDef, VariableSymbolDef } from "../symbolDef";
 
 const resolveIdentifier =
     (scope: Scope) =>
@@ -84,7 +84,7 @@ export const parseBigIntLiteral =
         return E.right({ kind: "pushint", value, location: node });
     }
 
-const binaryOpTokenMap: ReadonlyMap<tsm.SyntaxKind, OperationKind> = new Map([
+const binaryOpTokenMap: ReadonlyMap<tsm.SyntaxKind, SimpleOperationKind> = new Map([
     [tsm.SyntaxKind.AsteriskAsteriskToken, 'power'],
     [tsm.SyntaxKind.AsteriskToken, 'multiply'],
     [tsm.SyntaxKind.EqualsEqualsEqualsToken, 'equal'], // TODO: Should == and === be the same?
@@ -204,7 +204,7 @@ export const parseNumericLiteral =
             : E.left(makeParseError(node)(`invalid non-integer numeric literal ${value}`));
     }
 
-const prefixUnaryOperatorMap: ReadonlyMap<tsm.SyntaxKind, OperationKind> = new Map([
+const prefixUnaryOperatorMap: ReadonlyMap<tsm.SyntaxKind, SimpleOperationKind> = new Map([
     [tsm.SyntaxKind.ExclamationToken, 'not'],
     [tsm.SyntaxKind.MinusToken, 'negate']
 ]);
