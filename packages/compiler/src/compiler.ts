@@ -4,21 +4,17 @@ import { createDiagnostic } from "./utils";
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
-import { DebugInfoJson } from "./types/DebugInfo";
-import { makeParseError, ParseError, parseProjectSymbols, SymbolDef } from "./symbolDef";
+import { parseProjectSymbols, SymbolDef } from "./symbolDef";
 import { LibraryDeclarations, parseProjectLibrary } from "./projectLib";
-import { pipe } from "fp-ts/function";
 import * as ROA from 'fp-ts/ReadonlyArray'
-import * as ROM from 'fp-ts/ReadonlyMap'
 import * as S from 'fp-ts/State'
 import * as O from 'fp-ts/Option'
-import * as E from 'fp-ts/Either'
-import * as FP from 'fp-ts'
 import { createSymbolMap, Scope } from "./scope";
 import { parseFunctionDeclarations } from "./passes/processFunctionDeclarations";
 import { Operation } from "./types/Operation";
 import { makeErrorObj, makeU8ArrayObj } from "./passes/builtins";
 import { collectArtifacts } from "./collectArtifacts";
+import { DebugInfo } from "./types/DebugInfo";
 
 export const DEFAULT_ADDRESS_VALUE = 53;
 
@@ -50,7 +46,7 @@ export interface CompileArtifacts {
     readonly methods: ReadonlyArray<ContractMethod>;
     readonly nef?: sc.NEF;
     readonly manifest?: sc.ContractManifest;
-    readonly debugInfo?: DebugInfoJson;
+    readonly debugInfo?: DebugInfo;
 }
 
 export interface CompileContext {
@@ -114,10 +110,8 @@ export function compile(
 
     let artifacts;
     [artifacts, diagnostics] = collectArtifacts(contractName, methods, $options)(diagnostics);
-  
 
-
-    return { diagnostics, methods };
+    return { diagnostics, methods, ...artifacts };
 }
 
 async function exists(rootPath: fs.PathLike) {

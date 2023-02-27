@@ -39,8 +39,9 @@ async function main() {
     } else {
         try {
 
-            const options: CompileOptions = contractName.startsWith('nep17')
-                ? { standards: ["NEP-17"] } : {}
+            const options: Partial<CompileOptions> = contractName.startsWith('nep17')
+                ? { standards: ["NEP-17"] } 
+                : {}
             const { diagnostics, nef, manifest, debugInfo } = compile(project, contractName, options);
 
             if (diagnostics.length > 0) printDiagnostics(diagnostics);
@@ -66,9 +67,10 @@ async function main() {
             }
 
             if (debugInfo) {
-                debugInfo["document-root"] = __dirname;
                 const debugInfoPath = path.join(outputPath, `${contractName}.debug.json`);
-                const $debugInfo = JSON.stringify(debugInfo, null, 4);
+                const jsonDebugInfo = debugInfo.toJson();
+                jsonDebugInfo["document-root"] = __dirname;
+                const $debugInfo = JSON.stringify(jsonDebugInfo, null, 4);
                 await fsp.writeFile(debugInfoPath, $debugInfo);
                 console.log(blue, "Wrote: " + debugInfoPath);
             }
