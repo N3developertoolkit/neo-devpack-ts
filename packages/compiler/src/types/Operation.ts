@@ -1,6 +1,7 @@
 import * as tsm from "ts-morph";
 import { ReadonlyUint8Array } from '../utility/ReadonlyArrays';
 import { sc } from '@cityofzion/neon-core';
+import { convertBigInteger } from "../utils";
 
 export type Location = tsm.Node | { start: tsm.Node, end: tsm.Node };
 
@@ -33,6 +34,35 @@ export const simpleOperationKinds = [
 
 export type SimpleOperationKind = typeof simpleOperationKinds[number];
 
+export function convertSimpleOperationKind(kind: SimpleOperationKind) {
+    switch (kind) {
+        case "add": return sc.OpCode.ADD;
+        case "append": return sc.OpCode.APPEND;
+        case "concat": return sc.OpCode.CAT;
+        case "drop": return sc.OpCode.DROP;
+        case "duplicate": return sc.OpCode.DUP;
+        case "equal": return sc.OpCode.EQUAL;
+        case "greaterthan": return sc.OpCode.GT;
+        case "greaterthanorequal": return sc.OpCode.GE;
+        case "isnull": return sc.OpCode.ISNULL;
+        case "lessthan": return sc.OpCode.LT;
+        case "lessthanorequal": return sc.OpCode.LE;
+        case "multiply": return sc.OpCode.MUL;
+        case "negate": return sc.OpCode.NEGATE;
+        case "newemptyarray": return sc.OpCode.NEWARRAY0;
+        case "noop": return sc.OpCode.NOP;
+        case "not": return sc.OpCode.NOT;
+        case "notequal": return sc.OpCode.NOTEQUAL;
+        case "pack": return sc.OpCode.PACK;
+        case "pickitem": return sc.OpCode.PICKITEM;
+        case "power": return sc.OpCode.POW;
+        case "pushnull": return sc.OpCode.PUSHNULL;
+        case "return": return sc.OpCode.RET;
+        case "subtract": return sc.OpCode.SUB;
+        case "throw": return sc.OpCode.THROW;
+    }
+}
+
 const jumpOperationKinds = [
     'jump',
     'jumpeq',
@@ -47,6 +77,20 @@ const jumpOperationKinds = [
 
 export type JumpOperationKind = typeof jumpOperationKinds[number];
 
+export function convertJumpOperationKind(kind: JumpOperationKind) {
+    switch (kind) {
+        case "jump": return sc.OpCode.JMP_L;
+        case "jumpeq": return sc.OpCode.JMPEQ_L;
+        case "jumpge": return sc.OpCode.JMPGE_L;
+        case "jumpgt": return sc.OpCode.JMPGT_L;
+        case "jumpif": return sc.OpCode.JMPIF_L;
+        case "jumpifnot": return sc.OpCode.JMPIFNOT_L;
+        case "jumple": return sc.OpCode.JMPLE_L;
+        case "jumplt": return sc.OpCode.JMPLT_L;
+        case "jumpne": return sc.OpCode.JMPNE_L;
+    }
+}
+
 const loadStoreOperationKinds = [
     'loadarg',
     'loadlocal',
@@ -57,6 +101,18 @@ const loadStoreOperationKinds = [
 ] as const;
 
 export type LoadStoreOperationKind = typeof loadStoreOperationKinds[number];
+
+
+export function convertLoadStoreKind(kind: LoadStoreOperationKind) {
+    switch (kind) {
+        case "loadarg": return sc.OpCode.LDARG;
+        case "loadlocal": return sc.OpCode.LDLOC;
+        case "loadstatic": return sc.OpCode.LDSFLD;
+        case "storearg": return sc.OpCode.STARG;
+        case "storelocal": return sc.OpCode.STLOC;
+        case "storestatic": return sc.OpCode.STSFLD;
+    }
+}
 
 export type Operation =
     CallOperation |
@@ -77,11 +133,16 @@ export interface SimpleOperation {
     location?: Location,
 }
 
+export const isSimpleOp = (op: Operation): op is SimpleOperation => 
+    simpleOperationKinds.includes(op.kind as SimpleOperationKind);
+
 export interface ConvertOperation {
     readonly kind: 'convert',
     readonly type: sc.StackItemType
     location?: Location,
 }
+
+export const isConvertOp = (op: Operation): op is ConvertOperation => op.kind === 'convert';
 
 export interface SysCallOperation {
     readonly kind: 'syscall',
@@ -89,17 +150,23 @@ export interface SysCallOperation {
     location?: Location,
 }
 
+export const isSysCallOp = (op: Operation): op is SysCallOperation => op.kind === 'syscall';
+
 export interface CallTokenOperation {
     readonly kind: 'calltoken',
     readonly token: sc.MethodToken
     location?: Location,
 }
 
+export const isCallTokenOp = (op: Operation): op is CallTokenOperation => op.kind === 'calltoken';
+
 export interface CallOperation {
     readonly kind: 'call',
-    // readonly method: MethodSymbolDef,
+    readonly method: tsm.Symbol,
     location?: Location,
 }
+
+export const isCallOp = (op: Operation): op is CallOperation => op.kind === 'call';
 
 export interface InitSlotOperation {
     readonly kind: 'initslot',
@@ -108,11 +175,15 @@ export interface InitSlotOperation {
     location?: Location,
 }
 
+export const isInitSlotOp = (op: Operation): op is InitSlotOperation => op.kind === 'initslot';
+
 export interface PushDataOperation {
     readonly kind: 'pushdata';
     readonly value: ReadonlyUint8Array
     location?: Location,
 }
+
+export const isPushDataOp = (op: Operation): op is PushDataOperation => op.kind === 'pushdata';
 
 export interface PushIntOperation {
     readonly kind: 'pushint';
@@ -120,13 +191,16 @@ export interface PushIntOperation {
     location?: Location,
 }
 
-export const isPushInt = (op: Operation): op is PushIntOperation => op.kind === 'pushint';
+export const isPushIntOp = (op: Operation): op is PushIntOperation => op.kind === 'pushint';
 
 export interface PushBoolOperation {
     readonly kind: 'pushbool';
     readonly value: boolean;
     location?: Location,
 }
+
+export const isPushBoolOp = (op: Operation): op is PushBoolOperation => op.kind === 'pushbool';
+
 
 // during function parsing, it's typically easier to specify the jump target
 // via the target operation instead of via the index offset. However,
@@ -144,13 +218,13 @@ export interface JumpTargetOperation {
     location?: Location,
 }
 
-export function isJumpOffsetOperation(op: Operation): op is JumpOffsetOperation {
+export function isJumpOffsetOp(op: Operation): op is JumpOffsetOperation {
     return jumpOperationKinds.includes(op.kind as JumpOperationKind)
         && 'offset' in op
         && typeof op.offset === 'number';
 }
 
-export function isJumpTargetOperation(op: Operation): op is JumpTargetOperation {
+export function isJumpTargetOp(op: Operation): op is JumpTargetOperation {
     return jumpOperationKinds.includes(op.kind as JumpOperationKind)
         && 'target' in op
         && typeof op.target === 'object';
@@ -162,9 +236,8 @@ export interface LoadStoreOperation {
     location?: Location,
 }
 
-
-
-
+export const isLoadStoreOp = (op: Operation): op is LoadStoreOperation => 
+    loadStoreOperationKinds.includes(op.kind as LoadStoreOperationKind);
 
 
 export function parseOperation(kind: string, operand: string | undefined): Operation | undefined {
@@ -207,7 +280,84 @@ export function parseOperation(kind: string, operand: string | undefined): Opera
             return { kind, name: operand };
         }
     }
+}
 
+export function getOperationSize(op: Operation) {
+    switch (op.kind) {
+        case 'add':
+        case 'append':
+        case 'concat':
+        case 'drop':
+        case 'duplicate':
+        case 'equal':
+        case 'greaterthan':
+        case 'greaterthanorequal':
+        case 'isnull':
+        case 'lessthan':
+        case 'lessthanorequal':
+        case 'multiply':
+        case 'negate':
+        case 'newemptyarray':
+        case 'noop':
+        case 'not':
+        case 'notequal':
+        case 'pack':
+        case 'pickitem':
+        case 'pushbool':
+        case 'pushnull':
+        case 'power':
+        case 'return':
+        case 'subtract':
+        case 'throw':
+            return 1;
+        case 'convert':
+            return 2;
+        case 'calltoken':
+        case 'initslot':
+            return 3;
+        case 'call':
+        case 'jump':
+        case 'jumpif':
+        case 'jumpifnot':
+        case 'jumpeq':
+        case "jumpne":
+        case "jumpgt":
+        case "jumpge":
+        case "jumplt":
+        case "jumple":
+        case 'syscall':
+            return 5;
+        case 'loadarg':
+        case 'loadlocal':
+        case 'loadstatic':
+        case 'storearg':
+        case 'storelocal':
+        case 'storestatic': {
+            const { index } = op as LoadStoreOperation
+            return index <= 6 ? 1 : 2;
+        }
+        case 'pushdata': {
+            const { value } = op as PushDataOperation;
+            if (value.length <= 255) /* byte.MaxValue */ {
+                return 2 + value.length;
+            }
+            if (value.length <= 65535) /* ushort.MaxValue */ {
+                return 3 + value.length;
+            }
+            if (value.length <= 4294967295) /* uint.MaxValue */ {
+                return 5 + value.length;
+            }
+            throw new Error(`pushData length ${value.length} too long`);
+        }
+        case 'pushint': {
+            const { value } = op as PushIntOperation;
+            if (value <= 16n && value >= -1n) return 1;
 
+            const {buffer} = convertBigInteger(value);
+            return 1 + buffer.length;
+        }
+        // default:
+        //     throw new Error(`getOperationSize ${op.kind}`);
+    }
 }
 

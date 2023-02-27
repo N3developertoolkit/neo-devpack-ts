@@ -78,16 +78,6 @@
 //     return [opCode, ...new Uint8Array(buffer)];
 // }
 
-// function convertBigInteger(value: bigint) {
-//     // neon-js BigInteger is not directly compatible with JS bigint type
-//     // but we can go bigint -> string -> BigInteger to convert
-//     const $value = u.BigInteger.fromNumber(value.toString());
-//     const token = sc.OpToken.forInteger($value);
-//     return {
-//         opCode: token.code,
-//         buffer: Buffer.from(token.params!, 'hex')
-//     };
-// }
 
 // function convertPushInt({ value }: PushIntOperation) {
 //     if (value <= 16n && value >= -1n) {

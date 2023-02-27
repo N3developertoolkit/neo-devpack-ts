@@ -1,4 +1,4 @@
-import { CallTokenOperation, LoadStoreOperation, Operation, parseOperation, PushBoolOperation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
+import { CallOperation, CallTokenOperation, LoadStoreOperation, Operation, parseOperation, PushBoolOperation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
 import { createDiagnostic as $createDiagnostic, getArguments, isVoidLike } from "./utils";
 
 import { sc, u } from '@cityofzion/neon-core';
@@ -18,6 +18,29 @@ import { parseExpression } from "./passes/expressionProcessor";
 type Diagnostic = ts.Diagnostic;
 
 export const createDiagnostic = (e: ParseError) => $createDiagnostic(e.message, { node: e.node });
+
+const parseArguments = (scope: Scope) => (node: CallExpression) => {
+    return pipe(
+        node,
+        getArguments,
+        ROA.map(parseExpression(scope)),
+        ROA.sequence(E.either),
+        E.map(ROA.flatten),
+        E.map(ROA.reverse)
+    );
+}
+
+const parseCall =
+    (scope: Scope) =>
+        (call: readonly Operation[]) =>
+            (node: CallExpression) => {
+                return pipe(
+                    node,
+                    parseArguments(scope),
+                    E.bindTo('args'),
+                    E.bind('call', () => E.right(call))
+                )
+            }
 
 export interface SymbolDef {
     readonly symbol: Symbol;
@@ -79,7 +102,8 @@ export class FunctionSymbolDef implements CallableSymbolDef {
     ) { }
 
     parseCall(node: CallExpression, scope: Scope): E.Either<ParseError, CallResult> {
-        throw new Error("Method not implemented.");
+        const call = ROA.of({ kind: 'call', method: this.symbol } as CallOperation)
+        return pipe(node, parseCall(scope)(call));
     }
 
     parseGetProp(prop: Symbol) { return O.none; }
@@ -128,28 +152,6 @@ export class VariableSymbolDef implements LoadSymbolDef {
     }
 }
 
-const parseArguments = (scope: Scope) => (node: CallExpression) => {
-    return pipe(
-        node,
-        getArguments,
-        ROA.map(parseExpression(scope)),
-        ROA.sequence(E.either),
-        E.map(ROA.flatten),
-        E.map(ROA.reverse)
-    );
-}
-
-const parseCall =
-    (scope: Scope) =>
-        (call: readonly Operation[]) =>
-            (node: CallExpression) => {
-                return pipe(
-                    node,
-                    parseArguments(scope),
-                    E.bindTo('args'),
-                    E.bind('call', () => E.right(call))
-                )
-            }
 
 export class EventSymbolDef implements CallableSymbolDef {
     constructor(

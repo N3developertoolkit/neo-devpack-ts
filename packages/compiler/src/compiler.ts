@@ -7,17 +7,18 @@ import * as path from 'path';
 import { DebugInfoJson } from "./types/DebugInfo";
 import { makeParseError, ParseError, parseProjectSymbols, SymbolDef } from "./symbolDef";
 import { LibraryDeclarations, parseProjectLibrary } from "./projectLib";
+import { pipe } from "fp-ts/function";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROM from 'fp-ts/ReadonlyMap'
 import * as S from 'fp-ts/State'
 import * as O from 'fp-ts/Option'
 import * as E from 'fp-ts/Either'
-import { createSymbolMap, Scope } from "./scope";
 import * as FP from 'fp-ts'
+import { createSymbolMap, Scope } from "./scope";
 import { parseFunctionDeclarations } from "./passes/processFunctionDeclarations";
 import { Operation } from "./types/Operation";
-import { pipe } from "fp-ts/lib/function";
 import { makeErrorObj, makeU8ArrayObj } from "./passes/builtins";
+import { collectArtifacts } from "./collectArtifacts";
 
 export const DEFAULT_ADDRESS_VALUE = 53;
 
@@ -31,14 +32,14 @@ export class CompileError extends Error {
 }
 
 export interface CompileOptions {
-    readonly addressVersion?: number;
-    readonly inline?: boolean;
-    readonly optimize?: boolean;
-    readonly standards?: ReadonlyArray<string>;
+    readonly addressVersion: number;
+    readonly inline: boolean;
+    readonly optimize: boolean;
+    readonly standards: ReadonlyArray<string>;
 }
 
 export interface ContractMethod {
-    name: string,
+    symbol: tsm.Symbol,
     node: tsm.FunctionDeclaration,
     operations: ReadonlyArray<Operation>,
     variables: ReadonlyArray<{ name: string, type: tsm.Type }>,
@@ -65,7 +66,7 @@ export type CompilerState<T> = S.State<ReadonlyArray<tsm.ts.Diagnostic>, T>;
 
 
 const makeGlobalScope = ({ variables }: LibraryDeclarations): CompilerState<Scope> =>
-    state => {
+    diagnostics => {
 
         function resolve(name: string, make: (decl: tsm.VariableDeclaration) => SymbolDef) {
             const value = variables.find(v => v.getName() === name);
@@ -82,16 +83,22 @@ const makeGlobalScope = ({ variables }: LibraryDeclarations): CompilerState<Scop
             symbols: createSymbolMap(symbols)
         };
 
-        return [scope, state];
+        return [scope, diagnostics];
     }
 
 export function compile(
     project: tsm.Project,
     contractName: string,
-    options?: CompileOptions
+    options?: Partial<CompileOptions>
 ): CompileArtifacts {
 
-    // TODO: Use Pipe
+    const $options: CompileOptions = {
+        addressVersion: options?.addressVersion ?? DEFAULT_ADDRESS_VALUE,
+        inline: options?.inline ?? false,
+        optimize: options?.optimize ?? false,
+        standards: options?.standards ?? [],
+    }
+
     let [library, diagnostics] = parseProjectLibrary(project)(ROA.empty);
     let globalScope;
     [globalScope, diagnostics] = makeGlobalScope(library)(diagnostics);
@@ -101,9 +108,14 @@ export function compile(
     let methods: ReadonlyArray<ContractMethod> = ROA.empty;
     for (const defs of symbolDefs) {
         let $methods;
-        [$methods, diagnostics] = parseFunctionDeclarations(globalScope)(defs)(diagnostics);
+        [$methods, diagnostics] = parseFunctionDeclarations(defs, globalScope)(diagnostics);
         methods = ROA.concat($methods)(methods);
     }
+
+    let artifacts;
+    [artifacts, diagnostics] = collectArtifacts(contractName, methods, $options)(diagnostics);
+  
+
 
     return { diagnostics, methods };
 }

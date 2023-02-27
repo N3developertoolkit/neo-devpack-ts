@@ -2,7 +2,7 @@ import * as E from "fp-ts/Either";
 import * as tsm from "ts-morph";
 import { Scope } from "../scope";
 import { CallableSymbolDef, CallResult, GetPropResult, makeParseError, ObjectSymbolDef, ParseError, SymbolDef } from "../symbolDef";
-import { isPushInt, Operation, PushDataOperation } from "../types/Operation";
+import { isPushIntOp, Operation, PushDataOperation } from "../types/Operation";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROM from 'fp-ts/ReadonlyMap'
 import * as S from 'fp-ts/State'
@@ -55,7 +55,7 @@ const asArrayLiteral = (node: tsm.Node) =>
 const asPushData = (ops: ReadonlyArray<Operation>): E.Either<ParseError, Operation> => {
     const buffer = new Array<number>();
     for (const op of ops) {
-        if (isPushInt(op)) {
+        if (isPushIntOp(op)) {
             buffer.push(Number(op.value));
         }
         else {

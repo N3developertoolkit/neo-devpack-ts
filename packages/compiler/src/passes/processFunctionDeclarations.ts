@@ -11,7 +11,7 @@ import * as FP from 'fp-ts'
 
 import { makeParseError, parseSymbol as $parseSymbol, VariableSymbolDef, ParseError, createDiagnostic, SymbolDef, FunctionSymbolDef } from "../symbolDef";
 import { createScope, Scope, updateScope } from "../scope";
-import { InitSlotOperation, isJumpTargetOperation, JumpOffsetOperation, JumpTargetOperation, LoadStoreOperation, Location, Operation } from "../types/Operation";
+import { InitSlotOperation, isJumpTargetOp, JumpOffsetOperation, JumpTargetOperation, LoadStoreOperation, Location, Operation } from "../types/Operation";
 import { parseExpression as $parseExpression } from "./expressionProcessor";
 import { isVoidLike } from "../utils";
 import { ContractMethod } from "../compiler";
@@ -276,7 +276,7 @@ const makeContractMethod =
             const jumpTargetOps = pipe(
                 ops,
                 ROA.filterMapWithIndex(
-                    (index, op) => isJumpTargetOperation(op)
+                    (index, op) => isJumpTargetOp(op)
                         ?
                         O.some({ op, index })
                         : O.none))
@@ -306,7 +306,7 @@ const makeContractMethod =
                 node,
                 parseSymbol,
                 E.map(symbol => ({
-                    name: symbol.getName(),
+                    symbol,
                     node,
                     operations: ops,
                     variables: vars,
@@ -343,7 +343,7 @@ export const parseFunctionDeclaration =
                     E.chain(makeContractMethod(node)),
                     E.match(
                         errors => [
-                            { node, name: "", operations: [], variables: [] },
+                            { node, symbol: node.getSymbol()!, operations: [], variables: [] },
                             ROA.concat(ROA.map(createDiagnostic)(errors))(diagnostics)
                         ],
                         method => [method, diagnostics]
@@ -352,22 +352,21 @@ export const parseFunctionDeclaration =
             }
 
 export const parseFunctionDeclarations =
-    ($scope: Scope) =>
-        (defs: ReadonlyArray<SymbolDef>): S.State<ReadonlyArray<Diagnostic>, ReadonlyArray<ContractMethod>> =>
-            diagnostics => {
+    (defs: ReadonlyArray<SymbolDef>, scope: Scope): S.State<ReadonlyArray<Diagnostic>, ReadonlyArray<ContractMethod>> =>
+        diagnostics => {
 
-                const scope = createScope($scope)(defs);
+            const $scope = createScope(scope)(defs);
 
-                const functionDefs = pipe(defs,
-                    ROA.filterMap(def => def instanceof FunctionSymbolDef && !def.$import
-                        ? O.some(def) : O.none)
-                );
+            const functionDefs = pipe(defs,
+                ROA.filterMap(def => def instanceof FunctionSymbolDef && !def.$import
+                    ? O.some(def) : O.none)
+            );
 
-                let methods: ReadonlyArray<ContractMethod> = ROA.empty;
-                for (const def of functionDefs) {
-                    let method: ContractMethod;
-                    [method, diagnostics] = parseFunctionDeclaration(scope)(def.node)(diagnostics);
-                    methods = ROA.append(method)(methods);
-                }
-                return [methods, diagnostics];
+            let methods: ReadonlyArray<ContractMethod> = ROA.empty;
+            for (const def of functionDefs) {
+                let method: ContractMethod;
+                [method, diagnostics] = parseFunctionDeclaration($scope)(def.node)(diagnostics);
+                methods = ROA.append(method)(methods);
             }
+            return [methods, diagnostics];
+        }

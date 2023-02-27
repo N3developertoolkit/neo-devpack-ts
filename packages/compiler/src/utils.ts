@@ -4,6 +4,7 @@ import { join } from "path";
 import { readFile } from "fs/promises";
 import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
 import * as ROA from 'fp-ts/ReadonlyArray';
+import { sc, u } from "@cityofzion/neon-core";
 
 export const getArguments = (node: tsm.CallExpression) => 
     ROA.fromArray(node.getArguments() as tsm.Expression[])
@@ -154,6 +155,18 @@ export function getJSDocTag(node: tsm.JSDocableNode, tagName: string): tsm.JSDoc
         }
     }
     return undefined
+}
+
+
+export function convertBigInteger(value: bigint) {
+    // neon-js BigInteger is not directly compatible with JS bigint type
+    // but we can go bigint -> string -> BigInteger to convert
+    const $value = u.BigInteger.fromNumber(value.toString());
+    const token = sc.OpToken.forInteger($value);
+    return {
+        opCode: token.code,
+        buffer: Buffer.from(token.params!, 'hex')
+    };
 }
 
 function toHexString(value: bigint): string {
