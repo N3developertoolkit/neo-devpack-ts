@@ -4,8 +4,6 @@ import { createDiagnostic } from "./utils";
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
-// import { ContractMethod, processMethodDefinitions } from "./passes/processFunctionDeclarations";
-// import { collectArtifacts } from "./collectArtifacts";
 import { DebugInfoJson } from "./types/DebugInfo";
 import { makeParseError, ParseError, parseProjectSymbols, SymbolDef } from "./symbolDef";
 import { LibraryDeclarations, parseProjectLibrary } from "./projectLib";
@@ -20,7 +18,6 @@ import { parseFunctionDeclarations } from "./passes/processFunctionDeclarations"
 import { Operation } from "./types/Operation";
 import { pipe } from "fp-ts/lib/function";
 import { makeErrorObj, makeU8ArrayObj } from "./passes/builtins";
-// import { parseSourceFileDefs } from "./passes/processFunctionDeclarations";
 
 export const DEFAULT_ADDRESS_VALUE = 53;
 

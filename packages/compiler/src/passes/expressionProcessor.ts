@@ -10,7 +10,7 @@ import * as SG from "fp-ts/Semigroup";
 import * as S from 'fp-ts/State';
 import * as FP from 'fp-ts';
 import * as SEP from 'fp-ts/Separated';
-import { Operation, SimpleOperationKind } from "../types/Operation";
+import { Operation, PushIntOperation, SimpleOperation, SimpleOperationKind } from "../types/Operation";
 import { resolve, Scope } from "../scope";
 import { isCallableDef, isLoadableDef, isObjectDef, makeParseError, ObjectSymbolDef, ParseError, parseSymbol, SymbolDef, VariableSymbolDef } from "../symbolDef";
 
@@ -222,7 +222,6 @@ export const parseCallExpression =
 export const parseIdentifier =
     (scope: Scope) =>
         (node: tsm.Identifier): E.Either<ParseError, readonly Operation[]> => {
-            const error = makeParseError(node);
             return pipe(
                 node,
                 resolveIdentifier(scope),
@@ -284,7 +283,28 @@ export const parsePrefixUnaryExpression = (scope: Scope) =>
 export const parsePropertyAccessExpression =
     (scope: Scope) =>
         (node: tsm.PropertyAccessExpression): E.Either<ParseError, readonly Operation[]> => {
-            return E.left(makeParseError(node)('parsePropertyAccessExpression not impl'));
+
+            const expr = node.getExpression();
+            const type = expr.getType();
+            const propName = node.getName();
+
+            return pipe(
+                expr,
+                parseExpression(scope),
+                E.bindTo('ops'),
+                E.bind('index', () => pipe(
+                    type.getProperties(),
+                    ROA.findIndex(p => p.getName() === propName),
+                    E.fromOption(() => makeParseError(node)(`failed to resolve ${propName} property`))
+                )),
+                E.map(({ index, ops }) => pipe(
+                    ops,
+                    ROA.concat([
+                        { kind: 'pushint', value: BigInt(index) },
+                        { kind: 'pickitem' }
+                    ] as Operation[])
+                ))
+            )
         }
 
 export const parseStringLiteral =
