@@ -288,7 +288,7 @@ export const parsePropertyAccessExpression =
             const type = expr.getType();
             const propName = node.getName();
 
-            const qq =  pipe(
+            return pipe(
                 expr,
                 parseExpression(scope),
                 E.bindTo('ops'),
@@ -305,8 +305,6 @@ export const parsePropertyAccessExpression =
                     ] as Operation[])
                 ))
             )
-
-            return qq;
         }
 
 export const parseStringLiteral =

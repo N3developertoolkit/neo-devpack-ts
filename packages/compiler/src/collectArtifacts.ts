@@ -113,10 +113,10 @@ function *genDebugMethods(methods: ReadonlyArray<ContractMethod>) {
         const sequencePoints = new Array<SequencePoint>();
         for (const op of method.operations) {
             end = address;
-            address += getOperationSize(op);
             if (op.location) {
                 sequencePoints.push({address, location: op.location})
             }
+            address += getOperationSize(op);
         }
         const parameters = method.node.getParameters().map((p, index) => ({
             name: p.getName(),
