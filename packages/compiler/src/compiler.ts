@@ -4,17 +4,15 @@ import { createDiagnostic } from "./utils";
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
-import { parseProjectSymbols, SymbolDef } from "./symbolDef";
-import { LibraryDeclarations, parseProjectLibrary } from "./projectLib";
+import { parseProjectSymbols } from "./symbolDef";
+import { parseProjectLibrary } from "./projectLib";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as S from 'fp-ts/State'
-import * as O from 'fp-ts/Option'
-import { createSymbolMap, Scope } from "./scope";
 import { parseFunctionDeclarations } from "./passes/processFunctionDeclarations";
 import { Operation } from "./types/Operation";
-import { builtInMap, resolveBuiltin as $resolveBuiltin } from "./passes/builtins";
 import { DebugInfo } from "./types/DebugInfo";
 import { collectArtifacts } from "./collectArtifacts";
+import { makeGlobalScope } from "./scope";
 
 export const DEFAULT_ADDRESS_VALUE = 53;
 
@@ -58,23 +56,6 @@ export interface CompileContext {
 }
 
 export type CompilerState<T> = S.State<ReadonlyArray<tsm.ts.Diagnostic>, T>;
-
-const makeGlobalScope = ({ variables }: LibraryDeclarations): CompilerState<Scope> =>
-    diagnostics => {
-        const resolveBuiltin = $resolveBuiltin(variables)
-        let symbols: ReadonlyArray<SymbolDef> = ROA.empty;
-        const map = builtInMap;
-        for (const key in map) {
-            [, symbols] = resolveBuiltin(key, map[key])(symbols);
-        }
-
-        const scope = {
-            parentScope: O.none,
-            symbols: createSymbolMap(symbols)
-        };
-
-        return [scope, diagnostics];
-    }
 
 function hasErrors(diagnostics: ReadonlyArray<tsm.ts.Diagnostic>) {
     return diagnostics.some(d => d.category === tsm.ts.DiagnosticCategory.Error);
