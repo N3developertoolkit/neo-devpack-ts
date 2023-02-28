@@ -1,32 +1,28 @@
 import * as E from "fp-ts/Either";
 import * as tsm from "ts-morph";
-import { Scope } from "../scope";
+import { createSymbolMap, Scope } from "../scope";
 import { CallableSymbolDef, CallResult, GetPropResult, makeParseError, ObjectSymbolDef, ParseError, SymbolDef } from "../symbolDef";
-import { isPushIntOp, Operation, PushDataOperation } from "../types/Operation";
+import { isPushIntOp, Operation } from "../types/Operation";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROM from 'fp-ts/ReadonlyMap'
 import * as S from 'fp-ts/State'
 import * as O from 'fp-ts/Option'
-import * as FP from 'fp-ts'
 import { flow, pipe } from "fp-ts/lib/function";
 import { parseExpression } from "./expressionProcessor";
 import { getArguments } from "../utils";
+import { LibraryDeclarations } from "../projectLib";
+import { CompilerState } from "../compiler";
 
-
-export const resolveBuiltin =
-    (variables: ReadonlyArray<tsm.VariableDeclaration>) =>
-        (name: string, make: (decl: tsm.VariableDeclaration) => SymbolDef): S.State<ReadonlyArray<SymbolDef>, void> =>
-            (symbols) => {
-                return pipe(
-                    variables,
-                    ROA.findFirst(v => v.getName() === name),
-                    O.map(v => make(v)),
-                    O.match(
-                        () => { throw new Error(`built in variable ${name} not found`); },
-                        v => [, ROA.append(v)(symbols)]
-                    )
-                )
-            }
+const makeParseGetProp = (defs: ReadonlyArray<SymbolDef | GetPropResult>):
+    ((prop: tsm.Symbol) => O.Option<GetPropResult>) => {
+    const map = ROM.fromMap(
+        new Map(defs.map(d => {
+            const r = 'symbol' in d ? { value: d, access: [] } : d;
+            return [r.value.symbol, r];
+        }))
+    );
+    return flow(map.get, O.fromNullable);
+}
 
 function callError(node: tsm.CallExpression, scope: Scope): E.Either<ParseError, CallResult> {
     return pipe(
@@ -42,7 +38,7 @@ function callError(node: tsm.CallExpression, scope: Scope): E.Either<ParseError,
     )
 }
 
-export const makeErrorObj = (decl: tsm.VariableDeclaration): CallableSymbolDef => {
+const makeErrorObj = (decl: tsm.VariableDeclaration): CallableSymbolDef => {
     return {
         symbol: decl.getSymbolOrThrow(),
         parseGetProp: () => O.none,
@@ -99,7 +95,7 @@ function callU8ArrayFrom(node: tsm.CallExpression, scope: Scope): E.Either<Parse
     );
 }
 
-export const makeU8ArrayObj = (decl: tsm.VariableDeclaration): ObjectSymbolDef => {
+const makeU8ArrayObj = (decl: tsm.VariableDeclaration): ObjectSymbolDef => {
 
     const fromObj: CallableSymbolDef = {
         symbol: decl.getType().getPropertyOrThrow('from'),
@@ -109,14 +105,43 @@ export const makeU8ArrayObj = (decl: tsm.VariableDeclaration): ObjectSymbolDef =
 
     return {
         symbol: decl.getSymbolOrThrow(),
-        parseGetProp: (prop: tsm.Symbol) =>
-            fromObj.symbol === prop
-                ? O.some({ value: fromObj, access: [] })
-                : O.none,
+        parseGetProp: makeParseGetProp([fromObj]),
     }
 }
 
-export const builtInMap: Record<string, (decl: tsm.VariableDeclaration) => SymbolDef> = {
+const resolveBuiltin =
+    (variables: ReadonlyArray<tsm.VariableDeclaration>) =>
+        (name: string, make: (decl: tsm.VariableDeclaration) => SymbolDef): S.State<ReadonlyArray<SymbolDef>, void> =>
+            (symbols) => {
+                return pipe(
+                    variables,
+                    ROA.findFirst(v => v.getName() === name),
+                    O.map(v => make(v)),
+                    O.match(
+                        () => { throw new Error(`built in variable ${name} not found`); },
+                        v => [, ROA.append(v)(symbols)]
+                    )
+                )
+            }
+
+const builtInMap: Record<string, (decl: tsm.VariableDeclaration) => SymbolDef> = {
     "Error": makeErrorObj,
     "Uint8Array": makeU8ArrayObj
 }
+
+
+export const makeGlobalScope =
+    ({ variables }: LibraryDeclarations): CompilerState<Scope> =>
+        diagnostics => {
+            let symbols: ReadonlyArray<SymbolDef> = ROA.empty;
+            for (const key in builtInMap) {
+                [, symbols] = resolveBuiltin(variables)(key, builtInMap[key])(symbols);
+            }
+
+            const scope = {
+                parentScope: O.none,
+                symbols: createSymbolMap(symbols)
+            };
+
+            return [scope, diagnostics];
+        }

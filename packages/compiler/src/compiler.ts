@@ -12,7 +12,7 @@ import { parseFunctionDeclarations } from "./passes/processFunctionDeclarations"
 import { Operation } from "./types/Operation";
 import { DebugInfo } from "./types/DebugInfo";
 import { collectArtifacts } from "./collectArtifacts";
-import { makeGlobalScope, Scope } from "./scope";
+import { makeGlobalScope } from "./passes/builtins";
 
 export const DEFAULT_ADDRESS_VALUE = 53;
 

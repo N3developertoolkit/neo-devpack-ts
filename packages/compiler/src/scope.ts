@@ -7,7 +7,6 @@ import * as ROA from 'fp-ts/ReadonlyArray';
 import * as Eq from 'fp-ts/Eq';
 import { LibraryDeclarations } from "./projectLib";
 import { CompilerState } from "./compiler";
-import { builtInMap, resolveBuiltin as $resolveBuiltin } from "./passes/builtins";
 
 export interface Scope {
     readonly parentScope: O.Option<Scope>,
@@ -51,22 +50,3 @@ export const updateScope = (scope: Scope) =>
             symbols: createSymbolMap(symbols),
         }
     }
-
-export const makeGlobalScope =
-    ({ variables }: LibraryDeclarations): CompilerState<Scope> =>
-        diagnostics => {
-            const resolveBuiltin = $resolveBuiltin(variables)
-            
-            let symbols: ReadonlyArray<SymbolDef> = ROA.empty;
-            const map = builtInMap;
-            for (const key in map) {
-                [, symbols] = resolveBuiltin(key, map[key])(symbols);
-            }
-
-            const scope = {
-                parentScope: O.none,
-                symbols: createSymbolMap(symbols)
-            };
-
-            return [scope, diagnostics];
-        }

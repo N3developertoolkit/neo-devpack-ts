@@ -61,8 +61,8 @@ export function isLoadableDef(def: SymbolDef): def is LoadSymbolDef {
 // out more of the compiler. 
 
 export type GetPropResult = {
-    value: SymbolDef
-    access: readonly Operation[],
+    readonly value: SymbolDef
+    readonly access: readonly Operation[],
 };
 
 export interface ObjectSymbolDef extends SymbolDef {
@@ -74,8 +74,8 @@ export function isObjectDef(def: SymbolDef): def is ObjectSymbolDef {
 }
 
 export type CallResult = {
-    args: ReadonlyArray<Operation>,
-    call: ReadonlyArray<Operation>,
+    readonly args: ReadonlyArray<Operation>,
+    readonly call: ReadonlyArray<Operation>,
 };
 
 export interface CallableSymbolDef extends ObjectSymbolDef {
