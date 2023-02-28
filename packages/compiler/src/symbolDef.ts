@@ -557,11 +557,11 @@ export const parseProjectSymbols =
     (prj: Project): CompilerState<ReadonlyArray<ReadonlyArray<SymbolDef>>> =>
         (diagnostics: ReadonlyArray<Diagnostic>) => {
 
-            const sourceParsers = pipe(
+            const sourceSymbols = pipe(
                 prj.getSourceFiles(),
                 ROA.filter(s => !s.isDeclarationFile()),
                 ROA.map(parseSourceFile),
             )
 
-            return S.sequenceArray(sourceParsers)(diagnostics);
+            return S.sequenceArray(sourceSymbols)(diagnostics);
         }

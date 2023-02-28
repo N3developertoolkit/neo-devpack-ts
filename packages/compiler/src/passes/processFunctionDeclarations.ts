@@ -1,6 +1,6 @@
 import * as tsm from "ts-morph";
 
-import { flow, pipe } from 'fp-ts/function';
+import { pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
@@ -11,7 +11,7 @@ import * as FP from 'fp-ts'
 
 import { makeParseError, parseSymbol as $parseSymbol, VariableSymbolDef, ParseError, createDiagnostic, SymbolDef, FunctionSymbolDef } from "../symbolDef";
 import { createScope, Scope, updateScope } from "../scope";
-import { InitSlotOperation, isJumpTargetOp, JumpOffsetOperation, JumpTargetOperation, LoadStoreOperation, Location, Operation } from "../types/Operation";
+import { isJumpTargetOp, JumpTargetOperation, LoadStoreOperation, Location, Operation } from "../types/Operation";
 import { parseExpression as $parseExpression } from "./expressionProcessor";
 import { isVoidLike } from "../utils";
 import { ContractMethod } from "../compiler";
@@ -53,7 +53,6 @@ const updateLocation =
             ROA.isNonEmpty(ops)
                 ? pipe(ops, RNEA.modifyHead(op => ({ ...op, location })))
                 : ops;
-
 
 const opsMonoid = {
     ...ROA.getMonoid<Operation>(),
