@@ -205,7 +205,7 @@ export class MethodTokenSymbolDef implements CallableSymbolDef {
     parseGetProp(prop: Symbol) { return O.none; }
 
     parseCall(node: CallExpression, scope: Scope): E.Either<ParseError, CallResult> {
-        const call = ROA.of({ kind:"calltoken", token: this.token } as CallTokenOperation)
+        const call = ROA.of({ kind: "calltoken", token: this.token } as CallTokenOperation)
         return pipe(node, parseCall(scope)(call));
     }
 }

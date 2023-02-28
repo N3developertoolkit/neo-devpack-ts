@@ -4,14 +4,14 @@ import { pipe } from 'fp-ts/lib/function';
 import * as O from 'fp-ts/Option';
 import * as ROM from 'fp-ts/ReadonlyMap';
 import * as ROA from 'fp-ts/ReadonlyArray';
-import { Eq } from 'fp-ts/Eq';
+import * as Eq from 'fp-ts/Eq';
 
 export interface Scope {
     readonly parentScope: O.Option<Scope>,
     readonly symbols: ReadonlyMap<Symbol, SymbolDef>
 }
 
-const eqsymbol: Eq<Symbol> = { equals: (x, y) => x === y, }
+const eqsymbol: Eq.Eq<Symbol> = { equals: (x, y) => x === y, }
 
 export const resolve = (scope: Scope) => (symbol: Symbol): O.Option<SymbolDef> => {
     return pipe(

@@ -12,8 +12,7 @@ import * as O from 'fp-ts/Option'
 import { createSymbolMap, Scope } from "./scope";
 import { parseFunctionDeclarations } from "./passes/processFunctionDeclarations";
 import { Operation } from "./types/Operation";
-import { pipe } from "fp-ts/lib/function";
-import { builtInMap, makeErrorObj, makeU8ArrayObj, resolveBuiltin as $resolveBuiltin } from "./passes/builtins";
+import { builtInMap, resolveBuiltin as $resolveBuiltin } from "./passes/builtins";
 import { DebugInfo } from "./types/DebugInfo";
 import { collectArtifacts } from "./collectArtifacts";
 
@@ -44,7 +43,7 @@ export interface ContractMethod {
 
 export interface CompileArtifacts {
     readonly diagnostics: ReadonlyArray<tsm.ts.Diagnostic>;
-    readonly methods: ReadonlyArray<ContractMethod>;
+    readonly methods?: ReadonlyArray<ContractMethod>;
     readonly nef?: sc.NEF;
     readonly manifest?: sc.ContractManifest;
     readonly debugInfo?: DebugInfo;
@@ -59,8 +58,6 @@ export interface CompileContext {
 }
 
 export type CompilerState<T> = S.State<ReadonlyArray<tsm.ts.Diagnostic>, T>;
-
-
 
 const makeGlobalScope = ({ variables }: LibraryDeclarations): CompilerState<Scope> =>
     diagnostics => {
@@ -79,6 +76,10 @@ const makeGlobalScope = ({ variables }: LibraryDeclarations): CompilerState<Scop
         return [scope, diagnostics];
     }
 
+function hasErrors(diagnostics: ReadonlyArray<tsm.ts.Diagnostic>) {
+    return diagnostics.some(d => d.category === tsm.ts.DiagnosticCategory.Error);
+}
+
 export function compile(
     project: tsm.Project,
     contractName: string,
@@ -93,20 +94,25 @@ export function compile(
     }
 
     let [library, diagnostics] = parseProjectLibrary(project)(ROA.empty);
+    if (hasErrors(diagnostics)) { return { diagnostics } }
     let globalScope;
     [globalScope, diagnostics] = makeGlobalScope(library)(diagnostics);
+    if (hasErrors(diagnostics)) { return { diagnostics } }
     let symbolDefs;
     [symbolDefs, diagnostics] = parseProjectSymbols(project)(diagnostics);
+    if (hasErrors(diagnostics)) { return { diagnostics } }
 
     let methods: ReadonlyArray<ContractMethod> = ROA.empty;
     for (const defs of symbolDefs) {
         let $methods;
         [$methods, diagnostics] = parseFunctionDeclarations(defs, globalScope)(diagnostics);
+        if (hasErrors(diagnostics)) { return { diagnostics } }
         methods = ROA.concat($methods)(methods);
     }
 
     let artifacts;
     [artifacts, diagnostics] = collectArtifacts(contractName, methods, $options)(diagnostics);
+    if (hasErrors(diagnostics)) { return { diagnostics } }
 
     return { diagnostics, methods, ...artifacts };
 }
