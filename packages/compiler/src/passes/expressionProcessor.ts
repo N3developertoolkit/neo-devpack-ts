@@ -73,7 +73,7 @@ export const parseArrayLiteral =
             return pipe(
                 node.getElements(),
                 ROA.map(parseExpression(scope)),
-                ROA.sequence(E.either),
+                ROA.sequence(E.Applicative),
                 E.map(ROA.flatten)
             )
         }
@@ -288,7 +288,7 @@ export const parsePropertyAccessExpression =
             const type = expr.getType();
             const propName = node.getName();
 
-            return pipe(
+            const qq =  pipe(
                 expr,
                 parseExpression(scope),
                 E.bindTo('ops'),
@@ -305,6 +305,8 @@ export const parsePropertyAccessExpression =
                     ] as Operation[])
                 ))
             )
+
+            return qq;
         }
 
 export const parseStringLiteral =

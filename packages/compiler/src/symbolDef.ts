@@ -24,9 +24,9 @@ const parseArguments = (scope: Scope) => (node: CallExpression) => {
         node,
         getArguments,
         ROA.map(parseExpression(scope)),
-        ROA.sequence(E.either),
+        ROA.sequence(E.Applicative),
+        E.map(ROA.reverse),
         E.map(ROA.flatten),
-        E.map(ROA.reverse)
     );
 }
 
@@ -151,7 +151,6 @@ export class VariableSymbolDef implements LoadSymbolDef {
         return [{ kind, index: this.index } as LoadStoreOperation];
     }
 }
-
 
 export class EventSymbolDef implements CallableSymbolDef {
     constructor(

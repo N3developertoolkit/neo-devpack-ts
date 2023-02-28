@@ -256,65 +256,84 @@ const parseBody =
         }
 
 
-const makeContractMethod =
-    (node: tsm.FunctionDeclaration) =>
-        (result: BodyParseResult): E.Either<ReadonlyArray<ParseError>, ContractMethod> => {
-            // add return op at end of method
-            let ops: ReadonlyArray<Operation> = pipe(
-                result.operations,
-                ROA.append(returnOp as Operation));
-
-            // add initslot op at start of method if there are locals or parameters
-            const params = node.getParameters().length;
-            const locals = result.locals.length;
-            if (params > 0 || locals > 0) {
-                const op: InitSlotOperation = { kind: 'initslot', locals, params };
-                ops = pipe(ops, ROA.prepend(op as Operation));
-            }
-
-            // map all the jump target to jump offset operations
-            const jumpTargetOps = pipe(
-                ops,
-                ROA.filterMapWithIndex(
-                    (index, op) => isJumpTargetOp(op)
-                        ?
-                        O.some({ op, index })
-                        : O.none))
-
-            for (const { op, index } of jumpTargetOps) {
-                const targetIndex = ops.findIndex(v => v === op.target)
-                if (targetIndex === -1) return E.left(ROA.of(makeParseError()('fail')));
-
-                const q = pipe(ops, ROA.modifyAt(index, _op => {
-                    const newOp: JumpOffsetOperation = {
-                        kind: op.kind,
-                        offset: targetIndex - index,
-                        location: op.location
-                    };
-                    return newOp;
-                }))
-                if (O.isNone(q)) return E.left(ROA.of(makeParseError()('fail')));
-                ops = q.value;
-            }
-
-            const vars = result.locals.map(l => ({
-                name: l.getSymbolOrThrow().getName(),
-                type: l.getType(),
-            }))
-
+const convertJumpTargetOps =
+    (ops: ReadonlyArray<Operation>) =>
+        (jumpTargetOps: ReadonlyArray<{ index: number; op: JumpTargetOperation; }>): O.Option<ReadonlyArray<Operation>> => {
             return pipe(
-                node,
-                parseSymbol,
-                E.map(symbol => ({
-                    symbol,
-                    node,
-                    operations: ops,
-                    variables: vars,
-                } as ContractMethod)),
-                E.mapLeft(ROA.of)
-            );
+                jumpTargetOps,
+                ROA.matchLeft(
+                    () => O.some(ops),
+                    (head, tail) => {
+                        return pipe(
+                            ops,
+                            ROA.findIndex($o => head.op.target === $o),
+                            O.chain(targetIndex => {
+                                return pipe(ops,
+                                    ROA.modifyAt(head.index, () => {
+                                        return {
+                                            kind: head.op.kind,
+                                            offset: targetIndex - head.index,
+                                            location: head.op.location,
+                                        } as Operation
+                                    })
+                                );
+                            }),
+                            O.chain(ops => convertJumpTargetOps(ops)(tail))
+                        );
+                    }
+                )
+            )
         }
 
+const makeContractMethod =
+    (node: tsm.FunctionDeclaration) =>
+        (result: BodyParseResult): E.Either<ParseError, ContractMethod> => {
+            const ops = pipe(result.operations,
+                // add return op at end of method
+                ROA.append(returnOp as Operation),
+                // add initslot op at start of method if there are locals or parameters
+                ops => {
+                    const params = node.getParameters().length;
+                    const locals = result.locals.length;
+                    return (params > 0 || locals > 0)
+                        ? pipe(ops, ROA.prepend({ kind: 'initslot', locals, params } as Operation))
+                        : ops;
+                },
+            );
+
+            return pipe(
+                ops,
+                // map all the jump target to jump offset operations
+                ROA.filterMapWithIndex(
+                    (index, op) => isJumpTargetOp(op)
+                        ? O.some({ op, index })
+                        : O.none),
+                convertJumpTargetOps(ops),
+                E.fromOption(() => makeParseError()('woops')),
+                E.bindTo('operations'),
+                E.bind('symbol', () => pipe(node, parseSymbol)),
+                E.bind('variables', () => pipe(
+                    result.locals,
+                    ROA.map(varDecl => {
+                        return pipe(
+                            varDecl,
+                            parseSymbol,
+                            E.map(s => ({
+                                name: s.getName(),
+                                type: varDecl.getType(),
+                            }))
+                        );
+                    }),
+                    ROA.sequence(E.Applicative),
+                )),
+                E.map(({ symbol, operations, variables }) => ({
+                    node,
+                    symbol,
+                    operations,
+                    variables
+                } as ContractMethod))
+            );
+        }
 
 export const parseFunctionDeclaration =
     (parentScope: Scope) =>
@@ -325,22 +344,19 @@ export const parseFunctionDeclaration =
                     ROA.mapWithIndex((index, node) => pipe(
                         node,
                         parseSymbol,
-                        E.map(s => new VariableSymbolDef(s, 'local', index))
+                        E.map(s => new VariableSymbolDef(s, 'arg', index))
                     )),
-                    ROA.separate,
-                    E_fromSeparated,
+                    ROA.sequence(E.Applicative),
+                    E.mapLeft(ROA.of),
                     E.map(createScope(parentScope)),
                     E.bindTo('scope'),
                     E.bind('body', () => pipe(
                         node.getBody(),
-                        E.fromNullable(
-                            ROA.of(
-                                makeParseError(node)("undefined body")
-                            )
-                        )
+                        E.fromNullable(makeParseError(node)("undefined body")),
+                        E.mapLeft(ROA.of)
                     )),
-                    E.chain((o) => parseBody(o.scope)(o.body)),
-                    E.chain(makeContractMethod(node)),
+                    E.chain(o => parseBody(o.scope)(o.body)),
+                    E.chain(r => pipe(r, makeContractMethod(node), E.mapLeft(ROA.of))),
                     E.match(
                         errors => [
                             { node, symbol: node.getSymbol()!, operations: [], variables: [] },

@@ -12,9 +12,10 @@ import * as O from 'fp-ts/Option'
 import { createSymbolMap, Scope } from "./scope";
 import { parseFunctionDeclarations } from "./passes/processFunctionDeclarations";
 import { Operation } from "./types/Operation";
-import { makeErrorObj, makeU8ArrayObj } from "./passes/builtins";
-import { collectArtifacts } from "./collectArtifacts";
+import { pipe } from "fp-ts/lib/function";
+import { builtInMap, makeErrorObj, makeU8ArrayObj, resolveBuiltin as $resolveBuiltin } from "./passes/builtins";
 import { DebugInfo } from "./types/DebugInfo";
+import { collectArtifacts } from "./collectArtifacts";
 
 export const DEFAULT_ADDRESS_VALUE = 53;
 
@@ -63,16 +64,12 @@ export type CompilerState<T> = S.State<ReadonlyArray<tsm.ts.Diagnostic>, T>;
 
 const makeGlobalScope = ({ variables }: LibraryDeclarations): CompilerState<Scope> =>
     diagnostics => {
-
-        function resolve(name: string, make: (decl: tsm.VariableDeclaration) => SymbolDef) {
-            const value = variables.find(v => v.getName() === name);
-            if (!value) throw new Error(`built in variable ${name} not found`);
-            return make(value);
+        const resolveBuiltin = $resolveBuiltin(variables)
+        let symbols: ReadonlyArray<SymbolDef> = ROA.empty;
+        const map = builtInMap;
+        for (const key in map) {
+            [, symbols] = resolveBuiltin(key, map[key])(symbols);
         }
-
-        const symbols = new Array<SymbolDef>();
-        symbols.push(resolve("Error", makeErrorObj));
-        symbols.push(resolve("Uint8Array", makeU8ArrayObj));
 
         const scope = {
             parentScope: O.none,

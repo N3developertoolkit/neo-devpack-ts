@@ -13,6 +13,21 @@ import { parseExpression } from "./expressionProcessor";
 import { getArguments } from "../utils";
 
 
+export const resolveBuiltin =
+    (variables: ReadonlyArray<tsm.VariableDeclaration>) =>
+        (name: string, make: (decl: tsm.VariableDeclaration) => SymbolDef): S.State<ReadonlyArray<SymbolDef>, void> =>
+            (symbols) => {
+                return pipe(
+                    variables,
+                    ROA.findFirst(v => v.getName() === name),
+                    O.map(v => make(v)),
+                    O.match(
+                        () => { throw new Error(`built in variable ${name} not found`); },
+                        v => [, ROA.append(v)(symbols)]
+                    )
+                )
+            }
+
 function callError(node: tsm.CallExpression, scope: Scope): E.Either<ParseError, CallResult> {
     return pipe(
         node,
@@ -35,14 +50,6 @@ export const makeErrorObj = (decl: tsm.VariableDeclaration): CallableSymbolDef =
     }
 }
 
-function parseFromArg(node: tsm.Expression) {
-    if (tsm.Node.isArrayLiteralExpression(node)) {
-
-    }
-
-    return E.left(makeParseError(node)(`${node.getKindName()} not impl`));
-}
-
 const asArrayLiteral = (node: tsm.Node) =>
     pipe(
         node,
@@ -53,19 +60,22 @@ const asArrayLiteral = (node: tsm.Node) =>
     );
 
 const asPushData = (ops: ReadonlyArray<Operation>): E.Either<ParseError, Operation> => {
-    const buffer = new Array<number>();
-    for (const op of ops) {
-        if (isPushIntOp(op)) {
-            buffer.push(Number(op.value));
-        }
-        else {
-            return E.left(makeParseError()(`${op.kind} not implemented for from method`))
-        }
-    }
-
-    return E.right({ kind: 'pushdata', value: Uint8Array.from(buffer) });
+    return pipe(ops,
+        ROA.map(op => pipe(
+            op,
+            E.fromPredicate(
+                isPushIntOp,
+                op => makeParseError()(`${op.kind} not supported for Uint8Array.from`)
+            ),
+            E.chain(op => op.value < 0 || op.value > 255
+                ? E.left(makeParseError()(`${op.value} not supported for Uint8Array.from`))
+                : E.right(Number(op.value)),
+            )
+        )),
+        ROA.sequence(E.Applicative),
+        E.map(buffer => ({ kind: 'pushdata', value: Uint8Array.from(buffer) } as Operation))
+    );
 }
-
 
 function callU8ArrayFrom(node: tsm.CallExpression, scope: Scope): E.Either<ParseError, CallResult> {
     return pipe(
@@ -78,7 +88,7 @@ function callU8ArrayFrom(node: tsm.CallExpression, scope: Scope): E.Either<Parse
         E.chain(e => pipe(
             e,
             ROA.map(parseExpression(scope)),
-            ROA.sequence(E.either),
+            ROA.sequence(E.Applicative),
             E.map(ROA.flatten)
         )),
         E.chain(asPushData),
@@ -104,4 +114,9 @@ export const makeU8ArrayObj = (decl: tsm.VariableDeclaration): ObjectSymbolDef =
                 ? O.some({ value: fromObj, access: [] })
                 : O.none,
     }
+}
+
+export const builtInMap: Record<string, (decl: tsm.VariableDeclaration) => SymbolDef> = {
+    "Error": makeErrorObj,
+    "Uint8Array": makeU8ArrayObj
 }
