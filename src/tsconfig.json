@@ -2,11 +2,9 @@
     "extends": "@tsconfig/node16/tsconfig.json",
     "compilerOptions": {
         "composite": true,
-        "rootDir": ".",
         "sourceMap": true,
     },
     "exclude": [
-        "bin/",
         "sample-contracts/",
     ],
     "references": [

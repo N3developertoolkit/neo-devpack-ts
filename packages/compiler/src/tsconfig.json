@@ -3,9 +3,7 @@
     "compilerOptions": {
         "composite": true,
         "outDir": "../lib",
-        "rootDir": ".",
         "sourceMap": true,
-        "stripInternal": true
     },
     "exclude": [
         "*.spec.ts",

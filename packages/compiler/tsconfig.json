@@ -1,7 +1,6 @@
 {
     "compilerOptions": {
         "composite": true,
-        "disableSourceOfProjectReferenceRedirect": true,
     },
     "files": [],
     "references": [
