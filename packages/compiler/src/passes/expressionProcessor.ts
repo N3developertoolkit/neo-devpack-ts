@@ -1,26 +1,20 @@
 import * as tsm from "ts-morph";
 import { flow, pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
-import * as ROM from 'fp-ts/ReadonlyMap';
 import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
 import * as M from "fp-ts/Monoid";
 import * as O from 'fp-ts/Option'
-import * as SG from "fp-ts/Semigroup";
-import * as S from 'fp-ts/State';
-import * as FP from 'fp-ts';
-import * as SEP from 'fp-ts/Separated';
-import { Operation, PushIntOperation, SimpleOperation, SimpleOperationKind } from "../types/Operation";
+import { Operation, SimpleOperationKind } from "../types/Operation";
 import { resolve, Scope } from "../scope";
-import { isCallableDef, isLoadableDef, isObjectDef, makeParseError, ObjectSymbolDef, ParseError, parseSymbol, SymbolDef, VariableSymbolDef } from "../symbolDef";
+import { isCallableDef, isLoadableDef, isObjectDef, makeParseError, ObjectSymbolDef, ParseError, parseSymbol, SymbolDef } from "../symbolDef";
 
 const resolveIdentifier =
     (scope: Scope) =>
         (node: tsm.Identifier): E.Either<ParseError, SymbolDef> => {
             return pipe(
-                node.getSymbol(),
-                O.fromNullable,
-                E.fromOption(() => makeParseError(node)('undefined symbol')),
+                node,
+                parseSymbol(),
                 E.chain(symbol => pipe(
                     symbol,
                     resolve(scope),

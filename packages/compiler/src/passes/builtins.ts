@@ -2,7 +2,7 @@ import * as E from "fp-ts/Either";
 import * as tsm from "ts-morph";
 import { createSymbolMap, Scope } from "../scope";
 import { CallableSymbolDef, CallResult, GetPropResult, makeParseError, ObjectSymbolDef, ParseError, SymbolDef } from "../symbolDef";
-import { isPushIntOp, Operation } from "../types/Operation";
+import { isPushIntOp, Operation, PushDataOperation } from "../types/Operation";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROM from 'fp-ts/ReadonlyMap'
 import * as S from 'fp-ts/State'
@@ -13,11 +13,11 @@ import { getArguments } from "../utils";
 import { LibraryDeclarations } from "../projectLib";
 import { CompilerState } from "../compiler";
 
-const makeParseGetProp = (defs: ReadonlyArray<SymbolDef | GetPropResult>):
+const makeParseGetProp = (props: ReadonlyArray<SymbolDef | GetPropResult>):
     ((prop: tsm.Symbol) => O.Option<GetPropResult>) => {
     const map = ROM.fromMap(
-        new Map(defs.map(d => {
-            const r = 'symbol' in d ? { value: d, access: [] } : d;
+        new Map(props.map(p => {
+            const r = 'symbol' in p ? { value: p, access: [] } : p;
             return [r.value.symbol, r];
         }))
     );
@@ -55,10 +55,9 @@ const asArrayLiteral = (node: tsm.Node) =>
         )
     );
 
-const asPushData = (ops: ReadonlyArray<Operation>): E.Either<ParseError, Operation> => {
+const asPushDataOp = (ops: ReadonlyArray<Operation>) => {
     return pipe(ops,
-        ROA.map(op => pipe(
-            op,
+        ROA.map(flow(
             E.fromPredicate(
                 isPushIntOp,
                 op => makeParseError()(`${op.kind} not supported for Uint8Array.from`)
@@ -69,7 +68,7 @@ const asPushData = (ops: ReadonlyArray<Operation>): E.Either<ParseError, Operati
             )
         )),
         ROA.sequence(E.Applicative),
-        E.map(buffer => ({ kind: 'pushdata', value: Uint8Array.from(buffer) } as Operation))
+        E.map(buffer => ({ kind: 'pushdata', value: Uint8Array.from(buffer) } as PushDataOperation))
     );
 }
 
@@ -81,13 +80,12 @@ function callU8ArrayFrom(node: tsm.CallExpression, scope: Scope): E.Either<Parse
         E.fromOption(() => makeParseError(node)('missing argument')),
         E.chain(asArrayLiteral),
         E.map(l => l.getElements()),
-        E.chain(e => pipe(
-            e,
+        E.chain(flow(
             ROA.map(parseExpression(scope)),
             ROA.sequence(E.Applicative),
             E.map(ROA.flatten)
         )),
-        E.chain(asPushData),
+        E.chain(asPushDataOp),
         E.map(op => ({
             args: [],
             call: [op]
@@ -128,7 +126,6 @@ const builtInMap: Record<string, (decl: tsm.VariableDeclaration) => SymbolDef> =
     "Error": makeErrorObj,
     "Uint8Array": makeU8ArrayObj
 }
-
 
 export const makeGlobalScope =
     ({ variables }: LibraryDeclarations): CompilerState<Scope> =>
