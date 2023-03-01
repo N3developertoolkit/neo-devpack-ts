@@ -1,5 +1,3 @@
-import { runtimeGetScriptContainer, Transaction, storagePut, storageGetContext, ByteString, storageGet, runtimeCheckWitness, contractManagementUpdate, asInteger, asByteString, concat, storageDelete, contractManagementGetContract, contractCall, callFlagsAll } from "@neo-project/neo-contract-framework";
-
 // /**
 //  * @contract TankToken
 //  * @extra Author "Harry Pierson"

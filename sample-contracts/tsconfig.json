@@ -1,0 +1,7 @@
+{
+    "extends": "@tsconfig/node16/tsconfig.json",
+    "compilerOptions": {
+        "noEmit": true,
+        "types": ["@neo-project/neo-contract-framework"]
+    }
+}

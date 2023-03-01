@@ -1,0 +1,13 @@
+{
+  "name": "sample-contracts",
+  "version": "1.0.0",
+  "author": "neo-project",
+  "license": "MIT",
+  "devDependencies": {
+    "@neo-project/neo-contract-framework": "workspace:*",
+    "@tsconfig/node16": "^1.0.3"
+  },
+  "scripts": {
+    "test": "tsc --build tsconfig.json"
+  }
+}

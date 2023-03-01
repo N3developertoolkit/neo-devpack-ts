@@ -66,7 +66,7 @@ export async function createContractProject(scfxSource?: string) {
 
     // load SCFX definitions
     if (!scfxSource) {
-        const scfxPath = join(__dirname, "../../framework/src/index.d.ts");
+        const scfxPath = join(__dirname, "../node_modules/@neo-project/neo-contract-framework/neo.d.ts");
         scfxSource = await readFile(scfxPath, 'utf8');
     }
 

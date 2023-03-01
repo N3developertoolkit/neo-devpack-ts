@@ -4,6 +4,7 @@
 //  * ByteString is defined as ReadonlyUint8Array as per https://www.growingwiththeweb.com/2020/10/typescript-readonly-typed-arrays.html
 //  * Pointer, Struct and InteropInterface are all TBD
 
+declare global {
 export interface ByteString extends Omit<Uint8Array, 'copyWithin' | 'fill' | 'reverse' | 'set' | 'sort'> { }
 
 /**
@@ -169,3 +170,6 @@ export interface Contract {
 // export declare function storageFind(context:StorageContext, prefix: any, options: any): any;
 
 
+}
+
+export {}

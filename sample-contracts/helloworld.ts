@@ -5,8 +5,6 @@
  * @extra Description "this is a prototype contract written in TypeScript"
  */
 
-import { ByteString, storageGetContext, storageGet, runtimeCheckWitness, contractManagementUpdate, storagePut, runtimeGetScriptContainer, storageDelete, Transaction, StorageContext } from "@neo-project/neo-contract-framework";
-
 const prefixSampleValue = 0x00;
 const prefixContractOwner = 0xFF;
 

@@ -4,5 +4,6 @@
   "description": "",
   "keywords": [],
   "author": "neo-project",
-  "license": "MIT"
+  "license": "MIT",
+  "types": "./neo.d.ts"
 }
