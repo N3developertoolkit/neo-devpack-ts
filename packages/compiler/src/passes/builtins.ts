@@ -21,7 +21,7 @@ const makeParseGetProp = (defs: ReadonlyArray<SymbolDef | GetPropResult>):
             return [r.value.symbol, r];
         }))
     );
-    return flow(map.get, O.fromNullable);
+    return flow(s => map.get(s), O.fromNullable);
 }
 
 function callError(node: tsm.CallExpression, scope: Scope): E.Either<ParseError, CallResult> {
