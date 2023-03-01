@@ -6,7 +6,7 @@
             "path": "./packages/compiler"
         },
         {
-            "path": "./src"
+            "path": "./packages/test-compiler"
         }
     ]
 }

@@ -19,6 +19,7 @@
     "ts-morph": "^17.0.1"
   },
   "devDependencies": {
+    "@tsconfig/node16": "^1.0.3",
     "ts-mockito": "^2.6.1"
   }
 }

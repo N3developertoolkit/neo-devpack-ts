@@ -1,6 +1,6 @@
 import * as tsm from "ts-morph";
 // import { ContractMethod } from "../packages/compiler/src/passes/processFunctionDeclarations";
-import { CallOperation, CallTokenOperation, ConvertOperation, InitSlotOperation, LoadStoreOperation, Location, Operation, PushBoolOperation, PushDataOperation, PushIntOperation, SysCallOperation } from "../packages/compiler/src/types/Operation";
+import { CallTokenOperation, ConvertOperation, InitSlotOperation, LoadStoreOperation, Location, Operation, PushBoolOperation, PushDataOperation, PushIntOperation, SysCallOperation } from "@neo-project/neo-compiler-ts";
 import { sc, u } from "@cityofzion/neon-core";
 
 function typeToString(type: tsm.Type) {

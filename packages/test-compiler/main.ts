@@ -1,6 +1,6 @@
 import path from "path";
 import { ts } from "ts-morph";
-import { compile, CompileOptions, createContractProject, hasErrors, toDiagnostic } from '../packages/compiler/';
+import { compile, CompileOptions, createContractProject, hasErrors, toDiagnostic } from '@neo-project/neo-compiler-ts'
 import * as fsp from 'fs/promises';
 import * as fs from 'fs';
 import { blue } from "./utils";
@@ -17,15 +17,16 @@ function printDiagnostics(diags: ReadonlyArray<ts.Diagnostic>) {
     console.log(msg);
 }
 
-const FILENAME = "sample-contracts/helloworld.ts";
-const OUTPUT_DIR = "../express/out";
+const REPO_ROOT = path.join(__dirname, "../..");
+const FILENAME = "./sample-contracts/helloworld.ts";
+const OUTPUT_DIR = "./express/out";
 
 async function main() {
     const project = await createContractProject();
 
     // load test contract
     const contractName = path.basename(FILENAME, ".ts");
-    const contractPath = path.join(__dirname, FILENAME);
+    const contractPath = path.join(REPO_ROOT, FILENAME);
     const contractSource = await fsp.readFile(contractPath, 'utf8');
     project.createSourceFile(FILENAME, contractSource);
     project.resolveSourceFileDependencies();
@@ -48,7 +49,7 @@ async function main() {
 
             if (hasErrors(diagnostics)) return;
 
-            const outputPath = path.join(__dirname, OUTPUT_DIR);
+            const outputPath = path.join(REPO_ROOT, OUTPUT_DIR);
             if ((nef || manifest || debugInfo) && !fs.existsSync(outputPath))
                 await fsp.mkdir(outputPath);
 
@@ -69,7 +70,7 @@ async function main() {
             if (debugInfo) {
                 const debugInfoPath = path.join(outputPath, `${contractName}.debug.json`);
                 const jsonDebugInfo = debugInfo.toJson();
-                jsonDebugInfo["document-root"] = __dirname;
+                jsonDebugInfo["document-root"] = REPO_ROOT;
                 const $debugInfo = JSON.stringify(jsonDebugInfo, null, 4);
                 await fsp.writeFile(debugInfoPath, $debugInfo);
                 console.log(blue, "Wrote: " + debugInfoPath);
