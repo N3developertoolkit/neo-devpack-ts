@@ -19,12 +19,14 @@ importers:
       '@cityofzion/neon-core': ^5.3.0
       '@neo-project/neo-contract-framework': workspace:*
       '@tsconfig/node16': ^1.0.3
+      commander: ^10.0.0
       fp-ts: ^2.13.1
       ts-mockito: ^2.6.1
       ts-morph: ^17.0.1
     dependencies:
       '@cityofzion/neon-core': 5.3.0
       '@neo-project/neo-contract-framework': link:../framework
+      commander: 10.0.0
       fp-ts: 2.13.1
       ts-morph: 17.0.1
     devDependencies:
@@ -33,18 +35,6 @@ importers:
 
   packages/framework:
     specifiers: {}
-
-  packages/test-compiler:
-    specifiers:
-      '@cityofzion/neon-core': ^5.3.0
-      '@neo-project/neo-compiler-ts': workspace:*
-      '@neo-project/neo-contract-framework': workspace:*
-      ts-morph: ^17.0.1
-    dependencies:
-      '@cityofzion/neon-core': 5.3.0
-      '@neo-project/neo-compiler-ts': link:../compiler
-      '@neo-project/neo-contract-framework': link:../framework
-      ts-morph: 17.0.1
 
   sample-contracts:
     specifiers:
@@ -222,6 +212,11 @@ packages:
 
   /code-block-writer/11.0.3:
     resolution: {integrity: sha512-NiujjUFB4SwScJq2bwbYUtXbZhBSlY6vYzm++3Q6oC+U+injTqfPYFK8wS9COOmb2lueqp0ZRB4nK1VYeHgNyw==}
+    dev: false
+
+  /commander/10.0.0:
+    resolution: {integrity: sha512-zS5PnTI22FIRM6ylNW8G4Ap0IEOyk62fhLSD0+uHRT9McRCLGpkVNvao4bjimpK/GShynyQkFFxHhwMcETmduA==}
+    engines: {node: '>=14'}
     dev: false
 
   /create-require/1.1.1:

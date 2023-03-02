@@ -5,171 +5,168 @@
 //  * Pointer, Struct and InteropInterface are all TBD
 
 declare global {
-export interface ByteString extends Omit<Uint8Array, 'copyWithin' | 'fill' | 'reverse' | 'set' | 'sort'> { }
+    export interface ByteString extends Omit<Uint8Array, 'copyWithin' | 'fill' | 'reverse' | 'set' | 'sort'> { }
 
-/**
- * @operation duplicate 
- * @operation isnull
- * @operation jumpif 3
- * @operation convert Integer 
- * @operation jump 3
- * @operation drop 
- * @operation pushint 0
- */
-export declare function asInteger(value: ByteString | null | undefined): bigint;
+    /**
+     * @operation duplicate 
+     * @operation isnull
+     * @operation jumpif 3
+     * @operation convert Integer 
+     * @operation jump 3
+     * @operation drop 
+     * @operation pushint 0
+     */
+    export function asInteger(value: ByteString | null | undefined): bigint;
 
-/**
- * @operation convert ByteString
- */
-export declare function asByteString(value: bigint): ByteString;
+    /**
+     * @operation convert ByteString
+     */
+    export function asByteString(value: bigint): ByteString;
 
-/**
- * @operation concat
- */
-export declare function concat(value1: ByteString, value2: ByteString): ByteString;
+    /**
+     * @operation concat
+     */
+    export function concat(value1: ByteString, value2: ByteString): ByteString;
 
-export const callFlagsNone = 0;
-export const callFlagsReadStates = 1;
-export const callFlagsWriteStates = 2;
-export const callFlagsAllowCall = 4;
-export const callFlagsAllowNotify = 8;
-export const callFlagsStates = 3;
-export const callFlagsReadOnly = 5;
-export const callFlagsAll = 15
+    export const callFlagsNone = 0;
+    export const callFlagsReadStates = 1;
+    export const callFlagsWriteStates = 2;
+    export const callFlagsAllowCall = 4;
+    export const callFlagsAllowNotify = 8;
+    export const callFlagsStates = 3;
+    export const callFlagsReadOnly = 5;
+    export const callFlagsAll = 15
 
-// There are 7 interop Contract service
-// three are internal use only: CallNative, NativeOnPersist and NativePostPersist
-// one has no params: GetCallFlags
-// The rest are static methods: Call, CreateStandardAccount, CreateMultisigAccount
+    // There are 7 interop Contract service
+    // three are internal use only: CallNative, NativeOnPersist and NativePostPersist
+    // one has no params: GetCallFlags
+    // The rest are static methods: Call, CreateStandardAccount, CreateMultisigAccount
 
-// There are 2 interop Crypto services
-// both are static methods: CheckSig and CheckMultisig
+    // There are 2 interop Crypto services
+    // both are static methods: CheckSig and CheckMultisig
 
-// There are 2 interop Iterator services
-// both take a single IIterator parameter: Next and Value
+    // There are 2 interop Iterator services
+    // both take a single IIterator parameter: Next and Value
 
-// There are 18 interop Runtime services
-// 12 have no params:
-//      GetTrigger, Platform, GetScriptContainer, GetExecutingScriptHash, GetCallingScriptHash, 
-//      GetEntryScriptHash, GetTime, GetInvocationCounter, GasLeft, GetAddressVersion
-//      GetNetwork, GetRandom
-// 6 static methods: 
-//      GetNotifications, CheckWitness, Log, Notify, LoadScript, BurnGas
+    // There are 18 interop Runtime services
+    // 12 have no params:
+    //      GetTrigger, Platform, GetScriptContainer, GetExecutingScriptHash, GetCallingScriptHash, 
+    //      GetEntryScriptHash, GetTime, GetInvocationCounter, GasLeft, GetAddressVersion
+    //      GetNetwork, GetRandom
+    // 6 static methods: 
+    //      GetNotifications, CheckWitness, Log, Notify, LoadScript, BurnGas
 
-// There are 7 interop Storage services
-// two have no params: GetContext and GetReadOnlyContext
-// five have an initial StorageContext param: AsReadOnly, Get, Find, Put, Delete
+    // There are 7 interop Storage services
+    // two have no params: GetContext and GetReadOnlyContext
+    // five have an initial StorageContext param: AsReadOnly, Get, Find, Put, Delete
 
-// syscall System.Contract.Call 
-// export declare function contractCall(scriptHash: ByteString, method: string, ): any;
+    // syscall System.Contract.Call 
+    // export  function contractCall(scriptHash: ByteString, method: string, ): any;
 
-export interface StorageContext { }
+    export interface StorageContext { }
 
-/** @syscall System.Storage.GetContext */
-export declare function storageGetContext(): StorageContext;
-/** @syscall System.Storage.GetReadOnlyContext */
-export declare function storageGetReadOnlyContext(): StorageContext;
-/** @syscall System.Storage.AsReadOnly */
-export declare function storageAsReadOnly(context: StorageContext): StorageContext;
-/** @syscall System.Storage.Get */
-export declare function storageGet(context: StorageContext, key: ByteString): ByteString | undefined;
-/** @syscall System.Storage.Put */
-export declare function storagePut(context: StorageContext, key: ByteString, value: ByteString): void;
-/** @syscall System.Storage.Delete */
-export declare function storageDelete(context: StorageContext, key: ByteString): void;
-
-
+    /** @syscall System.Storage.GetContext */
+    export function storageGetContext(): StorageContext;
+    /** @syscall System.Storage.GetReadOnlyContext */
+    export function storageGetReadOnlyContext(): StorageContext;
+    /** @syscall System.Storage.AsReadOnly */
+    export function storageAsReadOnly(context: StorageContext): StorageContext;
+    /** @syscall System.Storage.Get */
+    export function storageGet(context: StorageContext, key: ByteString): ByteString | undefined;
+    /** @syscall System.Storage.Put */
+    export function storagePut(context: StorageContext, key: ByteString, value: ByteString): void;
+    /** @syscall System.Storage.Delete */
+    export function storageDelete(context: StorageContext, key: ByteString): void;
 
 
-// export declare const Storage: StorageConstructor;
-
-// export interface StorageConstructor {
-//     /** @syscall System.Storage.GetContext */
-//     readonly context: StorageContext;
-//     /** @syscall System.Storage.GetReadOnlyContext */
-//     readonly readonlyContext: ReadonlyStorageContext;
-// }
-
-// export interface ReadonlyStorageContext {
-//     /** @syscall System.Storage.Get */
-//     get(key: ByteString): ByteString | undefined;
-//     // /** @syscall System.Storage.Find */
-//     // find(prefix: ByteString, options: FindOptions): Iterator
-// }
-
-// FindOptions
-// None = 0,                    No option is set. The results will be an iterator of (key, value).
-// KeysOnly = 1 << 0,           Indicates that only keys need to be returned. The results will be an iterator of keys.
-// RemovePrefix = 1 << 1,       Indicates that the prefix byte of keys should be removed before return.
-// ValuesOnly = 1 << 2,         Indicates that only values need to be returned. The results will be an iterator of values.
-// DeserializeValues = 1 << 3,  Indicates that values should be deserialized before return.
-// PickField0 = 1 << 4,         Indicates that only the field 0 of the deserialized values need to be returned. This flag must be set together with <see cref="DeserializeValues"/>.
-// PickField1 = 1 << 5,         Indicates that only the field 1 of the deserialized values need to be returned. This flag must be set together with <see cref="DeserializeValues"/>.
-
-// export interface StorageContext extends ReadonlyStorageContext {
-//     /** @syscall System.Storage.AsReadOnly */
-//     readonly asReadonly: ReadonlyStorageContext;
-//     /** @syscall System.Storage.Put */
-//     put(key: ByteString, value: ByteString): void;
-//     /** @syscall System.Storage.Delete */
-//     delete(key: ByteString): void;
-// }
 
 
-/** @syscall System.Runtime.GetScriptContainer */
-export declare function runtimeGetScriptContainer(): any;
-/** @syscall System.Runtime.CheckWitness */
-export declare function runtimeCheckWitness(account: ByteString): boolean;
+    export const Storage: StorageConstructor;
 
-/** @syscall System.Contract.Call */
-export declare function contractCall(scriptHash: ByteString, method: string, flags: number, ...args: any[]): any;
+    export interface StorageConstructor {
+        /** @syscall System.Storage.GetContext */
+        readonly context: StorageContext;
+        /** @syscall System.Storage.GetReadOnlyContext */
+        readonly readonlyContext: ReadonlyStorageContext;
+    }
 
-/** @methodToken {0xfffdc93764dbaddd97c48f252a53ea4643faa3fd} update */
-export declare function contractManagementUpdate(nefFile: ByteString, manifest: string, data?: any): void;
+    export interface ReadonlyStorageContext {
+        /** @syscall System.Storage.Get */
+        get(key: ByteString): ByteString | undefined;
+        // /** @syscall System.Storage.Find */
+        // find(prefix: ByteString, options: FindOptions): Iterator
+    }
 
-/** @methodToken {0xfffdc93764dbaddd97c48f252a53ea4643faa3fd} getContract */
-export declare function contractManagementGetContract(hash: ByteString): Contract;
+    // FindOptions
+    // None = 0,                    No option is set. The results will be an iterator of (key, value).
+    // KeysOnly = 1 << 0,           Indicates that only keys need to be returned. The results will be an iterator of keys.
+    // RemovePrefix = 1 << 1,       Indicates that the prefix byte of keys should be removed before return.
+    // ValuesOnly = 1 << 2,         Indicates that only values need to be returned. The results will be an iterator of values.
+    // DeserializeValues = 1 << 3,  Indicates that values should be deserialized before return.
+    // PickField0 = 1 << 4,         Indicates that only the field 0 of the deserialized values need to be returned. This flag must be set together with <see cref="DeserializeValues"/>.
+    // PickField1 = 1 << 5,         Indicates that only the field 1 of the deserialized values need to be returned. This flag must be set together with <see cref="DeserializeValues"/>.
 
-// public static extern Contract GetContract(UInt160 hash);
+    export interface StorageContext extends ReadonlyStorageContext {
+        /** @syscall System.Storage.AsReadOnly */
+        readonly asReadonly: ReadonlyStorageContext;
+        /** @syscall System.Storage.Put */
+        put(key: ByteString, value: ByteString): void;
+        /** @syscall System.Storage.Delete */
+        delete(key: ByteString): void;
+    }
 
-// TODO: Do stack item interfaces such as Transacation and Block need a JSDoc tag like @stackitem?
-export interface Transaction {
-    readonly hash: ByteString,
-    readonly version: number,
-    readonly nonce: number,
-    readonly sender: ByteString,
-    readonly systemFee: bigint,
-    readonly networkFee: bigint,
-    readonly validUntilBlock: number,
-    readonly script: ByteString
+
+    /** @syscall System.Runtime.GetScriptContainer */
+    export function runtimeGetScriptContainer(): any;
+    /** @syscall System.Runtime.CheckWitness */
+    export function runtimeCheckWitness(account: ByteString): boolean;
+
+    /** @syscall System.Contract.Call */
+    export function contractCall(scriptHash: ByteString, method: string, flags: number, ...args: any[]): any;
+
+    /** @methodToken {0xfffdc93764dbaddd97c48f252a53ea4643faa3fd} update */
+    export function contractManagementUpdate(nefFile: ByteString, manifest: string, data?: any): void;
+
+    /** @methodToken {0xfffdc93764dbaddd97c48f252a53ea4643faa3fd} getContract */
+    export function contractManagementGetContract(hash: ByteString): Contract;
+
+    // public static extern Contract GetContract(UInt160 hash);
+
+    // TODO: Do stack item interfaces such as Transacation and Block need a JSDoc tag like @stackitem?
+    export interface Transaction {
+        readonly hash: ByteString,
+        readonly version: number,
+        readonly nonce: number,
+        readonly sender: ByteString,
+        readonly systemFee: bigint,
+        readonly networkFee: bigint,
+        readonly validUntilBlock: number,
+        readonly script: ByteString
+    }
+
+    export interface Block {
+        readonly hash: ByteString,
+        readonly version: number,
+        readonly previousHash: ByteString,
+        readonly merkleRoot: ByteString,
+        readonly timestamp: bigint,
+        readonly nonce: bigint,
+        readonly index: number,
+        readonly primaryIndex: number,
+        readonly nextConsensus: ByteString,
+        readonly transactionsCount: number
+    }
+
+    export interface Contract {
+        readonly id: number;
+        readonly updateCounter: number;
+        readonly hash: ByteString;
+        readonly nef: ByteString;
+        readonly manifest: any;
+    }
+
+    // /** @syscall System.Storage.Find */
+    // export  function storageFind(context:StorageContext, prefix: any, options: any): any;
 }
 
-export interface Block {
-    readonly hash: ByteString,
-    readonly version: number,
-    readonly previousHash: ByteString,
-    readonly merkleRoot: ByteString,
-    readonly timestamp: bigint,
-    readonly nonce: bigint,
-    readonly index: number,
-    readonly primaryIndex: number,
-    readonly nextConsensus: ByteString,
-    readonly transactionsCount: number
-}
-
-export interface Contract {
-    readonly id: number;
-    readonly updateCounter: number;
-    readonly hash: ByteString;
-    readonly nef: ByteString;
-    readonly manifest: any;
-}
-
-
-// /** @syscall System.Storage.Find */
-// export declare function storageFind(context:StorageContext, prefix: any, options: any): any;
-
-
-}
-
-export {}
+export { }

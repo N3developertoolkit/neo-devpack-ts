@@ -1,9 +1,12 @@
-import path from "path";
-import { ts } from "ts-morph";
-import { compile, CompileOptions, createContractProject, hasErrors, toDiagnostic } from '@neo-project/neo-compiler-ts'
+import * as path from "path";
+import { compile, CompileOptions, createContractProject, hasErrors, toDiagnostic } from './index'
 import * as fsp from 'fs/promises';
 import * as fs from 'fs';
-import { blue } from "./utils";
+import { ts } from "ts-morph";
+
+const REPO_ROOT = path.join(__dirname, "../../..");
+const FILENAME = "./sample-contracts/helloworld.ts";
+const OUTPUT_DIR = "./express/out";
 
 function printDiagnostics(diags: ReadonlyArray<ts.Diagnostic>) {
     const formatHost: ts.FormatDiagnosticsHost = {
@@ -16,10 +19,6 @@ function printDiagnostics(diags: ReadonlyArray<ts.Diagnostic>) {
     const msg = ts.formatDiagnosticsWithColorAndContext(diags, formatHost);
     console.log(msg);
 }
-
-const REPO_ROOT = path.join(__dirname, "../..");
-const FILENAME = "./sample-contracts/helloworld.ts";
-const OUTPUT_DIR = "./express/out";
 
 async function main() {
     const project = await createContractProject();
@@ -57,14 +56,14 @@ async function main() {
                 const nefPath = path.join(outputPath, `${contractName}.nef`);
                 const $nef = Buffer.from(nef.serialize(), 'hex');
                 await fsp.writeFile(nefPath, $nef);
-                console.log(blue, "Wrote: " + nefPath);
+                console.log("Wrote: " + nefPath);
             }
 
             if (manifest) {
                 const manifestPath = path.join(outputPath, `${contractName}.manifest.json`);
                 const $manifest = JSON.stringify(manifest.toJson(), null, 4);
                 await fsp.writeFile(manifestPath, $manifest);
-                console.log(blue, "Wrote: " + manifestPath);
+                console.log("Wrote: " + manifestPath);
             }
 
             if (debugInfo) {
@@ -73,7 +72,7 @@ async function main() {
                 jsonDebugInfo["document-root"] = REPO_ROOT;
                 const $debugInfo = JSON.stringify(jsonDebugInfo, null, 4);
                 await fsp.writeFile(debugInfoPath, $debugInfo);
-                console.log(blue, "Wrote: " + debugInfoPath);
+                console.log("Wrote: " + debugInfoPath);
             }
         } catch (error) {
             printDiagnostics([toDiagnostic(error)]);
@@ -82,4 +81,3 @@ async function main() {
 }
 
 main();
-

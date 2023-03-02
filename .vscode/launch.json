@@ -12,7 +12,7 @@
             "skipFiles": [
                 "<node_internals>/**"
             ],
-            "program": "${workspaceFolder}/packages/test-compiler/main.ts", 
+            "program": "${workspaceFolder}/packages/compiler/src/main.ts", 
             "outFiles": [
                 "${workspaceFolder}/**/*.js"
             ]

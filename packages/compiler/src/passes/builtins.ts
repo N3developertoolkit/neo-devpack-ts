@@ -107,23 +107,18 @@ const makeU8ArrayObj = (decl: tsm.VariableDeclaration): ObjectSymbolDef => {
     }
 }
 
-const resolveBuiltin =
-    (variables: ReadonlyArray<tsm.VariableDeclaration>) =>
-        (name: string, make: (decl: tsm.VariableDeclaration) => SymbolDef): S.State<ReadonlyArray<SymbolDef>, void> =>
-            (symbols) => {
-                return pipe(
-                    variables,
-                    ROA.findFirst(v => v.getName() === name),
-                    O.map(v => make(v)),
-                    O.match(
-                        () => { throw new Error(`built in variable ${name} not found`); },
-                        v => [, ROA.append(v)(symbols)]
-                    )
-                )
-            }
+const makeStorageObj = (decl: tsm.VariableDeclaration): ObjectSymbolDef => {
+
+    return {
+        symbol: decl.getSymbolOrThrow(),
+        parseGetProp: () => O.none,
+    }
+}
+
 
 const builtInMap: Record<string, (decl: tsm.VariableDeclaration) => SymbolDef> = {
     "Error": makeErrorObj,
+    "Storage": makeStorageObj,
     "Uint8Array": makeU8ArrayObj
 }
 
@@ -142,3 +137,18 @@ export const makeGlobalScope =
 
             return [scope, diagnostics];
         }
+
+const resolveBuiltin =
+    (variables: ReadonlyArray<tsm.VariableDeclaration>) =>
+        (name: string, make: (decl: tsm.VariableDeclaration) => SymbolDef): S.State<ReadonlyArray<SymbolDef>, void> =>
+            (symbols) => {
+                return pipe(
+                    variables,
+                    ROA.findFirst(v => v.getName() === name),
+                    O.map(v => make(v)),
+                    O.match(
+                        () => { throw new Error(`built in variable ${name} not found`); },
+                        v => [, ROA.append(v)(symbols)]
+                    )
+                )
+            }

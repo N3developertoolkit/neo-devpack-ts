@@ -1,7 +1,7 @@
 import * as tsm from "ts-morph";
 import { CompileError } from "./compiler";
-import { join } from "path";
-import { readFile } from "fs/promises";
+import { basename, join } from "path";
+import * as fsp from "fs/promises";
 import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
 import * as ROA from 'fp-ts/ReadonlyArray';
 import { sc, u } from "@cityofzion/neon-core";
@@ -54,6 +54,7 @@ export function createProject() {
             experimentalDecorators: true,
             // specify lib file directly to avoid bringing in web apis like DOM and WebWorker
             lib: ["lib.es2020.d.ts"],
+            types: ["@neo-project/neo-contract-framework"],
             target: tsm.ts.ScriptTarget.ES2020,
             moduleResolution: tsm.ts.ModuleResolutionKind.NodeJs,
         },
@@ -61,16 +62,19 @@ export function createProject() {
     });
 }
 
-export async function createContractProject(scfxSource?: string) {
+export async function createContractProject() {
     const project = createProject();
+    const projFS = project.getFileSystem();
 
-    // load SCFX definitions
-    if (!scfxSource) {
-        const scfxPath = join(__dirname, "../node_modules/@neo-project/neo-contract-framework/neo.d.ts");
-        scfxSource = await readFile(scfxPath, 'utf8');
+    const sourceFolder = join(__dirname, "../node_modules/@neo-project/neo-contract-framework");
+    const targetFolder = "/node_modules/@neo-project/neo-contract-framework";
+
+    const files = await fsp.readdir(sourceFolder)
+    for (const file of files) {
+        const contents = await fsp.readFile(join(sourceFolder, file), 'utf8');
+        projFS.writeFile(join(targetFolder, file), contents);
     }
 
-    await project.getFileSystem().writeFile('/node_modules/@neo-project/neo-contract-framework/index.d.ts', scfxSource);
     return project;
 }
 
@@ -190,40 +194,40 @@ function toBigInt(buffer: Buffer): bigint {
 }
 
 // convert JS BigInt to C# BigInt byte array encoding
-export function bigIntToByteArray(value: bigint): Uint8Array {
-    if (value >= 0n) {
-        // convert value to buffer
-        let buffer = toBuffer(value);
-        // if the most significant bit is 1, prepend a 0x00 byte to 
-        // indicate positive value
-        if (buffer[0] & 0x80) {
-            buffer = Buffer.concat([Buffer.alloc(1, 0x00), buffer])
-        }
-        // reverse endianess
-        return buffer.reverse();
-    } else {
-        // convert negative number to positive and create buffer 
-        let buffer = toBuffer(value * -1n);
-        // if the buffer has all the bits set, prepend an empty padding byte
-        buffer = allBitsSet(buffer)
-            ? Buffer.concat([Buffer.alloc(1, 0x00), buffer])
-            : buffer;
-        // invert the bits
-        const end = buffer.length;
-        let i = 0;
-        while (i < end) {
-            buffer[i] = buffer[i] ^ 0xff;
-            i++;
-        }
-        // Convert the updated buffer to a bigint, add one, 
-        // and convert back to buffer
-        let buffer2 = toBuffer(toBigInt(buffer) + 1n);
-        // if the most significant bit isn't 1, prepend a 0xff byte 
-        // to indicate negative value
-        if (!(buffer2[0] & 0x80)) {
-            buffer2 = Buffer.concat([Buffer.alloc(1, 0xff), buffer2])
-        }
-        // reverse endianess
-        return buffer2.reverse();
-    }
-}
+// export function bigIntToByteArray(value: bigint): Uint8Array {
+//     if (value >= 0n) {
+//         // convert value to buffer
+//         let buffer = toBuffer(value);
+//         // if the most significant bit is 1, prepend a 0x00 byte to 
+//         // indicate positive value
+//         if (buffer[0] & 0x80) {
+//             buffer = Buffer.concat([Buffer.alloc(1, 0x00), buffer])
+//         }
+//         // reverse endianess
+//         return buffer.reverse();
+//     } else {
+//         // convert negative number to positive and create buffer 
+//         let buffer = toBuffer(value * -1n);
+//         // if the buffer has all the bits set, prepend an empty padding byte
+//         buffer = allBitsSet(buffer)
+//             ? Buffer.concat([Buffer.alloc(1, 0x00), buffer])
+//             : buffer;
+//         // invert the bits
+//         const end = buffer.length;
+//         let i = 0;
+//         while (i < end) {
+//             buffer[i] = buffer[i] ^ 0xff;
+//             i++;
+//         }
+//         // Convert the updated buffer to a bigint, add one, 
+//         // and convert back to buffer
+//         let buffer2 = toBuffer(toBigInt(buffer) + 1n);
+//         // if the most significant bit isn't 1, prepend a 0xff byte 
+//         // to indicate negative value
+//         if (!(buffer2[0] & 0x80)) {
+//             buffer2 = Buffer.concat([Buffer.alloc(1, 0xff), buffer2])
+//         }
+//         // reverse endianess
+//         return buffer2.reverse();
+//     }
+// }

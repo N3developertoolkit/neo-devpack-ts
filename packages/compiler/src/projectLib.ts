@@ -1,13 +1,18 @@
-import { FunctionDeclaration, InterfaceDeclaration, VariableDeclaration, SourceFile, Node, Project, ts } from "ts-morph";
+import { FunctionDeclaration, InterfaceDeclaration, VariableDeclaration, SourceFile, Node, Project, ts, ModuleDeclarationKind } from "ts-morph";
 import { createDiagnostic } from "./utils";
 import { CompilerState } from "./compiler";
-import { pipe } from 'fp-ts/function';
+import { flow, identity, pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
+import * as E from 'fp-ts/Either';
 import * as O from 'fp-ts/Option';
 import * as S from 'fp-ts/State';
 import * as ROS from 'fp-ts/ReadonlySet';
-import * as STR from 'fp-ts/string'
+import * as SG from 'fp-ts/Semigroup';
+import * as FP from 'fp-ts';
+import { JsonRecord } from "fp-ts/lib/Json";
+import { posix } from 'path';
+
 
 type Diagnostic = ts.Diagnostic;
 
@@ -17,66 +22,196 @@ export type LibraryDeclarations = {
     readonly variables: ReadonlyArray<VariableDeclaration>,
 }
 
-const parseLibrarySourceFile =
-    (src: SourceFile): S.State<LibraryDeclarations, ReadonlyArray<string>> =>
-        declarations => {
-            const children = src.forEachChildAsArray();
-            const functions = pipe(children,
-                ROA.filterMap(node => Node.isFunctionDeclaration(node)
-                    ? O.some(node) : O.none)
-            );
-            const interfaces = pipe(children,
-                ROA.filterMap(node => Node.isInterfaceDeclaration(node)
-                    ? O.some(node) : O.none)
-            );
-            const variables = pipe(children,
-                ROA.filterMap(node => Node.isVariableStatement(node)
-                    ? O.some(node.getDeclarations()) : O.none),
-                ROA.flatten
-            );
-            const references = pipe(
-                src.getLibReferenceDirectives(),
-                ROA.map(ref => `lib.${ref.getFileName()}.d.ts`)
-            );
+const parseDeclarations =
+    (children: ReadonlyArray<Node>) => {
+        const functions = pipe(
+            children,
+            ROA.filterMap(O.fromPredicate(Node.isFunctionDeclaration))
+        );
+        const interfaces = pipe(
+            children,
+            ROA.filterMap(O.fromPredicate(Node.isInterfaceDeclaration))
+        );
+        const variables = pipe(
+            children,
+            ROA.filterMap(O.fromPredicate(Node.isVariableStatement)),
+            ROA.chain(decl => decl.getDeclarations())
+        );
+        return { functions, interfaces, variables, }
+    }
 
-            return [references, {
-                functions: ROA.concat(functions)(declarations.functions),
-                interfaces: ROA.concat(interfaces)(declarations.interfaces),
-                variables: ROA.concat(variables)(declarations.variables),
-            }];
-        }
+const libDeclMonoid: SG.Semigroup<LibraryDeclarations> = {
+    concat: (x, y) => ({
+        functions: ROA.concat(y.functions)(x.functions),
+        interfaces: ROA.concat(y.interfaces)(x.interfaces),
+        variables: ROA.concat(y.variables)(x.variables),
+    })
+}
+
+const parseLibrarySourceFile =
+    (resolver: Resolver) =>
+        (src: SourceFile): S.State<LibraryDeclarations, ReadonlyArray<E.Either<string, SourceFile>>> =>
+            declarations => {
+                const children = src.forEachChildAsArray();
+                let childDecls = parseDeclarations(children);
+
+                const globalModules = pipe(
+                    children, 
+                    ROA.filterMap(O.fromPredicate(Node.isModuleDeclaration)),
+                    ROA.filter(m => m.getDeclarationKind() === ModuleDeclarationKind.Global)
+                );
+
+                for (const module of globalModules) {
+                    const modDecls = pipe(
+                        module.getBody(), 
+                        O.fromNullable,
+                        O.map(body => body.forEachChildAsArray()),
+                        O.map(parseDeclarations),
+                        E.fromOption(
+                            () => `${posix.basename(src.getFilePath())} global module`
+                        )
+                    )
+
+                    // if module.getBody returns undefined, exit without
+                    // including any declarations defined in the current file
+                    if (E.isLeft(modDecls)) return [ROA.of(modDecls), declarations];
+                    childDecls = libDeclMonoid.concat(childDecls, modDecls.right);
+                }
+
+                const libs = pipe(
+                    src.getLibReferenceDirectives(), 
+                    ROA.map(l => l.getFileName()));
+                const types = pipe(
+                    src.getTypeReferenceDirectives(), 
+                    ROA.map(t => t.getFileName()));
+
+                return [
+                    resolveReferences(resolver)(libs, types), 
+                    libDeclMonoid.concat(childDecls, declarations)
+                ];
+            }
 
 const LIB_PATH = `/node_modules/typescript/lib/`;
+
+interface Resolver {
+    resolveLib(lib: string): E.Either<string, SourceFile>,
+    resolveTypes(types: string): E.Either<string, SourceFile>,
+}
+
+const isJsonRecord = (json: FP.json.Json): json is JsonRecord =>
+    json !== null && typeof json === 'object' && !(json instanceof Array)
+
+const isJsonString = (json: FP.json.Json): json is string => typeof json === 'string'
+
+function makeResolver(project: Project): Resolver {
+
+    const fs = project.getFileSystem();
+
+    const getSourceFile = (path: string) => pipe(project.getSourceFile(path), O.fromNullable);
+
+    const getFile = (path: string) =>
+        fs.fileExistsSync(path)
+            ? O.some(fs.readFileSync(path))
+            : O.none;
+
+    const fileExists = (path: string): O.Option<string> =>
+        fs.fileExistsSync(path)
+            ? O.some(path)
+            : O.none;
+
+    const resolveLib = (lib: string) =>
+        pipe(
+            LIB_PATH + lib,
+            getSourceFile,
+            O.alt(() => pipe(LIB_PATH + `lib.${lib}.d.ts`, getSourceFile)),
+            E.fromOption(() => `${lib} library`)
+        )
+
+    function resolveTypes(types: string) {
+        return pipe(
+            // look in node_modules/@types for types package first
+            `/node_modules/@types/${types}/package.json`,
+            fileExists,
+            // look in node_modules/ for types package if @types doesn't exist
+            O.alt(() => pipe(`/node_modules/${types}/package.json`, fileExists)),
+            O.chain(packagepath => {
+                // load package.json file at packagepath, parse the JSON
+                // and cast it to a JsonRecord (aka an object)
+                const $package = pipe(
+                    packagepath,
+                    getFile,
+                    O.chain(flow(FP.json.parse, O.fromEither)),
+                    O.chain(O.fromPredicate(isJsonRecord)),
+                );
+                return pipe(
+                    $package,
+                    // look in typings and types properties for relative path
+                    // to declarations file
+                    O.chain(FP.record.lookup('typings')),
+                    O.alt(() => pipe(
+                        $package,
+                        O.chain(FP.record.lookup('types'))
+                    )),
+                    // cast JSON value to string
+                    O.chain(O.fromPredicate(isJsonString)),
+                    // resolve relative path to absolute path and load as source
+                    O.map(path => posix.resolve(posix.dirname(packagepath), path)),
+                    O.chain(getSourceFile)
+                )
+            }),
+            E.fromOption(() => `${types} types`)
+        );
+    }
+
+    return {
+        resolveLib,
+        resolveTypes
+    }
+}
+
+const resolveReferences =
+    (resolver: Resolver) =>
+        (libs: ReadonlyArray<string>, types: ReadonlyArray<string>) => {
+            const $l = pipe(libs, ROA.map(resolver.resolveLib));
+            const $t = pipe(types, ROA.map(resolver.resolveTypes));
+            return ROA.concat($l)($t);
+        }
 
 export const parseProjectLibrary =
     (project: Project): CompilerState<LibraryDeclarations> =>
         diagnostics => {
-            const loadSource = (filename: string) => project.getSourceFile(LIB_PATH + filename);
+            const resolver = makeResolver(project);
+            const $parseLibrarySourceFile = parseLibrarySourceFile(resolver);
 
-            let sources = ROA.fromArray(project.compilerOptions.get().lib ?? []);
+            const opts = project.compilerOptions.get();
+            let { left: failures, right: sources } = pipe(
+                opts,
+                opts => resolveReferences(resolver)(opts.lib ?? [], opts.types ?? []),
+                ROA.partitionMap(identity)
+            )
+            let parsed: ReadonlySet<string> = ROS.empty;
+
             let declarations: LibraryDeclarations = {
                 functions: ROA.empty,
                 interfaces: ROA.empty,
                 variables: ROA.empty
             }
-            let parsed: ReadonlySet<string> = ROS.empty;
-            let failures: ReadonlyArray<Diagnostic> = ROA.empty;
 
             while (ROA.isNonEmpty(sources)) {
                 const head = RNEA.head(sources);
                 sources = RNEA.tail(sources);
-                if (ROS.elem(STR.Eq)(head)(parsed)) continue;
-                parsed = ROS.insert(STR.Eq)(head)(parsed);
 
-                const src = loadSource(head);
-                if (src) {
-                    let references;
-                    [references, declarations] = parseLibrarySourceFile(src)(declarations);
-                    sources = ROA.concat(references)(sources);
-                } else {
-                    failures = ROA.append(createDiagnostic(`failed to load ${head} library file`))(failures);
-                }
+                const headPath = head.getFilePath();
+                if (ROS.elem(FP.string.Eq)(headPath)(parsed)) continue;
+                parsed = ROS.insert(FP.string.Eq)(headPath)(parsed);
+
+                let results;
+                [results, declarations] = $parseLibrarySourceFile(head)(declarations);
+
+                const{left, right} = pipe(results, ROA.partitionMap(identity));
+                failures = ROA.concat(left)(failures);
+                sources = ROA.concat(right)(sources);
             }
 
-            return [declarations, ROA.concat(failures)(diagnostics)];
+            return [declarations, ROA.concat(failures.map(f => createDiagnostic(f)))(diagnostics)];
         }
