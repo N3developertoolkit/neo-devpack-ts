@@ -14,17 +14,15 @@ export function get() {
     return Storage.context.get(key);
 }
 
-// export function set(value: ByteString) {
-//     const context = storageGetContext();
-//     const key = Uint8Array.from([prefixSampleValue])
-//     storagePut(context, key, value);
-// }
+export function set(value: ByteString) {
+    const key = Uint8Array.from([prefixSampleValue])
+    Storage.context.put(key, value);
+}
 
-// export function remove() {
-//     const context = storageGetContext();
-//     const key = Uint8Array.from([prefixSampleValue])
-//     storageDelete(context, key);
-// }
+export function remove() {
+    const key = Uint8Array.from([prefixSampleValue])
+    Storage.context.delete(key);
+}
 
 // export function _deploy(_data: any, update: boolean): void { 
 //     if (update) return;

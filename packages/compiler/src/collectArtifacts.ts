@@ -215,8 +215,7 @@ export function asContractParamType(type: Type): sc.ContractParamType {
 
     const typeSymbol = type.getAliasSymbol() ?? type.getSymbolOrThrow();
     const typeFQN = typeSymbol.getFullyQualifiedName();
-    if (typeFQN === '"/node_modules/@neo-project/neo-contract-framework/index".ByteString'
-        || typeFQN === '"/node_modules/@neo-project/neo-contract-framework/index".StorageValue') {
+    if (typeFQN === 'global.ByteString') {
         return sc.ContractParamType.ByteArray
     }
 
