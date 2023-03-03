@@ -56,31 +56,6 @@ declare global {
     // 6 static methods: 
     //      GetNotifications, CheckWitness, Log, Notify, LoadScript, BurnGas
 
-    // There are 7 interop Storage services
-    // two have no params: GetContext and GetReadOnlyContext
-    // five have an initial StorageContext param: AsReadOnly, Get, Find, Put, Delete
-
-    // syscall System.Contract.Call 
-    // export  function contractCall(scriptHash: ByteString, method: string, ): any;
-
-    export interface StorageContext { }
-
-    /** @syscall System.Storage.GetContext */
-    export function storageGetContext(): StorageContext;
-    /** @syscall System.Storage.GetReadOnlyContext */
-    export function storageGetReadOnlyContext(): StorageContext;
-    /** @syscall System.Storage.AsReadOnly */
-    export function storageAsReadOnly(context: StorageContext): StorageContext;
-    /** @syscall System.Storage.Get */
-    export function storageGet(context: StorageContext, key: ByteString): ByteString | undefined;
-    /** @syscall System.Storage.Put */
-    export function storagePut(context: StorageContext, key: ByteString, value: ByteString): void;
-    /** @syscall System.Storage.Delete */
-    export function storageDelete(context: StorageContext, key: ByteString): void;
-
-
-
-
     export const Storage: StorageConstructor;
 
     export interface StorageConstructor {
@@ -115,24 +90,26 @@ declare global {
         delete(key: ByteString): void;
     }
 
+    export const Runtime: RuntimeConstructor;
 
-    /** @syscall System.Runtime.GetScriptContainer */
-    export function runtimeGetScriptContainer(): any;
-    /** @syscall System.Runtime.CheckWitness */
-    export function runtimeCheckWitness(account: ByteString): boolean;
+    export interface RuntimeConstructor {
+        /** @syscall System.Runtime.GetScriptContainer */
+        getScriptContainer(): any;
+        /** @syscall System.Runtime.CheckWitness */
+        checkWitness(account: ByteString): boolean;
+        /** @syscall System.Contract.Call */
+        callContract(scriptHash: ByteString, method: string, flags: number, ...args: any[]): any;
+    }
 
-    /** @syscall System.Contract.Call */
-    export function contractCall(scriptHash: ByteString, method: string, flags: number, ...args: any[]): any;
+    export const ContractManagement: ContractManagementConstructor;
 
-    /** @methodToken {0xfffdc93764dbaddd97c48f252a53ea4643faa3fd} update */
-    export function contractManagementUpdate(nefFile: ByteString, manifest: string, data?: any): void;
+    /** @nativeContract {0xfffdc93764dbaddd97c48f252a53ea4643faa3fd} */
+    export interface ContractManagementConstructor {
+        update(nefFile: ByteString, manifest: string, data?: any): void;
+        getContract(hash: ByteString): Contract;
+    }
 
-    /** @methodToken {0xfffdc93764dbaddd97c48f252a53ea4643faa3fd} getContract */
-    export function contractManagementGetContract(hash: ByteString): Contract;
-
-    // public static extern Contract GetContract(UInt160 hash);
-
-    // TODO: Do stack item interfaces such as Transacation and Block need a JSDoc tag like @stackitem?
+    /** @stackitem */
     export interface Transaction {
         readonly hash: ByteString,
         readonly version: number,
@@ -144,6 +121,7 @@ declare global {
         readonly script: ByteString
     }
 
+    /** @stackitem */
     export interface Block {
         readonly hash: ByteString,
         readonly version: number,
@@ -157,6 +135,7 @@ declare global {
         readonly transactionsCount: number
     }
 
+    /** @stackitem */
     export interface Contract {
         readonly id: number;
         readonly updateCounter: number;
@@ -164,9 +143,6 @@ declare global {
         readonly nef: ByteString;
         readonly manifest: any;
     }
-
-    // /** @syscall System.Storage.Find */
-    // export  function storageFind(context:StorageContext, prefix: any, options: any): any;
 }
 
 export { }
