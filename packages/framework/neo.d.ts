@@ -37,25 +37,23 @@ declare global {
     export const callFlagsReadOnly = 5;
     export const callFlagsAll = 15
 
-    // There are 7 interop Contract service
-    // three are internal use only: CallNative, NativeOnPersist and NativePostPersist
-    // one has no params: GetCallFlags
-    // The rest are static methods: Call, CreateStandardAccount, CreateMultisigAccount
+	// Contract service:
+    // 		three methods are internal use only: CallNative, NativeOnPersist and NativePostPersist
+    // 		one has no params: GetCallFlags - project as Runtime object property 
+    // 		remainder are projected as functions : Call, CreateStandardAccount, CreateMultisigAccount
+    // Crypto service
+    // 		both project as functions: CheckSig and CheckMultisig
+	// Iterator service: TBD
+	// Runtime Service
+	// 		13 are projected as readonly properties on Runtime object (plus GetCallFlags from Contract Service)
+    //      		GetTrigger, Platform, GetScriptContainer, GetExecutingScriptHash, GetCallingScriptHash, 
+    //      		GetEntryScriptHash, GetTime, GetInvocationCounter, GasLeft, GetAddressVersion
+    //      		GetNetwork, GetRandom, GetNotifications
+	//		remaining 5 are projected as functions: CheckWitness, Log, Notify, LoadScript, BurnGas
+	// Storage Service
+	//		This one is tricky, as the most *natural and familiar* projection is as a Storage Context object w/ instance methods
 
-    // There are 2 interop Crypto services
-    // both are static methods: CheckSig and CheckMultisig
-
-    // There are 2 interop Iterator services
-    // both take a single IIterator parameter: Next and Value
-
-    // There are 18 interop Runtime services
-    // 12 have no params:
-    //      GetTrigger, Platform, GetScriptContainer, GetExecutingScriptHash, GetCallingScriptHash, 
-    //      GetEntryScriptHash, GetTime, GetInvocationCounter, GasLeft, GetAddressVersion
-    //      GetNetwork, GetRandom
-    // 6 static methods: 
-    //      GetNotifications, CheckWitness, Log, Notify, LoadScript, BurnGas
-
+	
     export const Storage: StorageConstructor;
 
     export interface StorageConstructor {
@@ -72,15 +70,6 @@ declare global {
         // find(prefix: ByteString, options: FindOptions): Iterator
     }
 
-    // FindOptions
-    // None = 0,                    No option is set. The results will be an iterator of (key, value).
-    // KeysOnly = 1 << 0,           Indicates that only keys need to be returned. The results will be an iterator of keys.
-    // RemovePrefix = 1 << 1,       Indicates that the prefix byte of keys should be removed before return.
-    // ValuesOnly = 1 << 2,         Indicates that only values need to be returned. The results will be an iterator of values.
-    // DeserializeValues = 1 << 3,  Indicates that values should be deserialized before return.
-    // PickField0 = 1 << 4,         Indicates that only the field 0 of the deserialized values need to be returned. This flag must be set together with <see cref="DeserializeValues"/>.
-    // PickField1 = 1 << 5,         Indicates that only the field 1 of the deserialized values need to be returned. This flag must be set together with <see cref="DeserializeValues"/>.
-
     export interface StorageContext extends ReadonlyStorageContext {
         /** @syscall System.Storage.AsReadOnly */
         readonly asReadonly: ReadonlyStorageContext;
@@ -90,20 +79,78 @@ declare global {
         delete(key: ByteString): void;
     }
 
-    export const Runtime: RuntimeConstructor;
+    // FindOptions
+    // None = 0,                    No option is set. The results will be an iterator of (key, value).
+    // KeysOnly = 1 << 0,           Indicates that only keys need to be returned. The results will be an iterator of keys.
+    // RemovePrefix = 1 << 1,       Indicates that the prefix byte of keys should be removed before return.
+    // ValuesOnly = 1 << 2,         Indicates that only values need to be returned. The results will be an iterator of values.
+    // DeserializeValues = 1 << 3,  Indicates that values should be deserialized before return.
+    // PickField0 = 1 << 4,         Indicates that only the field 0 of the deserialized values need to be returned. This flag must be set together with <see cref="DeserializeValues"/>.
+    // PickField1 = 1 << 5,         Indicates that only the field 1 of the deserialized values need to be returned. This flag must be set together with <see cref="DeserializeValues"/>.
 
+    export const Runtime: RuntimeConstructor;
+    
     export interface RuntimeConstructor {
+		/** @syscall System.Contract.GetCallFlags */ 
+		readonly callFlags: number;
+
+		/** @syscall System.Runtime.Platform */
+		readonly platform: string;
+		/** @syscall System.Runtime.GetNetwork */
+		readonly network: number;
+		/** @syscall System.Runtime.GetAddressVersion */
+		readonly addressVersion: number;
+		/** @syscall System.Runtime.GetTrigger */
+		readonly trigger: number;
+		/** @syscall System.Runtime.GetTime */
+		readonly time: bigint;
         /** @syscall System.Runtime.GetScriptContainer */
-        getScriptContainer(): any;
-        /** @syscall System.Runtime.CheckWitness */
-        checkWitness(account: ByteString): boolean;
-        /** @syscall System.Contract.Call */
-        callContract(scriptHash: ByteString, method: string, flags: number, ...args: any[]): any;
+		readonly scriptContainer: any;
+		/** @syscall System.Runtime.GetExecutingScriptHash */
+		readonly executingScriptHash: ByteString;
+		/** @syscall System.Runtime.GetCallingScriptHash */
+		readonly callingScriptHash: ByteString;
+		/** @syscall System.Runtime.GetEntryScriptHash */
+		readonly entryScriptHash : ByteString;
+		/** @syscall System.Runtime.GetInvocationCounter */
+		readonly invocationCounter: number;
+		/** @syscall System.Runtime.GetRandom */
+		readonly random: bigint;
+		/** @syscall System.Runtime.GetNotifications */
+		readonly notifications: ReadonlyArray<Notification>;
+		/** @syscall System.Runtime.GasLeft */
+		readonly remainingGas: bigint;
     }
 
-    export const ContractManagement: ContractManagementConstructor;
+    /** @syscall System.Runtime.CheckWitness */
+    export function checkWitness(account: ByteString): boolean;
+    /** @syscall System.Runtime.BurnGas */
+    export function burnGas(amount: bigint): void;
+    /** @syscall System.Runtime.Log */
+    export function log(message: string): void;
+    /** @syscall System.Runtime.Notify*/
+    export function notify(eventName: string, state: ReadonlyArray<any>): void;
+    /** @syscall System.Runtime.LoadScript*/
+    export function loadScript(script: ByteString, callFlags: number, args: ReadonlyArray<any>): void;
+    
+    /** @syscall System.Contract.Call */
+    export function callContract(scriptHash: ByteString, method: string, flags: number, ...args: any[]): any;
+	/** @syscall System.Contract.GetCallFlags*/
+	export function getCallFlags(): number;
+    /** @syscall System.Contract.CreateStandardAccount */
+    export function createStandardAccount(pubKey: ByteString /*ecpoint*/): ByteString; // hash160
+    /** @syscall System.Contract.CreateMultisigAccount */
+    export function createMultisigAccount(count: number, pubKeys: ByteString[] /*ecpoint*/): ByteString; // hash160
+
+    /** @syscall System.Crypto.CheckSig */
+    export function checkSignature(pubKey: ByteString, signature: ByteString): boolean;
+	/** @syscall System.Crypto.CheckMultisig */
+    export function checkMultiSignature (pubKey: ByteString[], signature: ByteString[]): boolean;
+
 
     /** @nativeContract {0xfffdc93764dbaddd97c48f252a53ea4643faa3fd} */
+    export const ContractManagement: ContractManagementConstructor;
+
     export interface ContractManagementConstructor {
         update(nefFile: ByteString, manifest: string, data?: any): void;
         getContract(hash: ByteString): Contract;
@@ -142,6 +189,13 @@ declare global {
         readonly hash: ByteString;
         readonly nef: ByteString;
         readonly manifest: any;
+    }
+    
+    /** @stackitem */
+    export interface Notification {
+		readonly hash: ByteString;
+        readonly eventName: string;
+        readonly state: ReadonlyArray<any>;
     }
 }
 

@@ -56,14 +56,14 @@ const parseLibrarySourceFile =
                 let childDecls = parseDeclarations(children);
 
                 const globalModules = pipe(
-                    children, 
+                    children,
                     ROA.filterMap(O.fromPredicate(Node.isModuleDeclaration)),
                     ROA.filter(m => m.getDeclarationKind() === ModuleDeclarationKind.Global)
                 );
 
                 for (const module of globalModules) {
                     const modDecls = pipe(
-                        module.getBody(), 
+                        module.getBody(),
                         O.fromNullable,
                         O.map(body => body.forEachChildAsArray()),
                         O.map(parseDeclarations),
@@ -79,14 +79,14 @@ const parseLibrarySourceFile =
                 }
 
                 const libs = pipe(
-                    src.getLibReferenceDirectives(), 
+                    src.getLibReferenceDirectives(),
                     ROA.map(l => l.getFileName()));
                 const types = pipe(
-                    src.getTypeReferenceDirectives(), 
+                    src.getTypeReferenceDirectives(),
                     ROA.map(t => t.getFileName()));
 
                 return [
-                    resolveReferences(resolver)(libs, types), 
+                    resolveReferences(resolver)(libs, types),
                     libDeclMonoid.concat(childDecls, declarations)
                 ];
             }
@@ -208,7 +208,7 @@ export const parseProjectLibrary =
                 let results;
                 [results, declarations] = $parseLibrarySourceFile(head)(declarations);
 
-                const{left, right} = pipe(results, ROA.partitionMap(identity));
+                const { left, right } = pipe(results, ROA.partitionMap(identity));
                 failures = ROA.concat(left)(failures);
                 sources = ROA.concat(right)(sources);
             }

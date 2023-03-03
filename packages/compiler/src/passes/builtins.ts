@@ -1,7 +1,7 @@
 import * as E from "fp-ts/Either";
 import * as tsm from "ts-morph";
 import { createSymbolMap, Scope } from "../scope";
-import { CallableSymbolDef, CallResult, GetPropResult, makeParseError, ObjectSymbolDef, ParseError, SymbolDef } from "../symbolDef";
+import { CallableSymbolDef, CallResult, GetPropResult, LoadSymbolDef, makeParseError, ObjectSymbolDef, ParseError, SymbolDef } from "../symbolDef";
 import { isPushIntOp, Operation, PushDataOperation } from "../types/Operation";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROM from 'fp-ts/ReadonlyMap'
@@ -115,19 +115,174 @@ const makeStorageObj = (decl: tsm.VariableDeclaration): ObjectSymbolDef => {
     }
 }
 
+const single = <T>(as: ReadonlyArray<T>): O.Option<T> => as.length === 1 ? O.some(as[0]) : O.none;
+
+function parseRuntimeProperty(node: tsm.PropertySignature) {
+
+    return pipe(
+        node.getSymbol(),
+        O.fromNullable,
+        O.bindTo('symbol'),
+        O.bind('loadOperations', () => pipe(
+            node,
+            getTag('syscall'),
+            O.fromNullable,
+            O.chain(tag => O.fromNullable(tag.getCommentText())),
+            O.map(name => ROA.of({ kind: 'syscall', name } as Operation))
+        )),
+        O.map(({symbol, loadOperations}) => ({symbol, loadOperations} as LoadSymbolDef))
+    );
+}
+
+const makeRuntimeObj = (decl: tsm.VariableDeclaration): ObjectSymbolDef => {
+
+    const symbol = decl.getSymbolOrThrow();
+
+    const {left: errors, right: props} = pipe(
+        decl.getType().getProperties(),
+        ROA.map(p => pipe(
+            p.getDeclarations(), 
+            single,
+            O.chain(O.fromPredicate(tsm.Node.isPropertySignature)),
+            O.chain(parseRuntimeProperty),
+            E.fromOption(() => p.getName()),
+        )),
+        ROA.separate
+    );
+
+    if (errors.length > 0) {
+        throw new Error(`invalid Runtime properties: ${errors.join()}`);
+    }
+
+    return {
+        symbol,
+        parseGetProp: makeParseGetProp(props),
+    }
+}
+
+
 
 const builtInMap: Record<string, (decl: tsm.VariableDeclaration) => SymbolDef> = {
     "Error": makeErrorObj,
+    "Runtime": makeRuntimeObj,
     "Storage": makeStorageObj,
     "Uint8Array": makeU8ArrayObj
 }
 
+const hasTag = (tagName: string) => (node: tsm.JSDocableNode): boolean => {
+    for (const doc of node.getJsDocs()) {
+        for (const tag of doc.getTags()) {
+            if (tag.getTagName() === tagName) return true;
+        }
+    }
+    return false;
+}
+
+const getTag = (tagName: string) => (node: tsm.JSDocableNode) => {
+    for (const doc of node.getJsDocs()) {
+        for (const tag of doc.getTags()) {
+            if (tag.getTagName() === tagName) return tag;
+        }
+    }
+    return undefined
+}
+
+class StackItemPropSymbolDef implements LoadSymbolDef {
+
+    constructor(
+        readonly symbol: tsm.Symbol,
+        index: number
+    ) {
+        this.loadOperations = [
+            { kind: 'pushint', value: BigInt(index) },
+            { kind: 'pickitem' }
+        ]
+    }
+
+    loadOperations: readonly Operation[];
+}
+
+function makeStackItem(decl: tsm.InterfaceDeclaration): ObjectSymbolDef {
+
+    const { left: errors, right: props } = pipe(
+        decl.getMembers(),
+        ROA.mapWithIndex((index, member) => pipe(
+            member,
+            E.fromPredicate(
+                tsm.Node.isPropertySignature,
+                m => `${m!.getSymbol()?.getName()} (${m!.getKindName()})`
+            ),
+            E.map(prop => new StackItemPropSymbolDef(prop.getSymbolOrThrow(), index))
+        )),
+        ROA.separate
+    )
+
+    if (errors.length > 0) {
+        throw new Error(`Invalid stack item members: ${errors.join()}`);
+    }
+
+    return {
+        symbol: decl.getSymbolOrThrow(),
+        parseGetProp: makeParseGetProp(props)
+    }
+}
+
+function makeNativeContract(decl: tsm.VariableDeclaration): ObjectSymbolDef {
+
+    // const stmt = decl.getVariableStatementOrThrow();
+    // const tag = getTag("nativeContract")(stmt);
+    // const type = decl.getType();
+    // const members = type.getProperties();
+
+    return {
+        symbol: decl.getSymbolOrThrow(),
+        parseGetProp: () => O.none,
+    }
+}
+
+function makeSysCall(decl: tsm.VariableDeclaration): ObjectSymbolDef {
+
+    const symbol = decl.getSymbolOrThrow();
+    const type = decl.getType();
+    const members = type.getProperties().map(p => p.getDeclarations());
+
+
+
+
+    return {
+        symbol: decl.getSymbolOrThrow(),
+        parseGetProp: () => O.none,
+    }
+
+}
 export const makeGlobalScope =
-    ({ variables }: LibraryDeclarations): CompilerState<Scope> =>
+    (decls: LibraryDeclarations): CompilerState<Scope> =>
         diagnostics => {
+
+            const stackItems = pipe(
+                decls.interfaces,
+                ROA.filter(hasTag("stackitem")),
+                ROA.map(makeStackItem)
+            )
+
+            const nativeContracts = pipe(
+                decls.variables,
+                ROA.filter(d => hasTag("nativeContract")(d.getVariableStatementOrThrow())),
+                ROA.map(makeNativeContract)
+            )
+
+            const syscall = pipe(
+                decls.variables,
+                ROA.filter(d => hasTag("syscall")(d.getVariableStatementOrThrow())),
+                ROA.map(makeSysCall)
+            )
+
+            const i = decls.interfaces.map(d => d.getSymbol()?.getName()).sort();
+            const v = decls.variables.map(d => d.getSymbol()?.getName()).sort();
+
             let symbols: ReadonlyArray<SymbolDef> = ROA.empty;
             for (const key in builtInMap) {
-                [, symbols] = resolveBuiltin(variables)(key, builtInMap[key])(symbols);
+                [, symbols] = resolveBuiltin(decls.variables)(key, builtInMap[key])(symbols);
             }
 
             const scope = {
