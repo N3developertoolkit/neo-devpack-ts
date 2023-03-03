@@ -222,18 +222,6 @@ const appendError = (error: ParseError): StatementParseState =>
 const appendErrors = (error: ReadonlyArray<ParseError>): StatementParseState =>
     state => ([[], { ...state, errors: ROA.concat(error)(state.errors) }]);
 
-const parseStatement =
-    (node: tsm.Statement): StatementParseState =>
-        state => {
-            if (tsm.Node.isBlock(node)) return parseBlock(node)(state);
-            if (tsm.Node.isExpressionStatement(node)) return parseExpressionStatement(node)(state);
-            if (tsm.Node.isIfStatement(node)) return parseIfStatement(node)(state);
-            if (tsm.Node.isReturnStatement(node)) return parseReturnStatement(node)(state);
-            if (tsm.Node.isThrowStatement(node)) return parseThrowStatement(node)(state);
-            if (tsm.Node.isVariableStatement(node)) return parseVariableStatement(node)(state);
-            return appendError(makeParseError(node)(`parseStatement ${node.getKindName()} not implemented`))(state);
-        }
-
 type BodyParseResult = {
     readonly operations: ReadonlyArray<Operation>,
     readonly locals: ReadonlyArray<tsm.VariableDeclaration>
@@ -242,7 +230,6 @@ type BodyParseResult = {
 const parseBody =
     (scope: Scope) =>
         (body: tsm.Node): E.Either<ReadonlyArray<ParseError>, BodyParseResult> => {
-
             if (tsm.Node.isStatement(body)) {
                 const [operations, state] = parseStatement(body)({ scope, errors: [], locals: [] });
                 if (ROA.isNonEmpty(state.errors)) {
@@ -262,24 +249,19 @@ const convertJumpTargetOps =
                 jumpTargetOps,
                 ROA.matchLeft(
                     () => O.some(ops),
-                    (head, tail) => {
-                        return pipe(
+                    (head, tail) => pipe(
+                        ops,
+                        ROA.findIndex($o => head.op.target === $o),
+                        O.chain(targetIndex => pipe(
                             ops,
-                            ROA.findIndex($o => head.op.target === $o),
-                            O.chain(targetIndex => {
-                                return pipe(ops,
-                                    ROA.modifyAt(head.index, () => {
-                                        return {
-                                            kind: head.op.kind,
-                                            offset: targetIndex - head.index,
-                                            location: head.op.location,
-                                        } as Operation
-                                    })
-                                );
-                            }),
-                            O.chain(ops => convertJumpTargetOps(ops)(tail))
-                        );
-                    }
+                            ROA.modifyAt(head.index, () => ({
+                                kind: head.op.kind,
+                                offset: targetIndex - head.index,
+                                location: head.op.location,
+                            } as Operation))
+                        )),
+                        O.chain(ops => convertJumpTargetOps(ops)(tail))
+                    )
                 )
             )
         }
@@ -385,3 +367,40 @@ export const parseFunctionDeclarations =
             }
             return [methods, diagnostics];
         }
+
+type StatementNodeDispatchMap = {
+    [TKind in tsm.SyntaxKind]?: (node: tsm.KindToNodeMappings[TKind]) => StatementParseState
+};
+
+const map: StatementNodeDispatchMap = {
+    [tsm.SyntaxKind.Block]: parseBlock,
+    [tsm.SyntaxKind.ExpressionStatement]: parseExpressionStatement,
+    [tsm.SyntaxKind.IfStatement]: parseIfStatement,
+    [tsm.SyntaxKind.ReturnStatement]: parseReturnStatement,
+    [tsm.SyntaxKind.ThrowStatement]: parseThrowStatement,
+    [tsm.SyntaxKind.VariableStatement]: parseVariableStatement,
+}
+
+const parseStatement =
+    (node: tsm.Statement): StatementParseState =>
+        state => {
+            const kind = node.getKind();
+            const func = map[kind];
+            if (func) {
+                return func(node as any)(state);
+            }
+            return appendError(makeParseError(node)(`parseStatement ${node.getKindName()} not implemented`))(state);
+        }
+
+
+// const parseStatement =
+//     (node: tsm.Statement): StatementParseState =>
+//         state => {
+//             if (tsm.Node.isBlock(node)) return parseBlock(node)(state);
+//             if (tsm.Node.isExpressionStatement(node)) return parseExpressionStatement(node)(state);
+//             if (tsm.Node.isIfStatement(node)) return parseIfStatement(node)(state);
+//             if (tsm.Node.isReturnStatement(node)) return parseReturnStatement(node)(state);
+//             if (tsm.Node.isThrowStatement(node)) return parseThrowStatement(node)(state);
+//             if (tsm.Node.isVariableStatement(node)) return parseVariableStatement(node)(state);
+//             return appendError(makeParseError(node)(`parseStatement ${node.getKindName()} not implemented`))(state);
+//         }

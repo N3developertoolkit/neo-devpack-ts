@@ -4,7 +4,6 @@ import * as ROA from 'fp-ts/ReadonlyArray';
 import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
 import * as M from "fp-ts/Monoid";
-import * as O from 'fp-ts/Option'
 import { Operation, SimpleOperationKind } from "../types/Operation";
 import { resolve, Scope } from "../scope";
 import { isCallableDef, isLoadableDef, isObjectDef, makeParseError, ObjectSymbolDef, ParseError, parseSymbol, SymbolDef } from "../symbolDef";
@@ -38,28 +37,6 @@ const resolveCallChain =
             }
         }
     }
-
-export const parseExpression =
-    (scope: Scope) =>
-        (node: tsm.Expression): E.Either<ParseError, readonly Operation[]> => {
-            if (tsm.Node.isArrayLiteralExpression(node)) return parseArrayLiteral(scope)(node);
-            if (tsm.Node.isAsExpression(node)) return parseExpression(scope)(node.getExpression());
-            if (tsm.Node.isBigIntLiteral(node)) return pipe(node, parseBigIntLiteral, E.map(ROA.of));
-            if (tsm.Node.isBinaryExpression(node)) return parseBinaryExpression(scope)(node);
-            if (tsm.Node.isCallExpression(node)) return parseCallExpression(scope)(node);
-            if (tsm.Node.isFalseLiteral(node)) return pipe(node, parseBooleanLiteral, E.map(ROA.of));
-            if (tsm.Node.isIdentifier(node)) return parseIdentifier(scope)(node);
-            if (tsm.Node.isNonNullExpression(node)) return parseExpression(scope)(node.getExpression());
-            if (tsm.Node.isNullLiteral(node)) return pipe(node, parseNullLiteral, E.map(ROA.of));
-            if (tsm.Node.isNumericLiteral(node)) return pipe(node, parseNumericLiteral, E.map(ROA.of));
-            if (tsm.Node.isParenthesizedExpression(node)) return parseExpression(scope)(node.getExpression());
-            if (tsm.Node.isPrefixUnaryExpression(node)) return parsePrefixUnaryExpression(scope)(node);
-            if (tsm.Node.isPropertyAccessExpression(node)) return parsePropertyAccessExpression(scope)(node);
-            if (tsm.Node.isStringLiteral(node)) return pipe(node, parseStringLiteral, E.map(ROA.of));
-            if (tsm.Node.isTrueLiteral(node)) return pipe(node, parseBooleanLiteral, E.map(ROA.of));
-
-            return E.left(makeParseError(node)(`parseExpression ${node.getKindName()} not supported`));
-        }
 
 export const parseArrayLiteral =
     (scope: Scope) =>
@@ -307,3 +284,63 @@ export const parseStringLiteral =
         const value = Buffer.from(literal, 'utf8');
         return E.right({ kind: "pushdata", value, location: node });
     }
+
+const parseLiteral = <T>(func: (node: T) => E.Either<ParseError, Operation>) => (_scope: Scope) => flow(func, E.map(ROA.of));
+
+const parseExpressioned = (scope: Scope) => (node: tsm.ExpressionedNode) => parseExpression(scope)(node.getExpression());
+
+export type ExpressionNodeDispatchMap = {
+    [TKind in tsm.SyntaxKind]?: (scope: Scope) => (node: tsm.KindToNodeMappings[TKind]) => E.Either<ParseError, ReadonlyArray<Operation>>
+};
+
+const map: ExpressionNodeDispatchMap = {
+    [tsm.SyntaxKind.ArrayLiteralExpression]: parseArrayLiteral,
+    [tsm.SyntaxKind.AsExpression]: parseExpressioned,
+    [tsm.SyntaxKind.BigIntLiteral]: parseLiteral(parseBigIntLiteral),
+    [tsm.SyntaxKind.BinaryExpression]: parseBinaryExpression,
+    [tsm.SyntaxKind.CallExpression]: parseCallExpression,
+    [tsm.SyntaxKind.FalseKeyword]: parseLiteral(parseBooleanLiteral),
+    [tsm.SyntaxKind.Identifier]: parseIdentifier,
+    [tsm.SyntaxKind.NonNullExpression]: parseExpressioned,
+    [tsm.SyntaxKind.NullKeyword]: parseLiteral(parseNullLiteral),
+    [tsm.SyntaxKind.NumericLiteral]: parseLiteral(parseNumericLiteral),
+    [tsm.SyntaxKind.ParenthesizedExpression]: parseExpressioned,
+    [tsm.SyntaxKind.PrefixUnaryExpression]: parsePrefixUnaryExpression,
+    [tsm.SyntaxKind.PropertyAccessExpression]: parsePropertyAccessExpression,
+    [tsm.SyntaxKind.StringLiteral]: parseLiteral(parseStringLiteral),
+    [tsm.SyntaxKind.TrueKeyword]: parseLiteral(parseBooleanLiteral),
+}
+
+export const parseExpression =
+    (scope: Scope) =>
+        (node: tsm.Expression): E.Either<ParseError, readonly Operation[]> => {
+            const kind = node.getKind();
+            const func = map[kind];
+            if (func) {
+                return func(scope)(node as any);
+            }
+            return E.left(makeParseError(node)(`dispatch ${node.getKindName()} failed`))
+        }
+
+
+// export const parseExpression =
+//     (scope: Scope) =>
+//         (node: tsm.Expression): E.Either<ParseError, readonly Operation[]> => {
+//             if (tsm.Node.isArrayLiteralExpression(node)) return parseArrayLiteral(scope)(node);
+//             if (tsm.Node.isAsExpression(node)) return parseExpression(scope)(node.getExpression());
+//             if (tsm.Node.isBigIntLiteral(node)) return pipe(node, parseBigIntLiteral, E.map(ROA.of));
+//             if (tsm.Node.isBinaryExpression(node)) return parseBinaryExpression(scope)(node);
+//             if (tsm.Node.isCallExpression(node)) return parseCallExpression(scope)(node);
+//             if (tsm.Node.isFalseLiteral(node)) return pipe(node, parseBooleanLiteral, E.map(ROA.of));
+//             if (tsm.Node.isIdentifier(node)) return parseIdentifier(scope)(node);
+//             if (tsm.Node.isNonNullExpression(node)) return parseExpression(scope)(node.getExpression());
+//             if (tsm.Node.isNullLiteral(node)) return pipe(node, parseNullLiteral, E.map(ROA.of));
+//             if (tsm.Node.isNumericLiteral(node)) return pipe(node, parseNumericLiteral, E.map(ROA.of));
+//             if (tsm.Node.isParenthesizedExpression(node)) return parseExpression(scope)(node.getExpression());
+//             if (tsm.Node.isPrefixUnaryExpression(node)) return parsePrefixUnaryExpression(scope)(node);
+//             if (tsm.Node.isPropertyAccessExpression(node)) return parsePropertyAccessExpression(scope)(node);
+//             if (tsm.Node.isStringLiteral(node)) return pipe(node, parseStringLiteral, E.map(ROA.of));
+//             if (tsm.Node.isTrueLiteral(node)) return pipe(node, parseBooleanLiteral, E.map(ROA.of));
+
+//             return E.left(makeParseError(node)(`parseExpression ${node.getKindName()} not supported`));
+//         }
