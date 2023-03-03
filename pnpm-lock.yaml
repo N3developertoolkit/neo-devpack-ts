@@ -34,7 +34,10 @@ importers:
       ts-mockito: 2.6.1
 
   packages/framework:
-    specifiers: {}
+    specifiers:
+      '@tsconfig/node16': ^1.0.3
+    devDependencies:
+      '@tsconfig/node16': 1.0.3
 
   sample-contracts:
     specifiers:

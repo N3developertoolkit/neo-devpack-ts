@@ -71,7 +71,10 @@ export async function createContractProject() {
 
     const files = await fsp.readdir(sourceFolder)
     for (const file of files) {
-        const contents = await fsp.readFile(join(sourceFolder, file), 'utf8');
+        const path = join(sourceFolder, file);
+        const stat = await fsp.stat(path)
+        if (stat.isDirectory()) continue;
+        const contents = await fsp.readFile(path, 'utf8');
         projFS.writeFile(join(targetFolder, file), contents);
     }
 
