@@ -8,6 +8,7 @@ import * as O from 'fp-ts/Option'
 import * as S from 'fp-ts/State';
 import * as SEP from 'fp-ts/Separated';
 import * as FP from 'fp-ts'
+import * as TS from "../utility/TS";
 
 import { makeParseError, parseSymbol as $parseSymbol, VariableSymbolDef, ParseError, createDiagnostic, SymbolDef, FunctionSymbolDef } from "../symbolDef";
 import { createScope, Scope, updateScope } from "../scope";

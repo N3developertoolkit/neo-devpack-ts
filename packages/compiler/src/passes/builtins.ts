@@ -7,11 +7,15 @@ import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROM from 'fp-ts/ReadonlyMap'
 import * as S from 'fp-ts/State'
 import * as O from 'fp-ts/Option'
-import { flow, pipe } from "fp-ts/lib/function";
+import { flow, identity, pipe } from "fp-ts/lib/function";
 import { parseExpression } from "./expressionProcessor";
 import { getArguments } from "../utils";
 import { LibraryDeclarations } from "../projectLib";
 import { CompilerState } from "../compiler";
+import * as TS from "../utility/TS";
+
+const single = <T>(as: ReadonlyArray<T>): O.Option<T> => as.length === 1 ? O.some(as[0]) : O.none;
+const getVariableStatement = (node: tsm.VariableDeclaration) => O.fromNullable(node.getVariableStatement());
 
 const makeParseGetProp = (props: ReadonlyArray<SymbolDef | GetPropResult>):
     ((prop: tsm.Symbol) => O.Option<GetPropResult>) => {
@@ -107,30 +111,50 @@ const makeU8ArrayObj = (decl: tsm.VariableDeclaration): ObjectSymbolDef => {
     }
 }
 
+
 const makeStorageObj = (decl: tsm.VariableDeclaration): ObjectSymbolDef => {
 
+    const symbol = decl.getSymbolOrThrow();
+    const type = decl.getType();
+    const ctx = type.getPropertyOrThrow("context");
+    const ctxType = ctx.getDeclaredType();
+    // const zzz = ctxDecls.getType();
+    // const roctx = type.getProperty("readonlyContext")
+
+    // const q = pipe(
+    //     type,
+    //     TS.getProperty("context"),
+    //     O.bindTo('context'),
+    //     O.bind('readonlyContext', () => pipe(type, TS.getProperty("readonlyContext")))
+    // )
+
+    // const q = pipe(
+    //     type,
+    //     T.getProperty("context"),
+    //     O.bindTo("context"),
+    //     O.bind('readonlyContext', () => pipe(type, T.getProperty("readonlyContext")))
+
+    // )
+
+
     return {
-        symbol: decl.getSymbolOrThrow(),
+        symbol,
         parseGetProp: () => O.none,
     }
 }
 
-const single = <T>(as: ReadonlyArray<T>): O.Option<T> => as.length === 1 ? O.some(as[0]) : O.none;
 
 function parseRuntimeProperty(node: tsm.PropertySignature) {
-
     return pipe(
-        node.getSymbol(),
-        O.fromNullable,
+        node,
+        TS.getSymbol,
         O.bindTo('symbol'),
         O.bind('loadOperations', () => pipe(
             node,
-            getTag('syscall'),
-            O.fromNullable,
-            O.chain(tag => O.fromNullable(tag.getCommentText())),
+            TS.getTagComment('syscall'),
             O.map(name => ROA.of({ kind: 'syscall', name } as Operation))
         )),
-        O.map(({symbol, loadOperations}) => ({symbol, loadOperations} as LoadSymbolDef))
+        O.map(def => def as LoadSymbolDef)
     );
 }
 
@@ -138,16 +162,17 @@ const makeRuntimeObj = (decl: tsm.VariableDeclaration): ObjectSymbolDef => {
 
     const symbol = decl.getSymbolOrThrow();
 
-    const {left: errors, right: props} = pipe(
+    const { left: errors, right: props } = pipe(
         decl.getType().getProperties(),
         ROA.map(p => pipe(
-            p.getDeclarations(), 
+            p,
+            TS.getSymbolDeclarations,
             single,
             O.chain(O.fromPredicate(tsm.Node.isPropertySignature)),
             O.chain(parseRuntimeProperty),
             E.fromOption(() => p.getName()),
         )),
-        ROA.separate
+        ROA.separate,
     );
 
     if (errors.length > 0) {
@@ -158,33 +183,6 @@ const makeRuntimeObj = (decl: tsm.VariableDeclaration): ObjectSymbolDef => {
         symbol,
         parseGetProp: makeParseGetProp(props),
     }
-}
-
-
-
-const builtInMap: Record<string, (decl: tsm.VariableDeclaration) => SymbolDef> = {
-    "Error": makeErrorObj,
-    "Runtime": makeRuntimeObj,
-    "Storage": makeStorageObj,
-    "Uint8Array": makeU8ArrayObj
-}
-
-const hasTag = (tagName: string) => (node: tsm.JSDocableNode): boolean => {
-    for (const doc of node.getJsDocs()) {
-        for (const tag of doc.getTags()) {
-            if (tag.getTagName() === tagName) return true;
-        }
-    }
-    return false;
-}
-
-const getTag = (tagName: string) => (node: tsm.JSDocableNode) => {
-    for (const doc of node.getJsDocs()) {
-        for (const tag of doc.getTags()) {
-            if (tag.getTagName() === tagName) return tag;
-        }
-    }
-    return undefined
 }
 
 class StackItemPropSymbolDef implements LoadSymbolDef {
@@ -240,42 +238,55 @@ function makeNativeContract(decl: tsm.VariableDeclaration): ObjectSymbolDef {
     }
 }
 
-function makeSysCall(decl: tsm.VariableDeclaration): ObjectSymbolDef {
+// function makeSysCall(decl: tsm.VariableDeclaration): ObjectSymbolDef {
 
-    const symbol = decl.getSymbolOrThrow();
-    const type = decl.getType();
-    const members = type.getProperties().map(p => p.getDeclarations());
-
-
+//     const symbol = decl.getSymbolOrThrow();
+//     const type = decl.getType();
+//     const members = type.getProperties().map(TS.getDeclarations);
 
 
-    return {
-        symbol: decl.getSymbolOrThrow(),
-        parseGetProp: () => O.none,
-    }
 
+
+//     return {
+//         symbol: decl.getSymbolOrThrow(),
+//         parseGetProp: () => O.none,
+//     }
+// }
+
+const builtInMap: Record<string, (decl: tsm.VariableDeclaration) => SymbolDef> = {
+    "Error": makeErrorObj,
+    "Runtime": makeRuntimeObj,
+    "Storage": makeStorageObj,
+    "Uint8Array": makeU8ArrayObj
 }
+
 export const makeGlobalScope =
     (decls: LibraryDeclarations): CompilerState<Scope> =>
         diagnostics => {
 
             const stackItems = pipe(
                 decls.interfaces,
-                ROA.filter(hasTag("stackitem")),
+                ROA.filter(TS.hasTag("stackitem")),
                 ROA.map(makeStackItem)
             )
 
             const nativeContracts = pipe(
                 decls.variables,
-                ROA.filter(d => hasTag("nativeContract")(d.getVariableStatementOrThrow())),
+                ROA.filter(flow(
+                    getVariableStatement,
+                    O.map(TS.hasTag('nativeContract')),
+                    O.match(() => false, identity)
+                )),
                 ROA.map(makeNativeContract)
             )
 
-            const syscall = pipe(
-                decls.variables,
-                ROA.filter(d => hasTag("syscall")(d.getVariableStatementOrThrow())),
-                ROA.map(makeSysCall)
+            const syscallFuncs = pipe(
+                decls.functions,
+                ROA.filter(TS.hasTag('syscall')),
+                // ROA.map(makeSysCall)
             )
+
+            // operation funcs
 
             const i = decls.interfaces.map(d => d.getSymbol()?.getName()).sort();
             const v = decls.variables.map(d => d.getSymbol()?.getName()).sort();
@@ -300,7 +311,7 @@ const resolveBuiltin =
                 return pipe(
                     variables,
                     ROA.findFirst(v => v.getName() === name),
-                    O.map(v => make(v)),
+                    O.map(make),
                     O.match(
                         () => { throw new Error(`built in variable ${name} not found`); },
                         v => [, ROA.append(v)(symbols)]

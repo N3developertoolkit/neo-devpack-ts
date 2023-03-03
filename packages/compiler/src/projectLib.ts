@@ -1,4 +1,4 @@
-import { FunctionDeclaration, InterfaceDeclaration, VariableDeclaration, SourceFile, Node, Project, ts, ModuleDeclarationKind } from "ts-morph";
+import { FunctionDeclaration, InterfaceDeclaration, VariableDeclaration, SourceFile, Node, Project, ts, ModuleDeclarationKind, VariableStatement, ModuleDeclaration } from "ts-morph";
 import { createDiagnostic } from "./utils";
 import { CompilerState } from "./compiler";
 import { flow, identity, pipe } from 'fp-ts/function';
@@ -12,9 +12,14 @@ import * as SG from 'fp-ts/Semigroup';
 import * as FP from 'fp-ts';
 import { JsonRecord } from "fp-ts/lib/Json";
 import { posix } from 'path';
+import * as TS from './utility/TS'
 
-
-type Diagnostic = ts.Diagnostic;
+const isFunctionDeclaration = O.fromPredicate(Node.isFunctionDeclaration);
+const isInterfaceDeclaration = O.fromPredicate(Node.isInterfaceDeclaration);
+const isVariableStatement = O.fromPredicate(Node.isVariableStatement);
+const isModuleDeclaration = O.fromPredicate(Node.isModuleDeclaration);
+const getVariableDeclarations = (node: VariableStatement) => node.getDeclarations();
+const getModuleBody = (node: ModuleDeclaration) => O.fromNullable(node.getBody());
 
 export type LibraryDeclarations = {
     readonly functions: ReadonlyArray<FunctionDeclaration>,
@@ -26,16 +31,16 @@ const parseDeclarations =
     (children: ReadonlyArray<Node>) => {
         const functions = pipe(
             children,
-            ROA.filterMap(O.fromPredicate(Node.isFunctionDeclaration))
+            ROA.filterMap(isFunctionDeclaration)
         );
         const interfaces = pipe(
             children,
-            ROA.filterMap(O.fromPredicate(Node.isInterfaceDeclaration))
+            ROA.filterMap(isInterfaceDeclaration)
         );
         const variables = pipe(
             children,
-            ROA.filterMap(O.fromPredicate(Node.isVariableStatement)),
-            ROA.chain(decl => decl.getDeclarations())
+            ROA.filterMap(isVariableStatement),
+            ROA.chain(getVariableDeclarations)
         );
         return { functions, interfaces, variables, }
     }
@@ -52,20 +57,20 @@ const parseLibrarySourceFile =
     (resolver: Resolver) =>
         (src: SourceFile): S.State<LibraryDeclarations, ReadonlyArray<E.Either<string, SourceFile>>> =>
             declarations => {
-                const children = src.forEachChildAsArray();
+                const children = pipe(src, TS.getChildren);
                 let childDecls = parseDeclarations(children);
 
                 const globalModules = pipe(
                     children,
-                    ROA.filterMap(O.fromPredicate(Node.isModuleDeclaration)),
+                    ROA.filterMap(isModuleDeclaration),
                     ROA.filter(m => m.getDeclarationKind() === ModuleDeclarationKind.Global)
                 );
 
                 for (const module of globalModules) {
                     const modDecls = pipe(
-                        module.getBody(),
-                        O.fromNullable,
-                        O.map(body => body.forEachChildAsArray()),
+                        module,
+                        getModuleBody,
+                        O.map(TS.getChildren),
                         O.map(parseDeclarations),
                         E.fromOption(
                             () => `${posix.basename(src.getFilePath())} global module`
@@ -106,18 +111,9 @@ const isJsonString = (json: FP.json.Json): json is string => typeof json === 'st
 function makeResolver(project: Project): Resolver {
 
     const fs = project.getFileSystem();
-
     const getSourceFile = (path: string) => pipe(project.getSourceFile(path), O.fromNullable);
-
-    const getFile = (path: string) =>
-        fs.fileExistsSync(path)
-            ? O.some(fs.readFileSync(path))
-            : O.none;
-
-    const fileExists = (path: string): O.Option<string> =>
-        fs.fileExistsSync(path)
-            ? O.some(path)
-            : O.none;
+    const getFile = (path: string) => fs.fileExistsSync(path) ? O.some(fs.readFileSync(path)) : O.none;
+    const fileExists = (path: string): O.Option<string> => fs.fileExistsSync(path) ? O.some(path) : O.none;
 
     const resolveLib = (lib: string) =>
         pipe(

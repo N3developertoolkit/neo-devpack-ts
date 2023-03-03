@@ -4,6 +4,7 @@ import * as ROA from 'fp-ts/ReadonlyArray';
 import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
 import * as M from "fp-ts/Monoid";
+import * as TS from "../utility/TS";
 import { Operation, SimpleOperationKind } from "../types/Operation";
 import { resolve, Scope } from "../scope";
 import { isCallableDef, isLoadableDef, isObjectDef, makeParseError, ObjectSymbolDef, ParseError, parseSymbol, SymbolDef } from "../symbolDef";
