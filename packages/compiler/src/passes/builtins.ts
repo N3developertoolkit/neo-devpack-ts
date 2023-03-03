@@ -1,7 +1,7 @@
 import * as E from "fp-ts/Either";
 import * as tsm from "ts-morph";
 import { createSymbolMap, Scope } from "../scope";
-import { CallableSymbolDef, CallResult, GetPropResult, LoadSymbolDef, makeParseError, ObjectSymbolDef, ParseError, SymbolDef } from "../symbolDef";
+import { CallableSymbolDef, CallResult, GetPropResult, LoadSymbolDef, makeParseError, ObjectSymbolDef, ParseError, SymbolDef, SysCallSymbolDef } from "../symbolDef";
 import { isPushIntOp, Operation, PushDataOperation } from "../types/Operation";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROM from 'fp-ts/ReadonlyMap'
@@ -14,7 +14,15 @@ import { LibraryDeclarations } from "../projectLib";
 import { CompilerState } from "../compiler";
 import * as TS from "../utility/TS";
 
-const single = <T>(as: ReadonlyArray<T>): O.Option<T> => as.length === 1 ? O.some(as[0]) : O.none;
+const single = <T>(array: ReadonlyArray<T>): O.Option<T> => array.length === 1 ? O.some(array[0] as T) : O.none;
+const checkErrors = (errorMessage: string) =>
+    <T>(results: readonly E.Either<string, T>[]): readonly T[] => {
+        const { left: errors, right: values } = pipe(results, ROA.separate);
+        if (errors.length > 0) throw new Error(`${errorMessage}: ${errors.join()}`);
+
+        return values;
+    }
+
 const getVariableStatement = (node: tsm.VariableDeclaration) => O.fromNullable(node.getVariableStatement());
 
 const makeParseGetProp = (props: ReadonlyArray<SymbolDef | GetPropResult>):
@@ -111,36 +119,68 @@ const makeU8ArrayObj = (decl: tsm.VariableDeclaration): ObjectSymbolDef => {
     }
 }
 
+function isMethodOrProp(node: tsm.Node): node is (tsm.MethodSignature | tsm.PropertySignature) {
+    return tsm.Node.isMethodSignature(node) || tsm.Node.isPropertySignature(node);
+}
+
+
+const makeStorageInstanceCallObj = (decl: tsm.MethodSignature | tsm.PropertySignature): GetPropResult => {
+
+    const symbol = decl.getSymbolOrThrow();
+    const parseGetProp = pipe(
+        decl,
+        TS.getType,
+        TS.getTypeProperties,
+        ROA.map(propSym => pipe(
+            propSym,
+            TS.getSymbolDeclarations,
+            single,
+            O.chain(O.fromPredicate(isMethodOrProp)),
+            O.chain(TS.getTagComment("syscall")),
+            O.map(name => new SysCallSymbolDef(propSym, name)),
+            E.fromOption(() => propSym.getName())
+        )),
+        checkErrors(`invalid ${symbol.getName()} members`),
+        makeParseGetProp
+    );
+
+    const access = pipe(
+        decl,
+        TS.getTagComment('syscall'),
+        O.map(name => ROA.of({ kind: 'syscall', name: name } as Operation)),
+        O.match(
+            () => { throw new Error(`missing ${symbol.getName()} syscall`) },
+            (head) => head
+        )
+    );
+
+    return {
+        value: { symbol, parseGetProp } as ObjectSymbolDef,
+        access
+    }
+}
+
 
 const makeStorageObj = (decl: tsm.VariableDeclaration): ObjectSymbolDef => {
 
     const symbol = decl.getSymbolOrThrow();
-    const type = decl.getType();
-    const ctx = type.getPropertyOrThrow("context");
-    const ctxType = ctx.getDeclaredType();
-    // const zzz = ctxDecls.getType();
-    // const roctx = type.getProperty("readonlyContext")
+    const parseGetProp = pipe(
+        decl,
+        TS.getType,
+        TS.getTypeProperties,
+        ROA.map(propSym => pipe(
+            propSym,
+            TS.getSymbolDeclarations,
+            single,
+            O.chain(O.fromPredicate(isMethodOrProp)),
+            O.map(makeStorageInstanceCallObj),
+            E.fromOption(() => propSym.getName())
+        )),
+        checkErrors(`invalid ${symbol.getName()} members`),
+        makeParseGetProp
+    );
 
-    // const q = pipe(
-    //     type,
-    //     TS.getProperty("context"),
-    //     O.bindTo('context'),
-    //     O.bind('readonlyContext', () => pipe(type, TS.getProperty("readonlyContext")))
-    // )
-
-    // const q = pipe(
-    //     type,
-    //     T.getProperty("context"),
-    //     O.bindTo("context"),
-    //     O.bind('readonlyContext', () => pipe(type, T.getProperty("readonlyContext")))
-
-    // )
-
-
-    return {
-        symbol,
-        parseGetProp: () => O.none,
-    }
+    return { symbol, parseGetProp }
 }
 
 
@@ -162,7 +202,7 @@ const makeRuntimeObj = (decl: tsm.VariableDeclaration): ObjectSymbolDef => {
 
     const symbol = decl.getSymbolOrThrow();
 
-    const { left: errors, right: props } = pipe(
+    const props = pipe(
         decl.getType().getProperties(),
         ROA.map(p => pipe(
             p,
@@ -172,12 +212,8 @@ const makeRuntimeObj = (decl: tsm.VariableDeclaration): ObjectSymbolDef => {
             O.chain(parseRuntimeProperty),
             E.fromOption(() => p.getName()),
         )),
-        ROA.separate,
+        checkErrors('invalid Runtime properties'),
     );
-
-    if (errors.length > 0) {
-        throw new Error(`invalid Runtime properties: ${errors.join()}`);
-    }
 
     return {
         symbol,
@@ -200,9 +236,10 @@ class StackItemPropSymbolDef implements LoadSymbolDef {
     loadOperations: readonly Operation[];
 }
 
+
 function makeStackItem(decl: tsm.InterfaceDeclaration): ObjectSymbolDef {
 
-    const { left: errors, right: props } = pipe(
+    const props = pipe(
         decl.getMembers(),
         ROA.mapWithIndex((index, member) => pipe(
             member,
@@ -212,12 +249,8 @@ function makeStackItem(decl: tsm.InterfaceDeclaration): ObjectSymbolDef {
             ),
             E.map(prop => new StackItemPropSymbolDef(prop.getSymbolOrThrow(), index))
         )),
-        ROA.separate
+        checkErrors("Invalid stack item members")
     )
-
-    if (errors.length > 0) {
-        throw new Error(`Invalid stack item members: ${errors.join()}`);
-    }
 
     return {
         symbol: decl.getSymbolOrThrow(),
