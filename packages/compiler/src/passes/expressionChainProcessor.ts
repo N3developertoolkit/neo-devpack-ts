@@ -1,4 +1,4 @@
-import * as tsm from "ts-morph";
+import { Expression, Identifier, Node } from "ts-morph";
 import { flow, pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
@@ -7,96 +7,79 @@ import * as M from "fp-ts/Monoid";
 import * as O from 'fp-ts/Option'
 import * as TS from "../utility/TS";
 import { Operation } from "../types/Operation";
-import { Scope } from "../scope";
-import { CallResult, GetPropResult, makeParseError, ParseError } from "../symbolDef";
+import { resolve, Scope } from "../scope";
+import { CallResult, GetPropResult, makeParseError, ParseError, parseSymbol } from "../symbolDef";
 
+const makeExpressionChain =
+    (node: Expression): RNEA.ReadonlyNonEmptyArray<Expression> => {
 
-
-// const parseCallChain =
-//     (scope: Scope) =>
-//         (chain: RNEA.ReadonlyNonEmptyArray<tsm.Expression>) => {
-
-//             let def = $resolve(scope)(RNEA.head(chain))
-//             let access: ReadonlyArray<Operation> = E.isRight(def)
-//                 ? def.right.loadOperations ?? []
-//                 : ROA.empty; 
-
-//             let tail = RNEA.tail(chain);
-
-//             while (E.right(def) && ROA.isNonEmpty(tail)) {
-//                 const head = RNEA.head(tail);
-//                 tail = RNEA.tail(tail);
-//                 if (tsm.Node.isPropertyAccessExpression(head)) {
-
-//                 } else if (tsm.Node.isCallExpression(head)) {
-
-//                 } else {
-//                     return E.left(makeParseError(head)(`parseCallChain ${head.getKindName()} failed`))
-
-//                 }
-
-//             }
-//         }
-export const makeExpressionChain =
-    (node: tsm.Expression): RNEA.ReadonlyNonEmptyArray<tsm.Expression> => {
-
-        return makeChain(RNEA.of<tsm.Expression>(node));
+        return makeChain(RNEA.of<Expression>(node));
 
         function makeChain(
-            chain: RNEA.ReadonlyNonEmptyArray<tsm.Expression>
-        ): RNEA.ReadonlyNonEmptyArray<tsm.Expression> {
+            chain: RNEA.ReadonlyNonEmptyArray<Expression>
+        ): RNEA.ReadonlyNonEmptyArray<Expression> {
             const head = RNEA.head(chain);
-            return tsm.Node.hasExpression(head)
+            return Node.hasExpression(head)
                 ? makeChain(ROA.prepend(head.getExpression())(chain))
                 : chain;
         }
     }
 
 interface ChainObject {
-    readonly loadOperations?: ReadonlyArray<Operation>;
-    parseGetProp?: (prop: tsm.Symbol) => O.Option<GetPropResult>;
-    parseCall?: (node: tsm.CallExpression, scope: Scope) => E.Either<ParseError, CallResult>
+    //     readonly loadOperations?: ReadonlyArray<Operation>;
+    //     parseGetProp?: (prop: tsm.Symbol) => O.Option<GetPropResult>;
+    //     parseCall?: (node: tsm.CallExpression, scope: Scope) => E.Either<ParseError, CallResult>
 }
 
-const $resolve =
+export const parseIdentifier =
     (scope: Scope) =>
-        (node: tsm.Expression): E.Either<ParseError, ChainObject> => {
-            // if (tsm.Node.isIdentifier(node)) {
-            //     return pipe(
-            //         node,
-            //         resolveIdentifier(scope),
-            //         E.map(d => d as ChainObject)
-            //     );
-            // }
-            return E.left(makeParseError(node)(`$resolve ${node.getKindName()} failed`))
+        (node: Identifier): E.Either<ParseError, ChainObject> => {
+            return pipe(
+                node,
+                parseSymbol(),
+                E.chain(symbol => pipe(
+                    symbol,
+                    resolve(scope),
+                    E.fromOption(() => makeParseError(node)(`unresolved symbol ${symbol.getName()}`))
+                )),
+                // TODO: 
+                E.map(s => ({} as ChainObject))
+            );
         }
+
+const resolveChainHead =
+    (scope: Scope) =>
+        (node: Expression): E.Either<ParseError, ChainObject> => {
+            if (Node.isIdentifier(node)) return parseIdentifier(scope)(node);
+            return E.left(makeParseError(node)(`$resolveChainHead ${node.getKindName()} failed`))
+
+        }
+
+// export const parsePropertyAccessExpression =
+//     (scope: Scope) =>
+//     (obj: ChainObject) =>
+//         (node: PropertyAccessExpression): E.Either<ParseError, ChainObject> => {
+//         }
 
 export const parseExpressionChain =
     (scope: Scope) =>
-        (node: tsm.Expression): E.Either<ParseError, ReadonlyArray<Operation>> => {
+        (node: Expression): E.Either<ParseError, ReadonlyArray<Operation>> => {
 
             const chain = makeExpressionChain(node);
-            const q = pipe(
-                chain,
-                RNEA.head,
-                $resolve(scope),
-                E.bindTo("def"),
-                // E.bind('access', ({def}) => ROA.fromArray(def.loadOperations ?? []))
-            )
-            // let def = $resolve(scope)(RNEA.head(chain))
-            // let access: ReadonlyArray<Operation> = E.isRight(def)
-            //     ? def.right.loadOperations ?? []
-            //     : ROA.empty; 
+            let obj = resolveChainHead(scope)(RNEA.head(chain));
+            let tail = RNEA.tail(chain); 
 
-            // let tail = RNEA.tail(chain);
+            while (E.isRight(obj) && ROA.isNonEmpty(tail)) {
+                node = RNEA.head(tail);
+                tail = RNEA.tail(tail);
 
-            // while (E.right(def) && ROA.isNonEmpty(tail)) {
-            //     const head = RNEA.head(tail);
-            //     tail = RNEA.tail(tail);
+                if (Node.isPropertyAccessExpression(node)) {
 
-            // }
+                }
+
+            }
+
             return E.left(makeParseError()(`parseExpressionChain failed`))
-
         }
 
 
@@ -155,8 +138,6 @@ export const parseExpressionChain =
 //             let def = resolveIdentifier(scope)(chain.head);
 //             let tail = chain.tail;
 //             while (E.isRight(def) && ROA.isNonEmpty(tail)) {
-//                 const next = RNEA.head(tail);
-//                 tail = RNEA.tail(tail);
 
 //                 if (tsm.Node.isPropertyAccessExpression(next)) {
 //                     def = pipe(
@@ -212,3 +193,31 @@ export const parseExpressionChain =
 //         makeParseError()(`invalid ${symbol.getName()} prop on ${def.symbol.getName()}`)
 //     )
 // )
+
+
+
+// const parseCallChain =
+//     (scope: Scope) =>
+//         (chain: RNEA.ReadonlyNonEmptyArray<tsm.Expression>) => {
+
+//             let def = $resolve(scope)(RNEA.head(chain))
+//             let access: ReadonlyArray<Operation> = E.isRight(def)
+//                 ? def.right.loadOperations ?? []
+//                 : ROA.empty;
+
+//             let tail = RNEA.tail(chain);
+
+//             while (E.right(def) && ROA.isNonEmpty(tail)) {
+//                 const head = RNEA.head(tail);
+//                 tail = RNEA.tail(tail);
+//                 if (tsm.Node.isPropertyAccessExpression(head)) {
+
+//                 } else if (tsm.Node.isCallExpression(head)) {
+
+//                 } else {
+//                     return E.left(makeParseError(head)(`parseCallChain ${head.getKindName()} failed`))
+
+//                 }
+
+//             }
+//         }

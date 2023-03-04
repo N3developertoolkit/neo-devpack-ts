@@ -1,4 +1,4 @@
-import * as tsm from "ts-morph";
+import { ArrayLiteralExpression, BigIntLiteral, SyntaxKind, Node, ts, BinaryExpression, FalseLiteral, TrueLiteral, Identifier, NullLiteral, NumericLiteral, PrefixUnaryExpression, StringLiteral, Expression } from "ts-morph";
 import { flow, pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as E from "fp-ts/Either";
@@ -9,7 +9,7 @@ import { parseExpressionChain } from "./expressionChainProcessor";
 
 export const parseArrayLiteral =
     (scope: Scope) =>
-        (node: tsm.ArrayLiteralExpression): E.Either<ParseError, readonly Operation[]> => {
+        (node: ArrayLiteralExpression): E.Either<ParseError, readonly Operation[]> => {
             return pipe(
                 node.getElements(),
                 ROA.map(parseExpression(scope)),
@@ -19,27 +19,27 @@ export const parseArrayLiteral =
         }
 
 export const parseBigIntLiteral =
-    (node: tsm.BigIntLiteral): E.Either<ParseError, Operation> => {
+    (node: BigIntLiteral): E.Either<ParseError, Operation> => {
         const value = node.getLiteralValue() as bigint;
         return E.right({ kind: "pushint", value, location: node });
     }
 
-const binaryOpTokenMap: ReadonlyMap<tsm.SyntaxKind, SimpleOperationKind> = new Map([
-    [tsm.SyntaxKind.AsteriskAsteriskToken, 'power'],
-    [tsm.SyntaxKind.AsteriskToken, 'multiply'],
-    [tsm.SyntaxKind.EqualsEqualsEqualsToken, 'equal'], // TODO: Should == and === be the same?
-    [tsm.SyntaxKind.EqualsEqualsToken, 'equal'],
-    [tsm.SyntaxKind.ExclamationEqualsToken, 'notequal'], // TODO: Should != and !== be the same?
-    [tsm.SyntaxKind.ExclamationEqualsEqualsToken, 'notequal'],
-    [tsm.SyntaxKind.GreaterThanEqualsToken, 'greaterthanorequal'],
-    [tsm.SyntaxKind.GreaterThanToken, 'greaterthan'],
-    [tsm.SyntaxKind.LessThanEqualsToken, 'lessthanorequal'],
-    [tsm.SyntaxKind.LessThanToken, 'lessthan'],
-    [tsm.SyntaxKind.PlusToken, 'add']
+const binaryOpTokenMap: ReadonlyMap<SyntaxKind, SimpleOperationKind> = new Map([
+    [SyntaxKind.AsteriskAsteriskToken, 'power'],
+    [SyntaxKind.AsteriskToken, 'multiply'],
+    [SyntaxKind.EqualsEqualsEqualsToken, 'equal'], // TODO: Should == and === be the same?
+    [SyntaxKind.EqualsEqualsToken, 'equal'],
+    [SyntaxKind.ExclamationEqualsToken, 'notequal'], // TODO: Should != and !== be the same?
+    [SyntaxKind.ExclamationEqualsEqualsToken, 'notequal'],
+    [SyntaxKind.GreaterThanEqualsToken, 'greaterthanorequal'],
+    [SyntaxKind.GreaterThanToken, 'greaterthan'],
+    [SyntaxKind.LessThanEqualsToken, 'lessthanorequal'],
+    [SyntaxKind.LessThanToken, 'lessthan'],
+    [SyntaxKind.PlusToken, 'add']
 ]);
 
 export const parseBinaryOperatorToken =
-    (node: tsm.Node<tsm.ts.BinaryOperatorToken>): E.Either<ParseError, Operation> => {
+    (node: Node<ts.BinaryOperatorToken>): E.Either<ParseError, Operation> => {
         return pipe(
             node.getKind(),
             k => binaryOpTokenMap.get(k),
@@ -52,7 +52,7 @@ export const parseBinaryOperatorToken =
 
 export const parseBinaryExpression =
     (scope: Scope) =>
-        (node: tsm.BinaryExpression): E.Either<ParseError, readonly Operation[]> => {
+        (node: BinaryExpression): E.Either<ParseError, readonly Operation[]> => {
             return pipe(
                 node.getOperatorToken(),
                 parseBinaryOperatorToken,
@@ -77,14 +77,14 @@ export const parseBinaryExpression =
         }
 
 export const parseBooleanLiteral =
-    (node: tsm.FalseLiteral | tsm.TrueLiteral): E.Either<ParseError, Operation> => {
+    (node: FalseLiteral | TrueLiteral): E.Either<ParseError, Operation> => {
         const value = node.getLiteralValue();
         return E.right({ kind: "pushbool", value, location: node });
     }
 
 export const parseIdentifier =
     (scope: Scope) =>
-        (node: tsm.Identifier): E.Either<ParseError, readonly Operation[]> => {
+        (node: Identifier): E.Either<ParseError, readonly Operation[]> => {
             return pipe(
                 node,
                 parseSymbol(),
@@ -98,36 +98,36 @@ export const parseIdentifier =
         }
 
 export const parseNullLiteral =
-    (node: tsm.NullLiteral): E.Either<ParseError, Operation> =>
+    (node: NullLiteral): E.Either<ParseError, Operation> =>
         E.right({ kind: "pushnull", location: node });
 
 export const parseNumericLiteral =
-    (node: tsm.NumericLiteral): E.Either<ParseError, Operation> => {
+    (node: NumericLiteral): E.Either<ParseError, Operation> => {
         const value = node.getLiteralValue();
         return Number.isInteger(value)
             ? E.right({ kind: "pushint", value: BigInt(value), location: node })
             : E.left(makeParseError(node)(`invalid non-integer numeric literal ${value}`));
     }
 
-const prefixUnaryOperatorMap: ReadonlyMap<tsm.SyntaxKind, SimpleOperationKind> = new Map([
-    [tsm.SyntaxKind.ExclamationToken, 'not'],
-    [tsm.SyntaxKind.MinusToken, 'negate']
+const prefixUnaryOperatorMap: ReadonlyMap<SyntaxKind, SimpleOperationKind> = new Map([
+    [SyntaxKind.ExclamationToken, 'not'],
+    [SyntaxKind.MinusToken, 'negate']
 ]);
 
 export const parseUnaryOperatorToken =
-    (token: tsm.ts.PrefixUnaryOperator): E.Either<ParseError, Operation> => {
+    (token: ts.PrefixUnaryOperator): E.Either<ParseError, Operation> => {
         return pipe(
             token,
             k => prefixUnaryOperatorMap.get(k),
             E.fromNullable(
-                makeParseError()(`parseUnaryOperatorToken ${tsm.SyntaxKind[token]} not supported`)
+                makeParseError()(`parseUnaryOperatorToken ${SyntaxKind[token]} not supported`)
             ),
             E.map(kind => ({ kind }) as Operation)
         );
     }
 
 export const parsePrefixUnaryExpression = (scope: Scope) =>
-    (node: tsm.PrefixUnaryExpression): E.Either<ParseError, readonly Operation[]> => {
+    (node: PrefixUnaryExpression): E.Either<ParseError, readonly Operation[]> => {
         return pipe(
             node.getOperatorToken(),
             parseUnaryOperatorToken,
@@ -144,7 +144,7 @@ export const parsePrefixUnaryExpression = (scope: Scope) =>
     }
 
 export const parseStringLiteral =
-    (node: tsm.StringLiteral): E.Either<ParseError, Operation> => {
+    (node: StringLiteral): E.Either<ParseError, Operation> => {
         const literal = node.getLiteralValue();
         const value = Buffer.from(literal, 'utf8');
         return E.right({ kind: "pushdata", value, location: node });
@@ -152,22 +152,22 @@ export const parseStringLiteral =
 
 export const parseExpression =
     (scope: Scope) =>
-        (node: tsm.Expression): E.Either<ParseError, readonly Operation[]> => {
+        (node: Expression): E.Either<ParseError, readonly Operation[]> => {
 
             const parseLiteral =
                 <T>(func: (node: T) => E.Either<ParseError, Operation>) =>
                     (_scope: Scope) => flow(func, E.map(ROA.of));
 
-            if (tsm.Node.hasExpression(node)) return parseExpressionChain(scope)(node);
-            if (tsm.Node.isArrayLiteralExpression(node)) return parseArrayLiteral(scope)(node);
-            if (tsm.Node.isBigIntLiteral(node)) return parseLiteral(parseBigIntLiteral)(scope)(node);
-            if (tsm.Node.isBinaryExpression(node)) return parseBinaryExpression(scope)(node);
-            if (tsm.Node.isFalseLiteral(node)) return parseLiteral(parseBooleanLiteral)(scope)(node);
-            if (tsm.Node.isIdentifier(node)) return parseIdentifier(scope)(node);
-            if (tsm.Node.isNullLiteral(node)) return parseLiteral(parseNullLiteral)(scope)(node);
-            if (tsm.Node.isNumericLiteral(node)) return parseLiteral(parseNumericLiteral)(scope)(node);
-            if (tsm.Node.isPrefixUnaryExpression(node)) return parsePrefixUnaryExpression(scope)(node);
-            if (tsm.Node.isStringLiteral(node)) return parseLiteral(parseStringLiteral)(scope)(node);
-            if (tsm.Node.isTrueLiteral(node)) return parseLiteral(parseBooleanLiteral)(scope)(node);
+            if (Node.hasExpression(node)) return parseExpressionChain(scope)(node);
+            if (Node.isArrayLiteralExpression(node)) return parseArrayLiteral(scope)(node);
+            if (Node.isBigIntLiteral(node)) return parseLiteral(parseBigIntLiteral)(scope)(node);
+            if (Node.isBinaryExpression(node)) return parseBinaryExpression(scope)(node);
+            if (Node.isFalseLiteral(node)) return parseLiteral(parseBooleanLiteral)(scope)(node);
+            if (Node.isIdentifier(node)) return parseIdentifier(scope)(node);
+            if (Node.isNullLiteral(node)) return parseLiteral(parseNullLiteral)(scope)(node);
+            if (Node.isNumericLiteral(node)) return parseLiteral(parseNumericLiteral)(scope)(node);
+            if (Node.isPrefixUnaryExpression(node)) return parsePrefixUnaryExpression(scope)(node);
+            if (Node.isStringLiteral(node)) return parseLiteral(parseStringLiteral)(scope)(node);
+            if (Node.isTrueLiteral(node)) return parseLiteral(parseBooleanLiteral)(scope)(node);
             return E.left(makeParseError(node)(`parseExpression ${node.getKindName()} failed`))
         }
