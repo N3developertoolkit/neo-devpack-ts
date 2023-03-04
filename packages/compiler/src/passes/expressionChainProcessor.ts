@@ -16,12 +16,10 @@ interface $Object {
     parseCall?: (node: CallExpression, scope: Scope) => E.Either<ParseError, CallResult>
 }
 
-interface ParseChainContext {
-    readonly scope: Scope,
+type ParseChainContext = E.Either<ParseError, {
     readonly $object: $Object,
     readonly operations: ReadonlyArray<Operation>,
-    readonly errors: ReadonlyArray<ParseError>
-}
+}>
 
 const makeExpressionChain =
     (node: Expression): RNEA.ReadonlyNonEmptyArray<Expression> => {
@@ -38,11 +36,10 @@ const makeExpressionChain =
         }
     }
 
-
 export const parseIdentifier =
     (scope: Scope) =>
-        (node: Identifier): E.Either<ParseError, ParseChainContext> => {
-            return pipe(
+        (node: Identifier): ParseChainContext => {
+            return  pipe(
                 node,
                 parseSymbol(),
                 E.chain(symbol => pipe(
@@ -51,40 +48,35 @@ export const parseIdentifier =
                     E.fromOption(() => makeParseError(node)(`unresolved symbol ${symbol.getName()}`))
                 )),
                 E.map($object => ({
-                    scope,
-                    $object,
-                    operations: $object.loadOperations ?? ROA.empty,
-                    errors: ROA.empty
-                } as ParseChainContext))
+                        $object,
+                        operations: $object.loadOperations ?? [],
+                    })
+                )
             );
         }
 
 const createParseChainContext =
     (scope: Scope) =>
-        (node: Expression): E.Either<ParseError, ParseChainContext> => {
+        (node: Expression): ParseChainContext => {
             if (Node.isIdentifier(node)) return parseIdentifier(scope)(node);
             return E.left(makeParseError(node)(`createParseChainContext ${node.getKindName()} failed`))
-
         }
 
 const parseCallExpression =
     (ctx: ParseChainContext, node: CallExpression) => {
-        const errors = ROA.append(makeParseError(node)('parseCallExpression not impl'))(ctx.errors);
-        return { ...ctx, errors } as ParseChainContext
+        return E.left(makeParseError(node)(`parseCallExpression not impl`));
     }
 
 const parsePropertyAccessExpression =
     (ctx: ParseChainContext, node: PropertyAccessExpression) => {
-        const errors = ROA.append(makeParseError(node)('parsePropertyAccessExpression not impl'))(ctx.errors);
-        return { ...ctx, errors } as ParseChainContext
+        return E.left(makeParseError(node)(`parsePropertyAccessExpression not impl`));
     }
 
 const reduceParseChainContext =
     (ctx: ParseChainContext, node: Expression): ParseChainContext => {
         if (Node.isCallExpression(node)) return parseCallExpression(ctx, node);
         if (Node.isPropertyAccessExpression(node)) return parsePropertyAccessExpression(ctx, node);
-        const errors = ROA.append(makeParseError(node)('reduceParseChainContext ${node.getKindName()} failed'))(ctx.errors);
-        return { ...ctx, errors } as ParseChainContext
+        return E.left(makeParseError(node)(`reduceParseChainContext ${node.getKindName()} failed`));
     }
 
 export const parseExpressionChain =
@@ -96,11 +88,11 @@ export const parseExpressionChain =
                 chain,
                 RNEA.head,
                 createParseChainContext(scope),
-                E.map(ctx => pipe(
+                ctx => pipe(
                     chain,
                     RNEA.tail,
                     ROA.reduce(ctx, reduceParseChainContext)
-                ))
+                )
             )
             let obj = createParseChainContext(scope)(RNEA.head(chain));
             let tail = RNEA.tail(chain);
@@ -109,15 +101,15 @@ export const parseExpressionChain =
             // ROA.reduce(0, )
 
 
-            while (E.isRight(obj) && ROA.isNonEmpty(tail)) {
-                node = RNEA.head(tail);
-                tail = RNEA.tail(tail);
+            // while (E.isRight(obj) && ROA.isNonEmpty(tail)) {
+            //     node = RNEA.head(tail);
+            //     tail = RNEA.tail(tail);
 
-                if (Node.isPropertyAccessExpression(node)) {
+            //     if (Node.isPropertyAccessExpression(node)) {
 
-                }
+            //     }
 
-            }
+            // }
 
             return E.left(makeParseError()(`parseExpressionChain failed`))
         }
