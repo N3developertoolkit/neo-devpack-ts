@@ -370,39 +370,14 @@ export const parseFunctionDeclarations =
             return [methods, diagnostics];
         }
 
-type StatementNodeDispatchMap = {
-    [TKind in tsm.SyntaxKind]?: (node: tsm.KindToNodeMappings[TKind]) => StatementParseState
-};
-
-const map: StatementNodeDispatchMap = {
-    [tsm.SyntaxKind.Block]: parseBlock,
-    [tsm.SyntaxKind.ExpressionStatement]: parseExpressionStatement,
-    [tsm.SyntaxKind.IfStatement]: parseIfStatement,
-    [tsm.SyntaxKind.ReturnStatement]: parseReturnStatement,
-    [tsm.SyntaxKind.ThrowStatement]: parseThrowStatement,
-    [tsm.SyntaxKind.VariableStatement]: parseVariableStatement,
-}
-
 const parseStatement =
     (node: tsm.Statement): StatementParseState =>
         state => {
-            const kind = node.getKind();
-            const func = map[kind];
-            if (func) {
-                return func(node as any)(state);
-            }
+            if (tsm.Node.isBlock(node)) return parseBlock(node)(state);
+            if (tsm.Node.isExpressionStatement(node)) return parseExpressionStatement(node)(state);
+            if (tsm.Node.isIfStatement(node)) return parseIfStatement(node)(state);
+            if (tsm.Node.isReturnStatement(node)) return parseReturnStatement(node)(state);
+            if (tsm.Node.isThrowStatement(node)) return parseThrowStatement(node)(state);
+            if (tsm.Node.isVariableStatement(node)) return parseVariableStatement(node)(state);
             return appendError(makeParseError(node)(`parseStatement ${node.getKindName()} not implemented`))(state);
         }
-
-
-// const parseStatement =
-//     (node: tsm.Statement): StatementParseState =>
-//         state => {
-//             if (tsm.Node.isBlock(node)) return parseBlock(node)(state);
-//             if (tsm.Node.isExpressionStatement(node)) return parseExpressionStatement(node)(state);
-//             if (tsm.Node.isIfStatement(node)) return parseIfStatement(node)(state);
-//             if (tsm.Node.isReturnStatement(node)) return parseReturnStatement(node)(state);
-//             if (tsm.Node.isThrowStatement(node)) return parseThrowStatement(node)(state);
-//             if (tsm.Node.isVariableStatement(node)) return parseVariableStatement(node)(state);
-//             return appendError(makeParseError(node)(`parseStatement ${node.getKindName()} not implemented`))(state);
-//         }
