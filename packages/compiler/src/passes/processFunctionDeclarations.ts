@@ -19,13 +19,13 @@ import { ContractMethod } from "../compiler";
 
 type Diagnostic = tsm.ts.Diagnostic;
 
-interface FunctionParseState {
+interface ParseFunctionState {
     readonly scope: Scope
     readonly locals: ReadonlyArray<tsm.VariableDeclaration>
     readonly errors: ReadonlyArray<ParseError>
 }
 
-type StatementParseState = S.State<FunctionParseState, ReadonlyArray<Operation>>
+type ParseStatementState = S.State<ParseFunctionState, ReadonlyArray<Operation>>
 
 const parseSymbol = $parseSymbol();
 
@@ -33,7 +33,7 @@ const E_fromSeparated = <E, A>(s: SEP.Separated<ReadonlyArray<E>, A>): E.Either<
     ROA.isNonEmpty(s.left) ? E.left(s.left) : E.of(s.right)
 
 const parseExpression =
-    (node: tsm.Expression): StatementParseState =>
+    (node: tsm.Expression): ParseStatementState =>
         state => {
             return pipe(
                 node,
@@ -61,7 +61,7 @@ const opsMonoid = {
 }
 
 const parseBlock =
-    (node: tsm.Block): StatementParseState =>
+    (node: tsm.Block): ParseStatementState =>
         state => {
             // create a new scope for the statements within the block
             let $state = { ...state, scope: createScope(state.scope)([]) }
@@ -89,7 +89,7 @@ const parseBlock =
         }
 
 const parseVariableDeclarations =
-    (declarations: ReadonlyArray<tsm.VariableDeclaration>): StatementParseState =>
+    (declarations: ReadonlyArray<tsm.VariableDeclaration>): ParseStatementState =>
         state => {
             // create an Either containing an array of VariableSymbolDefs and the operations
             // needed to initialize each variable
@@ -136,14 +136,14 @@ const parseVariableDeclarations =
         }
 
 const parseVariableStatement =
-    (node: tsm.VariableStatement): StatementParseState =>
+    (node: tsm.VariableStatement): ParseStatementState =>
         state => {
             const declarations = node.getDeclarations();
             return parseVariableDeclarations(declarations)(state);
         }
 
 const parseExpressionStatement =
-    (node: tsm.ExpressionStatement): StatementParseState =>
+    (node: tsm.ExpressionStatement): ParseStatementState =>
         state => {
             const expr = node.getExpression();
             let ops: ReadonlyArray<Operation>;
@@ -157,7 +157,7 @@ const parseExpressionStatement =
         }
 
 const parseIfStatement =
-    (node: tsm.IfStatement): StatementParseState =>
+    (node: tsm.IfStatement): ParseStatementState =>
         state => {
             const expr = node.getExpression();
 
@@ -194,7 +194,7 @@ const parseIfStatement =
         }
 
 const parseReturnStatement =
-    (node: tsm.ReturnStatement): StatementParseState =>
+    (node: tsm.ReturnStatement): ParseStatementState =>
         state => {
             let operations = opsMonoid.empty;
             const expr = node.getExpression();
@@ -207,7 +207,7 @@ const parseReturnStatement =
         }
 
 const parseThrowStatement =
-    (node: tsm.ThrowStatement): StatementParseState =>
+    (node: tsm.ThrowStatement): ParseStatementState =>
         state => {
             let operations: ReadonlyArray<Operation>;
             [operations, state] = parseExpression(node.getExpression())(state)
@@ -215,23 +215,35 @@ const parseThrowStatement =
             return [updateLocation(node)(operations), state]
         }
 
+const parseStatement =
+    (node: tsm.Statement): ParseStatementState =>
+        state => {
+            if (tsm.Node.isBlock(node)) return parseBlock(node)(state);
+            if (tsm.Node.isExpressionStatement(node)) return parseExpressionStatement(node)(state);
+            if (tsm.Node.isIfStatement(node)) return parseIfStatement(node)(state);
+            if (tsm.Node.isReturnStatement(node)) return parseReturnStatement(node)(state);
+            if (tsm.Node.isThrowStatement(node)) return parseThrowStatement(node)(state);
+            if (tsm.Node.isVariableStatement(node)) return parseVariableStatement(node)(state);
+            return appendError(makeParseError(node)(`parseStatement ${node.getKindName()} not implemented`))(state);
+        }
+
 // Sentinel returnTarget 
 const returnOp: Operation = { kind: 'return' };
 
-const appendError = (error: ParseError): StatementParseState =>
+const appendError = (error: ParseError): ParseStatementState =>
     state => ([[], { ...state, errors: ROA.append(error)(state.errors) }]);
 
-const appendErrors = (error: ReadonlyArray<ParseError>): StatementParseState =>
+const appendErrors = (error: ReadonlyArray<ParseError>): ParseStatementState =>
     state => ([[], { ...state, errors: ROA.concat(error)(state.errors) }]);
 
-type BodyParseResult = {
+type ParseBodyResult = {
     readonly operations: ReadonlyArray<Operation>,
     readonly locals: ReadonlyArray<tsm.VariableDeclaration>
 }
 
 const parseBody =
     (scope: Scope) =>
-        (body: tsm.Node): E.Either<ReadonlyArray<ParseError>, BodyParseResult> => {
+        (body: tsm.Node): E.Either<ReadonlyArray<ParseError>, ParseBodyResult> => {
             if (tsm.Node.isStatement(body)) {
                 const [operations, state] = parseStatement(body)({ scope, errors: [], locals: [] });
                 if (ROA.isNonEmpty(state.errors)) {
@@ -242,7 +254,6 @@ const parseBody =
             }
             return E.left(ROA.of(makeParseError(body)(`parseBody ${body.getKindName()} not implemented`)));
         }
-
 
 const convertJumpTargetOps =
     (ops: ReadonlyArray<Operation>) =>
@@ -270,7 +281,7 @@ const convertJumpTargetOps =
 
 const makeContractMethod =
     (node: tsm.FunctionDeclaration) =>
-        (result: BodyParseResult): E.Either<ParseError, ContractMethod> => {
+        (result: ParseBodyResult): E.Either<ParseError, ContractMethod> => {
             const ops = pipe(result.operations,
                 // add return op at end of method
                 ROA.append(returnOp as Operation),
@@ -368,16 +379,4 @@ export const parseFunctionDeclarations =
                 methods = ROA.append(method)(methods);
             }
             return [methods, diagnostics];
-        }
-
-const parseStatement =
-    (node: tsm.Statement): StatementParseState =>
-        state => {
-            if (tsm.Node.isBlock(node)) return parseBlock(node)(state);
-            if (tsm.Node.isExpressionStatement(node)) return parseExpressionStatement(node)(state);
-            if (tsm.Node.isIfStatement(node)) return parseIfStatement(node)(state);
-            if (tsm.Node.isReturnStatement(node)) return parseReturnStatement(node)(state);
-            if (tsm.Node.isThrowStatement(node)) return parseThrowStatement(node)(state);
-            if (tsm.Node.isVariableStatement(node)) return parseVariableStatement(node)(state);
-            return appendError(makeParseError(node)(`parseStatement ${node.getKindName()} not implemented`))(state);
         }
