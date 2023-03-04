@@ -26,20 +26,18 @@ export function remove() {
 
 // export function _deploy(_data: any, update: boolean): void { 
 //     if (update) return;
-//     const context = storageGetContext();
 //     const key = Uint8Array.from([prefixContractOwner])
-//     const tx = runtimeGetScriptContainer() as Transaction;
-//     storagePut(context, key, tx.sender);
+//     const tx = Runtime.scriptContainer as Transaction;
+//     Storage.context.put(key, tx.sender);
 // }
 
-// export function update(nefFile: ByteString, manifest: string) {
-//     const context = storageGetContext();
-//     const key = Uint8Array.from([prefixContractOwner])
-//     const owner = storageGet(context, key)!;
-//     // TODO: support "if (owner && runtimeCheckWitness(owner))"
-//     if (runtimeCheckWitness(owner)) {
-//         contractManagementUpdate(nefFile, manifest);
-//     } else {
-//         throw Error("Only the contract owner can update the contract");
-//     }
-// }
+export function update(nefFile: ByteString, manifest: string) {
+    const key = Uint8Array.from([prefixContractOwner])
+    const owner = Storage.context.get(key)!;
+    // TODO: support "if (owner && runtimeCheckWitness(owner))"
+    if (checkWitness(owner)) {
+        ContractManagement.update(nefFile, manifest);
+    } else {
+        throw Error("Only the contract owner can update the contract");
+    }
+}

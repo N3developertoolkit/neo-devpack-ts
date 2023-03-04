@@ -150,7 +150,7 @@ const makeStorageInstanceCallObj = (decl: tsm.MethodSignature | tsm.PropertySign
         O.map(name => ROA.of({ kind: 'syscall', name: name } as Operation)),
         O.match(
             () => { throw new Error(`missing ${symbol.getName()} syscall`) },
-            (head) => head
+            identity
         )
     );
 
@@ -271,20 +271,19 @@ function makeNativeContract(decl: tsm.VariableDeclaration): ObjectSymbolDef {
     }
 }
 
-// function makeSysCall(decl: tsm.VariableDeclaration): ObjectSymbolDef {
+function makeSysCallFunc(decl: tsm.FunctionDeclaration): CallableSymbolDef {
 
-//     const symbol = decl.getSymbolOrThrow();
-//     const type = decl.getType();
-//     const members = type.getProperties().map(TS.getDeclarations);
-
-
-
-
-//     return {
-//         symbol: decl.getSymbolOrThrow(),
-//         parseGetProp: () => O.none,
-//     }
-// }
+    const symbol = decl.getSymbolOrThrow();
+    return pipe(
+        decl,
+        TS.getTagComment('syscall'),
+        O.map(name => new SysCallSymbolDef(symbol, name)),
+        O.match(
+            () => { throw new Error(`missing ${symbol.getName()} syscall`) },
+            identity
+        )
+    )
+}
 
 const builtInMap: Record<string, (decl: tsm.VariableDeclaration) => SymbolDef> = {
     "Error": makeErrorObj,
@@ -296,6 +295,8 @@ const builtInMap: Record<string, (decl: tsm.VariableDeclaration) => SymbolDef> =
 export const makeGlobalScope =
     (decls: LibraryDeclarations): CompilerState<Scope> =>
         diagnostics => {
+
+            let symbols: ReadonlyArray<SymbolDef> = ROA.empty;
 
             const stackItems = pipe(
                 decls.interfaces,
@@ -313,18 +314,13 @@ export const makeGlobalScope =
                 ROA.map(makeNativeContract)
             )
 
-            const syscallFuncs = pipe(
+            symbols = pipe(
                 decls.functions,
                 ROA.filter(TS.hasTag('syscall')),
-                // ROA.map(makeSysCall)
+                ROA.map(makeSysCallFunc),
+                ROA.concat(symbols)
             )
 
-            // operation funcs
-
-            const i = decls.interfaces.map(d => d.getSymbol()?.getName()).sort();
-            const v = decls.variables.map(d => d.getSymbol()?.getName()).sort();
-
-            let symbols: ReadonlyArray<SymbolDef> = ROA.empty;
             for (const key in builtInMap) {
                 [, symbols] = resolveBuiltin(decls.variables)(key, builtInMap[key])(symbols);
             }
