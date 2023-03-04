@@ -27,7 +27,7 @@ interface ParseFunctionContext {
 
 type ParseStatementState = S.State<ParseFunctionContext, ReadonlyArray<Operation>>
 
-const qqq = $parseSymbol();
+const parseSymbol = $parseSymbol();
 
 const E_fromSeparated = <E, A>(s: SEP.Separated<ReadonlyArray<E>, A>): E.Either<ReadonlyArray<E>, A> =>
     ROA.isNonEmpty(s.left) ? E.left(s.left) : E.of(s.right)
@@ -55,32 +55,26 @@ const updateLocation =
                 ? pipe(ops, RNEA.modifyHead(op => ({ ...op, location })))
                 : ops;
 
-const opsMonoid = {
-    ...ROA.getMonoid<Operation>(),
-    append: (ops: ReadonlyArray<Operation>) => (op: Operation) => ROA.append(op)(ops)
-}
-
 const parseBlock =
     (node: tsm.Block): ParseStatementState =>
         state => {
             // create a new scope for the statements within the block
             let $state = { ...state, scope: createScope(state.scope)([]) }
-            let operations = opsMonoid.empty;
+
+            let operations: ReadonlyArray<Operation> = ROA.empty;
+            for (const stmt of node.getStatements()) {
+                let ops;
+                [ops, $state] = parseStatement(stmt)($state);
+                operations = ROA.concat(ops)(operations);
+            }
 
             const open = node.getFirstChildByKind(tsm.SyntaxKind.OpenBraceToken);
             if (open) {
-                operations = ROA.append<Operation>({ kind: 'noop', location: open })(operations);
+                operations = ROA.prepend({ kind: 'noop', location: open } as Operation)(operations);
             }
-
-            let ops: ReadonlyArray<Operation>;
-            for (const stmt of node.getStatements()) {
-                [ops, $state] = parseStatement(stmt)($state);
-                operations = opsMonoid.concat(operations, ops);
-            }
-
             const close = node.getLastChildByKind(tsm.SyntaxKind.CloseBraceToken);
             if (close) {
-                operations = ROA.append<Operation>({ kind: 'noop', location: close })(operations);
+                operations = ROA.append({ kind: 'noop', location: close } as Operation)(operations);
             }
 
             //  keep the accumulated errors and locals, but swap the original state scope
@@ -97,7 +91,7 @@ const parseVariableDeclarations =
                 declarations,
                 ROA.mapWithIndex((index, decl) => pipe(
                     decl,
-                    qqq,
+                    parseSymbol,
                     E.map(symbol => ({
                         def: new VariableSymbolDef(symbol, 'local', index + state.locals.length),
                         node: decl
@@ -107,7 +101,7 @@ const parseVariableDeclarations =
                 E_fromSeparated,
                 E.map(ROA.map(({ node, def }) => {
                     const init = node.getInitializer();
-                    let operations = opsMonoid.empty;
+                    let operations: ReadonlyArray<Operation> = ROA.empty;
                     if (init) {
                         [operations, state] = parseExpression(init)(state);
                         const op: LoadStoreOperation = { kind: "storelocal", index: def.index };
@@ -122,7 +116,7 @@ const parseVariableDeclarations =
             if (E.isLeft(parseDeclsResult)) return appendErrors(parseDeclsResult.left)(state);
 
             // concat all the initialization instructions 
-            const operations = FP.monoid.concatAll(opsMonoid)(parseDeclsResult.right.map(o => o.operations))
+            const operations = FP.monoid.concatAll(ROA.getMonoid<Operation>())(parseDeclsResult.right.map(o => o.operations))
 
             // update the current scope with the new declarations
             const defs = parseDeclsResult.right.map(o => o.def);
@@ -168,7 +162,7 @@ const parseIfStatement =
 
             let $thenOps: ReadonlyArray<Operation>;
             [$thenOps, state] = parseStatement(node.getThenStatement())(state);
-            const thenOps = opsMonoid.append($thenOps)({ kind: 'noop' });
+            const thenOps = ROA.append({ kind: 'noop' } as Operation)($thenOps);
 
             const $else = node.getElseStatement();
             if ($else) {
@@ -176,18 +170,23 @@ const parseIfStatement =
 
                 let $elseOps: ReadonlyArray<Operation>;
                 [$elseOps, state] = parseStatement(node.getThenStatement())(state);
-                const elseOps = opsMonoid.append($elseOps)({ kind: 'noop' });
+                const elseOps = ROA.append({ kind: 'noop' } as Operation)($elseOps);
                 const endJumpOp: JumpTargetOperation = { 'kind': "jump", target: RNEA.last(elseOps) };
 
-                operations = opsMonoid.append(operations)(elseJumpOp);
-                operations = opsMonoid.concat(operations, thenOps);
-                operations = opsMonoid.append(operations)(endJumpOp);
-                operations = opsMonoid.concat(operations, elseOps);
+                operations = pipe(
+                    operations,
+                    ROA.append(elseJumpOp as Operation),
+                    ROA.concat(thenOps),
+                    ROA.append(endJumpOp as Operation),
+                    ROA.concat(elseOps)
+                )
             } else {
                 const jumpOp: JumpTargetOperation = { 'kind': "jumpifnot", target: RNEA.last(thenOps) };
-
-                operations = opsMonoid.append(operations)(jumpOp);
-                operations = opsMonoid.concat(operations, thenOps);
+                operations = pipe(
+                    operations,
+                    ROA.append(jumpOp as Operation),
+                    ROA.concat(thenOps),
+                );
             }
 
             return [operations, state];
@@ -196,22 +195,22 @@ const parseIfStatement =
 const parseReturnStatement =
     (node: tsm.ReturnStatement): ParseStatementState =>
         state => {
-            let operations = opsMonoid.empty;
+            let operations: ReadonlyArray<Operation> = ROA.empty;
             const expr = node.getExpression();
             if (expr) {
                 [operations, state] = parseExpression(expr)(state);
             }
             const op: JumpTargetOperation = { kind: 'jump', target: returnOp };
-            operations = opsMonoid.append(operations)(op);
+            operations = pipe(operations, ROA.append(op as Operation));
             return [updateLocation(node)(operations), state]
         }
 
 const parseThrowStatement =
     (node: tsm.ThrowStatement): ParseStatementState =>
         state => {
-            let operations: ReadonlyArray<Operation>;
+            let operations;
             [operations, state] = parseExpression(node.getExpression())(state)
-            operations = opsMonoid.append(operations)({ kind: 'throw' });
+            operations = pipe(operations, ROA.append({ kind: 'throw' } as Operation));
             return [updateLocation(node)(operations), state]
         }
 
@@ -305,13 +304,13 @@ const makeContractMethod =
                 convertJumpTargetOps(ops),
                 E.fromOption(() => makeParseError()('woops')),
                 E.bindTo('operations'),
-                E.bind('symbol', () => pipe(node, qqq)),
+                E.bind('symbol', () => pipe(node, parseSymbol)),
                 E.bind('variables', () => pipe(
                     result.locals,
                     ROA.map(varDecl => {
                         return pipe(
                             varDecl,
-                            qqq,
+                            parseSymbol,
                             E.map(s => ({
                                 name: s.getName(),
                                 type: varDecl.getType(),
@@ -337,7 +336,7 @@ export const parseFunctionDeclaration =
                     node.getParameters(),
                     ROA.mapWithIndex((index, node) => pipe(
                         node,
-                        qqq,
+                        parseSymbol,
                         E.map(s => new VariableSymbolDef(s, 'arg', index))
                     )),
                     ROA.sequence(E.Applicative),
