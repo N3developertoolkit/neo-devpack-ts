@@ -7,7 +7,7 @@ import * as M from "fp-ts/Monoid";
 import * as TS from "../utility/TS";
 import { Operation, SimpleOperationKind } from "../types/Operation";
 import { resolve, Scope } from "../scope";
-import { isCallableDef, isLoadableDef, isObjectDef, makeParseError, ObjectSymbolDef, ParseError, parseSymbol, SymbolDef } from "../symbolDef";
+import { isCallableDef, isObjectDef, makeParseError, ObjectSymbolDef, ParseError, parseSymbol, SymbolDef } from "../symbolDef";
 
 const resolveIdentifier =
     (scope: Scope) =>
@@ -38,6 +38,51 @@ const resolveCallChain =
             }
         }
     }
+
+const makeCallChain =
+    (node: tsm.Expression): RNEA.ReadonlyNonEmptyArray<tsm.Expression> => {
+        const mcc =
+            (chain: RNEA.ReadonlyNonEmptyArray<tsm.Expression>): RNEA.ReadonlyNonEmptyArray<tsm.Expression> => {
+                const head = RNEA.head(chain);
+                return tsm.Node.hasExpression(head)
+                    ? mcc(ROA.prepend(head.getExpression())(chain))
+                    : chain;
+            }
+
+        return mcc(RNEA.of<tsm.Expression>(node));
+    }
+
+const $resolve =
+    (scope: Scope) =>
+        (node: tsm.Expression) => {
+            if (tsm.Node.isIdentifier(node)) return resolveIdentifier(scope)(node);
+            return E.left(makeParseError(node)(`$resolve ${node.getKindName()} failed`))
+        }
+const parseCallChain =
+    (scope: Scope) =>
+        (chain: RNEA.ReadonlyNonEmptyArray<tsm.Expression>) => {
+
+            let def = $resolve(scope)(RNEA.head(chain))
+            let access: ReadonlyArray<Operation> = E.isRight(def)
+                ? def.right.loadOperations ?? []
+                : ROA.empty; 
+            
+            let tail = RNEA.tail(chain);
+
+            while (E.right(def) && ROA.isNonEmpty(tail)) {
+                const head = RNEA.head(tail);
+                tail = RNEA.tail(tail);
+                if (tsm.Node.isPropertyAccessExpression(head)) {
+
+                } else if (tsm.Node.isCallExpression(head)) {
+
+                } else {
+                    return E.left(makeParseError(head)(`parseCallChain ${head.getKindName()} failed`))
+
+                }
+
+            }
+        }
 
 export const parseArrayLiteral =
     (scope: Scope) =>
@@ -148,6 +193,10 @@ export const parseCallExpression =
     (scope: Scope) =>
         (node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
 
+
+            const c2 = makeCallChain(node);
+            parseCallChain(scope)(c2);
+
             // Callable objects take scope + node and return the operations for the args + the call
             // inside an Either. This enables certain callables to customize the argument parsing
             // (example: Uint8Array.from can convert an array into a bytestring). They are returned
@@ -197,12 +246,7 @@ export const parseIdentifier =
             return pipe(
                 node,
                 resolveIdentifier(scope),
-                E.chain(flow(
-                    E.fromPredicate(
-                        isLoadableDef,
-                        (def) => makeParseError(node)(`${def.symbol.getName()} symbol not loadable`)))
-                ),
-                E.map(def => def.loadOperations)
+                E.map(s => s.loadOperations ?? [])
             );
         }
 
@@ -255,6 +299,9 @@ export const parsePrefixUnaryExpression = (scope: Scope) =>
 export const parsePropertyAccessExpression =
     (scope: Scope) =>
         (node: tsm.PropertyAccessExpression): E.Either<ParseError, readonly Operation[]> => {
+
+            const c2 = makeCallChain(node);
+            parseCallChain(scope)(c2);
 
             const expr = node.getExpression();
             const type = expr.getType();

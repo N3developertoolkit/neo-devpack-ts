@@ -44,14 +44,7 @@ const parseCall =
 
 export interface SymbolDef {
     readonly symbol: Symbol;
-}
-
-export interface LoadSymbolDef extends SymbolDef {
-    readonly loadOperations: ReadonlyArray<Operation>
-}
-
-export function isLoadableDef(def: SymbolDef): def is LoadSymbolDef {
-    return 'loadOperations' in def;
+    readonly loadOperations?: ReadonlyArray<Operation>
 }
 
 // the modelling of this is a little strange. Properties may not exist, so parseGetProp
@@ -115,7 +108,7 @@ export class FunctionSymbolDef implements CallableSymbolDef {
 
 type ConstantValue = bigint | boolean | Uint8Array | null;
 
-export class ConstantSymbolDef implements LoadSymbolDef {
+export class ConstantSymbolDef implements SymbolDef {
     constructor(
         readonly symbol: Symbol,
         readonly value: ConstantValue
@@ -135,7 +128,7 @@ export class ConstantSymbolDef implements LoadSymbolDef {
     }
 }
 
-export class VariableSymbolDef implements LoadSymbolDef {
+export class VariableSymbolDef implements SymbolDef {
     constructor(
         readonly symbol: Symbol,
         readonly kind: 'arg' | 'local' | 'static',

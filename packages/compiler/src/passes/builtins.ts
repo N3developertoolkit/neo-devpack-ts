@@ -1,7 +1,7 @@
 import * as E from "fp-ts/Either";
 import * as tsm from "ts-morph";
 import { createSymbolMap, Scope } from "../scope";
-import { CallableSymbolDef, CallResult, GetPropResult, LoadSymbolDef, makeParseError, MethodTokenSymbolDef, ObjectSymbolDef, ParseError, SymbolDef, SysCallSymbolDef } from "../symbolDef";
+import { CallableSymbolDef, CallResult, GetPropResult, makeParseError, MethodTokenSymbolDef, ObjectSymbolDef, ParseError, SymbolDef, SysCallSymbolDef } from "../symbolDef";
 import { isPushIntOp, Operation, PushDataOperation } from "../types/Operation";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROM from 'fp-ts/ReadonlyMap'
@@ -195,11 +195,11 @@ function parseRuntimeProperty(node: tsm.PropertySignature) {
             TS.getTagComment('syscall'),
             O.map(name => ROA.of({ kind: 'syscall', name } as Operation))
         )),
-        O.map(def => def as LoadSymbolDef)
+        O.map(def => def as SymbolDef)
     );
 }
 
-const makeRuntimeObj = (decl: tsm.VariableDeclaration): ObjectSymbolDef & LoadSymbolDef => {
+const makeRuntimeObj = (decl: tsm.VariableDeclaration): ObjectSymbolDef => {
 
     const symbol = decl.getSymbolOrThrow();
     const props = pipe(
@@ -225,7 +225,7 @@ const makeRuntimeObj = (decl: tsm.VariableDeclaration): ObjectSymbolDef & LoadSy
     }
 }
 
-class StackItemPropSymbolDef implements LoadSymbolDef {
+class StackItemPropSymbolDef implements SymbolDef {
 
     constructor(
         readonly symbol: tsm.Symbol,
