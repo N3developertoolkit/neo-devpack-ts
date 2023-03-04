@@ -110,9 +110,10 @@ const parseVariableDeclarations =
                     let operations = opsMonoid.empty;
                     if (init) {
                         [operations, state] = parseExpression(init)(state);
-                        const op: LoadStoreOperation = { kind: "storelocal", index: def.index, location: node };
+                        const op: LoadStoreOperation = { kind: "storelocal", index: def.index };
                         operations = ROA.append<Operation>(op)(operations);
                     }
+                    operations = updateLocation(node)(operations);
                     return { operations, def: def }
                 }))
             )
