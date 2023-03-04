@@ -19,15 +19,15 @@ import { ContractMethod } from "../compiler";
 
 type Diagnostic = tsm.ts.Diagnostic;
 
-interface ParseFunctionState {
+interface ParseFunctionContext {
     readonly scope: Scope
     readonly locals: ReadonlyArray<tsm.VariableDeclaration>
     readonly errors: ReadonlyArray<ParseError>
 }
 
-type ParseStatementState = S.State<ParseFunctionState, ReadonlyArray<Operation>>
+type ParseStatementState = S.State<ParseFunctionContext, ReadonlyArray<Operation>>
 
-const parseSymbol = $parseSymbol();
+const qqq = $parseSymbol();
 
 const E_fromSeparated = <E, A>(s: SEP.Separated<ReadonlyArray<E>, A>): E.Either<ReadonlyArray<E>, A> =>
     ROA.isNonEmpty(s.left) ? E.left(s.left) : E.of(s.right)
@@ -97,7 +97,7 @@ const parseVariableDeclarations =
                 declarations,
                 ROA.mapWithIndex((index, decl) => pipe(
                     decl,
-                    parseSymbol,
+                    qqq,
                     E.map(symbol => ({
                         def: new VariableSymbolDef(symbol, 'local', index + state.locals.length),
                         node: decl
@@ -305,13 +305,13 @@ const makeContractMethod =
                 convertJumpTargetOps(ops),
                 E.fromOption(() => makeParseError()('woops')),
                 E.bindTo('operations'),
-                E.bind('symbol', () => pipe(node, parseSymbol)),
+                E.bind('symbol', () => pipe(node, qqq)),
                 E.bind('variables', () => pipe(
                     result.locals,
                     ROA.map(varDecl => {
                         return pipe(
                             varDecl,
-                            parseSymbol,
+                            qqq,
                             E.map(s => ({
                                 name: s.getName(),
                                 type: varDecl.getType(),
@@ -337,7 +337,7 @@ export const parseFunctionDeclaration =
                     node.getParameters(),
                     ROA.mapWithIndex((index, node) => pipe(
                         node,
-                        parseSymbol,
+                        qqq,
                         E.map(s => new VariableSymbolDef(s, 'arg', index))
                     )),
                     ROA.sequence(E.Applicative),
