@@ -199,7 +199,7 @@ function parseRuntimeProperty(node: tsm.PropertySignature) {
     );
 }
 
-const makeRuntimeObj = (decl: tsm.VariableDeclaration): ObjectSymbolDef => {
+const makeRuntimeObj = (decl: tsm.VariableDeclaration): ObjectSymbolDef & LoadSymbolDef => {
 
     const symbol = decl.getSymbolOrThrow();
     const props = pipe(
@@ -220,6 +220,8 @@ const makeRuntimeObj = (decl: tsm.VariableDeclaration): ObjectSymbolDef => {
     return {
         symbol,
         parseGetProp: makeParseGetProp(props),
+        loadOperations: [],
+
     }
 }
 
