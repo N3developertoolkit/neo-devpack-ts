@@ -158,8 +158,8 @@ declare global {
         getContractById(id: number): Contract;
         /** @nativeContract getContractHashes */
         // readonly contractHashes: InteropInterface; // TODO: iterators
-        deploy(nefFile: ByteString, manifest: ByteString, data?: any): Contract;
-        update(nefFile: ByteString, manifest: ByteString, data?: any): void;
+        deploy(nefFile: ByteString, manifest: string, data?: any): Contract;
+        update(nefFile: ByteString, manifest: string, data?: any): void;
         destroy(): void;
     }
 
