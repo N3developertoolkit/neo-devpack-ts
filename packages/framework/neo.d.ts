@@ -152,9 +152,37 @@ declare global {
     export const ContractManagement: ContractManagementConstructor;
 
     export interface ContractManagementConstructor {
-        update(nefFile: ByteString, manifest: string, data?: any): void;
+        getMinimumDeploymentFee(): bigint; // prop?
+        setMinimumDeploymentFee(value: bigint): void;
         getContract(hash: ByteString): Contract;
+        getContractById(id: number): Contract;
+		// GetContractHashes - needs iterator support
+		hasMethod(hash: ByteString, method: string, pcount: number): boolean;
+		deploy(nefFile: ByteString, manifest: string, data?: any): Contract;
+        update(nefFile: ByteString, manifest: string, data?: any): void;
     }
+    
+    /**  @nativeContract {0x726cb6e0cd8628a1350a611384688911ab75f51b} */
+    export const CryptoLib: CryptoLibConstructor;
+    
+    export interface CryptoLibConstructor {
+		ripemd160(data: ByteString): ByteString;
+		sha256(data: ByteString): ByteString;
+		murmur32(data: ByteString, seed: number): ByteString;
+		verifyWithECDsa(message: ByteString, pubkey: ByteString, signature: ByteString, curve: number): boolean
+	}
+    
+    export const secp256k1 = 22;
+    export const secp256r1 = 23;
+    
+    export interface FungibleTokenConstructor {
+		readonly symbol: string;
+		readonly decimals: number;
+		readonly totalSupply: bigint;
+		balanceOf(account: ByteString): bigint;
+		transfer(from: ByteString, to: ByteString, amount: bigint, data: any): boolean
+    }
+
 
     /** @stackitem */
     export interface Transaction {

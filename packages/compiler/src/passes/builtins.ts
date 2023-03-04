@@ -1,7 +1,7 @@
 import * as E from "fp-ts/Either";
 import * as tsm from "ts-morph";
 import { createSymbolMap, Scope } from "../scope";
-import { CallableSymbolDef, CallResult, GetPropResult, LoadSymbolDef, makeParseError, ObjectSymbolDef, ParseError, SymbolDef, SysCallSymbolDef } from "../symbolDef";
+import { CallableSymbolDef, CallResult, GetPropResult, LoadSymbolDef, makeParseError, MethodTokenSymbolDef, ObjectSymbolDef, ParseError, SymbolDef, SysCallSymbolDef } from "../symbolDef";
 import { isPushIntOp, Operation, PushDataOperation } from "../types/Operation";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROM from 'fp-ts/ReadonlyMap'
@@ -9,10 +9,11 @@ import * as S from 'fp-ts/State'
 import * as O from 'fp-ts/Option'
 import { flow, identity, pipe } from "fp-ts/lib/function";
 import { parseExpression } from "./expressionProcessor";
-import { getArguments } from "../utils";
+import { getArguments, isVoidLike } from "../utils";
 import { LibraryDeclarations } from "../projectLib";
 import { CompilerState } from "../compiler";
 import * as TS from "../utility/TS";
+import { sc, u } from "@cityofzion/neon-core";
 
 const single = <T>(array: ReadonlyArray<T>): O.Option<T> => array.length === 1 ? O.some(array[0] as T) : O.none;
 const checkErrors = (errorMessage: string) =>
@@ -123,10 +124,10 @@ function isMethodOrProp(node: tsm.Node): node is (tsm.MethodSignature | tsm.Prop
     return tsm.Node.isMethodSignature(node) || tsm.Node.isPropertySignature(node);
 }
 
-
 const makeStorageInstanceCallObj = (decl: tsm.MethodSignature | tsm.PropertySignature): GetPropResult => {
 
     const symbol = decl.getSymbolOrThrow();
+
     const parseGetProp = pipe(
         decl,
         TS.getType,
@@ -201,9 +202,10 @@ function parseRuntimeProperty(node: tsm.PropertySignature) {
 const makeRuntimeObj = (decl: tsm.VariableDeclaration): ObjectSymbolDef => {
 
     const symbol = decl.getSymbolOrThrow();
-
     const props = pipe(
-        decl.getType().getProperties(),
+        decl,
+        TS.getType,
+        TS.getTypeProperties,
         ROA.map(p => pipe(
             p,
             TS.getSymbolDeclarations,
@@ -258,16 +260,69 @@ function makeStackItem(decl: tsm.InterfaceDeclaration): ObjectSymbolDef {
     }
 }
 
+const regexMethodToken = /\{((?:0x)?[0-9a-fA-F]{40})\}/
+
+module REGEX {
+    export const match = (regex: RegExp) => (value: string) => O.fromNullable(value.match(regex));
+}
+
+// const getTypePropDecls = (node: tsm.Node) => {
+//     return pipe(
+//         node,
+//         TS.getType,
+//         TS.getTypeProperties,
+//         ROA.map(symbol => pipe(
+//             symbol,
+//             TS.getSymbolDeclarations,
+//             single,
+//             O.map(declaration => ({ symbol, declaration })),
+//             E.fromOption(() => symbol.getName())
+//         )),
+//     )
+// }
+
+
 function makeNativeContract(decl: tsm.VariableDeclaration): ObjectSymbolDef {
 
-    // const stmt = decl.getVariableStatementOrThrow();
-    // const tag = getTag("nativeContract")(stmt);
-    // const type = decl.getType();
-    // const members = type.getProperties();
+    const symbol = decl.getSymbolOrThrow();
+    const props = pipe(
+        decl,
+        getVariableStatement,
+        O.chain(TS.getTagComment("nativeContract")),
+        O.chain(REGEX.match(regexMethodToken)),
+        O.chain(ROA.lookup(1)),
+        O.map(v => u.HexString.fromHex(v, true)),
+        O.map(hash => pipe(
+            decl,
+            TS.getType,
+            TS.getTypeProperties,
+            ROA.map(propSymbol => pipe(
+                propSymbol,
+                TS.getSymbolDeclarations,
+                single,
+                O.chain(O.fromPredicate(isMethodOrProp)),
+                O.map(node => new sc.MethodToken({
+                    hash: hash.toString(),
+                    method: node.getSymbolOrThrow().getName(),
+                    parametersCount: tsm.Node.isMethodSignature(node)
+                        ? node.getParameters().length
+                        : 0,
+                    hasReturnValue: tsm.Node.isMethodSignature(node)
+                        ? !isVoidLike(node.getReturnType())
+                        : !isVoidLike(node.getType()),
+                    callFlags: sc.CallFlags.All
+                })),
+                O.map(mt => new MethodTokenSymbolDef(propSymbol, mt)),
+                E.fromOption(() => propSymbol.getName()),
+            )),
+            checkErrors(`${symbol.getName()} invalid properties`),
+        )),
+        O.match(()=> { throw new Error(`${symbol.getName()} invalid JSDoc Tag`) }, identity)
+    );
 
     return {
-        symbol: decl.getSymbolOrThrow(),
-        parseGetProp: () => O.none,
+        symbol,
+        parseGetProp: makeParseGetProp(props),
     }
 }
 
@@ -304,14 +359,15 @@ export const makeGlobalScope =
                 ROA.map(makeStackItem)
             )
 
-            const nativeContracts = pipe(
+            symbols = pipe(
                 decls.variables,
                 ROA.filter(flow(
                     getVariableStatement,
                     O.map(TS.hasTag('nativeContract')),
                     O.match(() => false, identity)
                 )),
-                ROA.map(makeNativeContract)
+                ROA.map(makeNativeContract),
+                ROA.concat(symbols)
             )
 
             symbols = pipe(
