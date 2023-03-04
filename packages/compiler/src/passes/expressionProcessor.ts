@@ -156,18 +156,18 @@ export const parseExpression =
 
             const parseLiteral =
                 <T>(func: (node: T) => E.Either<ParseError, Operation>) =>
-                    (_scope: Scope) => flow(func, E.map(ROA.of));
+                    flow(func, E.map(ROA.of));
 
             if (Node.hasExpression(node)) return parseExpressionChain(scope)(node);
             if (Node.isArrayLiteralExpression(node)) return parseArrayLiteral(scope)(node);
-            if (Node.isBigIntLiteral(node)) return parseLiteral(parseBigIntLiteral)(scope)(node);
+            if (Node.isBigIntLiteral(node)) return parseLiteral(parseBigIntLiteral)(node);
             if (Node.isBinaryExpression(node)) return parseBinaryExpression(scope)(node);
-            if (Node.isFalseLiteral(node)) return parseLiteral(parseBooleanLiteral)(scope)(node);
+            if (Node.isFalseLiteral(node)) return parseLiteral(parseBooleanLiteral)(node);
             if (Node.isIdentifier(node)) return parseIdentifier(scope)(node);
-            if (Node.isNullLiteral(node)) return parseLiteral(parseNullLiteral)(scope)(node);
-            if (Node.isNumericLiteral(node)) return parseLiteral(parseNumericLiteral)(scope)(node);
+            if (Node.isNullLiteral(node)) return parseLiteral(parseNullLiteral)(node);
+            if (Node.isNumericLiteral(node)) return parseLiteral(parseNumericLiteral)(node);
             if (Node.isPrefixUnaryExpression(node)) return parsePrefixUnaryExpression(scope)(node);
-            if (Node.isStringLiteral(node)) return parseLiteral(parseStringLiteral)(scope)(node);
-            if (Node.isTrueLiteral(node)) return parseLiteral(parseBooleanLiteral)(scope)(node);
+            if (Node.isStringLiteral(node)) return parseLiteral(parseStringLiteral)(node);
+            if (Node.isTrueLiteral(node)) return parseLiteral(parseBooleanLiteral)(node);
             return E.left(makeParseError(node)(`parseExpression ${node.getKindName()} failed`))
         }
