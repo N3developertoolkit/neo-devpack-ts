@@ -11,14 +11,14 @@ import { resolve, Scope } from "../scope";
 import { CallResult, GetPropResult, isCallableDef, isObjectDef, makeParseError, ParseError, parseSymbol, SymbolDef } from "../symbolDef";
 import { parseExpression as $parseExpression } from "./expressionProcessor";
 
-interface $Object {
+interface ChainObject {
     readonly loadOperations: ReadonlyArray<Operation>;
     parseGetProp: (prop: Symbol) => O.Option<GetPropResult>;
     parseCall: (node: CallExpression, scope: Scope) => E.Either<ParseError, CallResult>
 }
 
 type ParseChainContext = E.Either<ParseError, {
-    readonly $object: $Object,
+    readonly chainObj: ChainObject,
     readonly operations: ReadonlyArray<Operation>,
 }>
 
@@ -37,20 +37,22 @@ const makeExpressionChain =
         }
     }
 
-const make$object = (def: SymbolDef): $Object => {
+const makeChainObject = (def: SymbolDef): ChainObject => {
     const loadOperations = def.loadOperations ?? ROA.empty;
     const parseGetProp = isObjectDef(def) ? def.parseGetProp : () => O.none;
-    const parseCall = isCallableDef(def) ? def.parseCall : () => E.left(makeParseError()(`${def.symbol.getName} not callable`));
+    const parseCall = isCallableDef(def)
+        ? def.parseCall
+        : () => E.left(makeParseError()(`${def.symbol.getName} not callable`));
     return { loadOperations, parseGetProp, parseCall }
 }
 
 const makeParseChainContext =
     (def: SymbolDef): {
-        readonly $object: $Object,
+        readonly chainObj: ChainObject,
         readonly operations: ReadonlyArray<Operation>,
     } => {
-        const $object = make$object(def);
-        return { $object, operations: $object.loadOperations };
+        const chainObj = makeChainObject(def);
+        return { chainObj, operations: chainObj.loadOperations };
     }
 
 export const parseIdentifier =
@@ -81,10 +83,30 @@ const parseCallExpression =
             return E.left(makeParseError(node)(`parseCallExpression not impl`));
         }
 
+const parseGetProp = (chainObj: ChainObject) => (symbol: Symbol) => {
+    return pipe(
+        chainObj.parseGetProp(symbol),
+        E.fromOption(() => makeParseError()(''))
+    )
+}
+
 const parsePropertyAccessExpression =
     (scope: Scope) =>
-        (ctx: ParseChainContext, node: PropertyAccessExpression) => {
+        (ctx: ParseChainContext, node: PropertyAccessExpression):ParseChainContext => {
+            const sym = pipe(
+                node, 
+                parseSymbol(),
+                E.chain(resolveProperty)
+            )
             return E.left(makeParseError(node)(`parsePropertyAccessExpression not impl`));
+
+            function resolveProperty(symbol: Symbol) {
+                return pipe(
+                    ctx,
+                    E.chain(ctx => parseGetProp(ctx.chainObj)(symbol))
+            
+                );
+            }
         }
 
 const reduceParseChainContext =
@@ -102,11 +124,11 @@ const reduceParseChainContext =
                     expression,
                     $parseExpression(scope),
                     E.map(operations => ({
-                        $object: {
+                        chainObj: {
                             loadOperations: ROA.empty,
                             parseGetProp: () => O.none,
                             parseCall: () => E.left(makeParseError(node)("uncallable"))
-                        } as $Object,
+                        } as ChainObject,
                         operations
                     }))
                 );
