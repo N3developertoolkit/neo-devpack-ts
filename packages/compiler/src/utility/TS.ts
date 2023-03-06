@@ -30,3 +30,8 @@ export const getTagComment = (tagName: string) => (node: tsm.JSDocableNode) => p
     O.chain(tag => O.fromNullable(tag.getCommentText()))
 );
 
+export const getExpression =
+    (node: tsm.Expression): O.Option<tsm.Expression> =>
+        tsm.Node.hasExpression(node)
+            ? O.of(node.getExpression())
+            : O.none;
