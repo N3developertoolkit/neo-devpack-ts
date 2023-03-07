@@ -128,32 +128,33 @@ function makeResolver(project: Project): Resolver {
             // look in node_modules/@types for types package first
             `/node_modules/@types/${types}/package.json`,
             fileExists,
-            // look in node_modules/ for types package if @types doesn't exist
+            // look in node_modules/ for types package if doesn't exist under @types 
             O.alt(() => pipe(`/node_modules/${types}/package.json`, fileExists)),
             O.chain(packagepath => {
                 // load package.json file at packagepath, parse the JSON
                 // and cast it to a JsonRecord (aka an object)
-                const $package = pipe(
+                return pipe(
                     packagepath,
                     getFile,
                     O.chain(flow(FP.json.parse, O.fromEither)),
                     O.chain(O.fromPredicate(isJsonRecord)),
-                );
-                return pipe(
-                    $package,
+                    O.bindTo('$package'),
                     // look in typings and types properties for relative path
                     // to declarations file
-                    O.chain(FP.record.lookup('typings')),
-                    O.alt(() => pipe(
+                    O.chain(({ $package }) => pipe(
                         $package,
-                        O.chain(FP.record.lookup('types'))
+                        FP.record.lookup('typings'),
+                        O.alt(() => pipe(
+                            $package,
+                            FP.record.lookup('types')
+                        ))
                     )),
                     // cast JSON value to string
                     O.chain(O.fromPredicate(isJsonString)),
                     // resolve relative path to absolute path and load as source
                     O.map(path => posix.resolve(posix.dirname(packagepath), path)),
                     O.chain(getSourceFile)
-                )
+                );
             }),
             E.fromOption(() => `${types} types`)
         );
@@ -186,7 +187,6 @@ export const parseProjectLibrary =
                 ROA.partitionMap(identity)
             )
             let parsed: ReadonlySet<string> = ROS.empty;
-
             let declarations: LibraryDeclarations = {
                 functions: ROA.empty,
                 interfaces: ROA.empty,
@@ -194,8 +194,8 @@ export const parseProjectLibrary =
             }
 
             while (ROA.isNonEmpty(sources)) {
+
                 const head = RNEA.head(sources);
-                sources = RNEA.tail(sources);
 
                 const headPath = head.getFilePath();
                 if (ROS.elem(FP.string.Eq)(headPath)(parsed)) continue;
@@ -204,9 +204,9 @@ export const parseProjectLibrary =
                 let results;
                 [results, declarations] = $parseLibrarySourceFile(head)(declarations);
 
-                const { left, right } = pipe(results, ROA.partitionMap(identity));
-                failures = ROA.concat(left)(failures);
-                sources = ROA.concat(right)(sources);
+                const { left: $failures, right: $sources } = pipe(results, ROA.partitionMap(identity));
+                failures = ROA.concat($failures)(failures);
+                sources = ROA.concat($sources)(RNEA.tail(sources));
             }
 
             return [declarations, ROA.concat(failures.map(f => createDiagnostic(f)))(diagnostics)];
