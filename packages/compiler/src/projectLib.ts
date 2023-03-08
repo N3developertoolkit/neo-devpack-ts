@@ -169,9 +169,9 @@ function makeResolver(project: Project): Resolver {
 const resolveReferences =
     (resolver: Resolver) =>
         (libs: ReadonlyArray<string>, types: ReadonlyArray<string>) => {
-            const $l = pipe(libs, ROA.map(resolver.resolveLib));
-            const $t = pipe(types, ROA.map(resolver.resolveTypes));
-            return ROA.concat($l)($t);
+            const resolvedLibs = pipe(libs, ROA.map(resolver.resolveLib));
+            const resolbedTypes = pipe(types, ROA.map(resolver.resolveTypes));
+            return ROA.concat(resolvedLibs)(resolbedTypes);
         }
 
 export const parseProjectLibrary =
@@ -196,6 +196,7 @@ export const parseProjectLibrary =
             while (ROA.isNonEmpty(sources)) {
 
                 const head = RNEA.head(sources);
+                sources = RNEA.tail(sources);
 
                 const headPath = head.getFilePath();
                 if (ROS.elem(FP.string.Eq)(headPath)(parsed)) continue;
@@ -206,7 +207,7 @@ export const parseProjectLibrary =
 
                 const { left: $failures, right: $sources } = pipe(results, ROA.partitionMap(identity));
                 failures = ROA.concat($failures)(failures);
-                sources = ROA.concat($sources)(RNEA.tail(sources));
+                sources = ROA.concat($sources)(sources);
             }
 
             return [declarations, ROA.concat(failures.map(f => createDiagnostic(f)))(diagnostics)];

@@ -3,7 +3,6 @@ import { flow, identity, pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
-import * as M from "fp-ts/Monoid";
 import * as O from 'fp-ts/Option'
 import * as TS from "../utility/TS";
 import { Operation } from "../types/Operation";
@@ -16,26 +15,6 @@ interface ChainContext {
     parseGetProp: (prop: Symbol) => E.Either<ParseError, GetPropResult>;
     parseCall: (node: CallExpression, scope: Scope) => E.Either<ParseError, CallResult>
 }
-
-const makeExpressionChain =
-    (node: Expression): RNEA.ReadonlyNonEmptyArray<Expression> => {
-
-        return makeChain(RNEA.of<Expression>(node));
-
-        function makeChain(
-            chain: RNEA.ReadonlyNonEmptyArray<Expression>
-        ): RNEA.ReadonlyNonEmptyArray<Expression> {
-            return pipe(
-                chain,
-                RNEA.head,
-                TS.getExpression,
-                O.match(
-                    () => chain,
-                    expr => makeChain(ROA.prepend(expr)(chain))
-                )
-            );
-        }
-    }
 
 const makeChainContext =
     (node: Expression) => // for error reporting
@@ -165,53 +144,22 @@ export const parseExpressionChain =
                 )),
                 E.map(context => context.operations)
             );
+
+            function makeExpressionChain(node: Expression): RNEA.ReadonlyNonEmptyArray<Expression> {
+                return makeChain(RNEA.of<Expression>(node));
+
+                function makeChain(
+                    chain: RNEA.ReadonlyNonEmptyArray<Expression>
+                ): RNEA.ReadonlyNonEmptyArray<Expression> {
+                    return pipe(
+                        chain,
+                        RNEA.head,
+                        TS.getExpression,
+                        O.match(
+                            () => chain,
+                            expr => makeChain(ROA.prepend(expr)(chain))
+                        )
+                    );
+                }
+            }
         }
-
-
-// export const parseCallExpression =
-//     (scope: Scope) =>
-//         (node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
-
-
-//             const c2 = makeExpressionChain(node);
-//             parseCallChain(scope)(c2);
-
-//             // Callable objects take scope + node and return the operations for the args + the call
-//             // inside an Either. This enables certain callables to customize the argument parsing
-//             // (example: Uint8Array.from can convert an array into a bytestring). They are returned
-//             // as separate Operation arrays because any object navigation has to occur *between*
-//             // the args and the call. For example, Storage.context.get(key) needs to push:
-//             //      * the arguments
-//             //      * the storage get context syscall
-//             //      * the storage get syscall
-
-//             const chain = resolveCallChain(node);
-//             let access: ReadonlyArray<Operation> = ROA.empty;
-//             let def = resolveIdentifier(scope)(chain.head);
-//             let tail = chain.tail;
-//             while (E.isRight(def) && ROA.isNonEmpty(tail)) {
-
-//                 if (tsm.Node.isPropertyAccessExpression(next)) {
-//                     def = pipe(
-//                         next,
-//                         parseSymbol(),
-//                         E.bindTo('symbol'),
-//                         E.bind('def', () => pipe(def, E.chain(asObject))),
-//                         E.chain(getProp),
-//                         E.map(prop => {
-//                             access = ROA.concat(prop.access)(access);
-//                             return prop.value
-//                         })
-//                     );
-//                 } else {
-//                     def = E.left(makeParseError(next)(`${next.getKindName()} not impl`));
-//                 }
-//             }
-
-//             return pipe(
-//                 def,
-//                 E.chain(asCallable),
-//                 E.chain(c => c.parseCall(node, scope)),
-//                 E.map(c => M.concatAll(ROA.getMonoid<Operation>())([c.args, access, c.call]))
-//             )
-//         }

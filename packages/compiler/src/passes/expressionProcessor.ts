@@ -10,6 +10,7 @@ import { parseExpressionChain } from "./expressionChainProcessor";
 export const parseArrayLiteral =
     (scope: Scope) =>
         (node: ArrayLiteralExpression): E.Either<ParseError, readonly Operation[]> => {
+            // TODO: this doesn't seem right. SHouldn't there be a newarray op here?
             return pipe(
                 node.getElements(),
                 ROA.map(parseExpression(scope)),
@@ -53,6 +54,7 @@ export const parseBinaryOperatorToken =
 export const parseBinaryExpression =
     (scope: Scope) =>
         (node: BinaryExpression): E.Either<ParseError, readonly Operation[]> => {
+            // if left and right are strings, binary token op should be concat instead of add
             return pipe(
                 node.getOperatorToken(),
                 parseBinaryOperatorToken,
