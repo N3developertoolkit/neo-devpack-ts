@@ -4,11 +4,9 @@ import { createDiagnostic } from "./utils";
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
-import { parseProjectSymbols, SymbolDef } from "./symbolDef";
 import { parseProjectLibrary } from "./projectLib";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as S from 'fp-ts/State'
-import { parseFunctionDeclarations } from "./passes/processFunctionDeclarations";
 import { Operation } from "./types/Operation";
 import { DebugInfo } from "./types/DebugInfo";
 import { collectArtifacts } from "./collectArtifacts";
@@ -80,22 +78,22 @@ export function compile(
     [globalScope, diagnostics] = makeGlobalScope(library)(diagnostics);
     if (hasErrors(diagnostics)) { return { diagnostics } }
     let sourceSymbols;
-    [sourceSymbols, diagnostics] = parseProjectSymbols(project)(diagnostics);
-    if (hasErrors(diagnostics)) { return { diagnostics } }
+    // [sourceSymbols, diagnostics] = parseProjectSymbols(project)(diagnostics);
+    // if (hasErrors(diagnostics)) { return { diagnostics } }
 
-    let methods: ReadonlyArray<ContractMethod> = ROA.empty;
-    for (const defs of sourceSymbols) {
-        let $methods;
-        [$methods, diagnostics] = parseFunctionDeclarations(defs, globalScope)(diagnostics);
-        methods = ROA.concat($methods)(methods);
-        if (hasErrors(diagnostics)) { return { diagnostics } }
-    }
+    // let methods: ReadonlyArray<ContractMethod> = ROA.empty;
+    // for (const defs of sourceSymbols) {
+    //     let $methods;
+    //     [$methods, diagnostics] = parseFunctionDeclarations(defs, globalScope)(diagnostics);
+    //     methods = ROA.concat($methods)(methods);
+    //     if (hasErrors(diagnostics)) { return { diagnostics } }
+    // }
 
-    let artifacts;
-    [artifacts, diagnostics] = collectArtifacts(contractName, methods, $options)(diagnostics);
-    if (hasErrors(diagnostics)) { return { diagnostics } }
+    // let artifacts;
+    // [artifacts, diagnostics] = collectArtifacts(contractName, methods, $options)(diagnostics);
+    // if (hasErrors(diagnostics)) { return { diagnostics } }
 
-    return { diagnostics, methods, ...artifacts };
+    return { diagnostics } //, methods, ...artifacts };
 }
 
 async function exists(rootPath: fs.PathLike) {

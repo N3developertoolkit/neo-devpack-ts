@@ -156,7 +156,7 @@ declare global {
         getContract(hash: ByteString): Contract;
         hasMethod(hash: ByteString, method: string, pcount: number): boolean;
         getContractById(id: number): Contract;
-        /** @nativeContract getContractHashes */
+        // /** @nativeContract getContractHashes */
         // readonly contractHashes: InteropInterface; // TODO: iterators
         deploy(nefFile: ByteString, manifest: string, data?: any): Contract;
         update(nefFile: ByteString, manifest: string, data?: any): void;

@@ -3,14 +3,30 @@ import * as O from 'fp-ts/Option';
 import * as ROA from 'fp-ts/ReadonlyArray'
 import { pipe } from "fp-ts/lib/function";
 
-export const getSymbol = (node: tsm.Node) => O.fromNullable(node.getSymbol());
-export const getType = (node: tsm.Node) => node.getType();
-export const getChildren = (node: tsm.Node) => node.forEachChildAsArray();
+export function getSymbol(node: tsm.Node) { return O.fromNullable(node.getSymbol()); }
+export function getType(node: tsm.Node) { return node.getType(); }
+export function getChildren(node: tsm.Node) { return node.forEachChildAsArray(); }
 
-export const getSymbolDeclarations = (symbol: tsm.Symbol) => symbol.getDeclarations();
+export function getSymbolDeclarations(symbol: tsm.Symbol) {
+    return symbol.getDeclarations();
+}
 
-export const getTypeProperty = (name: string) => (type: tsm.Type) => O.fromNullable(type.getProperty(name));
-export const getTypeProperties = (type: tsm.Type) => ROA.fromArray(type.getProperties());
+export function getTypeSymbol(type: tsm.Type) { return O.fromNullable(type.getSymbol()) }
+export function getTypeProperty(name: string) {
+    return (type: tsm.Type) => O.fromNullable(type.getProperty(name));
+}
+export function getTypeProperties(type: tsm.Type) {
+    return ROA.fromArray(type.getProperties());
+}
+
+export const getTypeDeclarations = (node:tsm.Node) => {
+    return pipe(
+        node,
+        getType,
+        getTypeSymbol,
+        O.map(getSymbolDeclarations),
+    )
+}
 
 export const getTag = (tagName: string) => (node: tsm.JSDocableNode): O.Option<tsm.JSDocTag> => {
     for (const doc of node.getJsDocs()) {
