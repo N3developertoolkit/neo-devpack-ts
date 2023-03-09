@@ -1,23 +1,25 @@
-// import * as tsm from "ts-morph";
+import * as tsm from "ts-morph";
 
-// import { pipe } from 'fp-ts/function';
-// import * as ROA from 'fp-ts/ReadonlyArray';
-// import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
-// import * as E from "fp-ts/Either";
-// import * as O from 'fp-ts/Option'
-// import * as S from 'fp-ts/State';
-// import * as SEP from 'fp-ts/Separated';
-// import * as FP from 'fp-ts'
-// import * as TS from "../utility/TS";
+import { pipe } from 'fp-ts/function';
+import * as ROA from 'fp-ts/ReadonlyArray';
+import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
+import * as E from "fp-ts/Either";
+import * as O from 'fp-ts/Option'
+import * as S from 'fp-ts/State';
+import * as SEP from 'fp-ts/Separated';
+import * as FP from 'fp-ts'
+import * as TS from "../utility/TS";
+import { Scope } from "../scope";
+import { ContractMethod } from "../compiler";
 
-// import { makeParseError, parseSymbol as $parseSymbol, VariableSymbolDef, ParseError, createDiagnostic, SymbolDef, FunctionSymbolDef } from "../symbolDef";
+// import { ParseError, createDiagnostic, SymbolDef } from "../symbolDef";
 // import { createScope, Scope, updateScope } from "../scope";
 // import { isJumpTargetOp, JumpTargetOperation, LoadStoreOperation, Location, Operation } from "../types/Operation";
-// import { parseExpression as $parseExpression } from "./expressionProcessor";
+// // import { parseExpression as $parseExpression } from "./expressionProcessor";
 // import { isVoidLike } from "../utils";
 // import { ContractMethod } from "../compiler";
 
-// type Diagnostic = tsm.ts.Diagnostic;
+type Diagnostic = tsm.ts.Diagnostic;
 
 // interface ParseFunctionContext {
 //     readonly scope: Scope
@@ -360,22 +362,23 @@
 //                 );
 //             }
 
-// export const parseFunctionDeclarations =
-//     (defs: ReadonlyArray<SymbolDef>, scope: Scope): S.State<ReadonlyArray<Diagnostic>, ReadonlyArray<ContractMethod>> =>
-//         diagnostics => {
+export const parseContractMethod =
+    (scope: Scope) =>
+        ($function: tsm.FunctionDeclaration): S.State<ReadonlyArray<Diagnostic>, O.Option<ContractMethod>> =>
+            diagnostics => {
 
-//             const $scope = createScope(scope)(defs);
+                // const $scope = createScope(scope)(defs);
 
-//             const functionDefs = pipe(defs,
-//                 ROA.filterMap(def => def instanceof FunctionSymbolDef && !def.$import
-//                     ? O.some(def) : O.none)
-//             );
+                // const functionDefs = pipe(defs,
+                //     ROA.filterMap(def => def instanceof FunctionSymbolDef && !def.$import
+                //         ? O.some(def) : O.none)
+                // );
 
-//             let methods: ReadonlyArray<ContractMethod> = ROA.empty;
-//             for (const def of functionDefs) {
-//                 let method: ContractMethod;
-//                 [method, diagnostics] = parseFunctionDeclaration($scope)(def.node)(diagnostics);
-//                 methods = ROA.append(method)(methods);
-//             }
-//             return [methods, diagnostics];
-//         }
+                // let methods: ReadonlyArray<ContractMethod> = ROA.empty;
+                // for (const def of functionDefs) {
+                //     let method: ContractMethod;
+                //     [method, diagnostics] = parseFunctionDeclaration($scope)(def.node)(diagnostics);
+                //     methods = ROA.append(method)(methods);
+                // }
+                return [O.none, diagnostics];
+            }

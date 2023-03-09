@@ -45,7 +45,6 @@ module REGEX {
 class StaticClassDef implements SymbolDef {
     readonly symbol: tsm.Symbol;
     readonly name: string;
-    readonly type: tsm.Type;
     readonly typeSymbol: tsm.Symbol;
     readonly typeName: string;
 
@@ -54,116 +53,56 @@ class StaticClassDef implements SymbolDef {
     ) {
         this.symbol = decl.getSymbolOrThrow();
         this.name = this.symbol.getName();
-        this.type = decl.getType();
-        this.typeSymbol = this.type.getSymbolOrThrow();
+        const type = decl.getType();
+        this.typeSymbol = type.getSymbolOrThrow();
         this.typeName = this.typeSymbol.getName();
     }
 }
 
-// class ErrorSymbolDef implements SymbolDef {
-//     readonly symbol: tsm.Symbol;
-//     readonly name: string;
-//     readonly type: tsm.Type;
+class ByteStringConstructorDef implements SymbolDef {
+    readonly symbol: tsm.Symbol;
+    readonly name: string;
+    readonly props: ReadonlyArray<{
+        readonly symbol: tsm.Symbol,
+        readonly signature: tsm.MethodSignature;
+        readonly name: string;
+    }>
 
-//     constructor(readonly decl: tsm.VariableDeclaration) {
-//         this.symbol = decl.getSymbolOrThrow();
-//         this.name = this.symbol.getName();
-//         this.type = decl.getType();
-//     }
-// }
-
-// function callError(node: tsm.CallExpression, scope: Scope): E.Either<ParseError, CallResult> {
-//     return pipe(
-//         node,
-//         getArguments,
-//         ROA.head,
-//         O.match(
-//             () => E.right([{ kind: 'pushdata', value: Buffer.from("", "utf8") } as Operation]),
-//             parseExpression(scope)
-//         ),
-//         E.bindTo('args'),
-//         E.bind('call', () => E.right([]))
-//     )
-// }
-
-// class Uint8ArrayConstructorDef implements SymbolDef {
-//     readonly symbol: tsm.Symbol;
-//     readonly name: string;
-
-//     constructor(readonly decls: tsm.InterfaceDeclaration[]) {
-
-        
-
-//         // this.symbol = decl.getSymbolOrThrow();
-//         // this.name = this.symbol.getName();
-//     }
-// }
-
-// const asArrayLiteral = (node: tsm.Node) =>
-//     pipe(
-//         node,
-//         E.fromPredicate(
-//             tsm.Node.isArrayLiteralExpression,
-//             () => makeParseError(node)(`${node.getKindName()} not implemented`)
-//         )
-//     );
-
-// const asPushDataOp = (ops: ReadonlyArray<Operation>) => {
-//     return pipe(ops,
-//         ROA.map(flow(
-//             E.fromPredicate(
-//                 isPushIntOp,
-//                 op => makeParseError()(`${op.kind} not supported for Uint8Array.from`)
-//             ),
-//             E.chain(op => op.value < 0 || op.value > 255
-//                 ? E.left(makeParseError()(`${op.value} not supported for Uint8Array.from`))
-//                 : E.right(Number(op.value)),
-//             )
-//         )),
-//         ROA.sequence(E.Applicative),
-//         E.map(buffer => ({ kind: 'pushdata', value: Uint8Array.from(buffer) } as PushDataOperation))
-//     );
-// }
-
-// function callU8ArrayFrom(node: tsm.CallExpression, scope: Scope): E.Either<ParseError, CallResult> {
-//     return pipe(
-//         node,
-//         getArguments,
-//         ROA.head,
-//         E.fromOption(() => makeParseError(node)('missing argument')),
-//         E.chain(asArrayLiteral),
-//         E.map(l => l.getElements()),
-//         E.chain(flow(
-//             ROA.map(parseExpression(scope)),
-//             ROA.sequence(E.Applicative),
-//             E.map(ROA.flatten)
-//         )),
-//         E.chain(asPushDataOp),
-//         E.map(op => ({
-//             args: [],
-//             call: [op]
-//         }))
-//     );
-// }
-
-
+    constructor(readonly decl: tsm.InterfaceDeclaration) {
+        this.symbol = decl.getSymbolOrThrow();
+        this.name = this.symbol.getName();
+        this.props = pipe(
+            decl.getMembers(),
+            ROA.map(
+                E.fromPredicate(
+                    tsm.Node.isMethodSignature, 
+                    n => n?.getSymbol()?.getName() ?? "<unknown>")
+            ),
+            ROA.map(E.map(signature => ({
+                signature,
+                symbol: signature.getSymbolOrThrow(),
+                name: signature.getSymbolOrThrow().getName(),
+            }))),
+            checkErrors("ByteStringConstructorDef invalid members")
+        );
+    }
+}
 
 interface SysCallMember {
-    symbol: tsm.Symbol,
-    signature: tsm.MethodSignature | tsm.PropertySignature;
-    serviceName: string;
+    readonly symbol: tsm.Symbol,
+    readonly name: string;
+    readonly signature: tsm.MethodSignature | tsm.PropertySignature;
+    readonly serviceName: string;
 }
 
 class SysCallInterfaceDef implements SymbolDef {
     readonly symbol: tsm.Symbol;
     readonly name: string;
-    readonly type: tsm.Type;
     readonly props: ReadonlyArray<SysCallMember>;
 
     constructor(readonly decl: tsm.InterfaceDeclaration) {
         this.symbol = decl.getSymbolOrThrow();
         this.name = this.symbol.getName();
-        this.type = decl.getType();
         this.props = pipe(
             decl.getMembers(),
             ROA.map(signature => pipe(
@@ -171,6 +110,7 @@ class SysCallInterfaceDef implements SymbolDef {
                 TS.getTagComment('syscall'),
                 O.map(serviceName => ({
                     symbol: signature.getSymbolOrThrow(),
+                    name: signature.getSymbolOrThrow().getName(),
                     signature,
                     serviceName
                 } as SysCallMember)),
@@ -184,10 +124,9 @@ class SysCallInterfaceDef implements SymbolDef {
 class StackItemDef implements SymbolDef {
     readonly symbol: tsm.Symbol;
     readonly name: string;
-    readonly type: tsm.Type;
     readonly props: ReadonlyArray<{
         readonly symbol: tsm.Symbol;
-        readonly type: tsm.Type;
+        readonly name: string;
         readonly signature: tsm.PropertySignature,
         readonly index: number,
     }>
@@ -197,7 +136,6 @@ class StackItemDef implements SymbolDef {
     ) {
         this.symbol = decl.getSymbolOrThrow();
         this.name = this.symbol.getName();
-        this.type = decl.getType();
 
         this.props = pipe(
             decl.getMembers(),
@@ -207,7 +145,12 @@ class StackItemDef implements SymbolDef {
                     tsm.Node.isPropertySignature,
                     () => `${member.getSymbol()?.getName()} (${member.getKindName()})`
                 ),
-                E.map(signature => ({ signature, index, symbol: signature.getSymbolOrThrow(), type: signature.getType() }))
+                E.map(signature => ({ 
+                    signature, 
+                    index, 
+                    symbol: signature.getSymbolOrThrow(), 
+                    name: signature.getSymbolOrThrow().getName() 
+                }))
             )),
             checkErrors("Invalid stack item members")
         )
@@ -314,16 +257,6 @@ class SysCallFunctionDef implements SymbolDef {
     }
 }
 
-function makeError(decl: tsm.VariableDeclaration): ReadonlyArray<SymbolDef> {
-    return [];
-}
-
-function makeU8Array(decl: tsm.VariableDeclaration): ReadonlyArray<SymbolDef> {
-
-
-    return [];
-}
-
 export const makeGlobalScope =
     (decls: LibraryDeclarations): CompilerState<Scope> =>
         diagnostics => {
@@ -357,34 +290,18 @@ export const makeGlobalScope =
             )
 
             const builtInVars: Record<string, (decl: tsm.VariableDeclaration) => SymbolDef> = {
+                "ByteString": decl => new StaticClassDef(decl),
                 "Runtime": decl => new StaticClassDef(decl),
                 "Storage": decl => new StaticClassDef(decl),
-                // "Uint8Array": decl => new StaticClassDef(decl),
             }
-
-            const builtInVars2: Record<string, (decl: tsm.VariableDeclaration) => ReadonlyArray<SymbolDef>> = {
-                "Uint8Array": makeU8Array,
-                "Error": makeError
-            }
-
-            for (const key in builtInVars2) {
-                const q = pipe(
-                    key,
-                    findDecl(decls.variables),
-                    O.map(builtInVars2[key])
-                )
-                console.log(key);
-            }
-
 
             const builtInInterfaces: Record<string, (decl: tsm.InterfaceDeclaration) => SymbolDef> = {
+                "ByteStringConstructor": decl => new ByteStringConstructorDef(decl),
+                "ReadonlyStorageContext": decl => new SysCallInterfaceDef(decl),
                 "RuntimeConstructor": decl => new SysCallInterfaceDef(decl),
                 "StorageConstructor": decl => new SysCallInterfaceDef(decl),
-                "ReadonlyStorageContext": decl => new SysCallInterfaceDef(decl),
                 "StorageContext": decl => new SysCallInterfaceDef(decl),
-                // "Uint8Array": decl => new StaticClassDef(decl),
             }
-            
 
             symbolDefs = resolveBuiltins(builtInVars)(decls.variables)(symbolDefs);
             symbolDefs = resolveBuiltins(builtInInterfaces)(decls.interfaces)(symbolDefs);

@@ -5,7 +5,13 @@
 //  * Pointer, Struct and InteropInterface are all TBD
 
 declare global {
-    export interface ByteString extends Omit<Uint8Array, 'copyWithin' | 'fill' | 'reverse' | 'set' | 'sort'> { }
+    export interface ByteString { }
+
+    export const ByteString: ByteStringConstructor;
+    
+    export interface ByteStringConstructor {
+        from(arrayLike: ArrayLike<number>): ByteString;
+    }
 
     /**
      * @operation duplicate 

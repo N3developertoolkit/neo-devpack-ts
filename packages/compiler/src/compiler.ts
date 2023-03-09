@@ -7,10 +7,14 @@ import * as path from 'path';
 import { parseProjectLibrary } from "./projectLib";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as S from 'fp-ts/State'
+import * as TS from './utility/TS';
 import { Operation } from "./types/Operation";
 import { DebugInfo } from "./types/DebugInfo";
 import { collectArtifacts } from "./collectArtifacts";
 import { makeGlobalScope } from "./passes/builtins";
+import { pipe } from "fp-ts/lib/function";
+import { Scope } from "./scope";
+import { parseSourceFile } from "./passes/processSourceFile";
 
 export const DEFAULT_ADDRESS_VALUE = 53;
 
@@ -59,6 +63,7 @@ function hasErrors(diagnostics: ReadonlyArray<tsm.ts.Diagnostic>) {
     return diagnostics.some(d => d.category === tsm.ts.DiagnosticCategory.Error);
 }
 
+
 export function compile(
     project: tsm.Project,
     contractName: string,
@@ -77,23 +82,21 @@ export function compile(
     let globalScope;
     [globalScope, diagnostics] = makeGlobalScope(library)(diagnostics);
     if (hasErrors(diagnostics)) { return { diagnostics } }
-    let sourceSymbols;
-    // [sourceSymbols, diagnostics] = parseProjectSymbols(project)(diagnostics);
-    // if (hasErrors(diagnostics)) { return { diagnostics } }
+    
+    let methods: ReadonlyArray<ContractMethod> = ROA.empty;
+    for (const src of project.getSourceFiles()) {
+        if (src.isDeclarationFile()) continue;
+        let $methods;
+        [$methods, diagnostics] = parseSourceFile(src, globalScope)(diagnostics);
+        methods = ROA.concat($methods)(methods);
+        if (hasErrors(diagnostics)) { return { diagnostics } }
 
-    // let methods: ReadonlyArray<ContractMethod> = ROA.empty;
-    // for (const defs of sourceSymbols) {
-    //     let $methods;
-    //     [$methods, diagnostics] = parseFunctionDeclarations(defs, globalScope)(diagnostics);
-    //     methods = ROA.concat($methods)(methods);
-    //     if (hasErrors(diagnostics)) { return { diagnostics } }
-    // }
-
+    }
     // let artifacts;
     // [artifacts, diagnostics] = collectArtifacts(contractName, methods, $options)(diagnostics);
     // if (hasErrors(diagnostics)) { return { diagnostics } }
 
-    return { diagnostics } //, methods, ...artifacts };
+    return { diagnostics, methods }//, ...artifacts };
 }
 
 async function exists(rootPath: fs.PathLike) {

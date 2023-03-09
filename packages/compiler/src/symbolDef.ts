@@ -22,7 +22,6 @@ export const createDiagnostic = (e: ParseError) => $createDiagnostic(e.message, 
 
 export interface SymbolDef {
     readonly symbol: Symbol;
-    readonly loadOperations?: ReadonlyArray<Operation>
 }
 
 
@@ -262,16 +261,7 @@ export interface SymbolDef {
 // }
 
 
-// export type ParseResult<T> = E.Either<ParseError, T>;
 
-// export const makeParseError =
-//     (node?: Node) =>
-//         (e: string | unknown): ParseError => {
-//             const message = typeof e === 'string'
-//                 ? e : e instanceof Error
-//                     ? e.message : String(e);
-//             return { message, node };
-//         }
 
 // export const getResultSemigroup =
 //     <T>(sg: SG.Semigroup<T>): SG.Semigroup<ParseResult<T>> => ({
