@@ -211,23 +211,13 @@ export const parseSourceFile =
                 E.mapLeft(ROA.map(makeParseDiagnostic)),
                 E.map(symbols => {
                     const srcScope = createScope(scope)(symbols);
-                    const functions = pipe(
+                    return pipe(
                         symbols, 
                         ROA.filterMap(O.fromPredicate(isFunctionSymbolDef)),
                         ROA.map(d => parseContractMethod(srcScope)(d.decl))
                     );
                 })
             );
-            // if (E.isLeft(srcDeclResult)) {
-            //     return [[], ROA.concat(srcDeclResult.left)(diagnostics)]
-            // }
-            
-            
-            // const functions = pipe(
-            //     srcDeclResult.right,
-            //     ROA.filterMap(O.fromPredicate(isFunctionSymbolDef)),
-            //     ROA.map(d => d.decl)
-            // );
 
             return [[], diagnostics]
         }

@@ -364,7 +364,7 @@ type Diagnostic = tsm.ts.Diagnostic;
 
 export const parseContractMethod =
     (scope: Scope) =>
-        ($function: tsm.FunctionDeclaration): S.State<ReadonlyArray<Diagnostic>, O.Option<ContractMethod>> =>
+        (node: tsm.FunctionDeclaration): S.State<ReadonlyArray<Diagnostic>, O.Option<ContractMethod>> =>
             diagnostics => {
 
                 // const $scope = createScope(scope)(defs);
