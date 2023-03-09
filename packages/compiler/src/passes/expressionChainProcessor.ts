@@ -1,14 +1,15 @@
-// import { Symbol, Expression, Identifier, Node, PropertyAccessExpression, CallExpression } from "ts-morph";
-// import { flow, identity, pipe } from 'fp-ts/function';
-// import * as ROA from 'fp-ts/ReadonlyArray';
-// import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
-// import * as E from "fp-ts/Either";
-// import * as O from 'fp-ts/Option'
-// import * as TS from "../utility/TS";
-// import { Operation } from "../types/Operation";
-// import { resolve, Scope } from "../scope";
-// import { CallResult, GetPropResult, isCallableDef, isObjectDef, makeParseError, ParseError, parseSymbol, SymbolDef } from "../symbolDef";
-// import { parseExpression as $parseExpression } from "./expressionProcessor";
+import { Symbol, Expression, Identifier, Node, PropertyAccessExpression, CallExpression } from "ts-morph";
+import { flow, identity, pipe } from 'fp-ts/function';
+import * as ROA from 'fp-ts/ReadonlyArray';
+import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
+import * as E from "fp-ts/Either";
+import * as O from 'fp-ts/Option'
+import * as TS from "../utility/TS";
+import { Operation } from "../types/Operation";
+import { resolve, Scope } from "../scope";
+import { ParseError, SymbolDef } from "../symbolDef";
+import { parseExpression as $parseExpression } from "./expressionProcessor";
+import { makeParseError } from "./processSourceFile";
 
 // interface ChainContext {
 //     readonly operations: ReadonlyArray<Operation>;
@@ -129,37 +130,39 @@
 //             }
 //         }
 
-// export const parseExpressionChain =
-//     (scope: Scope) =>
-//         (node: Expression): E.Either<ParseError, ReadonlyArray<Operation>> => {
-//             return pipe(
-//                 node,
-//                 makeExpressionChain,
-//                 RNEA.matchLeft((head, tail) => pipe(
-//                     tail,
-//                     ROA.reduce(
-//                         createChainContext(scope)(head),
-//                         reduceChainContext(scope)
-//                     )
-//                 )),
-//                 E.map(context => context.operations)
-//             );
+export const parseExpressionChain =
+    (scope: Scope) =>
+        (node: Expression): E.Either<ParseError, ReadonlyArray<Operation>> => {
+            const q = pipe(
+                node,
+                makeExpressionChain,
+                // RNEA.matchLeft((head, tail) => pipe(
+                //     tail,
+                //     ROA.reduce(
+                //         createChainContext(scope)(head),
+                //         reduceChainContext(scope)
+                //     )
+                // )),
+                // E.map(context => context.operations)
+            );
 
-//             function makeExpressionChain(node: Expression): RNEA.ReadonlyNonEmptyArray<Expression> {
-//                 return makeChain(RNEA.of<Expression>(node));
+            return E.left(makeParseError(node)('parseExpressionChain not implemented'));
 
-//                 function makeChain(
-//                     chain: RNEA.ReadonlyNonEmptyArray<Expression>
-//                 ): RNEA.ReadonlyNonEmptyArray<Expression> {
-//                     return pipe(
-//                         chain,
-//                         RNEA.head,
-//                         TS.getExpression,
-//                         O.match(
-//                             () => chain,
-//                             expr => makeChain(ROA.prepend(expr)(chain))
-//                         )
-//                     );
-//                 }
-//             }
-//         }
+            function makeExpressionChain(node: Expression): RNEA.ReadonlyNonEmptyArray<Expression> {
+                return makeChain(RNEA.of<Expression>(node));
+
+                function makeChain(
+                    chain: RNEA.ReadonlyNonEmptyArray<Expression>
+                ): RNEA.ReadonlyNonEmptyArray<Expression> {
+                    return pipe(
+                        chain,
+                        RNEA.head,
+                        TS.getExpression,
+                        O.match(
+                            () => chain,
+                            expr => makeChain(ROA.prepend(expr)(chain))
+                        )
+                    );
+                }
+            }
+        }

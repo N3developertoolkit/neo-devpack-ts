@@ -23,7 +23,7 @@ export const makeParseError =
             return { message, node };
         }
 
-const parseSymbol = (node: Node): E.Either<ParseError, Symbol> => {
+export const parseSymbol = (node: Node): E.Either<ParseError, Symbol> => {
     return pipe(
         node,
         TS.getSymbol,
@@ -195,7 +195,7 @@ const parseSrcDeclarations = (src: SourceFile): E.Either<ReadonlyArray<ParseErro
 }
 
 export const parseSourceFile =
-    (src: SourceFile, scope: Scope): S.State<ReadonlyArray<ts.Diagnostic>, ReadonlyArray<ContractMethod>> =>
+    (src: SourceFile, parentScope: Scope): S.State<ReadonlyArray<ts.Diagnostic>, ReadonlyArray<ContractMethod>> =>
         diagnostics => {
             if (src.isDeclarationFile()) {
                 const diag = createDiagnostic(`${src.getFilePath()} is a declaration file`, {
@@ -205,19 +205,27 @@ export const parseSourceFile =
                 return [[], ROA.append(diag)(diagnostics)]
             }
 
-            const srcDeclResult = pipe(
+            const srcDeclsE = pipe(
                 src, 
                 parseSrcDeclarations,
                 E.mapLeft(ROA.map(makeParseDiagnostic)),
-                E.map(symbols => {
-                    const srcScope = createScope(scope)(symbols);
-                    return pipe(
-                        symbols, 
-                        ROA.filterMap(O.fromPredicate(isFunctionSymbolDef)),
-                        ROA.map(d => parseContractMethod(srcScope)(d.decl))
-                    );
-                })
             );
+            if (E.isLeft(srcDeclsE)) {
+                return [[], ROA.concat(srcDeclsE.left)(diagnostics)];
+            }
+            const srcDecls = srcDeclsE.right;
+            const scope = createScope(parentScope)(srcDecls);
+            const functions = pipe(
+                srcDecls,
+                ROA.filterMap(O.fromPredicate(isFunctionSymbolDef))
+            )
 
-            return [[], diagnostics]
+            let methods: ReadonlyArray<ContractMethod> = ROA.empty;
+            for (const func of functions) {
+                let $method;
+                [$method, diagnostics] = parseContractMethod(scope)(func.decl)(diagnostics);
+                methods = ROA.append($method)(methods);
+            }
+
+            return [methods, diagnostics]
         }
