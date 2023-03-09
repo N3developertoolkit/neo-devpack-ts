@@ -22,6 +22,8 @@ export const createDiagnostic = (e: ParseError) => $createDiagnostic(e.message, 
 
 export interface SymbolDef {
     readonly symbol: Symbol;
+    readonly loadOps?: ReadonlyArray<Operation>;
+    readonly storeOps?: ReadonlyArray<Operation>;
 }
 
 

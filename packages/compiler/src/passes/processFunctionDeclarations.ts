@@ -343,7 +343,13 @@ class ParameterSymbolDef implements SymbolDef {
         readonly symbol: tsm.Symbol,
         readonly decl: tsm.ParameterDeclaration,
         readonly index: number
-    ) { }
+    ) { 
+        this.loadOps = [{ kind: "loadarg", index }]
+        this.storeOps = [{ kind: "storearg", index }]
+    }
+
+    readonly loadOps: ReadonlyArray<Operation>;
+    readonly storeOps: ReadonlyArray<Operation>;
 }
 
 export const parseContractMethod =

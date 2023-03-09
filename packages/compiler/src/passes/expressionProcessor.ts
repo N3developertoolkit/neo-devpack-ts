@@ -93,7 +93,7 @@ export const parseIdentifier =
                     resolve(scope),
                     E.fromOption(() => makeParseError(node)(`unresolved symbol ${symbol.getName()}`))
                 )),
-                E.map(s => [])
+                E.map(def => def.loadOps ?? [])
             );
         }
 
