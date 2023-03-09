@@ -1,6 +1,5 @@
 import * as tsm from "ts-morph";
-
-import { identity, pipe } from 'fp-ts/function';
+import { pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
@@ -13,7 +12,6 @@ import * as TS from "../utility/TS";
 import { ParseError, createDiagnostic, SymbolDef } from "../symbolDef";
 import { createScope, Scope, updateScope } from "../scope";
 import { isJumpTargetOp, JumpTargetOperation, LoadStoreOperation, Location, Operation } from "../types/Operation";
-// import { parseExpression as $parseExpression } from "./expressionProcessor";
 import { isVoidLike } from "../utils";
 import { ContractMethod } from "../compiler";
 import { makeParseError, parseSymbol } from "./processSourceFile";
@@ -82,10 +80,9 @@ const parseBlock =
             return [operations, { ...$state, scope: state.scope }];
         }
 
-class LocalVariableSymbolDef implements SymbolDef
-{
+class LocalVariableSymbolDef implements SymbolDef {
     constructor(
-        readonly symbol: tsm.Symbol, 
+        readonly symbol: tsm.Symbol,
         readonly decl: tsm.VariableDeclaration,
         readonly index: number
     ) { }
@@ -332,6 +329,7 @@ const makeContractMethod =
                     ROA.sequence(E.Applicative),
                 )),
                 E.map(({ symbol, operations, variables }) => ({
+                    name: symbol.getName(),
                     node,
                     symbol,
                     operations,
@@ -342,7 +340,7 @@ const makeContractMethod =
 
 class ParameterSymbolDef implements SymbolDef {
     constructor(
-        readonly symbol: tsm.Symbol, 
+        readonly symbol: tsm.Symbol,
         readonly decl: tsm.ParameterDeclaration,
         readonly index: number
     ) { }
@@ -350,32 +348,24 @@ class ParameterSymbolDef implements SymbolDef {
 
 export const parseContractMethod =
     (parentScope: Scope) =>
-        (node: tsm.FunctionDeclaration): S.State<ReadonlyArray<Diagnostic>, ContractMethod> =>
-            diagnostics => {
-                 return pipe(
-                    node.getParameters(),
-                    ROA.mapWithIndex((index, node) => pipe(
-                        node,
-                        parseSymbol,
-                        E.map(symbol => new ParameterSymbolDef(symbol, node, index))
-                    )),
-                    ROA.separate,
-                    E_fromSeparated,
-                    E.map(createScope(parentScope)),
-                    E.bindTo('scope'),
-                    E.bind('body', () => pipe(
-                        node.getBody(),
-                        E.fromNullable(makeParseError(node)("undefined body")),
-                        E.mapLeft(ROA.of)
-                    )),
-                    E.chain(o => parseBody(o.scope)(o.body)),
-                    E.chain(r => pipe(r, makeContractMethod(node), E.mapLeft(ROA.of))),
-                    E.match(
-                        errors => [
-                            { node, symbol: node.getSymbol()!, operations: [], variables: [] },
-                            ROA.concat(ROA.map(createDiagnostic)(errors))(diagnostics)
-                        ],
-                        method => [method, diagnostics]
-                    )
-                );
-            }
+        (node: tsm.FunctionDeclaration): E.Either<ReadonlyArray<ParseError>, ContractMethod> => {
+            return pipe(
+                node.getParameters(),
+                ROA.mapWithIndex((index, node) => pipe(
+                    node,
+                    parseSymbol,
+                    E.map(symbol => new ParameterSymbolDef(symbol, node, index))
+                )),
+                ROA.separate,
+                E_fromSeparated,
+                E.map(createScope(parentScope)),
+                E.bindTo('scope'),
+                E.bind('body', () => pipe(
+                    node.getBody(),
+                    E.fromNullable(makeParseError(node)("undefined body")),
+                    E.mapLeft(ROA.of)
+                )),
+                E.chain(o => parseBody(o.scope)(o.body)),
+                E.chain(r => pipe(r, makeContractMethod(node), E.mapLeft(ROA.of))),
+            );
+        }

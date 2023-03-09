@@ -37,7 +37,7 @@ const binaryOpTokenMap: ReadonlyMap<SyntaxKind, SimpleOperationKind> = new Map([
     [SyntaxKind.GreaterThanToken, 'greaterthan'],
     [SyntaxKind.LessThanEqualsToken, 'lessthanorequal'],
     [SyntaxKind.LessThanToken, 'lessthan'],
-    [SyntaxKind.PlusToken, 'add']
+    [SyntaxKind.PlusToken, 'add'] 
 ]);
 
 export const parseBinaryOperatorToken =
@@ -46,7 +46,7 @@ export const parseBinaryOperatorToken =
             node.getKind(),
             k => binaryOpTokenMap.get(k),
             E.fromNullable(
-                makeParseError()(`parseBinaryOperatorToken ${node.getKindName()} not supported`)
+                makeParseError(node)(`parseBinaryOperatorToken ${node.getKindName()} not supported`)
             ),
             E.map(kind => ({ kind }) as Operation)
         );
@@ -55,19 +55,16 @@ export const parseBinaryOperatorToken =
 export const parseBinaryExpression =
     (scope: Scope) =>
         (node: BinaryExpression): E.Either<ParseError, readonly Operation[]> => {
-            // if left and right are strings, binary token op should be concat instead of add
+            // TODO:  if left and right are strings, PlusToken op should be concat instead of add
             return pipe(
                 node.getOperatorToken(),
                 parseBinaryOperatorToken,
                 // map errors to reference the expression node 
-                // instead of the token node
                 E.mapLeft(e => makeParseError(node)(e.message)),
                 E.chain(op => pipe(
                     node.getRight(),
                     parseExpression(scope),
-                    E.map(
-                        ROA.append(op)
-                    )
+                    E.map(ROA.append(op))
                 )),
                 E.chain(ops => pipe(
                     node.getLeft(),
@@ -157,10 +154,6 @@ export const parseExpression =
     (scope: Scope) =>
         (node: Expression): E.Either<ParseError, readonly Operation[]> => {
 
-            const parseLiteral =
-                <T>(func: (node: T) => E.Either<ParseError, Operation>) =>
-                    flow(func, E.map(ROA.of));
-
             if (Node.hasExpression(node)) return parseExpressionChain(scope)(node);
             if (Node.isArrayLiteralExpression(node)) return parseArrayLiteral(scope)(node);
             if (Node.isBigIntLiteral(node)) return parseLiteral(parseBigIntLiteral)(node);
@@ -173,4 +166,8 @@ export const parseExpression =
             if (Node.isStringLiteral(node)) return parseLiteral(parseStringLiteral)(node);
             if (Node.isTrueLiteral(node)) return parseLiteral(parseBooleanLiteral)(node);
             return E.left(makeParseError(node)(`parseExpression ${node.getKindName()} failed`))
+
+            function parseLiteral<T>(func: (node: T) => E.Either<ParseError, Operation>) {
+                return flow(func, E.map(ROA.of));
+            }
         }

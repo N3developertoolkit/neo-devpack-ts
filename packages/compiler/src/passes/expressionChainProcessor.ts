@@ -146,6 +146,7 @@ export const parseExpressionChain =
                 // E.map(context => context.operations)
             );
 
+            return E.right([]);
             return E.left(makeParseError(node)('parseExpressionChain not implemented'));
 
             function makeExpressionChain(node: Expression): RNEA.ReadonlyNonEmptyArray<Expression> {

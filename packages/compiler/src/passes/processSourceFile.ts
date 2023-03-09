@@ -41,7 +41,7 @@ class ConstantSymbolDef implements SymbolDef {
         readonly value: ConstantValue
     ) {
         this.name = symbol.getName();
-     }
+    }
 }
 
 class EventSymbolDef implements SymbolDef {
@@ -102,7 +102,7 @@ const parseSrcFunctionDeclaration = (node: FunctionDeclaration): E.Either<ParseE
 
 const parseSrcLetVariableStatement = (node: VariableStatement): E.Either<ReadonlyArray<ParseError>, ReadonlyArray<SymbolDef>> => {
     if (node.getDeclarationKind() === VariableDeclarationKind.Const)
-        return E.left(ROA.of(makeParseError(node)('const variable statement passed to parseSrcLetVariableStatement'))) 
+        return E.left(ROA.of(makeParseError(node)('const variable statement passed to parseSrcLetVariableStatement')))
 
     return E.left(ROA.of(makeParseError(node)(`parseSrcVariableStatement not implemented`)));
 }
@@ -137,12 +137,11 @@ const parseConstantValue =
         }
     }
 
-
 const parseConstVariableStatement = (node: VariableStatement): E.Either<ReadonlyArray<ParseError>, ReadonlyArray<SymbolDef>> => {
-    
+
     if (node.getDeclarationKind() !== VariableDeclarationKind.Const)
-        return E.left(ROA.of(makeParseError(node)('non const variable statement passed to parseConstVariableStatement'))) 
-    
+        return E.left(ROA.of(makeParseError(node)('non const variable statement passed to parseConstVariableStatement')))
+
     const { left: failures, right: sources } = pipe(
         node.getDeclarations(),
         ROA.map(decl => {
@@ -206,26 +205,35 @@ export const parseSourceFile =
             }
 
             const srcDeclsE = pipe(
-                src, 
+                src,
                 parseSrcDeclarations,
                 E.mapLeft(ROA.map(makeParseDiagnostic)),
             );
             if (E.isLeft(srcDeclsE)) {
                 return [[], ROA.concat(srcDeclsE.left)(diagnostics)];
             }
-            const srcDecls = srcDeclsE.right;
-            const scope = createScope(parentScope)(srcDecls);
-            const functions = pipe(
-                srcDecls,
-                ROA.filterMap(O.fromPredicate(isFunctionSymbolDef))
-            )
+
+            const scope = createScope(parentScope)(srcDeclsE.right);
 
             let methods: ReadonlyArray<ContractMethod> = ROA.empty;
-            for (const func of functions) {
-                let $method;
-                [$method, diagnostics] = parseContractMethod(scope)(func.decl)(diagnostics);
-                methods = ROA.append($method)(methods);
-            }
-
+            pipe(
+                srcDeclsE.right,
+                ROA.filterMap(O.fromPredicate(isFunctionSymbolDef)),
+                ROA.map(f => parseContractMethod(scope)(f.decl)),
+                ROA.map(
+                    E.match(
+                        errors => {
+                            diagnostics = pipe(
+                                errors,
+                                ROA.map(makeParseDiagnostic),
+                                ROA.concat(diagnostics)
+                            )
+                        },
+                        method => {
+                            methods = ROA.append(method)(methods);
+                        }
+                    )
+                )
+            )
             return [methods, diagnostics]
         }
