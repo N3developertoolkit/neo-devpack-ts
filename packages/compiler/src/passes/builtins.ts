@@ -288,7 +288,7 @@ class NativeContractMemberDef extends $SymbolDef implements ObjectSymbolDef {
 
         let parametersCount = 0;
         let returnType = sig.getType();
-        if (tsm.Node.isMethodDeclaration(sig)) {
+        if (tsm.Node.isMethodSignature(sig)) {
             parametersCount = sig.getParameters().length;
             returnType = sig.getReturnType();
             this.parseArguments = parseArguments

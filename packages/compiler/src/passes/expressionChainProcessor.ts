@@ -171,7 +171,7 @@ const reduceChainContext =
                 E.chain(context => {
                     // if (Node.isAsExpression(node)) return parseExpression(node.getExpression());
                     if (Node.isCallExpression(node)) return parseCallExpression(scope)(context)(node);
-                    // if (Node.isNonNullExpression(node)) return parseExpression(node.getExpression());
+                    if (Node.isNonNullExpression(node)) return parseExpression(node.getExpression());
                     // if (Node.isParenthesizedExpression(node)) return parseExpression(node.getExpression());
                     if (Node.isPropertyAccessExpression(node)) return parsePropertyAccessExpression(scope)(context)(node);
                     return E.left(makeParseError(node)(`reduceParseChainContext ${node.getKindName()} failed`));
