@@ -1,13 +1,9 @@
 import * as tsm from "ts-morph";
 import { CompileError } from "./compiler";
-import { basename, join } from "path";
+import { join } from "path";
 import * as fsp from "fs/promises";
-import { ReadonlyUint8Array } from "./utility/ReadonlyArrays";
 import * as ROA from 'fp-ts/ReadonlyArray';
 import { sc, u } from "@cityofzion/neon-core";
-
-export const getArguments = (node: tsm.CallExpression) => 
-    ROA.fromArray(node.getArguments() as tsm.Expression[])
 
 export function isNotNullOrUndefined<T extends Object>(input: null | undefined | T): input is T {
     return input != null;
