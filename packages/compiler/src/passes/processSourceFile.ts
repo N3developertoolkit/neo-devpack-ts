@@ -1,4 +1,4 @@
-import { Node, Symbol, FunctionDeclaration, JSDocTag, VariableStatement, Expression, SyntaxKind, BigIntLiteral, NumericLiteral, StringLiteral, VariableDeclarationKind, SourceFile, ts, Type } from "ts-morph";
+import { Node, Symbol, FunctionDeclaration, JSDocTag, VariableStatement, Expression, SyntaxKind, BigIntLiteral, NumericLiteral, StringLiteral, VariableDeclarationKind, SourceFile, ts, Type, VariableDeclaration } from "ts-morph";
 import { createScope, Scope } from "../scope";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as S from 'fp-ts/State'
@@ -9,7 +9,7 @@ import * as O from 'fp-ts/Option'
 import { createDiagnostic } from "../utils";
 import { identity, pipe } from "fp-ts/function";
 import { ContractMethod } from "../compiler";
-import { ParseError, SymbolDef } from "../symbolDef";
+import { $SymbolDef, ParseError, SymbolDef } from "../symbolDef";
 import { parseContractMethod } from "./processFunctionDeclarations";
 
 export const makeParseDiagnostic = (e: ParseError) => createDiagnostic(e.message, { node: e.node });
@@ -33,31 +33,24 @@ export const parseSymbol = (node: Node): E.Either<ParseError, Symbol> => {
 
 type ConstantValue = bigint | boolean | Uint8Array | null;
 
-class ConstantSymbolDef implements SymbolDef {
-    get name() { return this.symbol.getName(); }
-    get typeName() { return this.type.getSymbol()?.getName(); }
-
+class ConstantSymbolDef extends $SymbolDef {
     constructor(
-        readonly symbol: Symbol,
-        readonly type: Type,
+        readonly decl: VariableDeclaration,
+        symbol: Symbol,
         readonly value: ConstantValue
     ) {
-        this.type = null!;
+        super(decl, symbol);
     }
 }
 
-class EventSymbolDef implements SymbolDef {
-    readonly type: Type;
-
-    get name() { return this.symbol.getName(); }
-    get typeName() { return this.type.getSymbol()?.getName(); }
+class EventSymbolDef extends $SymbolDef {
 
     constructor(
-        readonly symbol: Symbol,
         readonly decl: FunctionDeclaration,
+        symbol: Symbol,
         readonly eventName: string
     ) {
-        this.type = decl.getType();
+        super(decl, symbol);
     }
 
     static create(decl: FunctionDeclaration, tag: JSDocTag): E.Either<ParseError, EventSymbolDef> {
@@ -66,27 +59,23 @@ class EventSymbolDef implements SymbolDef {
             parseSymbol,
             E.map(symbol => {
                 const eventName = tag.getCommentText() ?? symbol.getName();
-                return new EventSymbolDef(symbol, decl, eventName);
+                return new EventSymbolDef(decl, symbol, eventName);
             })
         );
     }
 }
 
-class FunctionSymbolDef implements SymbolDef {
-    readonly type: Type;
+class FunctionSymbolDef extends $SymbolDef {
 
-    get name() { return this.symbol.getName(); }
-    get typeName() { return this.type.getSymbol()?.getName(); }
-
-    constructor(readonly symbol: Symbol, readonly decl: FunctionDeclaration) {
-        this.type = this.decl.getType();
+    constructor(readonly decl: FunctionDeclaration, symbol: Symbol) {
+        super(decl, symbol);
     }
 
     static create(decl: FunctionDeclaration): E.Either<ParseError, FunctionSymbolDef> {
         return pipe(
             decl,
             parseSymbol,
-            E.map(s => new FunctionSymbolDef(s, decl)),
+            E.map(symbol => new FunctionSymbolDef(decl, symbol)),
         )
     }
 }
@@ -116,28 +105,27 @@ const parseSrcLetVariableStatement = (node: VariableStatement): E.Either<Readonl
 }
 
 const parseConstantValue =
-    (node: Expression): E.Either<ParseError, {type: Type, value: ConstantValue}> => {
-        const type = node.getType();
+    (node: Expression): E.Either<ParseError, ConstantValue> => {
         switch (node.getKind()) {
             case SyntaxKind.NullKeyword:
-                return E.of({ type, value: null});
+                return E.of(null);
             case SyntaxKind.FalseKeyword:
-                return E.of({ type, value: false});
+                return E.of(false);
             case SyntaxKind.TrueKeyword:
-                return E.of({ type, value: true});
+                return E.of(true);
             case SyntaxKind.BigIntLiteral: {
                 const literal = (node as BigIntLiteral).getLiteralValue() as bigint;
-                return E.of({ type, value: literal});
+                return E.of(literal);
             }
             case SyntaxKind.NumericLiteral: {
                 const literal = (node as NumericLiteral).getLiteralValue();
                 return Number.isInteger(literal)
-                    ? E.of({ type, value: BigInt(literal)})
+                    ? E.of(BigInt(literal))
                     : E.left(makeParseError(node)(`invalid non-integer numeric literal ${literal}`));
             }
             case SyntaxKind.StringLiteral: {
                 const literal = (node as StringLiteral).getLiteralValue();
-                return E.of({ type, value: Buffer.from(literal, 'utf8')});
+                return E.of(Buffer.from(literal, 'utf8'));
             }
             // case tsm.SyntaxKind.ArrayLiteralExpression: 
             // case tsm.SyntaxKind.ObjectLiteralExpression:
@@ -160,7 +148,7 @@ const parseConstVariableStatement = (node: VariableStatement): E.Either<Readonly
                 E.chain(parseConstantValue),
                 E.bindTo('value'),
                 E.bind('symbol', () => parseSymbol(decl)),
-                E.map(({ value, symbol }) => new ConstantSymbolDef(symbol, value.type, value.value))
+                E.map(({ value, symbol }) => new ConstantSymbolDef(decl, symbol, value))
             )
         }),
         ROA.partitionMap(identity),

@@ -10,10 +10,9 @@ import { LibraryDeclarations } from "../projectLib";
 import { CompilerState } from "../compiler";
 import { createScope, Scope } from "../scope";
 import { sc, u } from "@cityofzion/neon-core";
-import { ObjectSymbolDef, SymbolDef } from "../symbolDef";
+import { $SymbolDef, ObjectSymbolDef, SymbolDef } from "../symbolDef";
 import { isVoidLike } from "../utils";
 import { Operation, SysCallOperation } from "../types";
-import { sign } from "crypto";
 
 function single<T>(array: ReadonlyArray<T>): O.Option<T> {
     return array.length === 1 ? O.some(array[0] as T) : O.none;
@@ -44,42 +43,29 @@ module REGEX {
     export const match = (regex: RegExp) => (value: string) => O.fromNullable(value.match(regex));
 }
 
-class StaticClassDef implements SymbolDef {
-    readonly symbol: tsm.Symbol;
-    readonly type: tsm.Type;
+class StaticClassDef extends $SymbolDef {
     readonly loadOps: ReadonlyArray<Operation> = [];
 
-    get name() { return this.symbol.getName(); }
-    get typeName() { return this.type.getSymbol()?.getName(); }
-
-    constructor(
-        readonly decl: tsm.VariableDeclaration,
-    ) {
-        this.symbol = decl.getSymbolOrThrow();
-        this.type = decl.getType();
+    constructor(readonly decl: tsm.VariableDeclaration) {
+        super(decl);
     }
 }
 
-class ByteStringConstructorDef implements SymbolDef {
-    readonly symbol: tsm.Symbol;
-    readonly type: tsm.Type;
+class ByteStringConstructorDef extends $SymbolDef implements ObjectSymbolDef {
     readonly props: ReadonlyArray<{
         readonly symbol: tsm.Symbol,
         readonly type: tsm.Type;
         readonly signature: tsm.MethodSignature;
     }>
 
-    get name() { return this.symbol.getName(); }
-    get typeName() { return this.type.getSymbol()?.getName(); }
-
     constructor(readonly decl: tsm.InterfaceDeclaration) {
-        this.symbol = decl.getSymbolOrThrow();
-        this.type = decl.getType();
-        this.props = pipe(
+        super(decl);
+        this.props = [];
+        const q = pipe(
             decl.getMembers(),
             ROA.map(
                 E.fromPredicate(
-                    tsm.Node.isMethodSignature, 
+                    tsm.Node.isMethodSignature,
                     n => n?.getSymbol()?.getName() ?? "<unknown>")
             ),
             ROA.map(E.map(signature => ({
@@ -92,71 +78,91 @@ class ByteStringConstructorDef implements SymbolDef {
     }
 }
 
-class SysCallInterfaceMemberDef implements SymbolDef {
-    readonly symbol: tsm.Symbol;
-    readonly type: tsm.Type;
-    readonly loadOps?: ReadonlyArray<Operation>;
+class SysCallInterfaceMemberDef extends $SymbolDef {
+    get loadOps() {
+        return tsm.Node.isPropertySignature(this.sig)
+            ? [this.sysCallOp]
+            : [];
+    }
 
-    get name() { return this.symbol.getName(); }
-    get typeName() { return this.type.getSymbol()?.getName(); }
+    private get sysCallOp(): SysCallOperation {
+        return { kind: "syscall", name: this.serviceName };
+    }
 
     constructor(
-        readonly signature: tsm.MethodSignature | tsm.PropertySignature,
+        readonly sig: tsm.MethodSignature | tsm.PropertySignature,
         readonly serviceName: string
     ) {
-        this.symbol = signature.getSymbolOrThrow();
-        this.type = signature.getType();
-        if (tsm.Node.isPropertySignature(signature)) {
-            const op: SysCallOperation = { kind: "syscall", name: serviceName };
-            this.loadOps = [op];
-        }
+        super(sig);
     }
 }
 
-class SysCallInterfaceDef implements ObjectSymbolDef {
-    readonly symbol: tsm.Symbol;
-    readonly type: tsm.Type;
+class SysCallInterfaceDef extends $SymbolDef implements ObjectSymbolDef {
     readonly props: ReadonlyArray<SysCallInterfaceMemberDef>;
 
-    get name() { return this.symbol.getName(); }
-    get typeName() { return this.type.getSymbol()?.getName(); }
-
     constructor(readonly decl: tsm.InterfaceDeclaration) {
-        this.symbol = decl.getSymbolOrThrow();
-        this.type = decl.getType();
+        super(decl);
         this.props = pipe(
-            decl.getMembers(), // TODO: does not chase down inherited members
-            ROA.map(signature => pipe(
-                signature,
+            this.type.getProperties(),
+            ROA.chain(symbol => symbol.getDeclarations()),
+            ROA.map(member => pipe(
+                member,
                 O.fromPredicate(isMethodOrProp),
-                O.bindTo('signature'),
-                O.bind('serviceName', ({signature}) => TS.getTagComment('syscall')(signature)),
-                O.map(({serviceName, signature}) => new SysCallInterfaceMemberDef(signature, serviceName)),
-                E.fromOption(() => signature.getSymbol()?.getName() ?? "<unknown>")
+                O.map(signature => {
+                    const name = pipe(
+                        signature,
+                        TS.getTagComment('syscall'),
+                        O.match(() => signature.getSymbolOrThrow().getName(), identity));
+
+                    return new SysCallInterfaceMemberDef(signature, name);
+                }),
+                E.fromOption(() => member.getSymbolOrThrow().getName())
             )),
-            checkErrors(`Invalid ${this.symbol.getName()} members`),
+            checkErrors("Invalid syscall interface members")
         )
     }
 }
 
-class StackItemDef implements SymbolDef {
-    readonly symbol: tsm.Symbol;
-    readonly type: tsm.Type;
-    readonly props: ReadonlyArray<{
-        readonly symbol: tsm.Symbol;
-        readonly type: tsm.Type;
-        readonly signature: tsm.PropertySignature,
-        readonly index: number,
-    }>
+class SysCallFunctionDef extends $SymbolDef {
+    readonly serviceName: string;
 
-    get name() { return this.symbol.getName(); }
-    get typeName() { return this.type.getSymbol()?.getName(); }
+    constructor(
+        readonly decl: tsm.FunctionDeclaration,
+    ) {
+        super(decl);
+        this.serviceName = pipe(
+            decl,
+            TS.getTagComment('syscall'),
+            O.match(
+                () => { throw new Error(`invalid service name for ${this.symbol.getName()} syscall function`); },
+                identity
+            )
+        )
+    }
+}
+
+class StackItemPropertyDef extends $SymbolDef {
+
+    constructor(
+        readonly sig: tsm.PropertySignature,
+        readonly index: number
+    ) {
+        super(sig);
+    }
+}
+
+class StackItemDef extends $SymbolDef implements ObjectSymbolDef {
+    readonly props: ReadonlyArray<StackItemPropertyDef>;
 
     constructor(
         readonly decl: tsm.InterfaceDeclaration,
     ) {
-        this.symbol = decl.getSymbolOrThrow();
-        this.type = decl.getType();
+        super(decl);
+
+        if (this.type.getProperties().length !==
+            decl.getMembers().length) {
+            throw new Error(`invalid @stackitem ${this.name}`)
+        }
 
         this.props = pipe(
             decl.getMembers(),
@@ -166,60 +172,69 @@ class StackItemDef implements SymbolDef {
                     tsm.Node.isPropertySignature,
                     () => `${member.getSymbol()?.getName()} (${member.getKindName()})`
                 ),
-                E.map(signature => ({ 
-                    signature, 
-                    index, 
-                    symbol: signature.getSymbolOrThrow(), 
-                    type: signature.getType(),
-                }))
+                E.map(sig => new StackItemPropertyDef(sig, index))
             )),
             checkErrors("Invalid stack item members")
         )
     }
 }
 
-class NativeContractConstructorDef implements SymbolDef {
-    readonly symbol: tsm.Symbol;
-    readonly type: tsm.Type;
-    readonly props: ReadonlyArray<{
-        readonly signature: tsm.MethodSignature | tsm.PropertySignature;
-        readonly symbol: tsm.Symbol;
-        readonly type: tsm.Type;
-        readonly parameterCount: number,
-        readonly hasReturnValue: boolean,
-    }>
+class NativeContractMemberDef extends $SymbolDef {
 
-    get name() { return this.symbol.getName(); }
-    get typeName() { return this.type.getSymbol()?.getName(); }
+    constructor(
+        readonly sig: tsm.MethodSignature | tsm.PropertySignature,
+        readonly hash: u.HexString,
+        readonly method: string,
+    ) {
+        super(sig);
+    }
+
+    get parameterCount() {
+        return tsm.Node.isMethodSignature(this.sig)
+            ? this.sig.getParameters().length
+            : 0;
+    }
+
+    get hasReturnValue() {
+        const type = tsm.Node.isMethodSignature(this.sig)
+            ? this.sig.getReturnType()
+            : this.sig.getType();
+        return !isVoidLike(type);
+    }
+
+    get methodToken() {
+        return new sc.MethodToken({
+            hash: this.hash.toString(),
+            method: this.method,
+            parametersCount: this.parameterCount,
+            hasReturnValue: this.hasReturnValue,
+            callFlags: sc.CallFlags.All
+        })
+    }
+}
+
+class NativeContractConstructorDef extends $SymbolDef implements ObjectSymbolDef {
+    readonly loadOps: ReadonlyArray<Operation> = [];
+    readonly props: ReadonlyArray<NativeContractMemberDef>
 
     constructor(
         readonly hash: u.HexString,
         readonly decl: tsm.InterfaceDeclaration,
     ) {
-        this.symbol = decl.getSymbolOrThrow();
-        this.type = decl.getType();
+        super(decl);
         this.props = pipe(
-            decl.getMembers(),
+            this.type.getProperties(),
+            ROA.chain(symbol => symbol.getDeclarations()),
             ROA.map(member => pipe(
                 member,
                 O.fromPredicate(isMethodOrProp),
                 O.map(signature => {
-                    const symbol = signature.getSymbolOrThrow();
                     const name = pipe(
                         signature,
                         TS.getTagComment("nativeContract"),
-                        O.match(() => symbol.getName(), identity));
-                    return {
-                        signature,
-                        symbol,
-                        type: signature.getType(),
-                        parameterCount: tsm.Node.isMethodSignature(signature)
-                            ? signature.getParameters().length
-                            : 0,
-                        hasReturnValue: tsm.Node.isMethodSignature(signature)
-                            ? !isVoidLike(signature.getReturnType())
-                            : !isVoidLike(signature.getType()),
-                    }
+                        O.match(() => signature.getSymbolOrThrow().getName(), identity));
+
+                    return new NativeContractMemberDef(signature, hash, name);
                 }),
                 E.fromOption(() => member.getSymbolOrThrow().getName())
             )),
@@ -257,30 +272,6 @@ class NativeContractConstructorDef implements SymbolDef {
         );
 
         return [new StaticClassDef(decl), typeDef]
-    }
-}
-
-class SysCallFunctionDef implements SymbolDef {
-    readonly symbol: tsm.Symbol;
-    readonly type: tsm.Type;
-    readonly serviceName: string;
-
-    get name() { return this.symbol.getName(); }
-    get typeName() { return this.type.getSymbol()?.getName(); }
-
-    constructor(
-        readonly decl: tsm.FunctionDeclaration,
-    ) {
-        this.symbol = decl.getSymbolOrThrow();
-        this.type = decl.getType();
-        this.serviceName = pipe(
-            decl,
-            TS.getTagComment('syscall'),
-            O.match(
-                () => { throw new Error(`invalid service name for ${this.symbol.getName()} syscall function`); },
-                identity
-            )
-        )
     }
 }
 

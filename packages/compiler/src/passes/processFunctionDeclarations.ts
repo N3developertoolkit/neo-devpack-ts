@@ -9,7 +9,7 @@ import * as SEP from 'fp-ts/Separated';
 import * as FP from 'fp-ts'
 import * as TS from "../utility/TS";
 
-import { ParseError, createDiagnostic, SymbolDef } from "../symbolDef";
+import { ParseError, createDiagnostic, SymbolDef, $SymbolDef } from "../symbolDef";
 import { createScope, Scope, updateScope } from "../scope";
 import { isJumpTargetOp, JumpTargetOperation, LoadStoreOperation, Location, Operation } from "../types/Operation";
 import { isVoidLike } from "../utils";
@@ -80,43 +80,41 @@ const parseBlock =
             return [operations, { ...$state, scope: state.scope }];
         }
 
-class LocalVariableSymbolDef implements SymbolDef {
-    readonly type: tsm.Type;
-    readonly loadOps: ReadonlyArray<Operation>;
-    readonly storeOps: ReadonlyArray<Operation>;
+class LocalVariableSymbolDef extends $SymbolDef {
 
-    get name() { return this.symbol.getName(); }
-    get typeName() { return this.type.getSymbol()?.getName(); }
+    get loadOps() {
+        return [{ kind: "loadlocal", index: this.index }];
+    }
+    get storeOps() {
+        return [{ kind: "storelocal", index: this.index }];
+    }
 
     constructor(
-        readonly symbol: tsm.Symbol,
         readonly decl: tsm.VariableDeclaration,
+        symbol: tsm.Symbol,
         readonly index: number
     ) {
-        this.type = decl.getType();
-
-        this.loadOps = [{ kind: "loadlocal", index }]
-        this.storeOps = [{ kind: "storelocal", index }]
-     }
+        super(decl, symbol);
+    }
 }
 
-class ParameterSymbolDef implements SymbolDef {
-    readonly type: tsm.Type;
-    readonly loadOps: ReadonlyArray<Operation>;
-    readonly storeOps: ReadonlyArray<Operation>;
+class ParameterSymbolDef extends $SymbolDef {
+    get loadOps() {
+        return [{ kind: "loadarg", index: this.index }];
+    }
+    get storeOps() {
+        return [{ kind: "storearg", index: this.index }];
+    }
 
     get name() { return this.symbol.getName(); }
     get typeName() { return this.type.getSymbol()?.getName(); }
 
     constructor(
-        readonly symbol: tsm.Symbol,
         readonly decl: tsm.ParameterDeclaration,
+        symbol: tsm.Symbol,
         readonly index: number
-    ) { 
-        this.type = decl.getType();
-
-        this.loadOps = [{ kind: "loadarg", index }]
-        this.storeOps = [{ kind: "storearg", index }]
+    ) {
+        super(decl, symbol);
     }
 
 }
@@ -133,7 +131,7 @@ const parseVariableDeclarations =
                     decl,
                     parseSymbol,
                     E.map(symbol => ({
-                        def: new LocalVariableSymbolDef(symbol, decl, index + state.locals.length),
+                        def: new LocalVariableSymbolDef(decl, symbol, index + state.locals.length),
                         node: decl
                     }))
                 )),
@@ -163,7 +161,7 @@ const parseVariableDeclarations =
             state = {
                 ...state,
                 locals: ROA.concat(declarations)(state.locals),
-                scope: updateScope(state.scope)(defs)
+                scope: updateScope(state.scope)(defs as ReadonlyArray<SymbolDef>)
             };
 
             return [operations, state];
@@ -378,11 +376,11 @@ export const parseContractMethod =
                 ROA.mapWithIndex((index, node) => pipe(
                     node,
                     parseSymbol,
-                    E.map(symbol => new ParameterSymbolDef(symbol, node, index))
+                    E.map(symbol => new ParameterSymbolDef(node, symbol, index))
                 )),
                 ROA.separate,
                 E_fromSeparated,
-                E.map(createScope(parentScope)),
+                E.map(defs => createScope(parentScope)(defs as ReadonlyArray<SymbolDef>)),
                 E.bindTo('scope'),
                 E.bind('body', () => pipe(
                     node.getBody(),
