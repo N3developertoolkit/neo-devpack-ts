@@ -211,7 +211,7 @@ class SysCallInterfaceDef extends $SymbolDef implements ObjectSymbolDef {
 
 class SysCallFunctionDef extends $SymbolDef implements CallableSymbolDef {
     readonly serviceName: string;
-    readonly loadOps = [];
+    readonly loadOps: readonly Operation[];
     readonly props = [];
     readonly parseArguments: ParseArgumentsFunc;
 
@@ -219,7 +219,6 @@ class SysCallFunctionDef extends $SymbolDef implements CallableSymbolDef {
         readonly decl: tsm.FunctionDeclaration,
     ) {
         super(decl);
-        this.parseArguments = parseArguments;
         this.serviceName = pipe(
             decl,
             TS.getTagComment('syscall'),
@@ -228,6 +227,8 @@ class SysCallFunctionDef extends $SymbolDef implements CallableSymbolDef {
                 identity
             )
         )
+        this.loadOps = [{ kind: "syscall", name: this.serviceName }]
+        this.parseArguments = parseArguments;
     }
 }
 

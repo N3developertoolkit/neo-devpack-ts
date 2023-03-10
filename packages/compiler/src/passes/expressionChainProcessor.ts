@@ -85,7 +85,7 @@ const parseAsExpression =
         (context: ChainContext) =>
             (node: AsExpression): E.Either<ParseError, ChainContext> => {
 
-                const q = pipe(
+                return pipe(
                     node,
                     TS.getType,
                     TS.getTypeSymbol,
@@ -104,8 +104,6 @@ const parseAsExpression =
                         identity
                     )
                 );
-
-                return q;
             }
 
 const parseCallExpression =
