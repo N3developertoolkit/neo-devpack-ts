@@ -244,6 +244,7 @@ export function parseOperation(kind: string, operand: string | undefined): Opera
     if (jumpOperationKinds.includes(kind as JumpOperationKind)) {
         if (!operand) throw new Error(`${kind} missing jump offset operand`);
         const op: JumpOffsetOperation = { kind: kind as JumpOperationKind, offset: parseInt(operand) }
+        return op;
     }
 
     if (loadStoreOperationKinds.includes(kind as LoadStoreOperationKind)) {

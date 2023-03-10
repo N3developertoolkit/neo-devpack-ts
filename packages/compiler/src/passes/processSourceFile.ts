@@ -1,4 +1,4 @@
-import { Node, Symbol, FunctionDeclaration, JSDocTag, VariableStatement, Expression, SyntaxKind, BigIntLiteral, NumericLiteral, StringLiteral, VariableDeclarationKind, SourceFile, ts, Type, VariableDeclaration } from "ts-morph";
+import { Node, Symbol, FunctionDeclaration, JSDocTag, VariableStatement, Expression, SyntaxKind, BigIntLiteral, NumericLiteral, StringLiteral, VariableDeclarationKind, SourceFile, ts, Type, VariableDeclaration, CallExpression } from "ts-morph";
 import { createScope, Scope } from "../scope";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as S from 'fp-ts/State'
@@ -9,8 +9,10 @@ import * as O from 'fp-ts/Option'
 import { createDiagnostic } from "../utils";
 import { identity, pipe } from "fp-ts/function";
 import { ContractMethod } from "../compiler";
-import { $SymbolDef, makeParseDiagnostic, makeParseError, ParseError, SymbolDef } from "../symbolDef";
+import { $SymbolDef, CallableSymbolDef, makeParseDiagnostic, makeParseError, ParseArgumentsFunc, ParseError, SymbolDef } from "../symbolDef";
 import { parseContractMethod } from "./processFunctionDeclarations";
+import { Operation } from "../types";
+import { parseArguments} from './expressionProcessor';
 
 export const parseSymbol = (node: Node): E.Either<ParseError, Symbol> => {
     return pipe(
@@ -32,7 +34,10 @@ class ConstantSymbolDef extends $SymbolDef {
     }
 }
 
-class EventSymbolDef extends $SymbolDef {
+class EventSymbolDef extends $SymbolDef implements CallableSymbolDef {
+
+    readonly loadOps: readonly Operation[];
+    readonly props = [];
 
     constructor(
         readonly decl: FunctionDeclaration,
@@ -40,6 +45,19 @@ class EventSymbolDef extends $SymbolDef {
         readonly eventName: string
     ) {
         super(decl, symbol);
+        this.loadOps = ROA.of({ kind: 'syscall', name: "System.Runtime.Notify" })
+    }
+
+    parseArguments = (scope: Scope) => (node: CallExpression): E.Either<ParseError, ReadonlyArray<Operation>> => {
+        return pipe(
+            node,
+            parseArguments(scope),
+            E.map(ROA.concat([
+                { kind: "pushint", value: BigInt(node.getArguments().length) },
+                { kind: 'pack' },
+                { kind: 'pushdata', value: Buffer.from(this.name, 'utf8') }
+            ] as readonly Operation[]))
+        );
     }
 
     static create(decl: FunctionDeclaration, tag: JSDocTag): E.Either<ParseError, EventSymbolDef> {

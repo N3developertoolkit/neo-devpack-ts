@@ -1,11 +1,8 @@
 import * as tsm from "ts-morph";
 import * as E from "fp-ts/Either";
 import * as ROA from 'fp-ts/ReadonlyArray'
-import * as ROM from 'fp-ts/ReadonlyMap'
 import * as ROR from 'fp-ts/ReadonlyRecord'
-import * as S from 'fp-ts/State'
 import * as O from 'fp-ts/Option'
-import * as STR from 'fp-ts/string';
 import * as TS from "../utility/TS";
 import { flow, identity, pipe } from "fp-ts/lib/function";
 import { LibraryDeclarations } from "../projectLib";
@@ -14,9 +11,10 @@ import { createScope, Scope } from "../scope";
 import { sc, u } from "@cityofzion/neon-core";
 import { $SymbolDef, ObjectSymbolDef, CallableSymbolDef, ParseError, SymbolDef, makeParseError, ParseArgumentsFunc } from "../symbolDef";
 import { getErrorMessage, isVoidLike, single } from "../utils";
-import { Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "../types";
+import { Operation, parseOperation as $parseOperation } from "../types";
 import { getArguments, parseArguments, parseExpression } from "./expressionProcessor";
 import { ReadonlyUint8Array } from "../utility/ReadonlyArrays";
+import { parse } from "path";
 
 
 function checkErrors(errorMessage: string) {
@@ -388,6 +386,43 @@ class NativeContractConstructorDef extends $SymbolDef implements ObjectSymbolDef
     }
 }
 
+const regexOperation = /(\S+)\s?(\S+)?/
+const parseOperation =
+    (node: tsm.Node) =>
+        (comment: string): E.Either<string, Operation> => {
+            const matches = comment.match(regexOperation) ?? [];
+            const error = `invalid operation tag comment "${comment}"`;
+            return matches.length === 3
+                ? pipe(
+                    $parseOperation(matches[1], matches[2]),
+                    E.fromNullable(error)
+                )
+                : E.left(error);
+        }
+
+class OperationsFunctionDef extends $SymbolDef implements CallableSymbolDef {
+    readonly props = [];
+    readonly parseArguments: ParseArgumentsFunc;
+    readonly loadOps: readonly Operation[];
+
+    constructor(
+        readonly decl: tsm.FunctionDeclaration,
+    ) {
+        super(decl);
+        this.parseArguments = parseArguments;
+        this.loadOps = pipe(
+            decl.getJsDocs(),
+            ROA.chain(d => d.getTags()),
+            ROA.filter(t => t.getTagName() === 'operation'),
+            ROA.map(t => t.getCommentText() ?? ""),
+            ROA.map(parseOperation(decl)),
+            checkErrors('@operation issues')
+        )
+    }
+
+}
+
+
 export const makeGlobalScope =
     (decls: LibraryDeclarations): CompilerState<Scope> =>
         diagnostics => {
@@ -417,6 +452,13 @@ export const makeGlobalScope =
                 decls.functions,
                 ROA.filter(TS.hasTag('syscall')),
                 ROA.map(decl => new SysCallFunctionDef(decl)),
+                ROA.concat(symbolDefs)
+            )
+
+            symbolDefs = pipe(
+                decls.functions,
+                ROA.filter(TS.hasTag('operation')),
+                ROA.map(decl => new OperationsFunctionDef(decl)),
                 ROA.concat(symbolDefs)
             )
 
