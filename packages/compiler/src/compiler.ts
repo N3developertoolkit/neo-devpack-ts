@@ -92,11 +92,11 @@ export function compile(
         if (hasErrors(diagnostics)) { return { diagnostics } }
 
     }
-    // let artifacts;
-    // [artifacts, diagnostics] = collectArtifacts(contractName, methods, $options)(diagnostics);
-    // if (hasErrors(diagnostics)) { return { diagnostics } }
+    let artifacts;
+    [artifacts, diagnostics] = collectArtifacts(contractName, methods, $options)(diagnostics);
+    if (hasErrors(diagnostics)) { return { diagnostics } }
 
-    return { diagnostics, methods }//, ...artifacts };
+    return { diagnostics, methods, ...artifacts };
 }
 
 async function exists(rootPath: fs.PathLike) {
