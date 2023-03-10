@@ -200,25 +200,12 @@ const reduceChainContext =
                 E.chain(context => {
                     if (Node.isAsExpression(node)) return parseAsExpression(scope)(context)(node);
                     if (Node.isCallExpression(node)) return parseCallExpression(scope)(context)(node);
-                    if (Node.isNonNullExpression(node)) return parseExpression(node.getExpression());
+                    if (Node.isNonNullExpression(node)) return E.of(context);
                     // if (Node.isParenthesizedExpression(node)) return parseExpression(node.getExpression());
                     if (Node.isPropertyAccessExpression(node)) return parsePropertyAccessExpression(scope)(context)(node);
                     return E.left(makeParseError(node)(`reduceParseChainContext ${node.getKindName()} failed`));
                 })
             )
-
-            function parseExpression(expression: Expression): E.Either<ParseError, ChainContext> {
-                return pipe(
-                    expression,
-                    $parseExpression(scope),
-                    E.bindTo('operations'),
-                    E.bind('context', () => context),
-                    E.map(t => ({
-                        ...t.context,
-                        operations: ROA.concat(t.operations)(t.context.operations),
-                    } as ChainContext))
-                );
-            }
         }
 
 export const parseExpressionChain =
