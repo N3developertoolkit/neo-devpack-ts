@@ -127,6 +127,7 @@ class SysCallInterfaceDef extends $SymbolDef implements ObjectSymbolDef {
 
 class SysCallFunctionDef extends $SymbolDef {
     readonly serviceName: string;
+    readonly loadOps = [];
 
     constructor(
         readonly decl: tsm.FunctionDeclaration,
