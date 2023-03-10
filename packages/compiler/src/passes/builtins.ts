@@ -2,19 +2,20 @@ import * as tsm from "ts-morph";
 import * as E from "fp-ts/Either";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROM from 'fp-ts/ReadonlyMap'
+import * as ROR from 'fp-ts/ReadonlyRecord'
 import * as S from 'fp-ts/State'
 import * as O from 'fp-ts/Option'
+import * as STR from 'fp-ts/string';
 import * as TS from "../utility/TS";
 import { flow, identity, pipe } from "fp-ts/lib/function";
 import { LibraryDeclarations } from "../projectLib";
 import { CompilerState } from "../compiler";
 import { createScope, Scope } from "../scope";
 import { sc, u } from "@cityofzion/neon-core";
-import { $SymbolDef, ObjectSymbolDef, CallableSymbolDef, ParseError, SymbolDef } from "../symbolDef";
+import { $SymbolDef, ObjectSymbolDef, CallableSymbolDef, ParseError, SymbolDef, makeParseError, ParseArgumentsFunc } from "../symbolDef";
 import { isVoidLike, single } from "../utils";
 import { Operation, PushIntOperation, SysCallOperation } from "../types";
-import { parseArguments } from "./expressionProcessor";
-import { parse } from "path";
+import { getArguments, parseArguments, parseExpression } from "./expressionProcessor";
 
 
 function checkErrors(errorMessage: string) {
@@ -39,6 +40,10 @@ function isMethodOrProp(node: tsm.Node): node is (tsm.MethodSignature | tsm.Prop
     return tsm.Node.isMethodSignature(node) || tsm.Node.isPropertySignature(node);
 }
 
+function rorValues<K extends string, A>(r: Readonly<Record<K, A>>) {
+    return pipe(r, ROR.toEntries, ROA.map(t => t[1]));
+}
+
 module REGEX {
     export const match = (regex: RegExp) => (value: string) => O.fromNullable(value.match(regex));
 }
@@ -51,11 +56,48 @@ class StaticClassDef extends $SymbolDef {
     }
 }
 
+
+const byteStringFromHex =
+    (scope: Scope) => (
+        node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
+
+        const q = pipe(
+            node,
+            getArguments,
+            single,
+            E.fromOption(() => makeParseError(node)('invalid parameters')),
+            E.chain(parseExpression(scope))
+            // ROA.map(parseExpression(scope)),
+            // ROA.sequence(E.Applicative),
+            // E.map(ROA.reverse),
+            // E.map(ROA.flatten),
+        );
+
+        return E.left(makeParseError(node)('not impl'))
+
+    }
+
 class ByteStringMethodDef extends $SymbolDef {
     readonly loadOps = [];
     constructor(readonly sig: tsm.MethodSignature) {
         super(sig);
     }
+}
+
+class StaticMethodDef extends $SymbolDef implements CallableSymbolDef {
+    readonly loadOps = [];
+    readonly props = [];
+    constructor(
+        readonly sig: tsm.MethodSignature,
+        readonly parseArguments: ParseArgumentsFunc
+    ) {
+        super(sig);
+    }
+}
+
+
+const byteStringMethods: Record<string, ParseArgumentsFunc> = {
+    "fromHex": byteStringFromHex
 }
 
 class ByteStringConstructorDef extends $SymbolDef implements ObjectSymbolDef {
@@ -64,18 +106,19 @@ class ByteStringConstructorDef extends $SymbolDef implements ObjectSymbolDef {
     constructor(readonly decl: tsm.InterfaceDeclaration) {
         super(decl);
         this.props = pipe(
-            this.type.getProperties(),
-            ROA.chain(symbol => symbol.getDeclarations()),
-            ROA.map(member => pipe(
-                member,
-                E.fromPredicate(
-                    tsm.Node.isMethodSignature,
-                    n => member.getSymbolOrThrow().getName()),
-            )),
-            ROA.map(
-                E.map(sig => new ByteStringMethodDef(sig))
-            ),
-            checkErrors("ByteStringConstructorDef invalid members")
+            byteStringMethods,
+            ROR.mapWithIndex((key, func) => {
+                return pipe(
+                    key,
+                    TS.getTypeProperty(this.type),
+                    O.chain(sym => pipe(sym.getDeclarations(), single)),
+                    O.chain(O.fromPredicate(tsm.Node.isMethodSignature)),
+                    O.map(sig => new StaticMethodDef(sig, func)),
+                    E.fromOption(() => key)
+                );
+            }),
+            rorValues,
+            checkErrors('unresolved ByteString members'),
         );
     }
 }
@@ -83,7 +126,7 @@ class ByteStringConstructorDef extends $SymbolDef implements ObjectSymbolDef {
 class SysCallInterfaceMethodDef extends $SymbolDef implements CallableSymbolDef {
     loadOps: readonly Operation[];
     readonly props = [];
-    readonly parseArguments: (scope: Scope) => (node: tsm.CallExpression<tsm.ts.CallExpression>) => E.Either<ParseError, readonly Operation[]>;
+    readonly parseArguments: (scope: Scope) => (node: tsm.CallExpression) => E.Either<ParseError, readonly Operation[]>;
 
     constructor(
         readonly sig: tsm.MethodSignature,
@@ -142,7 +185,7 @@ class SysCallFunctionDef extends $SymbolDef implements CallableSymbolDef {
     readonly serviceName: string;
     readonly loadOps = [];
     readonly props = [];
-    readonly parseArguments: (scope: Scope) => (node: tsm.CallExpression<tsm.ts.CallExpression>) => E.Either<ParseError, readonly Operation[]>;
+    readonly parseArguments: (scope: Scope) => (node: tsm.CallExpression) => E.Either<ParseError, readonly Operation[]>;
 
     constructor(
         readonly decl: tsm.FunctionDeclaration,
@@ -206,7 +249,7 @@ class StackItemDef extends $SymbolDef implements ObjectSymbolDef {
 class NativeContractMethodDef extends $SymbolDef implements CallableSymbolDef {
     props = [];
     loadOps: readonly Operation[];
-    parseArguments: (scope: Scope) => (node: tsm.CallExpression<tsm.ts.CallExpression>) => E.Either<ParseError, readonly Operation[]>;
+    parseArguments: (scope: Scope) => (node: tsm.CallExpression) => E.Either<ParseError, readonly Operation[]>;
 
     constructor(
         readonly sig: tsm.MethodSignature,
@@ -381,17 +424,22 @@ function findDecl<T extends LibraryDeclaration>(declarations: ReadonlyArray<T>) 
 }
 
 const resolveBuiltins =
-    <T extends LibraryDeclaration>(map: Record<string, (decl: T) => SymbolDef>) =>
+    <T extends LibraryDeclaration>(map: ROR.ReadonlyRecord<string, (decl: T) => SymbolDef>) =>
         (declarations: ReadonlyArray<T>) =>
             (symbolDefs: ReadonlyArray<SymbolDef>) => {
-                for (const key in map) {
-                    symbolDefs = pipe(
+
+                const defs = pipe(
+                    map,
+                    ROR.mapWithIndex((key, func) => pipe(
                         key,
                         findDecl(declarations),
-                        O.map(map[key]),
-                        checkOption(`built in variable ${key} not found`),
-                        def => ROA.append(def)(symbolDefs)
-                    )
-                }
-                return symbolDefs;
+                        O.map(func),
+                        E.fromOption(() => key),
+                    )),
+                    ROR.toEntries,
+                    ROA.map(([_, def]) => def),
+                    checkErrors('unresolved built in variables'),
+                )
+
+                return ROA.concat(defs)(symbolDefs);
             }

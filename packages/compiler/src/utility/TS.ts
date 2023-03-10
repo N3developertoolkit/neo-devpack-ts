@@ -12,14 +12,16 @@ export function getSymbolDeclarations(symbol: tsm.Symbol) {
 }
 
 export function getTypeSymbol(type: tsm.Type) { return O.fromNullable(type.getSymbol()) }
-export function getTypeProperty(name: string) {
-    return (type: tsm.Type) => O.fromNullable(type.getProperty(name));
-}
+export const getTypeProperty =
+    (type: tsm.Type) =>
+        (name: string) =>
+            O.fromNullable(type.getProperty(name));
+
 export function getTypeProperties(type: tsm.Type) {
     return ROA.fromArray(type.getProperties());
 }
 
-export const getTypeDeclarations = (node:tsm.Node) => {
+export const getTypeDeclarations = (node: tsm.Node) => {
     return pipe(
         node,
         getType,

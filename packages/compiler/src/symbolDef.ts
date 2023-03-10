@@ -36,8 +36,10 @@ export function isObjectDef(def: SymbolDef): def is ObjectSymbolDef {
     return 'props' in def;
 }
 
+export type ParseArgumentsFunc = (scope: Scope) => (node: CallExpression) => E.Either<ParseError, ReadonlyArray<Operation>>;
+
 export interface CallableSymbolDef extends ObjectSymbolDef {
-    parseArguments: (scope: Scope) => (node: CallExpression) => E.Either<ParseError, ReadonlyArray<Operation>>
+    parseArguments: ParseArgumentsFunc;
 }
 
 export function isCallableDef(def: SymbolDef): def is CallableSymbolDef {
