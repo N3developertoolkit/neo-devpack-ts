@@ -4,7 +4,7 @@ import * as ROA from 'fp-ts/ReadonlyArray';
 import * as E from "fp-ts/Either";
 import { Operation, SimpleOperationKind } from "../types/Operation";
 import { resolve, Scope } from "../scope";
-import { ParseError, SymbolDef } from "../symbolDef";
+import { ParseError, parseLoadOps, SymbolDef } from "../symbolDef";
 import { parseExpressionChain } from "./expressionChainProcessor";
 import { makeParseError, parseSymbol } from "./processSourceFile";
 
@@ -93,7 +93,7 @@ export const parseIdentifier =
                     resolve(scope),
                     E.fromOption(() => makeParseError(node)(`unresolved symbol ${symbol.getName()}`))
                 )),
-                E.map(def => def.loadOps ?? [])
+                E.chain(parseLoadOps(node))
             );
         }
 

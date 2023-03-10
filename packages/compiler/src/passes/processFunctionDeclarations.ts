@@ -81,11 +81,43 @@ const parseBlock =
         }
 
 class LocalVariableSymbolDef implements SymbolDef {
+    readonly type: tsm.Type;
+    readonly loadOps: ReadonlyArray<Operation>;
+    readonly storeOps: ReadonlyArray<Operation>;
+
+    get name() { return this.symbol.getName(); }
+    get typeName() { return this.type.getSymbol()?.getName(); }
+
     constructor(
         readonly symbol: tsm.Symbol,
         readonly decl: tsm.VariableDeclaration,
         readonly index: number
-    ) { }
+    ) {
+        this.type = decl.getType();
+
+        this.loadOps = [{ kind: "loadlocal", index }]
+        this.storeOps = [{ kind: "storelocal", index }]
+     }
+}
+
+class ParameterSymbolDef implements SymbolDef {
+    readonly type: tsm.Type;
+    readonly loadOps: ReadonlyArray<Operation>;
+    readonly storeOps: ReadonlyArray<Operation>;
+
+    get name() { return this.symbol.getName(); }
+    get typeName() { return this.type.getSymbol()?.getName(); }
+
+    constructor(
+        readonly symbol: tsm.Symbol,
+        readonly decl: tsm.ParameterDeclaration,
+        readonly index: number
+    ) { 
+        this.type = decl.getType();
+
+        this.loadOps = [{ kind: "loadarg", index }]
+        this.storeOps = [{ kind: "storearg", index }]
+    }
 
 }
 
@@ -337,20 +369,6 @@ const makeContractMethod =
                 } as ContractMethod))
             );
         }
-
-class ParameterSymbolDef implements SymbolDef {
-    constructor(
-        readonly symbol: tsm.Symbol,
-        readonly decl: tsm.ParameterDeclaration,
-        readonly index: number
-    ) { 
-        this.loadOps = [{ kind: "loadarg", index }]
-        this.storeOps = [{ kind: "storearg", index }]
-    }
-
-    readonly loadOps: ReadonlyArray<Operation>;
-    readonly storeOps: ReadonlyArray<Operation>;
-}
 
 export const parseContractMethod =
     (parentScope: Scope) =>

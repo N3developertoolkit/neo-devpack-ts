@@ -13,20 +13,22 @@ export interface Scope {
 
 const symbolEq: Eq.Eq<Symbol> = { equals: (x, y) => x === y }
 
-export const resolve = (scope: Scope) => (symbol: Symbol): O.Option<SymbolDef> => {
-    return pipe(
-        ROM.lookup(symbolEq)(symbol)(scope.symbols),
-        O.alt(() => pipe(
-            symbol.getValueDeclaration()?.getSymbol(),
-            O.fromNullable,
-            O.chain(s => ROM.lookup(symbolEq)(s)(scope.symbols))
-        )),
-        O.alt(() => pipe(
-            scope.parentScope,
-            O.chain(p => resolve(p)(symbol))
-        ))
-    );
-}
+export const resolve =
+    (scope: Scope) =>
+        (symbol: Symbol): O.Option<SymbolDef> => {
+            return pipe(
+                ROM.lookup(symbolEq)(symbol)(scope.symbols),
+                O.alt(() => pipe(
+                    symbol.getValueDeclaration()?.getSymbol(),
+                    O.fromNullable,
+                    O.chain(s => ROM.lookup(symbolEq)(s)(scope.symbols))
+                )),
+                O.alt(() => pipe(
+                    scope.parentScope,
+                    O.chain(p => resolve(p)(symbol))
+                ))
+            );
+        }
 
 const createSymbolMap =
     (defs: ReadonlyArray<SymbolDef>) =>
