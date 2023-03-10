@@ -1,17 +1,9 @@
-import { CallOperation, CallTokenOperation, LoadStoreOperation, Operation, parseOperation, PushBoolOperation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
-import { createDiagnostic as $createDiagnostic, getArguments, isVoidLike } from "./utils";
+import { Operation } from "./types/Operation";
+import { createDiagnostic as $createDiagnostic } from "./utils";
 
-import { sc, u } from '@cityofzion/neon-core';
-import { ts, Node, VariableStatement, VariableDeclarationKind, SourceFile, Project, Symbol, VariableDeclaration, Expression, SyntaxKind, BigIntLiteral, NumericLiteral, StringLiteral, FunctionDeclaration, ImportDeclaration, ImportSpecifier, JSDocTag, InterfaceDeclaration, DiagnosticCategory, ParameterDeclaration, CallExpression, ExportedDeclarations, Type } from "ts-morph";
-import { flow, pipe } from 'fp-ts/function';
-import * as ROA from 'fp-ts/ReadonlyArray';
-import * as RONEA from 'fp-ts/ReadonlyNonEmptyArray';
+import { ts, Node, Symbol, CallExpression, Type } from "ts-morph";
+import { pipe } from 'fp-ts/function';
 import * as E from "fp-ts/Either";
-import * as M from "fp-ts/Monoid";
-import * as O from 'fp-ts/Option'
-import * as SG from "fp-ts/Semigroup";
-import * as S from 'fp-ts/State';
-import { CompilerState } from "./compiler";
 import { Scope } from "./scope";
 
 type Diagnostic = ts.Diagnostic;
@@ -26,7 +18,6 @@ export const makeParseError =
                     ? e.message : String(e);
             return { message, node };
         }
-
 
 export const makeParseDiagnostic = (e: ParseError) => $createDiagnostic(e.message, { node: e.node });
 
@@ -43,6 +34,14 @@ export interface ObjectSymbolDef extends SymbolDef {
 
 export function isObjectDef(def: SymbolDef): def is ObjectSymbolDef {
     return 'props' in def;
+}
+
+export interface CallableSymbolDef extends ObjectSymbolDef {
+    parseArguments: (node: CallExpression, scope: Scope) => E.Either<ParseError, ReadonlyArray<Operation>>
+}
+
+export function isCallableDef(def: SymbolDef): def is CallableSymbolDef {
+    return isObjectDef(def) && 'parseArguments' in def;
 }
 
 export const parseLoadOps =

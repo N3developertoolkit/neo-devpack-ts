@@ -1,4 +1,4 @@
-import { ArrayLiteralExpression, BigIntLiteral, SyntaxKind, Node, ts, BinaryExpression, FalseLiteral, TrueLiteral, Identifier, NullLiteral, NumericLiteral, PrefixUnaryExpression, StringLiteral, Expression } from "ts-morph";
+import { ArrayLiteralExpression, BigIntLiteral, SyntaxKind, Node, ts, BinaryExpression, FalseLiteral, TrueLiteral, Identifier, NullLiteral, NumericLiteral, PrefixUnaryExpression, StringLiteral, Expression, CallExpression } from "ts-morph";
 import { flow, pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as E from "fp-ts/Either";
@@ -7,6 +7,20 @@ import { resolve, Scope } from "../scope";
 import { makeParseError, ParseError, parseLoadOps, SymbolDef } from "../symbolDef";
 import { parseExpressionChain } from "./expressionChainProcessor";
 import { parseSymbol } from "./processSourceFile";
+
+export const getArguments = (node: CallExpression) => 
+    ROA.fromArray(node.getArguments() as Expression[])
+
+export const parseArguments = (scope: Scope) => (node: CallExpression) => {
+    return pipe(
+        node,
+        getArguments,
+        ROA.map(parseExpression(scope)),
+        ROA.sequence(E.Applicative),
+        E.map(ROA.reverse),
+        E.map(ROA.flatten),
+    );
+}
 
 export const parseArrayLiteral =
     (scope: Scope) =>
