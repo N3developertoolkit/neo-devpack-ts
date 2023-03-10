@@ -9,12 +9,12 @@ import * as SEP from 'fp-ts/Separated';
 import * as FP from 'fp-ts'
 import * as TS from "../utility/TS";
 
-import { ParseError, createDiagnostic, SymbolDef, $SymbolDef } from "../symbolDef";
+import { ParseError, SymbolDef, $SymbolDef, makeParseError } from "../symbolDef";
 import { createScope, Scope, updateScope } from "../scope";
 import { isJumpTargetOp, JumpTargetOperation, LoadStoreOperation, Location, Operation } from "../types/Operation";
 import { isVoidLike } from "../utils";
 import { ContractMethod } from "../compiler";
-import { makeParseError, parseSymbol } from "./processSourceFile";
+import { parseSymbol } from "./processSourceFile";
 import { parseExpression as $parseExpression } from "./expressionProcessor";
 
 type Diagnostic = tsm.ts.Diagnostic;
@@ -82,10 +82,10 @@ const parseBlock =
 
 class LocalVariableSymbolDef extends $SymbolDef {
 
-    get loadOps() {
+    get loadOps(): readonly Operation[] {
         return [{ kind: "loadlocal", index: this.index }];
     }
-    get storeOps() {
+    get storeOps(): readonly Operation[] {
         return [{ kind: "storelocal", index: this.index }];
     }
 
@@ -95,7 +95,10 @@ class LocalVariableSymbolDef extends $SymbolDef {
         readonly index: number
     ) {
         super(decl, symbol);
+        this.type = decl.getType();
     }
+
+    type: tsm.Type<tsm.ts.Type>;
 }
 
 class ParameterSymbolDef extends $SymbolDef {
@@ -105,9 +108,6 @@ class ParameterSymbolDef extends $SymbolDef {
     get storeOps() {
         return [{ kind: "storearg", index: this.index }];
     }
-
-    get name() { return this.symbol.getName(); }
-    get typeName() { return this.type.getSymbol()?.getName(); }
 
     constructor(
         readonly decl: tsm.ParameterDeclaration,

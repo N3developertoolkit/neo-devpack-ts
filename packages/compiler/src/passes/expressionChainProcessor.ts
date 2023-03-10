@@ -7,10 +7,9 @@ import * as O from 'fp-ts/Option'
 import * as TS from "../utility/TS";
 import { Operation } from "../types/Operation";
 import { resolve as $resolve, Scope } from "../scope";
-import { isObjectDef, ParseError, parseLoadOps, SymbolDef } from "../symbolDef";
+import { isObjectDef, makeParseError, ParseError, parseLoadOps, SymbolDef } from "../symbolDef";
 import { parseExpression as $parseExpression } from "./expressionProcessor";
-import { makeParseError, parseSymbol } from "./processSourceFile";
-import { make } from "fp-ts/lib/Tree";
+import {  parseSymbol } from "./processSourceFile";
 
 interface ChainContext {
     readonly operations: ReadonlyArray<Operation>;

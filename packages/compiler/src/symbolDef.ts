@@ -13,13 +13,22 @@ import * as SG from "fp-ts/Semigroup";
 import * as S from 'fp-ts/State';
 import { CompilerState } from "./compiler";
 import { Scope } from "./scope";
-import { makeParseError } from "./passes/processSourceFile";
 
 type Diagnostic = ts.Diagnostic;
 
 export interface ParseError { message: string, node?: Node }
 
-export const createDiagnostic = (e: ParseError) => $createDiagnostic(e.message, { node: e.node });
+export const makeParseError =
+    (node?: Node) =>
+        (e: string | unknown): ParseError => {
+            const message = typeof e === 'string'
+                ? e : e instanceof Error
+                    ? e.message : String(e);
+            return { message, node };
+        }
+
+
+export const makeParseDiagnostic = (e: ParseError) => $createDiagnostic(e.message, { node: e.node });
 
 export interface SymbolDef {
     readonly symbol: Symbol;

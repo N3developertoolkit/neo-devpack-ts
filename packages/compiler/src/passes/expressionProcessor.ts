@@ -4,9 +4,9 @@ import * as ROA from 'fp-ts/ReadonlyArray';
 import * as E from "fp-ts/Either";
 import { Operation, SimpleOperationKind } from "../types/Operation";
 import { resolve, Scope } from "../scope";
-import { ParseError, parseLoadOps, SymbolDef } from "../symbolDef";
+import { makeParseError, ParseError, parseLoadOps, SymbolDef } from "../symbolDef";
 import { parseExpressionChain } from "./expressionChainProcessor";
-import { makeParseError, parseSymbol } from "./processSourceFile";
+import { parseSymbol } from "./processSourceFile";
 
 export const parseArrayLiteral =
     (scope: Scope) =>

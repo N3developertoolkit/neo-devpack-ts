@@ -9,19 +9,8 @@ import * as O from 'fp-ts/Option'
 import { createDiagnostic } from "../utils";
 import { identity, pipe } from "fp-ts/function";
 import { ContractMethod } from "../compiler";
-import { $SymbolDef, ParseError, SymbolDef } from "../symbolDef";
+import { $SymbolDef, makeParseDiagnostic, makeParseError, ParseError, SymbolDef } from "../symbolDef";
 import { parseContractMethod } from "./processFunctionDeclarations";
-
-export const makeParseDiagnostic = (e: ParseError) => createDiagnostic(e.message, { node: e.node });
-
-export const makeParseError =
-    (node?: Node) =>
-        (e: string | unknown): ParseError => {
-            const message = typeof e === 'string'
-                ? e : e instanceof Error
-                    ? e.message : String(e);
-            return { message, node };
-        }
 
 export const parseSymbol = (node: Node): E.Either<ParseError, Symbol> => {
     return pipe(
