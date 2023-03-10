@@ -208,7 +208,7 @@ const parseIfStatement =
                 const elseJumpOp: JumpTargetOperation = { 'kind': "jumpifnot", target: RNEA.last(thenOps) };
 
                 let $elseOps: ReadonlyArray<Operation>;
-                [$elseOps, state] = parseStatement(node.getThenStatement())(state);
+                [$elseOps, state] = parseStatement($else)(state);
                 const elseOps = ROA.append({ kind: 'noop' } as Operation)($elseOps);
                 const endJumpOp: JumpTargetOperation = { 'kind': "jump", target: RNEA.last(elseOps) };
 
