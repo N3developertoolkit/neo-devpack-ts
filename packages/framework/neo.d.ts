@@ -10,7 +10,8 @@ declare global {
     export const ByteString: ByteStringConstructor;
     
     export interface ByteStringConstructor {
-        from(arrayLike: ArrayLike<number>): ByteString;
+        fromString(value: string): ByteString;
+        fromHex(value: string): ByteString;
     }
 
     /**
