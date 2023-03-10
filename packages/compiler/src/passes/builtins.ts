@@ -13,9 +13,10 @@ import { CompilerState } from "../compiler";
 import { createScope, Scope } from "../scope";
 import { sc, u } from "@cityofzion/neon-core";
 import { $SymbolDef, ObjectSymbolDef, CallableSymbolDef, ParseError, SymbolDef, makeParseError, ParseArgumentsFunc } from "../symbolDef";
-import { isVoidLike, single } from "../utils";
-import { Operation, PushIntOperation, SysCallOperation } from "../types";
+import { getErrorMessage, isVoidLike, single } from "../utils";
+import { Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "../types";
 import { getArguments, parseArguments, parseExpression } from "./expressionProcessor";
+import { ReadonlyUint8Array } from "../utility/ReadonlyArrays";
 
 
 function checkErrors(errorMessage: string) {
@@ -56,25 +57,67 @@ class StaticClassDef extends $SymbolDef {
     }
 }
 
+function getStringLiteralArg(node: tsm.CallExpression) {
+    return pipe(
+        node,
+        getArguments,
+        single,
+        E.fromOption(() => makeParseError(node)('invalid parameters')),
+        E.chain(expr => {
+            if (tsm.Node.isStringLiteral(expr)) {
+                return E.of(expr.getLiteralValue())
+            } else {
+                return E.left(makeParseError(node)('only string literal supported'))
+            }
+        }),
+    )
+}
+
+const fromEncoding = (node: tsm.Node) => (encoding: BufferEncoding) => (value: string): E.Either<ParseError, ReadonlyUint8Array> => {
+    return E.tryCatch(
+        () => Buffer.from(value, encoding) as ReadonlyUint8Array,
+        (e) => makeParseError(node)(getErrorMessage(e))
+    );
+}
+
+const fromHex = (node: tsm.Node) => (value: string): E.Either<ParseError, ReadonlyUint8Array> => {
+    value = value.startsWith('0x') || value.startsWith('0X')
+        ? value.substring(2)
+        : value;
+    return pipe(
+        value,
+        fromEncoding(node)('hex'),
+        E.chain(buffer => buffer.length === 0
+            ? E.left(makeParseError(node)('invalid hex buffer'))
+            : E.of(buffer)
+        )
+    );
+}
 
 const byteStringFromHex =
     (scope: Scope) => (
         node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
 
-        const q = pipe(
+        return pipe(
             node,
-            getArguments,
-            single,
-            E.fromOption(() => makeParseError(node)('invalid parameters')),
-            E.chain(parseExpression(scope))
-            // ROA.map(parseExpression(scope)),
-            // ROA.sequence(E.Applicative),
-            // E.map(ROA.reverse),
-            // E.map(ROA.flatten),
+            getStringLiteralArg,
+            E.chain(fromHex(node)),
+            E.map(value => ({ kind: "pushdata", value } as Operation)),
+            E.map(ROA.of)
         );
+    }
 
-        return E.left(makeParseError(node)('not impl'))
+const byteStringFromString =
+    (scope: Scope) => (
+        node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
 
+        return pipe(
+            node,
+            getStringLiteralArg,
+            E.chain(fromEncoding(node)('utf8')),
+            E.map(value => ({ kind: "pushdata", value } as Operation)),
+            E.map(ROA.of)
+        );
     }
 
 class ByteStringMethodDef extends $SymbolDef {
@@ -95,9 +138,9 @@ class StaticMethodDef extends $SymbolDef implements CallableSymbolDef {
     }
 }
 
-
 const byteStringMethods: Record<string, ParseArgumentsFunc> = {
-    "fromHex": byteStringFromHex
+    "fromHex": byteStringFromHex,
+    "fromString": byteStringFromString,
 }
 
 class ByteStringConstructorDef extends $SymbolDef implements ObjectSymbolDef {
@@ -123,33 +166,20 @@ class ByteStringConstructorDef extends $SymbolDef implements ObjectSymbolDef {
     }
 }
 
-class SysCallInterfaceMethodDef extends $SymbolDef implements CallableSymbolDef {
-    loadOps: readonly Operation[];
+class SysCallInterfaceMemberDef extends $SymbolDef implements ObjectSymbolDef {
+    readonly loadOps: readonly Operation[];
     readonly props = [];
-    readonly parseArguments: (scope: Scope) => (node: tsm.CallExpression) => E.Either<ParseError, readonly Operation[]>;
+    readonly parseArguments?: ParseArgumentsFunc;
 
     constructor(
-        readonly sig: tsm.MethodSignature,
+        readonly sig: tsm.MethodSignature | tsm.PropertySignature,
         readonly serviceName: string
     ) {
         super(sig);
-        this.parseArguments = parseArguments;
-        const op: SysCallOperation = { kind: "syscall", name: this.serviceName };
-        this.loadOps = [op]
-    }
-}
-
-class SysCallInterfacePropertyDef extends $SymbolDef implements ObjectSymbolDef {
-    loadOps: readonly Operation[];
-    readonly props = [];
-
-    constructor(
-        readonly sig: tsm.PropertySignature,
-        readonly serviceName: string
-    ) {
-        super(sig);
-        const op: SysCallOperation = { kind: "syscall", name: this.serviceName };
-        this.loadOps = [op]
+        this.loadOps = [{ kind: "syscall", name: this.serviceName }]
+        if (tsm.Node.isMethodSignature(sig)) {
+            this.parseArguments = parseArguments;
+        }
     }
 }
 
@@ -170,9 +200,7 @@ class SysCallInterfaceDef extends $SymbolDef implements ObjectSymbolDef {
                         TS.getTagComment('syscall'),
                         O.match(() => signature.getSymbolOrThrow().getName(), identity));
 
-                    return tsm.Node.isMethodSignature(signature)
-                        ? new SysCallInterfaceMethodDef(signature, name)
-                        : new SysCallInterfacePropertyDef(signature, name);
+                    return new SysCallInterfaceMemberDef(signature, name);
                 }),
                 E.fromOption(() => member.getSymbolOrThrow().getName())
             )),
@@ -185,7 +213,7 @@ class SysCallFunctionDef extends $SymbolDef implements CallableSymbolDef {
     readonly serviceName: string;
     readonly loadOps = [];
     readonly props = [];
-    readonly parseArguments: (scope: Scope) => (node: tsm.CallExpression) => E.Either<ParseError, readonly Operation[]>;
+    readonly parseArguments: ParseArgumentsFunc;
 
     constructor(
         readonly decl: tsm.FunctionDeclaration,
@@ -204,7 +232,7 @@ class SysCallFunctionDef extends $SymbolDef implements CallableSymbolDef {
 }
 
 class StackItemPropertyDef extends $SymbolDef {
-    loadOps: readonly Operation[];
+    readonly loadOps: readonly Operation[];
 
     constructor(
         readonly sig: tsm.PropertySignature,
@@ -246,48 +274,30 @@ class StackItemDef extends $SymbolDef implements ObjectSymbolDef {
     }
 }
 
-class NativeContractMethodDef extends $SymbolDef implements CallableSymbolDef {
-    props = [];
-    loadOps: readonly Operation[];
-    parseArguments: (scope: Scope) => (node: tsm.CallExpression) => E.Either<ParseError, readonly Operation[]>;
+class NativeContractMemberDef extends $SymbolDef implements ObjectSymbolDef {
+    readonly props = [];
+    readonly loadOps: readonly Operation[];
+    readonly parseArguments?: ParseArgumentsFunc;
 
     constructor(
-        readonly sig: tsm.MethodSignature,
-        readonly hash: u.HexString,
-        readonly method: string,
-    ) {
-        super(sig);
-        this.parseArguments = parseArguments;
-
-        const token = new sc.MethodToken({
-            hash: hash.toString(),
-            method: method,
-            parametersCount: sig.getParameters().length,
-            hasReturnValue: !isVoidLike(sig.getReturnType()),
-            callFlags: sc.CallFlags.All
-        })
-        this.loadOps = [
-            { kind: 'calltoken', token }
-        ]
-    }
-}
-
-class NativeContractPropertyDef extends $SymbolDef implements ObjectSymbolDef {
-    props = [];
-    loadOps: readonly Operation[];
-
-    constructor(
-        readonly sig: tsm.PropertySignature,
+        readonly sig: tsm.MethodSignature | tsm.PropertySignature,
         readonly hash: u.HexString,
         readonly method: string,
     ) {
         super(sig);
 
+        let parametersCount = 0;
+        let returnType = sig.getType();
+        if (tsm.Node.isMethodDeclaration(sig)) {
+            parametersCount = sig.getParameters().length;
+            returnType = sig.getReturnType();
+            this.parseArguments = parseArguments
+        }
         const token = new sc.MethodToken({
             hash: hash.toString(),
             method: method,
-            parametersCount: 0,
-            hasReturnValue: !isVoidLike(sig.getType()),
+            parametersCount: parametersCount,
+            hasReturnValue: !isVoidLike(returnType),
             callFlags: sc.CallFlags.All
         })
         this.loadOps = [
@@ -317,9 +327,7 @@ class NativeContractConstructorDef extends $SymbolDef implements ObjectSymbolDef
                         TS.getTagComment("nativeContract"),
                         O.match(() => signature.getSymbolOrThrow().getName(), identity));
 
-                    return tsm.Node.isMethodSignature(signature)
-                        ? new NativeContractMethodDef(signature, hash, name)
-                        : new NativeContractPropertyDef(signature, hash, name);
+                    return new NativeContractMemberDef(signature, hash, name);
                 }),
                 E.fromOption(() => member.getSymbolOrThrow().getName())
             )),

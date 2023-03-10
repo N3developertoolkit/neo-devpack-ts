@@ -39,12 +39,16 @@ export function createDiagnostic(messageText: string, options?: DiagnosticOption
     };
 }
 
-export function toDiagnostic(error: string | unknown): tsm.ts.Diagnostic {
-    const message = typeof error === 'string'
+export function getErrorMessage(error: string | unknown) {
+    return typeof error === 'string'
         ? error
         : error instanceof Error 
             ? error.message 
             : String(error);
+}
+
+export function toDiagnostic(error: string | unknown): tsm.ts.Diagnostic {
+    const message = getErrorMessage(error);
     const node = error instanceof CompileError ? error.node : undefined;
     return createDiagnostic(message, { node });
 }
