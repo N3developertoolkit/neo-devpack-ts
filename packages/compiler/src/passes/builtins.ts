@@ -94,6 +94,32 @@ const fromHex = (node: tsm.Node) => (value: string): E.Either<ParseError, Readon
     );
 }
 
+const errorCall =
+    (scope: Scope) => (
+        node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
+        const args = getArguments(node);
+        if (args.length === 0) {
+            const value = Buffer.from("", "utf8");
+            return E.right([{ kind: 'pushdata', value }])
+        }
+        else {
+            return parseExpression(scope)(args[0]);
+        }
+    }
+
+class CallableVariableDef extends $SymbolDef implements CallableSymbolDef {
+    readonly loadOps = [];
+    readonly props = [];
+
+    constructor(
+        readonly decl: tsm.VariableDeclaration,
+        readonly parseArguments: ParseArgumentsFunc
+    ) {
+        super(decl);
+    }
+}
+
+
 const byteStringFromHex =
     (scope: Scope) => (
         node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
@@ -120,13 +146,6 @@ const byteStringFromString =
         );
     }
 
-class ByteStringMethodDef extends $SymbolDef {
-    readonly loadOps = [];
-    constructor(readonly sig: tsm.MethodSignature) {
-        super(sig);
-    }
-}
-
 class StaticMethodDef extends $SymbolDef implements CallableSymbolDef {
     readonly loadOps = [];
     readonly props = [];
@@ -144,7 +163,7 @@ const byteStringMethods: Record<string, ParseArgumentsFunc> = {
 }
 
 class ByteStringConstructorDef extends $SymbolDef implements ObjectSymbolDef {
-    readonly props: ReadonlyArray<ByteStringMethodDef>
+    readonly props: ReadonlyArray<CallableSymbolDef>
 
     constructor(readonly decl: tsm.InterfaceDeclaration) {
         super(decl);
@@ -403,6 +422,7 @@ export const makeGlobalScope =
 
             const builtInVars: Record<string, (decl: tsm.VariableDeclaration) => SymbolDef> = {
                 "ByteString": decl => new StaticClassDef(decl),
+                "Error": decl => new CallableVariableDef(decl, errorCall),
                 "Runtime": decl => new StaticClassDef(decl),
                 "Storage": decl => new StaticClassDef(decl),
             }
