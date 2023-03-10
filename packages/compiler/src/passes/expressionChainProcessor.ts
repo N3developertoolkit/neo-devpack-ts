@@ -115,6 +115,8 @@ const parseCallExpression =
         (context: E.Either<ParseError, ChainContext>) =>
             (node: CallExpression): E.Either<ParseError, ChainContext> => {
 
+                return context;
+
                 return pipe(
                     context,
                     E.chain(context => E.left(makeParseError(node)(`parseCallExpression not impl`)))
@@ -166,21 +168,17 @@ const parsePropertyAccessExpression =
             (node: PropertyAccessExpression): E.Either<ParseError, ChainContext> => {
                 return pipe(
                     E.Do,
-                    E.bind('symbol', () => {
-                        return parseSymbol(node);
-                    }),
-                    E.bind('type', () => {
-                        return pipe(context, E.chain(resolveChainContext(node)(scope)));
-                    }),
-                    E.bind('property', ({ symbol, type }) => {
-                        return resolveProperty(node)(symbol)(type);
-                    }),
-                    E.bind('operations', () => {
-                        return pipe(context, E.map(c => c.operations));
-                    }),
-                    E.bind('loadOps', ({ property }) => {
-                        return parseLoadOps(node)(property);
-                    }),
+                    E.bind('symbol', () => parseSymbol(node)),
+                    E.bind('type', () => pipe(
+                        context, 
+                        E.chain(resolveChainContext(node)(scope))
+                    )),
+                    E.bind('property', ({ symbol, type }) => resolveProperty(node)(symbol)(type)),
+                    E.bind('operations', () => pipe(
+                        context, 
+                        E.map(c => c.operations)
+                    )),
+                    E.bind('loadOps', ({ property }) => parseLoadOps(node)(property)),
                     E.map(({
                         loadOps,
                         operations,

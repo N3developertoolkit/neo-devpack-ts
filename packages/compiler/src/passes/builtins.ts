@@ -51,28 +51,30 @@ class StaticClassDef extends $SymbolDef {
     }
 }
 
+class ByteStringMethodDef extends $SymbolDef {
+    readonly loadOps = [];
+    constructor(readonly sig: tsm.MethodSignature) {
+        super(sig);
+    }
+}
+
 class ByteStringConstructorDef extends $SymbolDef implements ObjectSymbolDef {
-    readonly props: ReadonlyArray<{
-        readonly symbol: tsm.Symbol,
-        readonly type: tsm.Type;
-        readonly signature: tsm.MethodSignature;
-    }>
+    readonly props: ReadonlyArray<ByteStringMethodDef>
 
     constructor(readonly decl: tsm.InterfaceDeclaration) {
         super(decl);
-        this.props = [];
-        const q = pipe(
-            decl.getMembers(),
-            ROA.map(
+        this.props = pipe(
+            this.type.getProperties(),
+            ROA.chain(symbol => symbol.getDeclarations()),
+            ROA.map(member => pipe(
+                member,
                 E.fromPredicate(
                     tsm.Node.isMethodSignature,
-                    n => n?.getSymbol()?.getName() ?? "<unknown>")
+                    n => member.getSymbolOrThrow().getName()),
+            )),
+            ROA.map(
+                E.map(sig => new ByteStringMethodDef(sig))
             ),
-            ROA.map(E.map(signature => ({
-                signature,
-                symbol: signature.getSymbolOrThrow(),
-                type: signature.getType(),
-            }))),
             checkErrors("ByteStringConstructorDef invalid members")
         );
     }
