@@ -1,4 +1,4 @@
-import { Symbol, Expression, Identifier, Node, PropertyAccessExpression, CallExpression, Type, Signature, VoidExpression } from "ts-morph";
+import { Symbol, Expression, Identifier, Node, PropertyAccessExpression, CallExpression, Type, AsExpression } from "ts-morph";
 import { flow, identity, pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
@@ -8,9 +8,9 @@ import * as TS from "../utility/TS";
 import { Operation } from "../types/Operation";
 import { resolve as $resolve, Scope } from "../scope";
 import { isCallableDef, isObjectDef, makeParseError, ParseError, parseLoadOps, SymbolDef } from "../symbolDef";
-import { parseArguments, parseExpression as $parseExpression } from "./expressionProcessor";
+import { parseExpression as $parseExpression } from "./expressionProcessor";
 import { parseSymbol } from "./processSourceFile";
-import { isVoidLike, single } from "../utils";
+import { single } from "../utils";
 
 interface ChainContext {
     readonly operations: ReadonlyArray<Operation>;
@@ -32,15 +32,14 @@ const resolveType =
     (node: Node) =>
         (scope: Scope) =>
             (type: Type): E.Either<ParseError, O.Option<SymbolDef>> => {
-                return isVoidLike(type)
-                    ? E.of(O.none)
-                    : pipe(
-                        type,
-                        TS.getTypeSymbol,
-                        E.fromOption(() => makeParseError(node)(`failed to resolve ${type.getText()} type`)),
-                        E.chain(resolve(node)(scope)),
+                const symbol = type.getSymbol();
+                return symbol
+                    ? pipe(
+                        symbol,
+                        resolve(node)(scope),
                         E.map(def => O.of(def))
                     )
+                    : E.of(O.none);
             }
 
 export const parseIdentifier =
@@ -54,10 +53,12 @@ export const parseIdentifier =
                     return pipe(
                         def.loadOps,
                         E.fromNullable(makeParseError(node)(`${def.symbol.getName()} invalid load ops`)),
-                        E.map(operations => ({
-                            def: O.of(def),
-                            operations,
-                        }))
+                        E.map(operations => {
+                            return ({
+                                def: O.of(def),
+                                operations,
+                            });
+                        })
                     )
                 })
             );
@@ -74,10 +75,38 @@ const parseContextDef = (node: Node) => (context: ChainContext) => {
     return pipe(
         context.def,
         E.fromOption(() => {
-            return makeParseError(node)(`void context def`);
+            return makeParseError(node)(`no context def`);
         })
     )
 }
+
+const parseAsExpression =
+    (scope: Scope) =>
+        (context: ChainContext) =>
+            (node: AsExpression): E.Either<ParseError, ChainContext> => {
+
+                const q = pipe(
+                    node,
+                    TS.getType,
+                    TS.getTypeSymbol,
+                    O.map(flow(
+                        resolve(node)(scope),
+                        E.map(def => ({
+                            operations: context.operations,
+                            def: O.of(def),
+                        } as ChainContext))
+                    )),
+                    O.match(
+                        () => E.of({
+                            operations: context.operations,
+                            def: O.none
+                        } as ChainContext),
+                        identity
+                    )
+                );
+
+                return q;
+            }
 
 const parseCallExpression =
     (scope: Scope) =>
@@ -169,7 +198,7 @@ const reduceChainContext =
             return pipe(
                 context,
                 E.chain(context => {
-                    // if (Node.isAsExpression(node)) return parseExpression(node.getExpression());
+                    if (Node.isAsExpression(node)) return parseAsExpression(scope)(context)(node);
                     if (Node.isCallExpression(node)) return parseCallExpression(scope)(context)(node);
                     if (Node.isNonNullExpression(node)) return parseExpression(node.getExpression());
                     // if (Node.isParenthesizedExpression(node)) return parseExpression(node.getExpression());

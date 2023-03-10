@@ -12,6 +12,7 @@ export function getSymbolDeclarations(symbol: tsm.Symbol) {
 }
 
 export function getTypeSymbol(type: tsm.Type) { return O.fromNullable(type.getSymbol()) }
+
 export const getTypeProperty =
     (type: tsm.Type) =>
         (name: string) =>
