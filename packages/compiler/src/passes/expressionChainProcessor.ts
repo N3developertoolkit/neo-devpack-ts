@@ -8,12 +8,12 @@ import * as TS from "../utility/TS";
 import { Operation } from "../types/Operation";
 import { resolve as $resolve, Scope } from "../scope";
 import { isObjectDef, makeParseError, ParseError, parseLoadOps, SymbolDef } from "../symbolDef";
-import { parseExpression as $parseExpression } from "./expressionProcessor";
+import { parseArguments, parseExpression as $parseExpression } from "./expressionProcessor";
 import { parseSymbol } from "./processSourceFile";
 
 interface ChainContext {
     readonly operations: ReadonlyArray<Operation>;
-    readonly type: Type,
+    readonly def: SymbolDef,
     // readonly callSigs: ReadonlyArray<Signature>;
 }
 
@@ -43,7 +43,7 @@ const resolveType =
 const resolveChainContext =
     (node: Node) =>
         (scope: Scope) =>
-            (context: ChainContext): E.Either<ParseError, SymbolDef> => resolveType(node)(scope)(context.type);
+            (context: ChainContext): E.Either<ParseError, SymbolDef> => resolveType(node)(scope)(context.def.type);
 
 export const parseIdentifier =
     (scope: Scope) =>
@@ -63,7 +63,7 @@ export const parseIdentifier =
                         def.loadOps,
                         E.fromNullable(makeParseError(node)(`${def.symbol.getName()} invalid load ops`)),
                         E.map(operations => ({
-                            type: def.type,
+                            def,
                             operations,
                         }))
                     )
@@ -83,6 +83,14 @@ const parseCallExpression =
         (context: ChainContext) =>
             (node: CallExpression): E.Either<ParseError, ChainContext> => {
 
+                const q = pipe(
+                    node,
+                    parseArguments(scope),
+                    E.map(operations => ROA.concat(context.operations)(operations))
+                )
+                return E.of(context);
+                // prepend the arguments
+                const ctx = context;
                 return E.left(makeParseError(node)(`parseCallExpression not impl`));
 
                 // return pipe(
@@ -129,19 +137,35 @@ const parsePropertyAccessExpression =
             (node: PropertyAccessExpression): E.Either<ParseError, ChainContext> => {
                 return pipe(
                     E.Do,
-                    E.bind('symbol', () => parseSymbol(node)),
-                    E.bind('type', () => resolveChainContext(node)(scope)(context)),
-                    E.bind('property', ({ symbol, type }) => resolveProperty(node)(symbol)(type)),
-                    E.bind('loadOps', ({ property }) => parseLoadOps(node)(property)),
+                    E.bind('symbol', () => {
+                        return parseSymbol(node);
+                    }),
+                    E.bind('type', () => {
+                        return resolveChainContext(node)(scope)(context);
+                    }),
+                    E.bind('property', ({ symbol, type }) => {
+                        return resolveProperty(node)(symbol)(type);
+                    }),
+                    E.bind('loadOps', ({ property }) => {
+                        return parseLoadOps(node)(property);
+                    }),
                     E.map(({
                         loadOps,
                         property
-                    }) => ({
-                        operations: ROA.concat(loadOps)(context.operations),
-                        type: property.type
-                    } as ChainContext))
+                    }) => {
+                            return ({
+                                operations: ROA.concat(loadOps)(context.operations),
+                                def: property
+                            } as ChainContext);
+                        })
                 );
             }
+
+/*
+    in TS, the call expression carries the arguments and whatever is left
+    of call expression carries the info about the call itself
+*/
+
 
 const reduceChainContext =
     (scope: Scope) =>
@@ -158,7 +182,6 @@ const reduceChainContext =
                     return E.left(makeParseError(node)(`reduceParseChainContext ${node.getKindName()} failed`));
                 })
             )
-
 
             function parseExpression(expression: Expression): E.Either<ParseError, ChainContext> {
                 return pipe(

@@ -82,9 +82,7 @@ class ByteStringConstructorDef extends $SymbolDef implements ObjectSymbolDef {
 
 class SysCallInterfaceMemberDef extends $SymbolDef {
     get loadOps() {
-        return tsm.Node.isPropertySignature(this.sig)
-            ? [this.sysCallOp]
-            : [];
+        return [this.sysCallOp]
     }
 
     private get sysCallOp(): SysCallOperation {
