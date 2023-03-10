@@ -3,7 +3,12 @@ import { CompileError } from "./compiler";
 import { join } from "path";
 import * as fsp from "fs/promises";
 import * as ROA from 'fp-ts/ReadonlyArray';
+import * as O from 'fp-ts/Option';
 import { sc, u } from "@cityofzion/neon-core";
+
+export function single<T>(array: ReadonlyArray<T>): O.Option<T> {
+    return array.length === 1 ? O.some(array[0] as T) : O.none;
+}
 
 export function isNotNullOrUndefined<T extends Object>(input: null | undefined | T): input is T {
     return input != null;
@@ -77,7 +82,7 @@ export async function createContractProject() {
     return project;
 }
 
-const checkFlags = (type: tsm.Type, flags: tsm.ts.TypeFlags) => type.getFlags() & flags;
+const checkFlags = (type: tsm.Type, flags: tsm.ts.TypeFlags) => (type.getFlags() & flags) !== 0;
 
 export const isBigIntLike = (type: tsm.Type) => checkFlags(type, tsm.ts.TypeFlags.BigIntLike);
 export const isBooleanLike = (type: tsm.Type) => checkFlags(type, tsm.ts.TypeFlags.BooleanLike);

@@ -10,13 +10,12 @@ import { LibraryDeclarations } from "../projectLib";
 import { CompilerState } from "../compiler";
 import { createScope, Scope } from "../scope";
 import { sc, u } from "@cityofzion/neon-core";
-import { $SymbolDef, ObjectSymbolDef, SymbolDef } from "../symbolDef";
-import { isVoidLike } from "../utils";
+import { $SymbolDef, ObjectSymbolDef, ParseError, SymbolDef } from "../symbolDef";
+import { isVoidLike, single } from "../utils";
 import { Operation, SysCallOperation } from "../types";
+import { parseArguments } from "./expressionProcessor";
 
-function single<T>(array: ReadonlyArray<T>): O.Option<T> {
-    return array.length === 1 ? O.some(array[0] as T) : O.none;
-}
+
 function checkErrors(errorMessage: string) {
     return <T>(results: readonly E.Either<string, T>[]): readonly T[] => {
         const { left: errors, right: values } = pipe(results, ROA.separate);
@@ -80,13 +79,14 @@ class ByteStringConstructorDef extends $SymbolDef implements ObjectSymbolDef {
     }
 }
 
-class SysCallInterfaceMemberDef extends $SymbolDef {
-    get loadOps() {
-        return [this.sysCallOp]
-    }
+class SysCallInterfaceMemberDef extends $SymbolDef implements ObjectSymbolDef {
+    
+    readonly props: ReadonlyArray<SymbolDef> = [];
+    parseArguments?: (scope: Scope) => (node: tsm.CallExpression) => E.Either<ParseError, ReadonlyArray<Operation>>
 
-    private get sysCallOp(): SysCallOperation {
-        return { kind: "syscall", name: this.serviceName };
+    get loadOps() {
+        const op: SysCallOperation = { kind: "syscall", name: this.serviceName }; 
+        return [op]
     }
 
     constructor(
@@ -94,6 +94,9 @@ class SysCallInterfaceMemberDef extends $SymbolDef {
         readonly serviceName: string
     ) {
         super(sig);
+        if (tsm.Node.isMethodSignature(sig)) {
+            this.parseArguments = parseArguments;
+        }
     }
 }
 
