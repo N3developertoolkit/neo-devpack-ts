@@ -143,7 +143,7 @@ const parseConstVariableStatement = (node: VariableStatement): E.Either<Readonly
         ROA.partitionMap(identity),
     )
 
-    return failures.length > 1 ? E.left(failures) : E.right(sources);
+    return failures.length > 0 ? E.left(failures) : E.right(sources);
 }
 
 const parseSrcDeclaration = (node: Node): E.Either<ReadonlyArray<ParseError>, ReadonlyArray<SymbolDef>> => {
