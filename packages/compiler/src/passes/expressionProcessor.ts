@@ -37,7 +37,7 @@ export const parseArrayLiteral =
 export const parseBigIntLiteral =
     (node: BigIntLiteral): E.Either<ParseError, Operation> => {
         const value = node.getLiteralValue() as bigint;
-        return E.right({ kind: "pushint", value, location: node });
+        return E.right({ kind: "pushint", value });
     }
 
 const binaryOpTokenMap: ReadonlyMap<SyntaxKind, SimpleOperationKind> = new Map([
@@ -93,7 +93,7 @@ export const parseBinaryExpression =
 export const parseBooleanLiteral =
     (node: FalseLiteral | TrueLiteral): E.Either<ParseError, Operation> => {
         const value = node.getLiteralValue();
-        return E.right({ kind: "pushbool", value, location: node });
+        return E.right({ kind: "pushbool", value });
     }
 
 export const parseIdentifier =
@@ -113,13 +113,13 @@ export const parseIdentifier =
 
 export const parseNullLiteral =
     (node: NullLiteral): E.Either<ParseError, Operation> =>
-        E.right({ kind: "pushnull", location: node });
+        E.right({ kind: "pushnull" });
 
 export const parseNumericLiteral =
     (node: NumericLiteral): E.Either<ParseError, Operation> => {
         const value = node.getLiteralValue();
         return Number.isInteger(value)
-            ? E.right({ kind: "pushint", value: BigInt(value), location: node })
+            ? E.right({ kind: "pushint", value: BigInt(value) })
             : E.left(makeParseError(node)(`invalid non-integer numeric literal ${value}`));
     }
 
@@ -161,7 +161,7 @@ export const parseStringLiteral =
     (node: StringLiteral): E.Either<ParseError, Operation> => {
         const literal = node.getLiteralValue();
         const value = Buffer.from(literal, 'utf8');
-        return E.right({ kind: "pushdata", value, location: node });
+        return E.right({ kind: "pushdata", value });
     }
 
 export const parseExpression =
