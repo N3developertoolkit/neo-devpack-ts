@@ -31,7 +31,7 @@ export function _deploy(_data: any, update: boolean): void {
 export function update(nefFile: ByteString, manifest: string) {
     const key = ByteString.fromHex("0xFF");
     const owner = Storage.context.get(key)!;
-    // TODO: support "if (owner && runtimeCheckWitness(owner))"
+    // TODO: support "if (owner && checkWitness(owner))"
     if (checkWitness(owner)) {
         ContractManagement.update(nefFile, manifest);
     } else {

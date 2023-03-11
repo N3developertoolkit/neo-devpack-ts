@@ -10,10 +10,6 @@ const SYMBOL = "TANK";
 const DECIMALS = 8n;
 const INITIAL_SUPPLY = 1_000_000n;
 
-const prefixTotalSupply = 0xA0;
-// const prefixBalance = 0xA1;
-const prefixContractOwner = 0xFF;
-
 /** @safe */
 export function symbol() { return SYMBOL; }
 
@@ -22,24 +18,23 @@ export function decimals() { return DECIMALS; }
 
 /** @safe */
 export function totalSupply( ) { 
-    const value = storageGet(
-        storageGetContext(), 
-        Uint8Array.from([prefixTotalSupply]));
+    const key = ByteString.fromHex("0xA0");
+    const value = Storage.context.get(key);
     return asInteger(value);
 }
 
-/** @safe */
+// /** @safe */
 export function balanceOf(account: ByteString) { 
     const key = concat(
-        Uint8Array.from([prefixTotalSupply]),
+        ByteString.fromHex("0xA1"),
         account);
-    const value = storageGet(storageGetContext(), key);
+    const value = Storage.context.get(key);
     return asInteger(value);
 }
 
 export function transfer(from: ByteString, to: ByteString, amount: bigint, data: any) {
     if (amount < 0n) throw Error("The amount must be a positive number");
-    if (!runtimeCheckWitness(from)) return false;
+    if (!checkWitness(from)) return false;
     if (amount != 0n) {
         if (!updateBalance(from, -amount)) return false;
         updateBalance(to, amount);
@@ -64,27 +59,25 @@ export function burn(account: ByteString, amount: bigint): void {
 
 export function _deploy(_data: any, update: boolean): void { 
     if (update) return;
-    const tx = runtimeGetScriptContainer() as Transaction;
-    storagePut(
-        storageGetContext(), 
-        Uint8Array.from([prefixContractOwner]), 
-        tx.sender);
+    const tx = Runtime.scriptContainer as Transaction;
+    const key = ByteString.fromHex("0xFF");
+    Storage.context.put(key, tx.sender);
     createTokens(tx.sender, INITIAL_SUPPLY * (10n ** DECIMALS))
 }
 
 export function update(nefFile: ByteString, manifest: string) {
     if (checkOwner()) {
-        contractManagementUpdate(nefFile, manifest);
+        ContractManagement.update(nefFile, manifest);
     } else {
         throw Error("Only the contract owner can update the contract");
     }
 }
 
 function checkOwner() {
-    const owner = storageGet(
-        storageGetContext(), 
-        Uint8Array.from([prefixContractOwner]))!;
-    return runtimeCheckWitness(owner);
+    const key = ByteString.fromHex("0xFF");
+    const owner = Storage.context.get(key)!;
+    // TODO: support "if (owner && checkWitness(owner))"
+    return checkWitness(owner);
 }
 
 function createTokens(account: ByteString, amount: bigint) {
@@ -96,23 +89,21 @@ function createTokens(account: ByteString, amount: bigint) {
 }
 
 function updateTotalSupply(amount: bigint) {
-    const ctx = storageGetContext();
-    const key = Uint8Array.from([prefixTotalSupply]);
-    const totalSupply = asInteger(storageGet(ctx, key));
-    storagePut(ctx, key, asByteString(totalSupply + amount));
+    const key = ByteString.fromHex("0xA0");
+    const totalSupply = asInteger(Storage.context.get(key));
+    Storage.context.put(key, asByteString(totalSupply + amount));
 }
 
 function updateBalance(account: ByteString, amount: bigint): boolean {
-    const ctx = storageGetContext();
     const key = concat(
-        Uint8Array.from([prefixTotalSupply]),
+        ByteString.fromHex("0xA1"),
         account);
-    const balance = asInteger(storageGet(ctx, key)) + amount;
+    const balance = asInteger(Storage.context.get(key)) + amount;
     if (balance < 0n) return false;
     if (balance === 0n) {
-        storageDelete(ctx, key);
+        Storage.context.delete(key);
     } else {
-        storagePut(ctx, key, asByteString(balance));
+        Storage.context.put(key, asByteString(balance));
     }
     return true;
 }
@@ -123,9 +114,9 @@ declare function Transfer(from: ByteString | null, to: ByteString | null, amount
 function postTransfer(from: ByteString | null, to: ByteString | null, amount: bigint, data: any) {
     Transfer(from, to, amount);
     if (to) {
-        const contract = contractManagementGetContract(to);
+        const contract = ContractManagement.getContract(to);
         if (contract) {
-            contractCall(to, "onNEP17Payment", callFlagsAll, from, amount, data);
+            callContract(to, "onNEP17Payment", 15 /*callFlagsAll*/, from, amount, data);
         }
     }
 }

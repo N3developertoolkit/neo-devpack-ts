@@ -6,7 +6,7 @@ import { Node, ts } from "ts-morph";
 import { sc } from "@cityofzion/neon-core";
 
 const REPO_ROOT = path.join(__dirname, "../../..");
-const FILENAME = "./sample-contracts/helloworld.ts";
+const FILENAME = "./sample-contracts/nep17token.ts";
 const OUTPUT_DIR = "./express/out";
 
 function printDiagnostics(diags: ReadonlyArray<ts.Diagnostic>) {

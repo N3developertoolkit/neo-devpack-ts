@@ -8,7 +8,7 @@ import * as TS from "../utility/TS";
 import { Operation } from "../types/Operation";
 import { resolve as $resolve, Scope } from "../scope";
 import { isCallableDef, isObjectDef, makeParseError, ParseError, parseLoadOps, SymbolDef } from "../symbolDef";
-import { parseExpression as $parseExpression } from "./expressionProcessor";
+import { parseExpression as $parseExpression, parseExpression } from "./expressionProcessor";
 import { parseSymbol } from "./processSourceFile";
 import { single } from "../utils";
 
@@ -68,7 +68,21 @@ const createChainContext =
     (scope: Scope) =>
         (node: Expression): E.Either<ParseError, ChainContext> => {
             if (Node.isIdentifier(node)) return parseIdentifier(scope)(node);
+            if (Node.isBinaryExpression(node)) return simpleExpression();
             return E.left(makeParseError(node)(`createParseChainContext ${node.getKindName()} failed`))
+
+            function simpleExpression() {
+                return pipe(
+                    node,
+                    parseExpression(scope),
+                    E.map(operations => {
+                        return {
+                            operations,
+                            def: O.none
+                        } as ChainContext
+                    })
+                )
+            }
         }
 
 const parseContextDef = (node: Node) => (context: ChainContext) => {
@@ -199,7 +213,7 @@ const reduceChainContext =
                     if (Node.isAsExpression(node)) return parseAsExpression(scope)(context)(node);
                     if (Node.isCallExpression(node)) return parseCallExpression(scope)(context)(node);
                     if (Node.isNonNullExpression(node)) return E.of(context);
-                    // if (Node.isParenthesizedExpression(node)) return parseExpression(node.getExpression());
+                    if (Node.isParenthesizedExpression(node)) return E.of(context);
                     if (Node.isPropertyAccessExpression(node)) return parsePropertyAccessExpression(scope)(context)(node);
                     return E.left(makeParseError(node)(`reduceParseChainContext ${node.getKindName()} failed`));
                 })
@@ -209,6 +223,8 @@ const reduceChainContext =
 export const parseExpressionChain =
     (scope: Scope) =>
         (node: Expression): E.Either<ParseError, ReadonlyArray<Operation>> => {
+            const chain = pipe(node, makeExpressionChain);
+
             return pipe(
                 node,
                 makeExpressionChain,
