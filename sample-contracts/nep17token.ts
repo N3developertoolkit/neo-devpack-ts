@@ -23,7 +23,7 @@ export function totalSupply( ) {
     return asInteger(value);
 }
 
-// /** @safe */
+/** @safe */
 export function balanceOf(account: ByteString) { 
     const key = concat(
         ByteString.fromHex("0xA1"),
