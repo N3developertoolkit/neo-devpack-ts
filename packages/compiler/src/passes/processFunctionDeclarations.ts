@@ -1,5 +1,5 @@
 import * as tsm from "ts-morph";
-import { pipe } from 'fp-ts/function';
+import { flow, pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
@@ -341,9 +341,18 @@ const makeContractMethod =
                         ? O.some({ op, index })
                         : O.none),
                 convertJumpTargetOps(ops),
-                E.fromOption(() => makeParseError()('woops')),
+                E.fromOption(() => makeParseError(node)('convertJumpTargetOps failed')),
                 E.bindTo('operations'),
-                E.bind('symbol', () => pipe(node, parseSymbol)),
+                E.bind('symbol', () => pipe(
+                    node,
+                    parseSymbol,
+                    E.chain(flow(
+                        E.fromPredicate(
+                            sym => sym.getName() !== "_initialize",
+                            sym => makeParseError(node)(`invalid contract method name "${sym.getName()}"`)
+                        )
+                    ))
+                )),
                 E.bind('variables', () => pipe(
                     result.locals,
                     ROA.map(varDecl => {
