@@ -12,10 +12,39 @@
             "skipFiles": [
                 "<node_internals>/**"
             ],
-            "program": "${workspaceFolder}/packages/compiler/src/main.ts", 
+            "program": "${workspaceFolder}/packages/compiler/src/main.ts",
             "outFiles": [
                 "${workspaceFolder}/**/*.js"
             ]
-        }
+        },
+        {
+            "type": "neo-contract",
+            "name": "NEO: deploy",
+            "request": "launch",
+            "program": "${workspaceFolder}/express/out/nep17token.nef",
+            "neo-express": "${workspaceFolder}/express/default.neo-express",
+            "invocation": "deploy",
+            "deploy-signer": "@owen"
+        },
+        {
+            "type": "neo-contract",
+            "name": "NEO: transfer",
+            "request": "launch",
+            "program": "${workspaceFolder}/express/out/nep17token.nef",
+            "neo-express": "${workspaceFolder}/express/default.neo-express",
+            "checkpoint": "${workspaceFolder}/express/out/nep17-deployed.neoxp-checkpoint",
+            "invocation": {
+                "operation": "transfer",
+                "args": [
+                    "@owen",
+                    "@alice",
+                    10000,
+                    null
+                ]
+            },
+            "signers": [
+                "@owen"
+            ]
+        },
     ]
 }
