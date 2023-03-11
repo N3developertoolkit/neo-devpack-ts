@@ -7,6 +7,8 @@
 
 const VALUE_KEY = "0x00";
 const OWNER_KEY = "0xFF";
+const key1 = ByteString.fromHex("0x00");
+const key2 = ByteString.fromHex(VALUE_KEY);
 
 /** @safe */
 export function get() { 
