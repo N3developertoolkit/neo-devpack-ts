@@ -219,15 +219,25 @@ const parseSourceNode =
             return makeErrorCtx(`parseSourceNode ${node.getKindName()}`);
         }
 
+export interface SourceContents {
+    methods: ReadonlyArray<ContractMethod>,
+    staticVars: ReadonlyArray<SymbolDef>,
+}
+
+
 export const parseSourceFile =
-    (src: SourceFile, parentScope: Scope): S.State<ReadonlyArray<ts.Diagnostic>, ReadonlyArray<ContractMethod>> =>
+    (src: SourceFile, parentScope: Scope): S.State<ReadonlyArray<ts.Diagnostic>, SourceContents> =>
         diagnostics => {
+            const emptyContents: SourceContents = {
+                methods: [],
+                staticVars: []
+            }
             if (src.isDeclarationFile()) {
                 const diag = createDiagnostic(`${src.getFilePath()} is a declaration file`, {
                     node: src,
                     category: ts.DiagnosticCategory.Warning
                 });
-                return [[], ROA.append(diag)(diagnostics)]
+                return [emptyContents, ROA.append(diag)(diagnostics)]
             }
 
             const children = pipe(src, TS.getChildren);
@@ -240,7 +250,7 @@ export const parseSourceFile =
             );
 
             if (errors.length > 0) {
-                return [[], ROA.concat(errors)(diagnostics)]
+                return [emptyContents, ROA.concat(errors)(diagnostics)]
             }
 
             let context: ParseSourceNodeContext = {
@@ -262,5 +272,11 @@ export const parseSourceFile =
             }
 
             const diags = pipe(context.errors, ROA.map(makeParseDiagnostic));
-            return [methods, ROA.concat(diags)(diagnostics)];
+            return [
+                {
+                    methods,
+                    staticVars: []
+                },
+                ROA.concat(diags)(diagnostics)
+            ];
         }

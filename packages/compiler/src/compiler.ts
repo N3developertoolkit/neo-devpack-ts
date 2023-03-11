@@ -15,6 +15,7 @@ import { makeGlobalScope } from "./passes/builtins";
 import { pipe } from "fp-ts/lib/function";
 import { Scope } from "./scope";
 import { parseSourceFile } from "./passes/processSourceFile";
+import { SymbolDef } from "./symbolDef";
 
 export const DEFAULT_ADDRESS_VALUE = 53;
 
@@ -84,14 +85,16 @@ export function compile(
     if (hasErrors(diagnostics)) { return { diagnostics } }
     
     let methods: ReadonlyArray<ContractMethod> = ROA.empty;
+    let staticVars: ReadonlyArray<SymbolDef> = ROA.empty;
     for (const src of project.getSourceFiles()) {
         if (src.isDeclarationFile()) continue;
-        let $methods;
-        [$methods, diagnostics] = parseSourceFile(src, globalScope)(diagnostics);
-        methods = ROA.concat($methods)(methods);
+        let $contents;
+        [$contents, diagnostics] = parseSourceFile(src, globalScope)(diagnostics);
+        methods = ROA.concat($contents.methods)(methods);
+        staticVars = ROA.concat($contents.staticVars)(staticVars);
         if (hasErrors(diagnostics)) { return { diagnostics } }
-
     }
+
     let artifacts;
     [artifacts, diagnostics] = collectArtifacts(contractName, methods, $options)(diagnostics);
     if (hasErrors(diagnostics)) { return { diagnostics } }
