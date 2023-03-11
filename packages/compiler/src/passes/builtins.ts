@@ -14,7 +14,6 @@ import { getErrorMessage, isVoidLike, single } from "../utils";
 import { Operation, parseOperation as $parseOperation } from "../types";
 import { getArguments, parseArguments, parseExpression } from "./expressionProcessor";
 import { ReadonlyUint8Array } from "../utility/ReadonlyArrays";
-import { parse } from "path";
 
 
 function checkErrors(errorMessage: string) {

@@ -1,4 +1,4 @@
-import { Node, Symbol, FunctionDeclaration, JSDocTag, VariableStatement, Expression, SyntaxKind, BigIntLiteral, NumericLiteral, StringLiteral, VariableDeclarationKind, SourceFile, ts, Type, VariableDeclaration, CallExpression } from "ts-morph";
+import { Node, Symbol, FunctionDeclaration, JSDocTag, VariableStatement, Expression, SyntaxKind, BigIntLiteral, NumericLiteral, StringLiteral, VariableDeclarationKind, SourceFile, ts, VariableDeclaration, CallExpression } from "ts-morph";
 import { createScope, Scope } from "../scope";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as S from 'fp-ts/State'
@@ -12,7 +12,7 @@ import { ContractMethod } from "../compiler";
 import { $SymbolDef, CallableSymbolDef, makeParseDiagnostic, makeParseError, ParseArgumentsFunc, ParseError, SymbolDef } from "../symbolDef";
 import { parseContractMethod } from "./processFunctionDeclarations";
 import { Operation } from "../types";
-import { parseArguments} from './expressionProcessor';
+import { parseArguments } from './expressionProcessor';
 
 export const parseSymbol = (node: Node): E.Either<ParseError, Symbol> => {
     return pipe(
@@ -25,12 +25,27 @@ export const parseSymbol = (node: Node): E.Either<ParseError, Symbol> => {
 type ConstantValue = bigint | boolean | Uint8Array | null;
 
 class ConstantSymbolDef extends $SymbolDef {
+    readonly loadOps: readonly Operation[];
+
     constructor(
         readonly decl: VariableDeclaration,
         symbol: Symbol,
         readonly value: ConstantValue
     ) {
         super(decl, symbol);
+        this.loadOps = [ConstantSymbolDef.getLoadOp(value)];
+    }
+
+    private static getLoadOp(value: ConstantValue): Operation {
+        if (value === null)
+            return { kind: 'pushnull' };
+        if (value instanceof Uint8Array)
+            return { kind: 'pushdata', value };
+        if (typeof value === 'bigint')
+            return { kind: 'pushint', value };
+        if (typeof value === 'boolean')
+            return { kind: 'pushbool', value };
+        throw new Error(`Invalid ConstantValue ${value}`);
     }
 }
 
@@ -72,10 +87,16 @@ class EventSymbolDef extends $SymbolDef implements CallableSymbolDef {
     }
 }
 
-class FunctionSymbolDef extends $SymbolDef {
+class FunctionSymbolDef extends $SymbolDef implements CallableSymbolDef {
+
+    readonly loadOps: readonly Operation[];
+    readonly props = [];
+    readonly parseArguments: ParseArgumentsFunc;
 
     constructor(readonly decl: FunctionDeclaration, symbol: Symbol) {
         super(decl, symbol);
+        this.loadOps = [{ kind: 'call', method: this.symbol }]
+        this.parseArguments = parseArguments;
     }
 
     static create(decl: FunctionDeclaration): E.Either<ParseError, FunctionSymbolDef> {
