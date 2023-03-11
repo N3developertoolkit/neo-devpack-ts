@@ -11,7 +11,7 @@
     "build": "tsc --build tsconfig.json",
     "run": "node ./packages/compiler/lib/main.js",
     "neoxp-batch": "cd express && dotnet neoxp batch ./nep17.batch --reset",
-    "all": "npm run config && npm run build && npm run run && npm run neoxp-batch",
+    "all": "npm run config && npm run build && npm run run",
     "clean": "tsc --build tsconfig.json --clean"
   },
   "devDependencies": {

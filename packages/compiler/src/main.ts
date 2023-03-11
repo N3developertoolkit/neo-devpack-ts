@@ -6,7 +6,7 @@ import { Node, ts } from "ts-morph";
 import { sc } from "@cityofzion/neon-core";
 
 const REPO_ROOT = path.join(__dirname, "../../..");
-const FILENAME = "./sample-contracts/nep17token.ts";
+const FILENAME = "./sample-contracts/helloworld.ts";
 const OUTPUT_DIR = "./express/out";
 
 function printDiagnostics(diags: ReadonlyArray<ts.Diagnostic>) {
@@ -49,9 +49,9 @@ async function main() {
 
             if (hasErrors(diagnostics)) return;
 
-            // for (const m of methods ?? []) {
-            //     dumpContractMethod(m);
-            // }
+            for (const m of methods ?? []) {
+                dumpContractMethod(m);
+            }
 
             const outputPath = path.join(REPO_ROOT, OUTPUT_DIR);
             if ((nef || manifest || debugInfo) && !fs.existsSync(outputPath))

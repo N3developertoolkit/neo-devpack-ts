@@ -11,7 +11,7 @@ import { createScope, Scope } from "../scope";
 import { sc, u } from "@cityofzion/neon-core";
 import { $SymbolDef, ObjectSymbolDef, CallableSymbolDef, ParseError, SymbolDef, makeParseError, ParseArgumentsFunc } from "../symbolDef";
 import { getErrorMessage, isVoidLike, single } from "../utils";
-import { Operation, parseOperation as $parseOperation } from "../types";
+import { isPushDataOp, Operation, parseOperation as $parseOperation, PushDataOperation } from "../types";
 import { getArguments, parseArguments, parseExpression } from "./expressionProcessor";
 import { ReadonlyUint8Array } from "../utility/ReadonlyArrays";
 
@@ -54,42 +54,21 @@ class StaticClassDef extends $SymbolDef {
     }
 }
 
-function getStringLiteralArg(node: tsm.CallExpression) {
-    return pipe(
-        node,
-        getArguments,
-        single,
-        E.fromOption(() => makeParseError(node)('invalid parameters')),
-        E.chain(expr => {
-            if (tsm.Node.isStringLiteral(expr)) {
-                return E.of(expr.getLiteralValue())
-            } else {
-                return E.left(makeParseError(node)('only string literal supported'))
-            }
-        }),
-    )
-}
-
-const fromEncoding = (node: tsm.Node) => (encoding: BufferEncoding) => (value: string): E.Either<ParseError, ReadonlyUint8Array> => {
-    return E.tryCatch(
-        () => Buffer.from(value, encoding) as ReadonlyUint8Array,
-        (e) => makeParseError(node)(getErrorMessage(e))
-    );
-}
-
-const fromHex = (node: tsm.Node) => (value: string): E.Either<ParseError, ReadonlyUint8Array> => {
-    value = value.startsWith('0x') || value.startsWith('0X')
-        ? value.substring(2)
-        : value;
-    return pipe(
-        value,
-        fromEncoding(node)('hex'),
-        E.chain(buffer => buffer.length === 0
-            ? E.left(makeParseError(node)('invalid hex buffer'))
-            : E.of(buffer)
-        )
-    );
-}
+// function getStringLiteralArg(node: tsm.CallExpression) {
+//     return pipe(
+//         node,
+//         getArguments,
+//         single,
+//         E.fromOption(() => makeParseError(node)('invalid parameters')),
+//         E.chain(expr => {
+//             if (tsm.Node.isStringLiteral(expr)) {
+//                 return E.of(expr.getLiteralValue())
+//             } else {
+//                 return E.left(makeParseError(node)('only string literal supported'))
+//             }
+//         }),
+//     )
+// }
 
 const errorCall =
     (scope: Scope) => (
@@ -116,31 +95,80 @@ class CallableVariableDef extends $SymbolDef implements CallableSymbolDef {
     }
 }
 
+const fromEncoding =
+    (encoding: BufferEncoding) =>
+        (value: string): O.Option<ReadonlyUint8Array> => {
+            return O.tryCatch(() => Buffer.from(value, encoding))
+        }
 
-const byteStringFromHex =
-    (scope: Scope) => (
-        node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
-
+const fromHex =
+    (value: string): O.Option<ReadonlyUint8Array> => {
+        value = value.startsWith('0x') || value.startsWith('0X')
+            ? value.substring(2)
+            : value;
         return pipe(
-            node,
-            getStringLiteralArg,
-            E.chain(fromHex(node)),
-            E.map(value => ({ kind: "pushdata", value } as Operation)),
-            E.map(ROA.of)
+            value,
+            fromEncoding('hex'),
+            O.chain(buffer => buffer.length * 2 === value.length ? O.some(buffer) : O.none)
         );
     }
+
+const exprAsString = (scope: Scope) => (expr: tsm.Expression): O.Option<string> => {
+    return pipe(
+        expr,
+        parseExpression(scope),
+        O.fromEither,
+        O.chain(single),
+        O.chain(O.fromPredicate(isPushDataOp)),
+        O.chain(op => O.tryCatch(() => Buffer.from(op.value).toString()))
+    )
+}
+
+const byteStringFromHex =
+    (scope: Scope) =>
+        (node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
+            const makeError = makeParseError(node);
+            return pipe(
+                node,
+                getArguments,
+                ROA.head,
+                E.fromOption(() => makeError('invalid arguments')),
+                E.chain(expr => {
+                    return pipe(
+                        expr,
+                        exprAsString(scope),
+                        O.chain(fromHex),
+                        O.map(value => {
+                            return ({ kind: 'pushdata', value } as PushDataOperation);
+                        }),
+                        O.map(ROA.of),
+                        E.fromOption(() => makeError('invalid hex string'))
+                    );
+                })
+            )
+        }
 
 const byteStringFromString =
     (scope: Scope) => (
         node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
-
+        const makeError = makeParseError(node);
         return pipe(
             node,
-            getStringLiteralArg,
-            E.chain(fromEncoding(node)('utf8')),
-            E.map(value => ({ kind: "pushdata", value } as Operation)),
-            E.map(ROA.of)
-        );
+            getArguments,
+            ROA.head,
+            E.fromOption(() => makeError('invalid arguments')),
+            E.chain(expr => {
+                return pipe(
+                    expr,
+                    parseExpression(scope),
+                    O.fromEither,
+                    O.chain(single),
+                    O.chain(O.fromPredicate(isPushDataOp)),
+                    O.map(ROA.of),
+                    E.fromOption(() => makeError('invalid string argument'))
+                )
+            })
+        )
     }
 
 class StaticMethodDef extends $SymbolDef implements CallableSymbolDef {
