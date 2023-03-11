@@ -9,10 +9,10 @@
   "scripts": {
     "config": "pnpm install && dotnet tool restore --tool-manifest ./express/.config/dotnet-tools.json",
     "build": "tsc --build tsconfig.json",
-    "clean": "tsc --build tsconfig.json --clean",
+    "run": "node ./packages/compiler/lib/main.js",
     "neoxp-batch": "cd express && dotnet neoxp batch ./nep17.batch --reset",
-    "run": "node ./packages/test-compiler/main.js",
-    "exec": "node ./src/main.js && npm run neoxp-batch"
+    "all": "npm run config && npm run build && npm run run && npm run neoxp-batch",
+    "clean": "tsc --build tsconfig.json --clean"
   },
   "devDependencies": {
     "@tsconfig/node16": "^1.0.3",

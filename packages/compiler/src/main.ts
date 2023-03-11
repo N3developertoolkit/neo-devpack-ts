@@ -49,9 +49,9 @@ async function main() {
 
             if (hasErrors(diagnostics)) return;
 
-            for (const m of methods ?? []) {
-                dumpContractMethod(m);
-            }
+            // for (const m of methods ?? []) {
+            //     dumpContractMethod(m);
+            // }
 
             const outputPath = path.join(REPO_ROOT, OUTPUT_DIR);
             if ((nef || manifest || debugInfo) && !fs.existsSync(outputPath))
