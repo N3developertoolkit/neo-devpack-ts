@@ -74,7 +74,7 @@ async function main() {
             if (debugInfo) {
                 const debugInfoPath = path.join(outputPath, `${contractName}.debug.json`);
                 const jsonDebugInfo = debugInfo.toJson();
-                jsonDebugInfo["document-root"] = REPO_ROOT;
+                jsonDebugInfo.documents = jsonDebugInfo.documents?.map(d => path.join(REPO_ROOT, d));
                 const $debugInfo = JSON.stringify(jsonDebugInfo, null, 4);
                 await fsp.writeFile(debugInfoPath, $debugInfo);
                 console.log(green, "Wrote: " + debugInfoPath);
