@@ -10,7 +10,7 @@ import { createDiagnostic, single } from "../utils";
 import { identity, pipe } from "fp-ts/function";
 import { ContractMethod } from "../compiler";
 import { $SymbolDef, CallableSymbolDef, makeParseDiagnostic, makeParseError, ParseArgumentsFunc, ParseError, SymbolDef } from "../symbolDef";
-import { parseContractMethod } from "./funcDeclProcessor";
+import { parseContractMethod } from "./functionDeclarationProcessor";
 import { Operation } from "../types";
 import { parseArguments, parseExpression } from './expressionProcessor';
 
@@ -20,6 +20,35 @@ export const parseSymbol = (node: Node): E.Either<ParseError, Symbol> => {
         TS.getSymbol,
         E.fromOption(() => makeParseError(node)('invalid symbol'))
     );
+}
+
+interface ParseSourceContext {
+    readonly scope: Scope
+    readonly staticVars: readonly StaticVarSymbolDef[];
+    readonly errors: ReadonlyArray<ParseError>
+}
+
+export interface ParseSourceResults {
+    readonly methods: readonly ContractMethod[],
+    readonly staticVars: readonly StaticVarSymbolDef[],
+}
+
+class StaticVarSymbolDef extends $SymbolDef {
+    get loadOps(): readonly Operation[] {
+        return [{ kind: "loadstatic", index: this.index }];
+    }
+    get storeOps(): readonly Operation[] {
+        return [{ kind: "storestatic", index: this.index }];
+    }
+
+    constructor(
+        readonly decl: VariableDeclaration,
+        symbol: Symbol,
+        readonly index: number,
+        readonly initOps?: readonly Operation[]
+    ) {
+        super(decl, symbol);
+    }
 }
 
 class ConstantSymbolDef extends $SymbolDef {
@@ -35,7 +64,7 @@ class ConstantSymbolDef extends $SymbolDef {
     }
 }
 
-class EventSymbolDef extends $SymbolDef implements CallableSymbolDef {
+class EventFunctionSymbolDef extends $SymbolDef implements CallableSymbolDef {
 
     readonly loadOps: readonly Operation[];
     readonly props = [];
@@ -61,19 +90,19 @@ class EventSymbolDef extends $SymbolDef implements CallableSymbolDef {
         );
     }
 
-    static create(decl: FunctionDeclaration, tag: JSDocTag): E.Either<ParseError, EventSymbolDef> {
+    static create(decl: FunctionDeclaration, tag: JSDocTag): E.Either<ParseError, EventFunctionSymbolDef> {
         return pipe(
             decl,
             parseSymbol,
             E.map(symbol => {
                 const eventName = tag.getCommentText() ?? symbol.getName();
-                return new EventSymbolDef(decl, symbol, eventName);
+                return new EventFunctionSymbolDef(decl, symbol, eventName);
             })
         );
     }
 }
 
-class FunctionSymbolDef extends $SymbolDef implements CallableSymbolDef {
+class LocalFunctionSymbolDef extends $SymbolDef implements CallableSymbolDef {
 
     readonly loadOps: readonly Operation[];
     readonly props = [];
@@ -85,11 +114,11 @@ class FunctionSymbolDef extends $SymbolDef implements CallableSymbolDef {
         this.parseArguments = parseArguments;
     }
 
-    static create(decl: FunctionDeclaration): E.Either<ParseError, FunctionSymbolDef> {
+    static create(decl: FunctionDeclaration): E.Either<ParseError, LocalFunctionSymbolDef> {
         return pipe(
             decl,
             parseSymbol,
-            E.map(symbol => new FunctionSymbolDef(decl, symbol)),
+            E.map(symbol => new LocalFunctionSymbolDef(decl, symbol)),
         )
     }
 }
@@ -100,10 +129,10 @@ const parseSrcFunctionDeclaration = (node: FunctionDeclaration): E.Either<ParseE
             node,
             TS.getTag("event"),
             E.fromOption(() => makeParseError(node)('only @event declare functions supported')),
-            E.chain(tag => EventSymbolDef.create(node, tag)),
+            E.chain(tag => EventFunctionSymbolDef.create(node, tag)),
         )
     } else {
-        return FunctionSymbolDef.create(node);
+        return LocalFunctionSymbolDef.create(node);
     }
 }
 
@@ -160,16 +189,12 @@ const parseConstVariableStatement =
             return failures.length > 0 ? E.left(failures) : E.right(sources);
         }
 
-interface ParseSourceNodeContext {
-    readonly scope: Scope
-    readonly errors: ReadonlyArray<ParseError>
-}
 
 const parseSourceNode =
-    (node: Node): S.State<ParseSourceNodeContext, O.Option<ContractMethod>> =>
+    (node: Node): S.State<ParseSourceContext, O.Option<ContractMethod>> =>
         (context) => {
 
-            function makeErrorCtx(message: string): [O.Option<ContractMethod>, ParseSourceNodeContext] {
+            function makeErrorCtx(message: string): [O.Option<ContractMethod>, ParseSourceContext] {
                 const error = makeParseError(node)(message);
                 const errors = ROA.append(error)(context.errors);
                 return [O.none, { ...context, errors }];
@@ -219,19 +244,12 @@ const parseSourceNode =
             return makeErrorCtx(`parseSourceNode ${node.getKindName()}`);
         }
 
-export interface SourceContents {
-    methods: ReadonlyArray<ContractMethod>,
-    staticVars: ReadonlyArray<SymbolDef>,
-}
-
 
 export const parseSourceFile =
-    (src: SourceFile, parentScope: Scope): S.State<ReadonlyArray<ts.Diagnostic>, SourceContents> =>
+    (src: SourceFile, parentScope: Scope): S.State<ReadonlyArray<ts.Diagnostic>, ParseSourceResults> =>
         diagnostics => {
-            const emptyContents: SourceContents = {
-                methods: [],
-                staticVars: []
-            }
+            const emptyContents: ParseSourceResults = { methods: [], staticVars: [] }
+
             if (src.isDeclarationFile()) {
                 const diag = createDiagnostic(`${src.getFilePath()} is a declaration file`, {
                     node: src,
@@ -246,15 +264,16 @@ export const parseSourceFile =
                 ROA.filterMap(O.fromPredicate(Node.isFunctionDeclaration)),
                 ROA.map(parseSrcFunctionDeclaration),
                 ROA.map(E.mapLeft(makeParseDiagnostic)),
-                ROA.partitionMap(identity)
+                ROA.separate
             );
 
             if (errors.length > 0) {
                 return [emptyContents, ROA.concat(errors)(diagnostics)]
             }
 
-            let context: ParseSourceNodeContext = {
+            let context: ParseSourceContext = {
                 errors: ROA.empty,
+                staticVars: ROA.empty,
                 scope: createScope(parentScope)(functionDefs),
             }
             let methods: ReadonlyArray<ContractMethod> = ROA.empty;

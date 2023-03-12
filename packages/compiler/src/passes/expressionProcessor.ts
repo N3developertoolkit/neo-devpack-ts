@@ -6,7 +6,7 @@ import { Operation, SimpleOperationKind } from "../types/Operation";
 import { resolve, Scope } from "../scope";
 import { makeParseError, ParseError, parseLoadOps, SymbolDef } from "../symbolDef";
 import { parseExpressionChain } from "./expressionChainProcessor";
-import { parseSymbol } from "./processSourceFile";
+import { parseSymbol } from "./sourceFileProcessor";
 
 export const getArguments = (node: CallExpression) => 
     ROA.fromArray(node.getArguments() as Expression[])

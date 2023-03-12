@@ -9,7 +9,7 @@ import { Operation } from "../types/Operation";
 import { resolve as $resolve, Scope } from "../scope";
 import { isCallableDef, isObjectDef, makeParseError, ParseError, parseLoadOps, SymbolDef } from "../symbolDef";
 import { parseExpression as $parseExpression, parseExpression } from "./expressionProcessor";
-import { parseSymbol } from "./processSourceFile";
+import { parseSymbol } from "./sourceFileProcessor";
 import { single } from "../utils";
 
 interface ChainContext {

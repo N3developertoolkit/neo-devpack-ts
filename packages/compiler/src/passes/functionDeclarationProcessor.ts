@@ -14,7 +14,7 @@ import { createScope, Scope, updateScope } from "../scope";
 import { isJumpTargetOp, JumpTargetOperation, LoadStoreOperation, Location, Operation } from "../types/Operation";
 import { isVoidLike } from "../utils";
 import { ContractMethod } from "../compiler";
-import { parseSymbol } from "./processSourceFile";
+import { parseSymbol } from "./sourceFileProcessor";
 import { parseExpression as $parseExpression } from "./expressionProcessor";
 
 interface ParseFunctionContext {
@@ -68,7 +68,7 @@ class ParameterSymbolDef extends $SymbolDef {
     }
 }
 
-const E_fromSeparated = <E, A>(s: SEP.Separated<readonly E[], A>): E.Either<readonly E[], A> =>
+export const E_fromSeparated = <E, A>(s: SEP.Separated<readonly E[], A>): E.Either<readonly E[], A> =>
     ROA.isNonEmpty(s.left) ? E.left(s.left) : E.of(s.right)
 
 const parseExpression =

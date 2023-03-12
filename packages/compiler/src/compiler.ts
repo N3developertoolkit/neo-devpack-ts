@@ -14,7 +14,7 @@ import { collectArtifacts } from "./collectArtifacts";
 import { makeGlobalScope } from "./passes/builtins";
 import { pipe } from "fp-ts/lib/function";
 import { Scope } from "./scope";
-import { parseSourceFile } from "./passes/processSourceFile";
+import { parseSourceFile } from "./passes/sourceFileProcessor";
 import { SymbolDef } from "./symbolDef";
 
 export const DEFAULT_ADDRESS_VALUE = 53;
@@ -91,7 +91,7 @@ export function compile(
         let $contents;
         [$contents, diagnostics] = parseSourceFile(src, globalScope)(diagnostics);
         methods = ROA.concat($contents.methods)(methods);
-        staticVars = ROA.concat($contents.staticVars)(staticVars);
+        // staticVars = ROA.concat($contents.staticVars)(staticVars);
         if (hasErrors(diagnostics)) { return { diagnostics } }
     }
 
