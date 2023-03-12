@@ -17,68 +17,18 @@ import { ContractMethod } from "../compiler";
 import { parseSymbol } from "./processSourceFile";
 import { parseExpression as $parseExpression } from "./expressionProcessor";
 
-type Diagnostic = tsm.ts.Diagnostic;
-
 interface ParseFunctionContext {
-    readonly scope: Scope
-    readonly locals: ReadonlyArray<tsm.VariableDeclaration>
-    readonly errors: ReadonlyArray<ParseError>
+    readonly scope: Scope;
+    readonly locals: readonly tsm.VariableDeclaration[];
+    readonly errors: readonly ParseError[];
 }
 
-type ParseStatementState = S.State<ParseFunctionContext, ReadonlyArray<Operation>>
+interface ParseBodyResult {
+    readonly operations: readonly Operation[];
+    readonly locals: readonly tsm.VariableDeclaration[];
+}
 
-const E_fromSeparated = <E, A>(s: SEP.Separated<ReadonlyArray<E>, A>): E.Either<ReadonlyArray<E>, A> =>
-    ROA.isNonEmpty(s.left) ? E.left(s.left) : E.of(s.right)
-
-const parseExpression =
-    (node: tsm.Expression): ParseStatementState =>
-        state => {
-            return pipe(
-                node,
-                $parseExpression(state.scope),
-                E.match(
-                    error => [[], {
-                        ...state,
-                        errors: ROA.append(error)(state.errors)
-                    }],
-                    ops => [ops, state]
-                )
-            )
-        }
-
-const updateLocation =
-    (location: Location) =>
-        (ops: ReadonlyArray<Operation>) =>
-            ROA.isNonEmpty(ops)
-                ? pipe(ops, RNEA.modifyHead(op => ({ ...op, location })))
-                : ops;
-
-const parseBlock =
-    (node: tsm.Block): ParseStatementState =>
-        state => {
-            // create a new scope for the statements within the block
-            let $state = { ...state, scope: createScope(state.scope)([]) }
-
-            let operations: ReadonlyArray<Operation> = ROA.empty;
-            for (const stmt of node.getStatements()) {
-                let ops;
-                [ops, $state] = parseStatement(stmt)($state);
-                operations = ROA.concat(ops)(operations);
-            }
-
-            const open = node.getFirstChildByKind(tsm.SyntaxKind.OpenBraceToken);
-            if (open) {
-                operations = ROA.prepend({ kind: 'noop', location: open } as Operation)(operations);
-            }
-            const close = node.getLastChildByKind(tsm.SyntaxKind.CloseBraceToken);
-            if (close) {
-                operations = ROA.append({ kind: 'noop', location: close } as Operation)(operations);
-            }
-
-            //  keep the accumulated errors and locals, but swap the original state scope
-            //  back in on return
-            return [operations, { ...$state, scope: state.scope }];
-        }
+type ParseStatementState = S.State<ParseFunctionContext, readonly Operation[]>
 
 class LocalVariableSymbolDef extends $SymbolDef {
 
@@ -116,12 +66,63 @@ class ParameterSymbolDef extends $SymbolDef {
     ) {
         super(decl, symbol);
     }
-
 }
 
+const E_fromSeparated = <E, A>(s: SEP.Separated<readonly E[], A>): E.Either<readonly E[], A> =>
+    ROA.isNonEmpty(s.left) ? E.left(s.left) : E.of(s.right)
+
+const parseExpression =
+    (node: tsm.Expression): ParseStatementState =>
+        state => {
+            return pipe(
+                node,
+                $parseExpression(state.scope),
+                E.match(
+                    error => [[], {
+                        ...state,
+                        errors: ROA.append(error)(state.errors)
+                    }],
+                    ops => [ops, state]
+                )
+            )
+        }
+
+const updateLocation =
+    (location: Location) =>
+        (ops: readonly Operation[]) =>
+            ROA.isNonEmpty(ops)
+                ? pipe(ops, RNEA.modifyHead(op => ({ ...op, location })))
+                : ops;
+
+const parseBlock =
+    (node: tsm.Block): ParseStatementState =>
+        state => {
+            // create a new scope for the statements within the block
+            let $state = { ...state, scope: createScope(state.scope)([]) }
+
+            let operations: readonly Operation[] = ROA.empty;
+            for (const stmt of node.getStatements()) {
+                let ops;
+                [ops, $state] = parseStatement(stmt)($state);
+                operations = ROA.concat(ops)(operations);
+            }
+
+            const open = node.getFirstChildByKind(tsm.SyntaxKind.OpenBraceToken);
+            if (open) {
+                operations = ROA.prepend({ kind: 'noop', location: open } as Operation)(operations);
+            }
+            const close = node.getLastChildByKind(tsm.SyntaxKind.CloseBraceToken);
+            if (close) {
+                operations = ROA.append({ kind: 'noop', location: close } as Operation)(operations);
+            }
+
+            //  keep the accumulated errors and locals, but swap the original state scope
+            //  back in on return
+            return [operations, { ...$state, scope: state.scope }];
+        }
 
 const parseVariableDeclarations =
-    (declarations: ReadonlyArray<tsm.VariableDeclaration>): ParseStatementState =>
+    (declarations: readonly tsm.VariableDeclaration[]): ParseStatementState =>
         state => {
             // create an Either containing an array of VariableSymbolDefs and the operations
             // needed to initialize each variable
@@ -139,7 +140,7 @@ const parseVariableDeclarations =
                 E_fromSeparated,
                 E.map(ROA.map(({ node, def }) => {
                     const init = node.getInitializer();
-                    let operations: ReadonlyArray<Operation> = ROA.empty;
+                    let operations: readonly Operation[] = ROA.empty;
                     if (init) {
                         [operations, state] = parseExpression(init)(state);
                         const op: LoadStoreOperation = { kind: "storelocal", index: def.index };
@@ -161,11 +162,10 @@ const parseVariableDeclarations =
             state = {
                 ...state,
                 locals: ROA.concat(declarations)(state.locals),
-                scope: updateScope(state.scope)(defs as ReadonlyArray<SymbolDef>)
+                scope: updateScope(state.scope)(defs as readonly SymbolDef[])
             };
 
             return [operations, state];
-            return [[], state];
         }
 
 const parseVariableStatement =
@@ -179,7 +179,7 @@ const parseExpressionStatement =
     (node: tsm.ExpressionStatement): ParseStatementState =>
         state => {
             const expr = node.getExpression();
-            let ops: ReadonlyArray<Operation>;
+            let ops: readonly Operation[];
             [ops, state] = parseExpression(expr)(state);
 
             // The store command should be *here* not in the expression parser!
@@ -194,18 +194,18 @@ const parseIfStatement =
         state => {
             const expr = node.getExpression();
 
-            let operations: ReadonlyArray<Operation>;
+            let operations: readonly Operation[];
             [operations, state] = parseExpression(expr)(state);
             const closeParen = node.getLastChildByKind(tsm.SyntaxKind.CloseParenToken);
             operations = updateLocation(closeParen ? { start: node, end: closeParen } : expr)(operations);
 
-            let $thenOps: ReadonlyArray<Operation>;
+            let $thenOps: readonly Operation[];
             [$thenOps, state] = parseStatement(node.getThenStatement())(state);
             const thenOps = ROA.append({ kind: 'noop' } as Operation)($thenOps);
 
             const $else = node.getElseStatement();
             if ($else) {
-                let $elseOps: ReadonlyArray<Operation>;
+                let $elseOps: readonly Operation[];
                 [$elseOps, state] = parseStatement($else)(state);
                 const elseOps = ROA.append({ kind: 'noop' } as Operation)($elseOps);
 
@@ -234,7 +234,7 @@ const parseIfStatement =
 const parseReturnStatement =
     (node: tsm.ReturnStatement): ParseStatementState =>
         state => {
-            let operations: ReadonlyArray<Operation> = ROA.empty;
+            let operations: readonly Operation[] = ROA.empty;
             const expr = node.getExpression();
             if (expr) {
                 [operations, state] = parseExpression(expr)(state);
@@ -271,17 +271,12 @@ const returnOp: Operation = { kind: 'return' };
 const appendError = (error: ParseError): ParseStatementState =>
     state => ([[], { ...state, errors: ROA.append(error)(state.errors) }]);
 
-const appendErrors = (error: ReadonlyArray<ParseError>): ParseStatementState =>
+const appendErrors = (error: readonly ParseError[]): ParseStatementState =>
     state => ([[], { ...state, errors: ROA.concat(error)(state.errors) }]);
-
-type ParseBodyResult = {
-    readonly operations: ReadonlyArray<Operation>,
-    readonly locals: ReadonlyArray<tsm.VariableDeclaration>
-}
 
 const parseBody =
     (scope: Scope) =>
-        (body: tsm.Node): E.Either<ReadonlyArray<ParseError>, ParseBodyResult> => {
+        (body: tsm.Node): E.Either<readonly ParseError[], ParseBodyResult> => {
             if (tsm.Node.isStatement(body)) {
                 const [operations, state] = parseStatement(body)({ scope, errors: [], locals: [] });
                 if (ROA.isNonEmpty(state.errors)) {
@@ -294,8 +289,8 @@ const parseBody =
         }
 
 const convertJumpTargetOps =
-    (ops: ReadonlyArray<Operation>) =>
-        (jumpTargetOps: ReadonlyArray<{ index: number; op: JumpTargetOperation; }>): O.Option<ReadonlyArray<Operation>> => {
+    (ops: readonly Operation[]) =>
+        (jumpTargetOps: readonly { index: number; op: JumpTargetOperation; }[]): O.Option<readonly Operation[]> => {
             return pipe(
                 jumpTargetOps,
                 ROA.matchLeft(
@@ -379,7 +374,7 @@ const makeContractMethod =
 
 export const parseContractMethod =
     (parentScope: Scope) =>
-        (node: tsm.FunctionDeclaration): E.Either<ReadonlyArray<ParseError>, ContractMethod> => {
+        (node: tsm.FunctionDeclaration): E.Either<readonly ParseError[], ContractMethod> => {
             return pipe(
                 node.getParameters(),
                 ROA.mapWithIndex((index, node) => pipe(
@@ -389,7 +384,7 @@ export const parseContractMethod =
                 )),
                 ROA.separate,
                 E_fromSeparated,
-                E.map(defs => createScope(parentScope)(defs as ReadonlyArray<SymbolDef>)),
+                E.map(defs => createScope(parentScope)(defs as readonly SymbolDef[])),
                 E.bindTo('scope'),
                 E.bind('body', () => pipe(
                     node.getBody(),

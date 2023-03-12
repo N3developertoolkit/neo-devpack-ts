@@ -10,7 +10,7 @@ import { createDiagnostic, single } from "../utils";
 import { identity, pipe } from "fp-ts/function";
 import { ContractMethod } from "../compiler";
 import { $SymbolDef, CallableSymbolDef, makeParseDiagnostic, makeParseError, ParseArgumentsFunc, ParseError, SymbolDef } from "../symbolDef";
-import { parseContractMethod } from "./processFunctionDeclarations";
+import { parseContractMethod } from "./funcDeclProcessor";
 import { Operation } from "../types";
 import { parseArguments, parseExpression } from './expressionProcessor';
 
