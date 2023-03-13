@@ -14,8 +14,8 @@ import { collectArtifacts } from "./collectArtifacts";
 import { makeGlobalScope } from "./passes/builtins";
 import { pipe } from "fp-ts/lib/function";
 import { Scope } from "./scope";
-import { parseSourceFile } from "./passes/sourceFileProcessor";
 import { SymbolDef } from "./symbolDef";
+import { parseProject } from "./passes/sourceFileProcessor";
 
 export const DEFAULT_ADDRESS_VALUE = 53;
 
@@ -80,20 +80,14 @@ export function compile(
 
     let [library, diagnostics] = parseProjectLibrary(project)(ROA.empty);
     if (hasErrors(diagnostics)) { return { diagnostics } }
+
     let globalScope;
     [globalScope, diagnostics] = makeGlobalScope(library)(diagnostics);
     if (hasErrors(diagnostics)) { return { diagnostics } }
     
-    let methods: ReadonlyArray<ContractMethod> = ROA.empty;
-    let staticVars: ReadonlyArray<SymbolDef> = ROA.empty;
-    for (const src of project.getSourceFiles()) {
-        if (src.isDeclarationFile()) continue;
-        let $contents;
-        [$contents, diagnostics] = parseSourceFile(src, globalScope)(diagnostics);
-        methods = ROA.concat($contents.methods)(methods);
-        // staticVars = ROA.concat($contents.staticVars)(staticVars);
-        if (hasErrors(diagnostics)) { return { diagnostics } }
-    }
+    let methods;
+    [methods, diagnostics] = parseProject(globalScope)(project)(diagnostics);
+    if (hasErrors(diagnostics)) { return { diagnostics } }
 
     let artifacts;
     [artifacts, diagnostics] = collectArtifacts(contractName, methods, $options)(diagnostics);

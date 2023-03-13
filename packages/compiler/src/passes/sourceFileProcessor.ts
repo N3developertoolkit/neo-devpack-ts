@@ -1,4 +1,4 @@
-import { Node, Symbol, FunctionDeclaration, JSDocTag, VariableStatement, Expression, SyntaxKind, BigIntLiteral, NumericLiteral, StringLiteral, VariableDeclarationKind, SourceFile, ts, VariableDeclaration, CallExpression } from "ts-morph";
+import { Node, Symbol, FunctionDeclaration, JSDocTag, VariableStatement, Expression, SyntaxKind, BigIntLiteral, NumericLiteral, StringLiteral, VariableDeclarationKind, SourceFile, ts, VariableDeclaration, CallExpression, Project } from "ts-morph";
 import { createScope, Scope, updateScope } from "../scope";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as S from 'fp-ts/State'
@@ -8,7 +8,7 @@ import * as O from 'fp-ts/Option'
 
 import { createDiagnostic, single } from "../utils";
 import { identity, pipe } from "fp-ts/function";
-import { ContractMethod } from "../compiler";
+import { CompilerState, ContractMethod } from "../compiler";
 import { $SymbolDef, CallableSymbolDef, makeParseDiagnostic, makeParseError, ParseArgumentsFunc, ParseError, SymbolDef } from "../symbolDef";
 import { parseContractMethod } from "./functionDeclarationProcessor";
 import { Operation } from "../types";
@@ -245,39 +245,81 @@ const parseSourceNode =
         }
 
 
-export const parseSourceFile =
-    (src: SourceFile, parentScope: Scope): S.State<ReadonlyArray<ts.Diagnostic>, ParseSourceResults> =>
-        diagnostics => {
-            const emptyContents: ParseSourceResults = { methods: [], staticVars: [] }
 
-            if (src.isDeclarationFile()) {
-                const diag = createDiagnostic(`${src.getFilePath()} is a declaration file`, {
-                    node: src,
-                    category: ts.DiagnosticCategory.Warning
-                });
-                return [emptyContents, ROA.append(diag)(diagnostics)]
-            }
+// export const parseSourceFileOLD =
+//     (src: SourceFile, parentScope: Scope): S.State<ReadonlyArray<ts.Diagnostic>, ParseSourceResults> =>
+//         diagnostics => {
+//             const emptyContents: ParseSourceResults = { methods: [], staticVars: [] }
 
+//             if (src.isDeclarationFile()) {
+//                 const diag = createDiagnostic(`${src.getFilePath()} is a declaration file`, {
+//                     node: src,
+//                     category: ts.DiagnosticCategory.Warning
+//                 });
+//                 return [emptyContents, ROA.append(diag)(diagnostics)]
+//             }
+
+//             const children = pipe(src, TS.getChildren);
+//             const { left: errors, right: functionDefs } = pipe(
+//                 children,
+//                 ROA.filterMap(O.fromPredicate(Node.isFunctionDeclaration)),
+//                 ROA.map(parseSrcFunctionDeclaration),
+//                 ROA.map(E.mapLeft(makeParseDiagnostic)),
+//                 ROA.separate
+//             );
+
+//             if (errors.length > 0) {
+//                 return [emptyContents, ROA.concat(errors)(diagnostics)]
+//             }
+
+//             let context: ParseSourceContext = {
+//                 errors: ROA.empty,
+//                 staticVars: ROA.empty,
+//                 scope: createScope(parentScope)(functionDefs),
+//             }
+//             let methods: ReadonlyArray<ContractMethod> = ROA.empty;
+
+//             for (const node of children) {
+//                 let $method;
+//                 [$method, context] = parseSourceNode(node)(context);
+//                 methods = pipe(
+//                     $method,
+//                     O.match(
+//                         () => methods,
+//                         m => ROA.append(m)(methods)
+//                     )
+//                 )
+//             }
+
+//             const diags = pipe(context.errors, ROA.map(makeParseDiagnostic));
+//             return [
+//                 {
+//                     methods,
+//                     staticVars: []
+//                 },
+//                 ROA.concat(diags)(diagnostics)
+//             ];
+//         }
+
+const parseSourceFile =
+    (src: SourceFile): S.State<ParseSourceContext, readonly ContractMethod[]> =>
+        context => {
             const children = pipe(src, TS.getChildren);
             const { left: errors, right: functionDefs } = pipe(
                 children,
                 ROA.filterMap(O.fromPredicate(Node.isFunctionDeclaration)),
                 ROA.map(parseSrcFunctionDeclaration),
-                ROA.map(E.mapLeft(makeParseDiagnostic)),
                 ROA.separate
             );
 
             if (errors.length > 0) {
-                return [emptyContents, ROA.concat(errors)(diagnostics)]
+                return [[], {
+                    ...context,
+                    errors: ROA.concat(errors)(context.errors)
+                }]
             }
 
-            let context: ParseSourceContext = {
-                errors: ROA.empty,
-                staticVars: ROA.empty,
-                scope: createScope(parentScope)(functionDefs),
-            }
             let methods: ReadonlyArray<ContractMethod> = ROA.empty;
-
             for (const node of children) {
                 let $method;
                 [$method, context] = parseSourceNode(node)(context);
@@ -290,12 +332,36 @@ export const parseSourceFile =
                 )
             }
 
-            const diags = pipe(context.errors, ROA.map(makeParseDiagnostic));
-            return [
-                {
-                    methods,
-                    staticVars: []
-                },
-                ROA.concat(diags)(diagnostics)
-            ];
+            return [methods, context]
         }
+
+export const parseProject =
+    (scope: Scope) =>
+        (project: Project): CompilerState<readonly ContractMethod[]> =>
+            (diagnostics) => {
+
+                let methods: ReadonlyArray<ContractMethod> = ROA.empty;
+                let context: ParseSourceContext = {
+                    scope,
+                    errors: ROA.empty,
+                    staticVars: ROA.empty
+                }
+
+                for (const src of project.getSourceFiles()) {
+                    if (src.isDeclarationFile()) continue;
+                    let $methods;
+                    [$methods, context] = parseSourceFile(src)(context);
+                    methods = ROA.concat($methods)(methods);
+                }
+
+                diagnostics = pipe(
+                    context.errors,
+                    ROA.map(makeParseDiagnostic),
+                    ROA.concat(diagnostics)
+                )
+
+                // TODO: create _init method if needed
+
+                return [methods, diagnostics];
+            }
+
