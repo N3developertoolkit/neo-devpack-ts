@@ -21,7 +21,6 @@ importers:
       '@tsconfig/node16': ^1.0.3
       commander: ^10.0.0
       fp-ts: ^2.13.1
-      ts-mockito: ^2.6.1
       ts-morph: ^17.0.1
     dependencies:
       '@cityofzion/neon-core': 5.3.0
@@ -31,7 +30,6 @@ importers:
       ts-morph: 17.0.1
     devDependencies:
       '@tsconfig/node16': 1.0.3
-      ts-mockito: 2.6.1
 
   packages/framework:
     specifiers:
@@ -337,6 +335,7 @@ packages:
 
   /lodash/4.17.21:
     resolution: {integrity: sha512-v2kDEe57lecTulaDIuNTPy3Ry4gLGJ6Z1O3vE1krgXZNrsQ+LFTGHVxVjcXPs17LhbZVGedAJv8XZ1tvj5FvSg==}
+    dev: false
 
   /loglevel-plugin-prefix/0.8.4:
     resolution: {integrity: sha512-WpG9CcFAOjz/FtNht+QJeGpvVl/cdR6P0z6OcXSkr8wFJOsV2GRj2j10JLfjuA4aYkcKCNIEqRGCyTife9R8/g==}
@@ -435,12 +434,6 @@ packages:
   /tr46/0.0.3:
     resolution: {integrity: sha512-N3WMsuqV66lT30CrXNbEjx4GEwlow3v6rr4mCcv6prnfwhS01rkgyFdjPNBYd9br7LpXV1+Emh01fHnq2Gdgrw==}
     dev: false
-
-  /ts-mockito/2.6.1:
-    resolution: {integrity: sha512-qU9m/oEBQrKq5hwfbJ7MgmVN5Gu6lFnIGWvpxSjrqq6YYEVv+RwVFWySbZMBgazsWqv6ctAyVBpo9TmAxnOEKw==}
-    dependencies:
-      lodash: 4.17.21
-    dev: true
 
   /ts-morph/17.0.1:
     resolution: {integrity: sha512-10PkHyXmrtsTvZSL+cqtJLTgFXkU43Gd0JCc0Rw6GchWbqKe0Rwgt1v3ouobTZwQzF1mGhDeAlWYBMGRV7y+3g==}
