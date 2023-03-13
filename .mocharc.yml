@@ -1,4 +1,6 @@
-require: 'ts-node/register'
+extension: 
+  - "ts"
+require:
+  - ts-node/register
 spec: 
-  - packages/*/tests/**/*.spec.ts
-  - packages/*/src/**/*.spec.ts
+  - packages/**/*.spec.ts
