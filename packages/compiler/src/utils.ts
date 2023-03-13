@@ -1,8 +1,7 @@
 import * as tsm from "ts-morph";
 import { CompileError } from "./compiler";
 import { join } from "path";
-import * as fsp from "fs/promises";
-import * as ROA from 'fp-ts/ReadonlyArray';
+import { readdirSync, statSync, readFileSync } from "fs";
 import * as O from 'fp-ts/Option';
 import { sc, u } from "@cityofzion/neon-core";
 
@@ -67,19 +66,19 @@ export function createProject() {
     });
 }
 
-export async function createContractProject() {
+export function createContractProject() {
     const project = createProject();
     const projFS = project.getFileSystem();
 
     const sourceFolder = join(__dirname, "../node_modules/@neo-project/neo-contract-framework");
     const targetFolder = "/node_modules/@neo-project/neo-contract-framework";
 
-    const files = await fsp.readdir(sourceFolder)
+    const files = readdirSync(sourceFolder)
     for (const file of files) {
         const path = join(sourceFolder, file);
-        const stat = await fsp.stat(path)
+        const stat = statSync(path)
         if (stat.isDirectory()) continue;
-        const contents = await fsp.readFile(path, 'utf8');
+        const contents = readFileSync(path, 'utf8');
         projFS.writeFile(join(targetFolder, file), contents);
     }
 

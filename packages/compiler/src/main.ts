@@ -1,11 +1,10 @@
-import * as path from "path";
+import { join, basename } from "path";
 import { CallOperation, CallTokenOperation, compile, CompileOptions, ContractMethod, ConvertOperation, createContractProject, hasErrors, InitSlotOperation, JumpOffsetOperation, LoadStoreOperation, Location, Operation, PushBoolOperation, PushDataOperation, PushIntOperation, SysCallOperation, toDiagnostic } from './index'
-import * as fsp from 'fs/promises';
-import * as fs from 'fs';
+import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { Node, ts } from "ts-morph";
 import { sc } from "@cityofzion/neon-core";
 
-const REPO_ROOT = path.join(__dirname, "../../..");
+const REPO_ROOT = join(__dirname, "../../..");
 const FILENAME = "./sample-contracts/nep17token.ts";
 const OUTPUT_DIR = "./express/out";
 
@@ -21,13 +20,13 @@ function printDiagnostics(diags: ReadonlyArray<ts.Diagnostic>) {
     console.log(msg);
 }
 
-async function main() {
-    const project = await createContractProject();
+function main() {
+    const project = createContractProject();
 
     // load test contract
-    const contractName = path.basename(FILENAME, ".ts");
-    const contractPath = path.join(REPO_ROOT, FILENAME);
-    const contractSource = await fsp.readFile(contractPath, 'utf8');
+    const contractName = basename(FILENAME, ".ts");
+    const contractPath = join(REPO_ROOT, FILENAME);
+    const contractSource = readFileSync(contractPath, 'utf8');
     project.createSourceFile(FILENAME, contractSource);
     project.resolveSourceFileDependencies();
 
@@ -53,30 +52,30 @@ async function main() {
                 dumpContractMethod(m);
             }
 
-            const outputPath = path.join(REPO_ROOT, OUTPUT_DIR);
-            if ((nef || manifest || debugInfo) && !fs.existsSync(outputPath))
-                await fsp.mkdir(outputPath);
+            const outputPath = join(REPO_ROOT, OUTPUT_DIR);
+            if ((nef || manifest || debugInfo) && !existsSync(outputPath))
+                mkdirSync(outputPath);
 
             if (nef) {
-                const nefPath = path.join(outputPath, `${contractName}.nef`);
+                const nefPath = join(outputPath, `${contractName}.nef`);
                 const $nef = Buffer.from(nef.serialize(), 'hex');
-                await fsp.writeFile(nefPath, $nef);
+                writeFileSync(nefPath, $nef);
                 console.log(green, "Wrote: " + nefPath);
             }
 
             if (manifest) {
-                const manifestPath = path.join(outputPath, `${contractName}.manifest.json`);
+                const manifestPath = join(outputPath, `${contractName}.manifest.json`);
                 const $manifest = JSON.stringify(manifest.toJson(), null, 4);
-                await fsp.writeFile(manifestPath, $manifest);
+                writeFileSync(manifestPath, $manifest);
                 console.log(green, "Wrote: " + manifestPath);
             }
 
             if (debugInfo) {
-                const debugInfoPath = path.join(outputPath, `${contractName}.debug.json`);
+                const debugInfoPath = join(outputPath, `${contractName}.debug.json`);
                 const jsonDebugInfo = debugInfo.toJson();
-                jsonDebugInfo.documents = jsonDebugInfo.documents?.map(d => path.join(REPO_ROOT, d));
+                jsonDebugInfo.documents = jsonDebugInfo.documents?.map(d => join(REPO_ROOT, d));
                 const $debugInfo = JSON.stringify(jsonDebugInfo, null, 4);
-                await fsp.writeFile(debugInfoPath, $debugInfo);
+                writeFileSync(debugInfoPath, $debugInfo);
                 console.log(green, "Wrote: " + debugInfoPath);
             }
         } catch (error) {
