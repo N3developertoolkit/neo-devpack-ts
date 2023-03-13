@@ -119,6 +119,7 @@ export type Operation =
     CallTokenOperation |
     ConvertOperation |
     InitSlotOperation |
+    InitStaticOperation |
     JumpOffsetOperation |
     JumpTargetOperation |
     LoadStoreOperation |
@@ -176,6 +177,15 @@ export interface InitSlotOperation {
 }
 
 export const isInitSlotOp = (op: Operation): op is InitSlotOperation => op.kind === 'initslot';
+
+export interface InitStaticOperation {
+    readonly kind: 'initstatic',
+    readonly count: number,
+    location?: Location,
+}
+
+export const isInitStaticOperation = (op: Operation): op is InitStaticOperation => op.kind === 'initstatic';
+
 
 export interface PushDataOperation {
     readonly kind: 'pushdata';
@@ -312,6 +322,7 @@ export function getOperationSize(op: Operation) {
         case 'throw':
             return 1;
         case 'convert':
+        case 'initstatic':
             return 2;
         case 'calltoken':
         case 'initslot':

@@ -10,6 +10,10 @@ const SYMBOL = "TANK";
 const DECIMALS = 8n;
 const INITIAL_SUPPLY = 1_000_000n;
 
+const SUPPLY_KEY = ByteString.fromHex("0xA0");
+const ACCOUNT_PREFIX = ByteString.fromHex("0xA1");
+const OWNER_KEY = ByteString.fromHex("0xFF");
+
 /** @safe */
 export function symbol() { return SYMBOL; }
 
@@ -18,16 +22,13 @@ export function decimals() { return DECIMALS; }
 
 /** @safe */
 export function totalSupply( ) { 
-    const key = ByteString.fromHex("0xA0");
-    const value = Storage.context.get(key);
+    const value = Storage.context.get(SUPPLY_KEY);
     return asInteger(value);
 }
 
 /** @safe */
 export function balanceOf(account: ByteString) { 
-    const key = concat(
-        ByteString.fromHex("0xA1"),
-        account);
+    const key = concat(ACCOUNT_PREFIX, account);
     const value = Storage.context.get(key);
     return asInteger(value);
 }
@@ -60,8 +61,7 @@ export function burn(account: ByteString, amount: bigint): void {
 export function _deploy(_data: any, update: boolean): void { 
     if (update) return;
     const tx = Runtime.scriptContainer as Transaction;
-    const key = ByteString.fromHex("0xFF");
-    Storage.context.put(key, tx.sender);
+    Storage.context.put(OWNER_KEY, tx.sender);
     createTokens(tx.sender, INITIAL_SUPPLY * (10n ** DECIMALS))
 }
 
@@ -74,8 +74,7 @@ export function update(nefFile: ByteString, manifest: string) {
 }
 
 function checkOwner() {
-    const key = ByteString.fromHex("0xFF");
-    const owner = Storage.context.get(key)!;
+    const owner = Storage.context.get(OWNER_KEY)!;
     // TODO: support "if (owner && checkWitness(owner))"
     return checkWitness(owner);
 }
@@ -89,15 +88,12 @@ function createTokens(account: ByteString, amount: bigint) {
 }
 
 function updateTotalSupply(amount: bigint) {
-    const key = ByteString.fromHex("0xA0");
-    const totalSupply = asInteger(Storage.context.get(key));
-    Storage.context.put(key, asByteString(totalSupply + amount));
+    const totalSupply = asInteger(Storage.context.get(SUPPLY_KEY));
+    Storage.context.put(SUPPLY_KEY, asByteString(totalSupply + amount));
 }
 
 function updateBalance(account: ByteString, amount: bigint): boolean {
-    const key = concat(
-        ByteString.fromHex("0xA1"),
-        account);
+    const key = concat(ACCOUNT_PREFIX, account);
     const balance = asInteger(Storage.context.get(key)) + amount;
     if (balance < 0n) return false;
     if (balance === 0n) {

@@ -56,14 +56,23 @@ const asSeqPointString =
 const toDebugMethodJson =
     (docs: ReadonlyArray<tsm.SourceFile>) =>
         (method: DebugInfoMethod): DebugMethodJson => {
+            const params = method.parameters.length > 0
+                ? method.parameters.map(asSlotVarString)
+                : undefined;
+            const variables = method.variables.length > 0 
+                ? method.variables.map(asSlotVarString)
+                : undefined
+            const sequencePoints = method.sequencePoints.length > 0
+                ? method.sequencePoints.map(asSeqPointString(docs))
+                : undefined
             return {
                 id: method.name,
                 name: ',' + method.name,
                 range: `${method.range.start}-${method.range.end}`,
-                params: method.parameters.map(asSlotVarString),
-                variables: method.variables.map(asSlotVarString),
+                params,
+                variables,
                 return: sc.ContractParamType[asReturnType(method.returnType)],
-                "sequence-points": method.sequencePoints.map(asSeqPointString(docs)),
+                "sequence-points": sequencePoints
             }
         }
 
@@ -90,10 +99,10 @@ function toDebugInfoJson(hash: Buffer, methods: ReadonlyArray<DebugInfoMethod>):
 
     return {
         hash: `0x${hash.toString('hex')}`,
-        // TODO: correct processing of file path
-        // currently stripping off initial slash 
         documents: docs.map(v => v.getFilePath().substring(1)),
-        methods: methods.map(toDebugMethodJson(docs)),
+        methods: methods
+            .map(toDebugMethodJson(docs))
+            .filter(j => j["sequence-points"] !== undefined && j["sequence-points"].length !== 0),
         events: [],
         "static-variables": [],
     }

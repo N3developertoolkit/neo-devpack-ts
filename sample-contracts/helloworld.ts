@@ -5,37 +5,30 @@
  * @extra Description "this is a prototype contract written in TypeScript"
  */
 
-const VALUE_KEY = "0x00";
-const OWNER_KEY = "0xFF";
-const key1 = ByteString.fromHex("0x00");
-const key2 = ByteString.fromHex(VALUE_KEY);
+const VALUE_KEY = ByteString.fromHex("0x00");
+const OWNER_KEY = ByteString.fromHex("0xFF");
 
 /** @safe */
 export function get() { 
-    const key = ByteString.fromHex(VALUE_KEY);
-    return Storage.context.get(key);
+    return Storage.context.get(VALUE_KEY);
 }
 
 export function set(value: ByteString) {
-    const key = ByteString.fromHex(VALUE_KEY);
-    Storage.context.put(key, value);
+    Storage.context.put(VALUE_KEY, value);
 }
 
 export function remove() {
-    const key = ByteString.fromHex(VALUE_KEY);
-    Storage.context.delete(key);
+    Storage.context.delete(VALUE_KEY);
 }
 
 export function _deploy(_data: any, update: boolean): void { 
     if (update) return;
     const tx = Runtime.scriptContainer as Transaction;
-    const key = ByteString.fromHex(OWNER_KEY);
-    Storage.context.put(key, tx.sender);
+    Storage.context.put(OWNER_KEY, tx.sender);
 }
 
 export function update(nefFile: ByteString, manifest: string) {
-    const key = ByteString.fromHex(OWNER_KEY);
-    const owner = Storage.context.get(key)!;
+    const owner = Storage.context.get(OWNER_KEY)!;
     // TODO: support "if (owner && checkWitness(owner))"
     if (checkWitness(owner)) {
         ContractManagement.update(nefFile, manifest);

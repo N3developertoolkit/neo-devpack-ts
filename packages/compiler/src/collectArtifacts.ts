@@ -4,9 +4,9 @@ import { DebugInfo, DebugInfoMethod, makeDebugInfo, SequencePoint } from "./type
 import { pipe } from "fp-ts/function";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROS from 'fp-ts/ReadonlySet'
-import { CallOperation, CallTokenOperation, convertJumpOperationKind, convertLoadStoreKind, convertSimpleOperationKind, getOperationSize, isCallOp, isCallTokenOp, isConvertOp, isInitSlotOp, isJumpOffsetOp, isJumpTargetOp, isLoadStoreOp, isPushBoolOp, isPushDataOp, isPushIntOp, isSimpleOp, isSysCallOp, JumpOffsetOperation, LoadStoreOperation, Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
+import { CallOperation, CallTokenOperation, convertJumpOperationKind, convertLoadStoreKind, convertSimpleOperationKind, getOperationSize, isCallOp, isCallTokenOp, isConvertOp, isInitSlotOp, isInitStaticOperation, isJumpOffsetOp, isJumpTargetOp, isLoadStoreOp, isPushBoolOp, isPushDataOp, isPushIntOp, isSimpleOp, isSysCallOp, JumpOffsetOperation, LoadStoreOperation, Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
 import { JSDocableNode, Symbol, Type } from "ts-morph";
-import { convertBigInteger, isBigIntLike, isBooleanLike, isNumberLike, isStringLike, isVoidLike } from "./utils";
+import { convertBigInteger, isBigIntLike, isBooleanLike, isNumberLike, isStringLike, isVoidLike, toDiagnostic } from "./utils";
 
 function collectMethodTokens(methods: ReadonlyArray<ContractMethod>): ReadonlyArray<sc.MethodToken> {
     const set = pipe(
@@ -57,6 +57,7 @@ function* genInstructions(
         else if (isCallTokenOp(op)) yield convertCallToken(op, tokens);
         else if (isConvertOp(op)) yield [sc.OpCode.CONVERT, op.type];
         else if (isInitSlotOp(op)) yield [sc.OpCode.INITSLOT, op.locals, op.params];
+        else if (isInitStaticOperation(op)) yield [sc.OpCode.INITSSLOT, op.count];
         else if (isJumpOffsetOp(op)) yield convertJump(index, address, op, contractOps);
         else if (isJumpTargetOp(op)) throw new Error('JumpTargetOperation not supported');
         else if (isLoadStoreOp(op)) yield convertLoadStore(op);
@@ -65,6 +66,7 @@ function* genInstructions(
         else if (isPushIntOp(op)) yield convertPushInt(op);
         else if (isSimpleOp(op)) yield [convertSimpleOperationKind(op.kind)];
         else if (isSysCallOp(op)) yield convertSysCall(op);
+        else throw new Error(`Unknown operation`);
     }
 }
 
@@ -237,7 +239,6 @@ export interface CompileArtifacts {
 export const collectArtifacts =
     (name: string, methods: ReadonlyArray<ContractMethod>, options: CompileOptions): CompilerState<CompileArtifacts> =>
         diagnostics => {
-
             const contractOps = [...genOperationAddresses(methods)];
             const tokens = collectMethodTokens(methods);
             const methodAddressMap = new Map(genMethodAddresses(methods));
