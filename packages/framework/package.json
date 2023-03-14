@@ -5,8 +5,5 @@
   "keywords": [],
   "author": "neo-project",
   "license": "MIT",
-  "types": "./neo.d.ts",
-  "devDependencies": {
-    "@tsconfig/node16": "^1.0.3"
-  }
+  "types": "./neo.d.ts"
 }
