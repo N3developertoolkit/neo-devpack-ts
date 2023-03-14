@@ -7,15 +7,23 @@ import * as O from 'fp-ts/Option'
 
 describe("scope", () => {
     describe("resolve", () => {
-        it("fails on empty scope", () => {
-            const project = createContractProject();
-            const sourceFile = project.createSourceFile("contract.ts");
-            const funcDecl = sourceFile.addFunction({ name: "testFunction" });
-            const symbol = funcDecl.getSymbolOrThrow();
+        const project = createContractProject();
+        const sourceFile = project.createSourceFile("contract.ts");
+        const funcDecl = sourceFile.addFunction({ name: "testFunction" });
+        const symbol = funcDecl.getSymbolOrThrow();
+        const type = funcDecl.getType();
 
+        it("smoke test - none", () => {
             const scope = createScope()([]);
             const actual = resolve(scope)(symbol);
             expect(O.isNone(actual)).true;
+        });
+
+        it("smoke test - some", () => {
+            const def = { symbol, type }
+            const scope = createScope()([def]);
+            const actual = resolve(scope)(symbol);
+            expect(O.isSome(actual)).true;
         })
     })
 })
