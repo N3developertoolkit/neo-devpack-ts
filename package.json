@@ -7,11 +7,10 @@
     "packages/framework"
   ],
   "scripts": {
-    "config": "pnpm install && dotnet tool restore --tool-manifest ./express/.config/dotnet-tools.json",
+    "config": "npm install && dotnet tool restore --tool-manifest ./express/.config/dotnet-tools.json",
     "build": "tsc --build tsconfig.json",
     "compile": "node ./packages/compiler/lib/main.js",
-    "neoxp-batch": "cd express && dotnet neoxp batch ./nep17.batch --reset",
-    "all": "npm run config && npm run build && npm run run",
+    "batch-nep17": "cd express && dotnet neoxp batch ./nep17.batch --reset",
     "clean": "tsc --build tsconfig.json --clean"
   },
   "devDependencies": {
