@@ -9,7 +9,7 @@
   "scripts": {
     "config": "pnpm install && dotnet tool restore --tool-manifest ./express/.config/dotnet-tools.json",
     "build": "tsc --build tsconfig.json",
-    "run": "node ./packages/compiler/lib/main.js",
+    "compile": "node ./packages/compiler/lib/main.js",
     "neoxp-batch": "cd express && dotnet neoxp batch ./nep17.batch --reset",
     "all": "npm run config && npm run build && npm run run",
     "clean": "tsc --build tsconfig.json --clean"

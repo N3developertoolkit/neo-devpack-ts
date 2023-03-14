@@ -1,6 +1,6 @@
 import * as tsm from "ts-morph";
 import { CompileError } from "./compiler";
-import { join } from "path";
+import { dirname, join } from "path";
 import { readdirSync, statSync, readFileSync } from "fs";
 import * as O from 'fp-ts/Option';
 import { sc, u } from "@cityofzion/neon-core";
@@ -70,16 +70,17 @@ export function createContractProject() {
     const project = createProject();
     const projFS = project.getFileSystem();
 
-    const sourceFolder = join(__dirname, "../node_modules/@neo-project/neo-contract-framework");
+    const scfxPackage = require.resolve("@neo-project/neo-contract-framework/package.json");
+    const sourceFolder = dirname(scfxPackage)
     const targetFolder = "/node_modules/@neo-project/neo-contract-framework";
 
     const files = readdirSync(sourceFolder)
     for (const file of files) {
-        const path = join(sourceFolder, file);
-        const stat = statSync(path)
-        if (stat.isDirectory()) continue;
-        const contents = readFileSync(path, 'utf8');
-        projFS.writeFile(join(targetFolder, file), contents);
+        const filePath = join(sourceFolder, file);
+        const fileStat = statSync(filePath)
+        if (fileStat.isDirectory()) continue;
+        const fileContents = readFileSync(filePath, 'utf8');
+        projFS.writeFile(join(targetFolder, file), fileContents);
     }
 
     return project;
