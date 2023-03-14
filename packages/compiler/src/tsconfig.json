@@ -5,4 +5,8 @@
         "outDir": "../lib",
         "sourceMap": true,
     },
+    "exclude": [
+        "*.spec.ts",
+        "**/*.spec.ts"
+    ]
 }
