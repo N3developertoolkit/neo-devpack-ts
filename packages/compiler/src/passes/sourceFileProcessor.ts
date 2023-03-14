@@ -11,8 +11,8 @@ import { flow, identity, pipe } from "fp-ts/function";
 import { CompilerState, ContractMethod } from "../compiler";
 import { $SymbolDef, CallableSymbolDef, makeParseDiagnostic, makeParseError, ParseArgumentsFunc, ParseError, SymbolDef } from "../symbolDef";
 import { parseContractMethod } from "./functionDeclarationProcessor";
-import { Operation } from "../types";
 import { parseArguments, parseExpression } from './expressionProcessor';
+import { Operation } from "../types/Operation";
 
 export const parseSymbol = (node: Node): E.Either<ParseError, Symbol> => {
     return pipe(

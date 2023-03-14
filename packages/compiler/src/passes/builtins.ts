@@ -11,9 +11,9 @@ import { createScope, Scope } from "../scope";
 import { sc, u } from "@cityofzion/neon-core";
 import { $SymbolDef, ObjectSymbolDef, CallableSymbolDef, ParseError, SymbolDef, makeParseError, ParseArgumentsFunc } from "../symbolDef";
 import { getErrorMessage, isVoidLike, single } from "../utils";
-import { isPushDataOp, Operation, parseOperation as $parseOperation, PushDataOperation } from "../types";
 import { getArguments, parseArguments, parseExpression } from "./expressionProcessor";
 import { ReadonlyUint8Array } from "../utility/ReadonlyArrays";
+import { Operation, isPushDataOp, PushDataOperation, parseOperation as $parseOperation } from "../types/Operation";
 
 
 function checkErrors(errorMessage: string) {
