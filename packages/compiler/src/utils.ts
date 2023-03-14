@@ -55,7 +55,6 @@ export function toDiagnostic(error: string | unknown): tsm.ts.Diagnostic {
 export function createProject() {
     return new tsm.Project({
         compilerOptions: {
-            experimentalDecorators: true,
             // specify lib file directly to avoid bringing in web apis like DOM and WebWorker
             lib: ["lib.es2020.d.ts"],
             types: ["@neo-project/neo-contract-framework"],

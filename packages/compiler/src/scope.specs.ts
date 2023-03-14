@@ -2,12 +2,12 @@ import { expect } from 'chai';
 import 'mocha';
 
 import { createScope, resolve } from './scope';
-import { createContractProject } from './utils';
+import { createProject } from './utils';
 import * as O from 'fp-ts/Option'
 
 describe("scope", () => {
     describe("resolve", () => {
-        const project = createContractProject();
+        const project = createProject();
         const sourceFile = project.createSourceFile("contract.ts");
         const funcDecl = sourceFile.addFunction({ name: "testFunction" });
         const symbol = funcDecl.getSymbolOrThrow();
