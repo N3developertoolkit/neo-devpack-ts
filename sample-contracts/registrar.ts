@@ -20,6 +20,21 @@ export function register(domain: string): boolean {
     return true;
 }
 
+export function transfer(domain: string, receiver: ByteString): boolean {
+    const key = concat(PREFIX_DOMAIN, domain);
+    const currentOwner = Storage.context.get(key);
+    if (!currentOwner) {
+        log("Domain not registered");
+        return false;
+    }
+    if (!checkWitness(currentOwner)) {
+        log("CheckWitness failed");
+        return false;
+    }
+    Storage.context.put(key, receiver);
+    return true;
+}
+
 export function unregister(domain: string): boolean {
     const key = concat(PREFIX_DOMAIN, domain);
     const currentOwner = Storage.context.get(key);
