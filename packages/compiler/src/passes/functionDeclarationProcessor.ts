@@ -358,9 +358,9 @@ const makeContractMethod =
             );
         }
 
-export const parseContractMethod =
+export const makeFunctionDeclScope =
     (parentScope: Scope) =>
-        (node: tsm.FunctionDeclaration): E.Either<readonly ParseError[], ContractMethod> => {
+        (node: tsm.FunctionDeclaration): E.Either<readonly ParseError[], Scope> => {
             return pipe(
                 node.getParameters(),
                 ROA.mapWithIndex((index, node) => pipe(
@@ -370,14 +370,23 @@ export const parseContractMethod =
                 )),
                 ROA.separate,
                 E_fromSeparated,
-                E.map(defs => createScope(parentScope)(defs as readonly SymbolDef[])),
+                E.map(defs => createScope(parentScope)(defs as readonly SymbolDef[]))
+            );
+        }
+
+export const parseContractMethod =
+    (parentScope: Scope) =>
+        (node: tsm.FunctionDeclaration): E.Either<readonly ParseError[], ContractMethod> => {
+            return pipe(
+                node,
+                makeFunctionDeclScope(parentScope),
                 E.bindTo('scope'),
                 E.bind('body', () => pipe(
                     node.getBody(),
                     E.fromNullable(makeParseError(node)("undefined body")),
                     E.mapLeft(ROA.of)
                 )),
-                E.chain(({body, scope}) => parseBody(node)(scope)(body)),
+                E.chain(({ body, scope }) => parseBody(node)(scope)(body)),
                 E.chain(r => pipe(r, makeContractMethod(node), E.mapLeft(ROA.of))),
             );
         }
