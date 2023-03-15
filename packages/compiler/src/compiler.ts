@@ -12,11 +12,6 @@ import { CompileOptions, CompileArtifacts } from "./types/CompileOptions";
 
 export const DEFAULT_ADDRESS_VALUE = 53;
 
-
-function hasErrors(diagnostics: ReadonlyArray<tsm.ts.Diagnostic>) {
-    return diagnostics.some(d => d.category === tsm.ts.DiagnosticCategory.Error);
-}
-
 export function compile(
     project: tsm.Project,
     contractName: string,
@@ -30,19 +25,19 @@ export function compile(
         standards: options?.standards ?? [],
     }
 
-    let [{ methods, artifacts }, diagnostics] = pipe(
+    let [{ compiledProject, artifacts }, diagnostics] = pipe(
         project.getPreEmitDiagnostics(),
         ROA.map(d => d.compilerObject),
         pipe(
             parseProjectLibrary(project),
             S.chain(makeGlobalScope),
             S.chain(parseProject(project)),
-            S.bindTo('methods'),
-            S.bind('artifacts', ({ methods }) => collectArtifacts(contractName, $options)(methods))
+            S.bindTo('compiledProject'),
+            S.bind('artifacts', ({ compiledProject }) => collectArtifacts(contractName, $options)(compiledProject))
         )
     );
 
-    return { diagnostics, methods, ...artifacts };
+    return { diagnostics, compiledProject, ...artifacts };
 }
 
 function exists(rootPath: PathLike) {

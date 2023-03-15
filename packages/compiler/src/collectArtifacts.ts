@@ -7,7 +7,7 @@ import * as ROS from 'fp-ts/ReadonlySet'
 import { CallOperation, CallTokenOperation, convertJumpOperationKind, convertLoadStoreKind, convertSimpleOperationKind, getOperationSize, isCallOp, isCallTokenOp, isConvertOp, isInitSlotOp, isInitStaticOperation, isJumpOffsetOp, isJumpTargetOp, isLoadStoreOp, isPushBoolOp, isPushDataOp, isPushIntOp, isSimpleOp, isSysCallOp, JumpOffsetOperation, LoadStoreOperation, Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
 import { convertBigInteger } from "./utils";
 import { asContractParamType, asReturnType } from "./utility/asContractParamType";
-import { CompileOptions, CompilerState, ContractMethod } from "./types/CompileOptions";
+import { CompiledProject, CompiledProjectArtifacts, CompileOptions, CompilerState, ContractEvent, ContractMethod } from "./types/CompileOptions";
 import { DebugInfo, DebugInfoMethod, makeDebugInfo, SequencePoint } from "./types/DebugInfo";
 
 function collectMethodTokens(methods: ReadonlyArray<ContractMethod>): ReadonlyArray<sc.MethodToken> {
@@ -106,6 +106,20 @@ function* generateManifestMethods(
             }
         }
         return false;
+    }
+}
+
+function* generateManifestEvents(events: ReadonlyArray<ContractEvent>) {
+    for (const event of events) {
+        const parameters = event.node.getParameters().map(p => ({
+            name: p.getName(),
+            type: asContractParamType(p.getType())
+        }))
+
+        yield new sc.ContractEventDefiniton({
+            name: event.symbol.getName(),
+            parameters
+        })
     }
 }
 
@@ -211,11 +225,7 @@ function convertLoadStore(op: LoadStoreOperation) {
 }
 
 
-export interface CompileArtifacts {
-    readonly nef: sc.NEF;
-    readonly manifest: sc.ContractManifest;
-    readonly debugInfo: DebugInfo;
-}
+
 
 function collectPermissions(tokens: readonly sc.MethodToken[]): sc.ContractPermission[] {
 
@@ -236,10 +246,12 @@ function collectPermissions(tokens: readonly sc.MethodToken[]): sc.ContractPermi
     })
 }
 
+
 export const collectArtifacts =
     (name: string, options: CompileOptions) =>
-        (methods: ReadonlyArray<ContractMethod>): CompilerState<CompileArtifacts> =>
+        (compiledProject: CompiledProject): CompilerState<CompiledProjectArtifacts> =>
             diagnostics => {
+                const methods = compiledProject.methods;
                 const contractOps = [...genOperationAddresses(methods)];
                 const tokens = collectMethodTokens(methods);
                 const methodAddressMap = new Map(genMethodAddresses(methods));
@@ -252,12 +264,13 @@ export const collectArtifacts =
                 });
                 const hash = Buffer.from(u.hash160(nef.script), 'hex').reverse();
 
-                const manifestMethods = [...generateManifestMethods(methods, methodAddressMap)]
+                const manifestMethods = [...generateManifestMethods(methods, methodAddressMap)];
+                const manifestEvents = [...generateManifestEvents(compiledProject.events)];
                 const manifest = new sc.ContractManifest({
                     name,
                     supportedStandards: [...options.standards],
                     permissions: collectPermissions(tokens),
-                    abi: new sc.ContractAbi({ methods: manifestMethods })
+                    abi: new sc.ContractAbi({ methods: manifestMethods, events: manifestEvents })
                 });
 
                 const debugMethods = [...genDebugMethods(methods)];

@@ -4,10 +4,11 @@ import * as S from 'fp-ts/State'
 import * as TS from '../utility/TS';
 import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option'
+import * as MONOID from 'fp-ts/Monoid'
 
 import { single } from "../utils";
 import { flow, identity, pipe } from "fp-ts/function";
-import { CompilerState, ContractMethod } from "../types/CompileOptions";
+import { CompiledProject, CompilerState, ContractEvent, ContractMethod } from "../types/CompileOptions";
 import { $SymbolDef, makeParseDiagnostic, makeParseError, } from "../symbolDef";
 import { parseContractMethod } from "./functionDeclarationProcessor";
 import { parseArguments, parseExpression } from './expressionProcessor';
@@ -130,57 +131,12 @@ const parseSrcFunctionDeclaration = (node: FunctionDeclaration): E.Either<ParseE
     }
 }
 
-const parseSrcLetVariableStatement = (node: VariableStatement): E.Either<ReadonlyArray<ParseError>, ReadonlyArray<SymbolDef>> => {
-    if (node.getDeclarationKind() === VariableDeclarationKind.Const)
-        return E.left(ROA.of(makeParseError(node)('const variable statement passed to parseSrcLetVariableStatement')))
-
-    return E.left(ROA.of(makeParseError(node)(`parseSrcVariableStatement not implemented`)));
-}
-
 function isPushOp(op: Operation) {
     return op.kind === "pushbool"
         || op.kind === "pushdata"
         || op.kind === "pushint"
         || op.kind === "pushnull";
 }
-
-
-const parseConstantValue =
-    (scope: Scope) =>
-        (node: Expression): O.Option<Operation> => {
-            return pipe(
-                node,
-                parseExpression(scope),
-                O.fromEither,
-                O.chain(single),
-                O.chain(O.fromPredicate(isPushOp)),
-            );
-        }
-
-// const parseConstVariableStatement =
-//     (scope: Scope) =>
-//         (node: VariableStatement): E.Either<ReadonlyArray<ParseError>, ReadonlyArray<SymbolDef>> => {
-
-//             if (node.getDeclarationKind() !== VariableDeclarationKind.Const)
-//                 return E.left(ROA.of(makeParseError(node)('non const variable statement passed to parseConstVariableStatement')))
-
-//             const { left: failures, right: sources } = pipe(
-//                 node.getDeclarations(),
-//                 ROA.map(decl => {
-//                     return pipe(
-//                         decl.getInitializer(),
-//                         E.fromNullable(makeParseError(decl)('missing initializer')),
-//                         E.chain(parseConstantValue(scope)),
-//                         E.bindTo('operation'),
-//                         E.bind('symbol', () => parseSymbol(decl)),
-//                         E.map(({ operation, symbol }) => new ConstantSymbolDef(decl, symbol, operation))
-//                     )
-//                 }),
-//                 ROA.partitionMap(identity),
-//             )
-
-//             return failures.length > 0 ? E.left(failures) : E.right(sources);
-//         }
 
 const parseConstVariableDeclaration =
     (node: VariableDeclaration) =>
@@ -268,33 +224,50 @@ const parseVariableStatement =
         }
 
 const parseSourceNode =
-    (node: Node): S.State<ParseSourceContext, O.Option<ContractMethod>> =>
+    (node: Node): S.State<ParseSourceContext, CompiledProject> =>
         (context) => {
 
             if (Node.isFunctionDeclaration(node)) {
-                if (node.hasDeclareKeyword()) return [O.none, context];
-                return pipe(
-                    node,
-                    parseContractMethod(context.scope),
-                    E.mapLeft(errors => ROA.concat(errors)(context.errors)),
-                    E.map(O.of),
-                    E.match(
-                        errors => [O.none, { ...context, errors }],
-                        method => [method, context],
+                if (node.hasDeclareKeyword()) {
+                    return pipe(
+                        node,
+                        TS.getTag("event"),
+                        E.fromOption(() => makeParseError(node)('only @event declare functions supported')),
+                        E.chain(() => pipe(node, parseSymbol)),
+                        E.map(symbol => ({ symbol, node } as ContractEvent)),
+                        E.mapLeft(ROA.of),
+                        E.mapLeft(errors => ROA.concat(errors)(context.errors)),
+                        E.map(ROA.of),
+                        E.match(
+                            errors => [compiledProjectMonoid.empty, { ...context, errors }],
+                            events => [{ methods: [], events }, context]
+                        )
                     )
-                )
+                }
+                else {
+                    return pipe(
+                        node,
+                        parseContractMethod(context.scope),
+                        E.mapLeft(errors => ROA.concat(errors)(context.errors)),
+                        E.map(ROA.of),
+                        E.match(
+                            errors => [compiledProjectMonoid.empty, { ...context, errors }],
+                            methods => [{ methods, events: [] }, context],
+                        )
+                    )
+                }
             }
             if (Node.isVariableStatement(node)) {
-                return [O.none, parseVariableStatement(node)(context)]
+                return [compiledProjectMonoid.empty, parseVariableStatement(node)(context)]
             }
-            if (node.getKind() === SyntaxKind.EndOfFileToken) return [O.none, context];
+            if (node.getKind() === SyntaxKind.EndOfFileToken) return [compiledProjectMonoid.empty, context];
 
             const error = makeParseError(node)(`parseSourceNode ${node.getKindName()} not impl`);
-            return [O.none, { ...context, errors: ROA.append(error)(context.errors) }]
+            return [compiledProjectMonoid.empty, { ...context, errors: ROA.append(error)(context.errors) }]
         }
 
 const parseSourceFile =
-    (src: SourceFile): S.State<ParseSourceContext, readonly ContractMethod[]> =>
+    (src: SourceFile): S.State<ParseSourceContext, CompiledProject> =>
         context => {
             const children = pipe(src, TS.getChildren);
             const { left: errors, right: functionDefs } = pipe(
@@ -305,32 +278,37 @@ const parseSourceFile =
             );
 
             if (errors.length > 0) {
-                return [[], {
+                return [compiledProjectMonoid.empty, {
                     ...context,
                     errors: ROA.concat(errors)(context.errors)
                 }]
             }
 
             context = { ...context, scope: createScope(context.scope)(functionDefs) };
-            let methods: ReadonlyArray<ContractMethod> = ROA.empty;
+            let compiledProject = compiledProjectMonoid.empty;
             for (const node of children) {
-                let $method;
-                [$method, context] = parseSourceNode(node)(context);
-                methods = pipe(
-                    $method,
-                    O.match(
-                        () => methods,
-                        m => ROA.append(m)(methods)
-                    )
-                )
+                let results;
+                [results, context] = parseSourceNode(node)(context);
+                compiledProject = compiledProjectMonoid.concat(compiledProject, results);
             }
 
-            return [methods, context]
+            return [compiledProject, context]
         }
+
+
+const compiledProjectMonoid: MONOID.Monoid<CompiledProject> = {
+    empty: { methods: [], events: [] },
+    concat(x, y) {
+        return {
+            methods: ROA.concat(y.methods)(x.methods),
+            events: ROA.concat(y.events)(x.events)
+        }
+    },
+}
 
 export const parseProject =
     (project: Project) =>
-        (scope: Scope): CompilerState<ReadonlyArray<ContractMethod>> =>
+        (scope: Scope): CompilerState<CompiledProject> =>
             (diagnostics) => {
 
                 let context: ParseSourceContext = {
@@ -338,12 +316,13 @@ export const parseProject =
                     errors: ROA.empty,
                     staticVars: ROA.empty
                 }
-                let methods: ReadonlyArray<ContractMethod> = ROA.empty;
+
+                let compiledProject = compiledProjectMonoid.empty;
                 for (const src of project.getSourceFiles()) {
                     if (src.isDeclarationFile()) continue;
-                    let $methods;
-                    [$methods, context] = parseSourceFile(src)(context);
-                    methods = ROA.concat($methods)(methods);
+                    let results;
+                    [results, context] = parseSourceFile(src)(context);
+                    compiledProject = compiledProjectMonoid.concat(compiledProject, results);
                 }
 
                 diagnostics = pipe(
@@ -372,15 +351,18 @@ export const parseProject =
                         name,
                         isExported: true
                     });
-                    methods = pipe(methods, ROA.prepend({
+
+                    const initMethod = {
                         name,
                         node: init,
                         symbol: init.getSymbolOrThrow(),
                         operations,
                         variables: ROA.empty
-                    } as ContractMethod))
+                    } as ContractMethod;
+
+                    compiledProject = compiledProjectMonoid.concat(compiledProject, { methods: [initMethod], events: [] });
                 }
 
-                return [methods, diagnostics];
+                return [compiledProject, diagnostics];
             }
 

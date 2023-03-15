@@ -20,9 +20,25 @@ export interface ContractMethod {
     variables: ReadonlyArray<{ name: string; type: tsm.Type; }>;
 }
 
+export interface ContractEvent {
+    symbol: tsm.Symbol;
+    node: tsm.FunctionDeclaration;
+}
+
+export interface CompiledProject {
+    readonly methods: readonly ContractMethod[],
+    readonly events: readonly ContractEvent[],
+}
+
+export interface CompiledProjectArtifacts {
+    readonly nef: sc.NEF;
+    readonly manifest: sc.ContractManifest;
+    readonly debugInfo: DebugInfo;
+}
+
 export interface CompileArtifacts {
     readonly diagnostics: ReadonlyArray<tsm.ts.Diagnostic>;
-    readonly methods?: ReadonlyArray<ContractMethod>;
+    readonly compiledProject?: CompiledProject;
     readonly nef?: sc.NEF;
     readonly manifest?: sc.ContractManifest;
     readonly debugInfo?: DebugInfo;

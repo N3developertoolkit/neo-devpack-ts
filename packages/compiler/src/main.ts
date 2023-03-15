@@ -74,13 +74,13 @@ function main() {
             const options: Partial<CompileOptions> = contractName.startsWith('nep17')
                 ? { standards: ["NEP-17"] } 
                 : {}
-            const { diagnostics, methods, nef, manifest, debugInfo } = compile(project, contractName, options);
+            const { diagnostics, compiledProject, nef, manifest, debugInfo } = compile(project, contractName, options);
 
             if (diagnostics.length > 0) printDiagnostics(diagnostics);
 
             if (hasErrors(diagnostics)) return;
 
-            for (const m of methods ?? []) {
+            for (const m of compiledProject?.methods ?? []) {
                 dumpContractMethod(m);
             }
 
