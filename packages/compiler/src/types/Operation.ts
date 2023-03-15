@@ -1,5 +1,4 @@
 import * as tsm from "ts-morph";
-import { ReadonlyUint8Array } from '../utility/ReadonlyArrays';
 import { sc } from '@cityofzion/neon-core';
 import { convertBigInteger } from "../utils";
 
@@ -189,7 +188,7 @@ export const isInitStaticOperation = (op: Operation): op is InitStaticOperation 
 
 export interface PushDataOperation {
     readonly kind: 'pushdata';
-    readonly value: ReadonlyUint8Array
+    readonly value: Uint8Array
     location?: Location,
 }
 

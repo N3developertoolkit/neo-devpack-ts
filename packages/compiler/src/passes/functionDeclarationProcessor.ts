@@ -9,12 +9,13 @@ import * as SEP from 'fp-ts/Separated';
 import * as FP from 'fp-ts'
 import * as TS from "../utility/TS";
 
-import { ParseError, SymbolDef, $SymbolDef, makeParseError } from "../symbolDef";
-import { createScope, Scope, updateScope } from "../scope";
+import { $SymbolDef, makeParseError } from "../symbolDef";
+import { createScope, updateScope } from "../scope";
+import { ParseError, Scope, SymbolDef } from "../types/ScopeType";
 import { isJumpTargetOp, JumpTargetOperation, LoadStoreOperation, Location, Operation } from "../types/Operation";
 import { isVoidLike } from "../utils";
-import { ContractMethod } from "../compiler";
-import { parseSymbol } from "./sourceFileProcessor";
+import { ContractMethod } from "../types/CompileOptions";
+import { parseSymbol } from "./parseSymbol";
 import { parseExpression as $parseExpression } from "./expressionProcessor";
 
 interface ParseFunctionContext {

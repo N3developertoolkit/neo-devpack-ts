@@ -1,14 +1,12 @@
-// import path from "path";
-// import { ContractType, PrimitiveType, StructContractType, toString as contractTypeToString } from "./ContractType";
-// import { join } from 'path';
-import { sc, u } from "@cityofzion/neon-core";
 import * as tsm from "ts-morph";
-import { Location } from "./Operation";
+import { sc, u } from "@cityofzion/neon-core";
+
 import { pipe } from "fp-ts/function";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROS from 'fp-ts/ReadonlySet'
 import * as FP from 'fp-ts'
-import { asContractParamType, asReturnType } from "../collectArtifacts";
+import { asContractParamType, asReturnType } from "../utility/asContractParamType";
+import type { Location } from "./Operation";
 
 export interface SlotVariable {
     name: string;

@@ -1,19 +1,21 @@
 import * as tsm from "ts-morph";
+import { sc, u } from "@cityofzion/neon-core";
+import { flow, identity, pipe } from "fp-ts/lib/function";
 import * as E from "fp-ts/Either";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROR from 'fp-ts/ReadonlyRecord'
 import * as O from 'fp-ts/Option'
 import * as TS from "../utility/TS";
-import { flow, identity, pipe } from "fp-ts/lib/function";
+
 import { LibraryDeclarations } from "../projectLib";
-import { CompilerState } from "../compiler";
-import { createScope, Scope } from "../scope";
-import { sc, u } from "@cityofzion/neon-core";
-import { $SymbolDef, ObjectSymbolDef, CallableSymbolDef, ParseError, SymbolDef, makeParseError, ParseArgumentsFunc } from "../symbolDef";
-import { getErrorMessage, isVoidLike, single } from "../utils";
-import { getArguments, parseArguments, parseExpression } from "./expressionProcessor";
-import { ReadonlyUint8Array } from "../utility/ReadonlyArrays";
+import { CompilerState } from "../types/CompileOptions";
+import { createScope } from "../scope";
+import { CallableSymbolDef, ObjectSymbolDef, ParseArgumentsFunc, ParseError, Scope, SymbolDef } from "../types/ScopeType";
+import { $SymbolDef, makeParseError } from "../symbolDef";
+import { isVoidLike, single } from "../utils";
 import { Operation, isPushDataOp, PushDataOperation, parseOperation as $parseOperation } from "../types/Operation";
+
+import { getArguments, parseArguments, parseExpression } from "./expressionProcessor";
 
 
 function checkErrors(errorMessage: string) {
@@ -54,22 +56,6 @@ class StaticClassDef extends $SymbolDef {
     }
 }
 
-// function getStringLiteralArg(node: tsm.CallExpression) {
-//     return pipe(
-//         node,
-//         getArguments,
-//         single,
-//         E.fromOption(() => makeParseError(node)('invalid parameters')),
-//         E.chain(expr => {
-//             if (tsm.Node.isStringLiteral(expr)) {
-//                 return E.of(expr.getLiteralValue())
-//             } else {
-//                 return E.left(makeParseError(node)('only string literal supported'))
-//             }
-//         }),
-//     )
-// }
-
 const errorCall =
     (scope: Scope) => (
         node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
@@ -97,12 +83,12 @@ class CallableVariableDef extends $SymbolDef implements CallableSymbolDef {
 
 const fromEncoding =
     (encoding: BufferEncoding) =>
-        (value: string): O.Option<ReadonlyUint8Array> => {
+        (value: string): O.Option<Uint8Array> => {
             return O.tryCatch(() => Buffer.from(value, encoding))
         }
 
 const fromHex =
-    (value: string): O.Option<ReadonlyUint8Array> => {
+    (value: string): O.Option<Uint8Array> => {
         value = value.startsWith('0x') || value.startsWith('0X')
             ? value.substring(2)
             : value;
@@ -429,14 +415,24 @@ const parseOperation =
 
 class OperationsFunctionDef extends $SymbolDef implements CallableSymbolDef {
     readonly props = [];
-    readonly parseArguments: ParseArgumentsFunc;
     readonly loadOps: readonly Operation[];
+
+    parseArguments(scope: Scope) {
+        return (node: tsm.CallExpression) => {
+            return pipe(
+                node,
+                getArguments,
+                ROA.map(parseExpression(scope)),
+                ROA.sequence(E.Applicative),
+                E.map(ROA.flatten),
+            );
+        }
+    }
 
     constructor(
         readonly decl: tsm.FunctionDeclaration,
     ) {
         super(decl);
-        this.parseArguments = parseArguments;
         this.loadOps = pipe(
             decl.getJsDocs(),
             ROA.chain(d => d.getTags()),
@@ -446,7 +442,6 @@ class OperationsFunctionDef extends $SymbolDef implements CallableSymbolDef {
             checkErrors('@operation issues')
         )
     }
-
 }
 
 

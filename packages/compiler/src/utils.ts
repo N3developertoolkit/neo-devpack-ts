@@ -1,9 +1,8 @@
 import * as tsm from "ts-morph";
-import { CompileError } from "./compiler";
-import { dirname, join } from "path";
-import { readdirSync, statSync, readFileSync } from "fs";
-import * as O from 'fp-ts/Option';
 import { sc, u } from "@cityofzion/neon-core";
+import { readdirSync, statSync, readFileSync } from "fs";
+import { dirname, join } from "path";
+import * as O from 'fp-ts/Option';
 
 export function single<T>(array: ReadonlyArray<T>): O.Option<T> {
     return array.length === 1 ? O.some(array[0] as T) : O.none;
@@ -44,6 +43,15 @@ export function getErrorMessage(error: string | unknown) {
         : error instanceof Error 
             ? error.message 
             : String(error);
+}
+
+export class CompileError extends Error {
+    constructor(
+        message: string,
+        public readonly node: tsm.Node
+    ) {
+        super(message);
+    }
 }
 
 export function toDiagnostic(error: string | unknown): tsm.ts.Diagnostic {

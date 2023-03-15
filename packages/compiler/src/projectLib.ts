@@ -1,6 +1,4 @@
-import { FunctionDeclaration, InterfaceDeclaration, VariableDeclaration, SourceFile, Node, Project, ts, ModuleDeclarationKind, VariableStatement, ModuleDeclaration } from "ts-morph";
-import { createDiagnostic } from "./utils";
-import { CompilerState } from "./compiler";
+import * as tsm from "ts-morph";
 import { flow, identity, pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
@@ -10,25 +8,28 @@ import * as S from 'fp-ts/State';
 import * as ROS from 'fp-ts/ReadonlySet';
 import * as SG from 'fp-ts/Semigroup';
 import * as FP from 'fp-ts';
-import { JsonRecord } from "fp-ts/lib/Json";
+import { JsonRecord } from "fp-ts/Json";
 import { posix } from 'path';
+
+import { createDiagnostic } from "./utils";
+import { CompilerState } from "./types/CompileOptions";
 import * as TS from './utility/TS'
 
-const isFunctionDeclaration = O.fromPredicate(Node.isFunctionDeclaration);
-const isInterfaceDeclaration = O.fromPredicate(Node.isInterfaceDeclaration);
-const isVariableStatement = O.fromPredicate(Node.isVariableStatement);
-const isModuleDeclaration = O.fromPredicate(Node.isModuleDeclaration);
-const getVariableDeclarations = (node: VariableStatement) => node.getDeclarations();
-const getModuleBody = (node: ModuleDeclaration) => O.fromNullable(node.getBody());
+const isFunctionDeclaration = O.fromPredicate(tsm.Node.isFunctionDeclaration);
+const isInterfaceDeclaration = O.fromPredicate(tsm.Node.isInterfaceDeclaration);
+const isVariableStatement = O.fromPredicate(tsm.Node.isVariableStatement);
+const isModuleDeclaration = O.fromPredicate(tsm.Node.isModuleDeclaration);
+const getVariableDeclarations = (node: tsm.VariableStatement) => node.getDeclarations();
+const getModuleBody = (node: tsm.ModuleDeclaration) => O.fromNullable(node.getBody());
 
 export type LibraryDeclarations = {
-    readonly functions: ReadonlyArray<FunctionDeclaration>,
-    readonly interfaces: ReadonlyArray<InterfaceDeclaration>,
-    readonly variables: ReadonlyArray<VariableDeclaration>,
+    readonly functions: ReadonlyArray<tsm.FunctionDeclaration>,
+    readonly interfaces: ReadonlyArray<tsm.InterfaceDeclaration>,
+    readonly variables: ReadonlyArray<tsm.VariableDeclaration>,
 }
 
 const parseDeclarations =
-    (children: ReadonlyArray<Node>) => {
+    (children: ReadonlyArray<tsm.Node>) => {
         const functions = pipe(
             children,
             ROA.filterMap(isFunctionDeclaration)
@@ -55,7 +56,7 @@ const libDeclMonoid: SG.Semigroup<LibraryDeclarations> = {
 
 const parseLibrarySourceFile =
     (resolver: Resolver) =>
-        (src: SourceFile): S.State<LibraryDeclarations, ReadonlyArray<E.Either<string, SourceFile>>> =>
+        (src: tsm.SourceFile): S.State<LibraryDeclarations, ReadonlyArray<E.Either<string, tsm.SourceFile>>> =>
             declarations => {
                 const children = pipe(src, TS.getChildren);
                 let childDecls = parseDeclarations(children);
@@ -63,7 +64,7 @@ const parseLibrarySourceFile =
                 const globalModules = pipe(
                     children,
                     ROA.filterMap(isModuleDeclaration),
-                    ROA.filter(m => m.getDeclarationKind() === ModuleDeclarationKind.Global)
+                    ROA.filter(m => m.getDeclarationKind() === tsm.ModuleDeclarationKind.Global)
                 );
 
                 for (const module of globalModules) {
@@ -99,8 +100,8 @@ const parseLibrarySourceFile =
 const LIB_PATH = `/node_modules/typescript/lib/`;
 
 interface Resolver {
-    resolveLib(lib: string): E.Either<string, SourceFile>,
-    resolveTypes(types: string): E.Either<string, SourceFile>,
+    resolveLib(lib: string): E.Either<string, tsm.SourceFile>,
+    resolveTypes(types: string): E.Either<string, tsm.SourceFile>,
 }
 
 const isJsonRecord = (json: FP.json.Json): json is JsonRecord =>
@@ -108,7 +109,7 @@ const isJsonRecord = (json: FP.json.Json): json is JsonRecord =>
 
 const isJsonString = (json: FP.json.Json): json is string => typeof json === 'string'
 
-function makeResolver(project: Project): Resolver {
+function makeResolver(project: tsm.Project): Resolver {
 
     const fs = project.getFileSystem();
     const getSourceFile = (path: string) => pipe(project.getSourceFile(path), O.fromNullable);
@@ -175,7 +176,7 @@ const resolveReferences =
         }
 
 export const parseProjectLibrary =
-    (project: Project): CompilerState<LibraryDeclarations> =>
+    (project: tsm.Project): CompilerState<LibraryDeclarations> =>
         diagnostics => {
             const resolver = makeResolver(project);
             const $parseLibrarySourceFile = parseLibrarySourceFile(resolver);

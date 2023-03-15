@@ -1,17 +1,12 @@
+import * as tsm from "ts-morph";
+import { pipe } from 'fp-ts/function';
+import * as E from "fp-ts/Either";
+import { CallableSymbolDef, ObjectSymbolDef, ParseError, SymbolDef } from "./types/ScopeType";
 import { Operation } from "./types/Operation";
 import { createDiagnostic as $createDiagnostic } from "./utils";
 
-import { ts, Node, Symbol, CallExpression, Type } from "ts-morph";
-import { pipe } from 'fp-ts/function';
-import * as E from "fp-ts/Either";
-import { Scope } from "./scope";
-
-type Diagnostic = ts.Diagnostic;
-
-export interface ParseError { message: string, node?: Node }
-
 export const makeParseError =
-    (node?: Node) =>
+    (node?: tsm.Node) =>
         (e: string | unknown): ParseError => {
             const message = typeof e === 'string'
                 ? e : e instanceof Error
@@ -21,25 +16,8 @@ export const makeParseError =
 
 export const makeParseDiagnostic = (e: ParseError) => $createDiagnostic(e.message, { node: e.node });
 
-export interface SymbolDef {
-    readonly symbol: Symbol;
-    readonly type: Type;
-    readonly loadOps?: ReadonlyArray<Operation>;
-    readonly storeOps?: ReadonlyArray<Operation>;
-}
-
-export interface ObjectSymbolDef extends SymbolDef {
-    readonly props: ReadonlyArray<SymbolDef>;
-}
-
 export function isObjectDef(def: SymbolDef): def is ObjectSymbolDef {
     return 'props' in def;
-}
-
-export type ParseArgumentsFunc = (scope: Scope) => (node: CallExpression) => E.Either<ParseError, ReadonlyArray<Operation>>;
-
-export interface CallableSymbolDef extends ObjectSymbolDef {
-    parseArguments: ParseArgumentsFunc;
 }
 
 export function isCallableDef(def: SymbolDef): def is CallableSymbolDef {
@@ -47,21 +25,21 @@ export function isCallableDef(def: SymbolDef): def is CallableSymbolDef {
 }
 
 export const parseLoadOps =
-    (node: Node) => (def: SymbolDef) => pipe(
+    (node: tsm.Node) => (def: SymbolDef) => pipe(
         def.loadOps,
         E.fromNullable(makeParseError(node)(`${def.symbol.getName()} has no load ops`))
     );
 
 export class $SymbolDef implements SymbolDef {
-    readonly symbol: Symbol;
-    readonly type: Type;
+    readonly symbol: tsm.Symbol;
+    readonly type: tsm.Type;
 
     get name() { return this.symbol.getName(); }
     get typeName() { return this.type.getSymbol()?.getName(); }
 
     protected constructor(
-        private readonly node: Node,
-        private _symbol?: Symbol
+        private readonly node: tsm.Node,
+        private _symbol?: tsm.Symbol
     ) {
         this.symbol = _symbol ?? node.getSymbolOrThrow();
         this.type = node.getType();

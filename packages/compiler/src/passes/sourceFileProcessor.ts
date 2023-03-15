@@ -1,5 +1,4 @@
 import { Node, Symbol, FunctionDeclaration, JSDocTag, VariableStatement, Expression, SyntaxKind, VariableDeclarationKind, SourceFile, VariableDeclaration, CallExpression, Project } from "ts-morph";
-import { createScope, Scope, updateScope } from "../scope";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as S from 'fp-ts/State'
 import * as TS from '../utility/TS';
@@ -8,19 +7,14 @@ import * as O from 'fp-ts/Option'
 
 import { single } from "../utils";
 import { flow, identity, pipe } from "fp-ts/function";
-import { CompilerState, ContractMethod } from "../compiler";
-import { $SymbolDef, CallableSymbolDef, makeParseDiagnostic, makeParseError, ParseArgumentsFunc, ParseError, SymbolDef } from "../symbolDef";
+import { CompilerState, ContractMethod } from "../types/CompileOptions";
+import { $SymbolDef,  makeParseDiagnostic, makeParseError,  } from "../symbolDef";
 import { parseContractMethod } from "./functionDeclarationProcessor";
 import { parseArguments, parseExpression } from './expressionProcessor';
 import { Operation } from "../types/Operation";
-
-export const parseSymbol = (node: Node): E.Either<ParseError, Symbol> => {
-    return pipe(
-        node,
-        TS.getSymbol,
-        E.fromOption(() => makeParseError(node)('invalid symbol'))
-    );
-}
+import { createScope, updateScope } from "../scope";
+import { CallableSymbolDef, ParseArgumentsFunc, ParseError, Scope, SymbolDef } from "../types/ScopeType";
+import { parseSymbol } from "./parseSymbol";
 
 interface ParseSourceContext {
     readonly scope: Scope

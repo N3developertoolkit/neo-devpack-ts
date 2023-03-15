@@ -1,21 +1,16 @@
-import { Symbol } from "ts-morph";
-import { SymbolDef } from "./symbolDef";
+import * as tsm from "ts-morph";
 import { pipe } from 'fp-ts/lib/function';
 import * as O from 'fp-ts/Option';
 import * as ROM from 'fp-ts/ReadonlyMap';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as Eq from 'fp-ts/Eq';
+import { Scope, SymbolDef } from "./types/ScopeType";
 
-export interface Scope {
-    readonly parentScope: O.Option<Scope>,
-    readonly symbols: ReadonlyMap<Symbol, SymbolDef>
-}
-
-const symbolEq: Eq.Eq<Symbol> = { equals: (x, y) => x === y }
+const symbolEq: Eq.Eq<tsm.Symbol> = { equals: (x, y) => x === y }
 
 export const resolve =
     (scope: Scope) =>
-        (symbol: Symbol): O.Option<SymbolDef> => {
+        (symbol: tsm.Symbol): O.Option<SymbolDef> => {
             return pipe(
                 ROM.lookup(symbolEq)(symbol)(scope.symbols),
                 O.alt(() => pipe(
@@ -32,7 +27,7 @@ export const resolve =
 
 const createSymbolMap =
     (defs: ReadonlyArray<SymbolDef>) =>
-        ROM.fromMap(new Map<Symbol, SymbolDef>(defs.map(v => [v.symbol, v])));
+        ROM.fromMap(new Map<tsm.Symbol, SymbolDef>(defs.map(v => [v.symbol, v])));
 
 export const createScope = (parentScope?: Scope) =>
     (defs: ReadonlyArray<SymbolDef>): Scope => {

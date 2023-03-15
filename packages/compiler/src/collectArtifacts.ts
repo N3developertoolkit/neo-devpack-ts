@@ -1,12 +1,14 @@
+import * as tsm from "ts-morph";
 import { sc, u } from "@cityofzion/neon-core";
-import { CompileOptions, CompilerState, ContractMethod } from "./compiler";
-import { DebugInfo, DebugInfoMethod, makeDebugInfo, SequencePoint } from "./types/DebugInfo";
 import { pipe } from "fp-ts/function";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROS from 'fp-ts/ReadonlySet'
+
 import { CallOperation, CallTokenOperation, convertJumpOperationKind, convertLoadStoreKind, convertSimpleOperationKind, getOperationSize, isCallOp, isCallTokenOp, isConvertOp, isInitSlotOp, isInitStaticOperation, isJumpOffsetOp, isJumpTargetOp, isLoadStoreOp, isPushBoolOp, isPushDataOp, isPushIntOp, isSimpleOp, isSysCallOp, JumpOffsetOperation, LoadStoreOperation, Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
-import { JSDocableNode, Symbol, Type } from "ts-morph";
-import { convertBigInteger, isBigIntLike, isBooleanLike, isNumberLike, isStringLike, isVoidLike, toDiagnostic } from "./utils";
+import { convertBigInteger } from "./utils";
+import { asContractParamType, asReturnType } from "./utility/asContractParamType";
+import { CompileOptions, CompilerState, ContractMethod } from "./types/CompileOptions";
+import { DebugInfo, DebugInfoMethod, makeDebugInfo, SequencePoint } from "./types/DebugInfo";
 
 function collectMethodTokens(methods: ReadonlyArray<ContractMethod>): ReadonlyArray<sc.MethodToken> {
     const set = pipe(
@@ -32,7 +34,7 @@ function* genOperationAddresses(methods: ReadonlyArray<ContractMethod>) {
     }
 }
 
-function* genMethodAddresses(methods: ReadonlyArray<ContractMethod>): Generator<[Symbol, number], void, unknown> {
+function* genMethodAddresses(methods: ReadonlyArray<ContractMethod>): Generator<[tsm.Symbol, number], void, unknown> {
     let address = 0;
     for (const method of methods) {
         yield [method.symbol, address];
@@ -49,7 +51,7 @@ const PUSHF = 0x09;
 function* genInstructions(
     contractOps: ReadonlyArray<{ address: number; op: Operation; }>,
     tokens: ReadonlyArray<sc.MethodToken>,
-    methodAddressMap: ReadonlyMap<Symbol, number>
+    methodAddressMap: ReadonlyMap<tsm.Symbol, number>
 ): Generator<number[], void, unknown> {
     for (let index = 0; index < contractOps.length; index++) {
         const { address, op } = contractOps[index];
@@ -72,7 +74,7 @@ function* genInstructions(
 
 function* generateManifestMethods(
     methods: ReadonlyArray<ContractMethod>,
-    methodAddressMap: ReadonlyMap<Symbol, number>
+    methodAddressMap: ReadonlyMap<tsm.Symbol, number>
 ) {
     for (const method of methods) {
         if (!method.node.getExportKeyword()) continue;
@@ -94,7 +96,7 @@ function* generateManifestMethods(
         })
     }
 
-    function hasSafeTag(node: JSDocableNode): boolean {
+    function hasSafeTag(node: tsm.JSDocableNode): boolean {
         for (const doc of node.getJsDocs()) {
             for (const tag of doc.getTags()) {
                 const tagName = tag.getTagName();
@@ -174,7 +176,7 @@ function convertPushData({ value }: PushDataOperation) {
     throw new Error(`pushData length ${value.length} too long`);
 }
 
-function convertCall(methodAddressMap: ReadonlyMap<Symbol, number>, op: CallOperation, address: number) {
+function convertCall(methodAddressMap: ReadonlyMap<tsm.Symbol, number>, op: CallOperation, address: number) {
     const targetAddress = methodAddressMap.get(op.method);
     if (!targetAddress) throw new Error(`${op.method.getName()} invalid address`);
     const addressOffset = targetAddress - address;
@@ -208,27 +210,6 @@ function convertLoadStore(op: LoadStoreOperation) {
         : [opCode, op.index]
 }
 
-export function asContractParamType(type: Type): sc.ContractParamType {
-
-    if (type.isAny()) return sc.ContractParamType.Any;
-    if (isStringLike(type)) return sc.ContractParamType.String;
-    if (isBigIntLike(type) || isNumberLike(type)) return sc.ContractParamType.Integer;
-    if (isBooleanLike(type)) return sc.ContractParamType.Boolean;
-
-    const typeSymbol = type.getAliasSymbol() ?? type.getSymbolOrThrow();
-    const typeFQN = typeSymbol.getFullyQualifiedName();
-    if (typeFQN === 'global.ByteString') {
-        return sc.ContractParamType.ByteArray
-    }
-
-    return sc.ContractParamType.Any;
-}
-
-export function asReturnType(type: Type) {
-    return isVoidLike(type)
-        ? sc.ContractParamType.Void
-        : asContractParamType(type);
-}
 
 export interface CompileArtifacts {
     readonly nef: sc.NEF;

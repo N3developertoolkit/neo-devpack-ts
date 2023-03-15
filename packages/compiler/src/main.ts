@@ -3,7 +3,8 @@ import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { Node, ts } from "ts-morph";
 import { sc } from "@cityofzion/neon-core";
 import { createContractProject, hasErrors, toDiagnostic } from "./utils";
-import { compile, CompileOptions, ContractMethod } from "./compiler";
+import { compile } from "./compiler";
+import { CompileOptions, ContractMethod } from "./types/CompileOptions";
 import { CallOperation, CallTokenOperation, ConvertOperation, InitSlotOperation, JumpOffsetOperation, LoadStoreOperation, Location, Operation, PushBoolOperation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
 
 const REPO_ROOT = join(__dirname, "../../..");
