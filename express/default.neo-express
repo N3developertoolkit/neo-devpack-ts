@@ -88,6 +88,23 @@
           }
         }
       ]
+    },
+    {
+      "name": "rick",
+      "accounts": [
+        {
+          "private-key": "c5f8c270f0ca88398ec2172a46c6167019f873eb5fd4a2829990df0f44a442c2",
+          "script-hash": "Nd36FghDqVffXgeZm76fzJjUzN6AFRQJzF",
+          "label": null,
+          "is-default": true,
+          "contract": {
+            "script": "0c2102e034d62a02e5440e2d363c0d2c06cef8b30000890fdb60496d2c0d66b3c0a5364156e7b327",
+            "parameters": [
+              "Signature"
+            ]
+          }
+        }
+      ]
     }
   ],
   "settings": {}

@@ -140,7 +140,6 @@ declare global {
     /** @syscall System.Runtime.LoadScript*/
     export function loadScript(script: ByteString, callFlags: number, args: ReadonlyArray<any>): void;
 
-    /** @syscall System.Contract.Call */
     export function callContract(scriptHash: ByteString, method: string, flags: number, ...args: any[]): any;
     /** @syscall System.Contract.GetCallFlags*/
     export function getCallFlags(): number;
@@ -330,8 +329,48 @@ declare global {
         readonly updateCounter: number;
         readonly hash: ByteString;
         readonly nef: ByteString;
-        readonly manifest: any;
+        readonly manifest: ContractManifest;
     }
+
+    /** @stackitem */
+    export interface ContractManifest {
+        readonly name: string;
+        readonly groups: any; // ContractGroup[] 
+        readonly reserved: any;
+        readonly supportedStandards: any; //string[]
+        readonly abi: ContractAbi;
+        readonly permissions: any; //ContractPermission[]
+        readonly trusts: any; //ByteString[]
+        readonly extra: string;
+    }
+
+    /** @stackitem */
+    export interface ContractAbi {
+        readonly methods: readonly ContractMethodDescriptor[];
+        readonly events: readonly ContractEventDescriptor[];
+    }
+
+        /** @stackitem */
+        export interface ContractMethodDescriptor {
+            readonly name: string;
+            readonly parameters: readonly ContractParameterDefinition[];
+        }
+    
+    /** @stackitem */
+    export interface ContractEventDescriptor {
+        readonly name: string;
+        readonly parameters: readonly ContractParameterDefinition[];
+        readonly returnType: number;
+        readonly offset: number;
+        readonly safe: boolean;
+    }
+
+    /** @stackitem */
+    export interface ContractParameterDefinition {
+        readonly name: string;
+        readonly type: number;
+    }
+
 
     /** @stackitem */
     export interface Notification {

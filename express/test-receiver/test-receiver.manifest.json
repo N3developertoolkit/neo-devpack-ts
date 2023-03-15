@@ -1,0 +1,111 @@
+{
+    "name": "TestReceiver",
+    "groups": [],
+    "features": {},
+    "supportedstandards": [],
+    "abi": {
+        "methods": [
+            {
+                "name": "onNEP17Payment",
+                "offset": 4,
+                "safe": false,
+                "returntype": "Void",
+                "parameters": [
+                    {
+                        "name": "from",
+                        "type": "Any"
+                    },
+                    {
+                        "name": "amount",
+                        "type": "Integer"
+                    },
+                    {
+                        "name": "_",
+                        "type": "Any"
+                    }
+                ]
+            },
+            {
+                "name": "withdraw",
+                "offset": 629,
+                "safe": false,
+                "returntype": "Boolean",
+                "parameters": [
+                    {
+                        "name": "scriptHash",
+                        "type": "Hash160"
+                    },
+                    {
+                        "name": "receiver",
+                        "type": "Hash160"
+                    },
+                    {
+                        "name": "amount",
+                        "type": "Integer"
+                    }
+                ]
+            },
+            {
+                "name": "_deploy",
+                "offset": 1018,
+                "safe": false,
+                "returntype": "Void",
+                "parameters": [
+                    {
+                        "name": "_",
+                        "type": "Any"
+                    },
+                    {
+                        "name": "update",
+                        "type": "Boolean"
+                    }
+                ]
+            },
+            {
+                "name": "update",
+                "offset": 1071,
+                "safe": false,
+                "returntype": "Void",
+                "parameters": [
+                    {
+                        "name": "nefFile",
+                        "type": "ByteArray"
+                    },
+                    {
+                        "name": "manifest",
+                        "type": "String"
+                    }
+                ]
+            }
+        ],
+        "events": []
+    },
+    "permissions": [
+        {
+            "contract": "0xacce6fd80d44e1796aa0c2c625e9e4e0ce39efc0",
+            "methods": [
+                "base58CheckEncode",
+                "itoa"
+            ]
+        },
+        {
+            "contract": "0xfffdc93764dbaddd97c48f252a53ea4643faa3fd",
+            "methods": [
+                "update"
+            ]
+        },
+        {
+            "contract": "*",
+            "methods": [
+                "transfer"
+            ]
+        }
+    ],
+    "trusts": [],
+    "extra": {
+        "Author": "Harry Pierson",
+        "Email": "harrypierson@hotmail.com",
+        "Description": "This is an example contract",
+        "GitHubRepo": "https://github.com/ngdenterprise/neo-test-receiver"
+    }
+}

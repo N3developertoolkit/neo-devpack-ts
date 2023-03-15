@@ -168,6 +168,59 @@ class StaticMethodDef extends $SymbolDef implements CallableSymbolDef {
     }
 }
 
+const parseArgArray = (scope: Scope) => (args: readonly tsm.Expression[]) => {
+    return pipe(
+        args,
+        ROA.map(parseExpression(scope)),
+        ROA.sequence(E.Applicative),
+        E.map(ROA.reverse),
+        E.map(ROA.flatten),
+    );
+}
+class CallContractFunctionDef extends $SymbolDef implements CallableSymbolDef {
+    readonly loadOps = [];
+    readonly props = [];
+
+    parseArguments = (scope: Scope) => (node: tsm.CallExpression): E.Either<ParseError, ReadonlyArray<Operation>> => {
+        return pipe(
+            node,
+            getArguments,
+            args => {
+                const callArgs = args.slice(0, 3);
+                if (callArgs.length !== 3) return E.left(makeParseError(node)("invalid arg count"));
+                return E.of({
+                    callArgs,
+                    targetArgs: args.slice(3)
+                })
+            },
+            E.chain(({callArgs, targetArgs}) => {
+                return pipe(
+                    targetArgs,
+                    parseArgArray(scope),
+                    E.map(ROA.concat([
+                        { kind: "pushint", value: BigInt(targetArgs.length) },
+                        { kind: 'pack' },
+                    ] as readonly Operation[])),
+                    E.bindTo("target"),
+                    E.bind('call', () => pipe(
+                        callArgs,
+                        parseArgArray(scope),
+                        E.map(ROA.append({ kind: "syscall", name: "System.Contract.Call" } as Operation))
+                    )),
+                    E.map(({call, target}) => ROA.concat(call)(target))
+                );
+            })
+        );
+    }
+
+    constructor(
+        readonly decl: tsm.FunctionDeclaration,
+    ) {
+        super(decl);
+    }
+
+}
+
 const byteStringMethods: Record<string, ParseArgumentsFunc> = {
     "fromHex": byteStringFromHex,
     "fromString": byteStringFromString,
@@ -499,8 +552,13 @@ export const makeGlobalScope =
                 "StorageContext": decl => new SysCallInterfaceDef(decl),
             }
 
+            const builtInFunctions: Record<string, (decl: tsm.FunctionDeclaration) => SymbolDef> = {
+                "callContract": decl => new CallContractFunctionDef(decl),
+            }
+
             symbolDefs = resolveBuiltins(builtInVars)(decls.variables)(symbolDefs);
             symbolDefs = resolveBuiltins(builtInInterfaces)(decls.interfaces)(symbolDefs);
+            symbolDefs = resolveBuiltins(builtInFunctions)(decls.functions)(symbolDefs);
 
             const scope = createScope()(symbolDefs);
             return [scope, diagnostics];

@@ -7,7 +7,7 @@
 //  */
 
 const SYMBOL = "TANK";
-const DECIMALS = 8n;
+const DECIMALS = 4n;
 const INITIAL_SUPPLY = 1_000_000n;
 
 const SUPPLY_KEY = ByteString.fromHex("0xA0");

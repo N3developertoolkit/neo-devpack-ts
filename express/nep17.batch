@@ -1,5 +1,9 @@
-transfer 100000 gas genesis owen
+transfer 10000 gas genesis rick
+contract deploy ./test-receiver/test-receiver.nef rick
+transfer 10000 gas genesis owen
 contract deploy ./out/nep17token.nef owen
 checkpoint create ./out/nep17-deployed -f
 transfer 10000 TANK owen alice
 transfer 10000 TANK owen bob
+transfer 10000 TANK owen #TestReceiver
+

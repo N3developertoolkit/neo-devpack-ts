@@ -54,7 +54,7 @@
                 "operation": "transfer",
                 "args": [
                     "@owen",
-                    "@alice",
+                    "#TestReceiver",
                     10000,
                     null
                 ]
