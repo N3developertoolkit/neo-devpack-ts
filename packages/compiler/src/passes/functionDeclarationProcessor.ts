@@ -12,7 +12,7 @@ import * as TS from "../utility/TS";
 import { $SymbolDef, makeParseError } from "../symbolDef";
 import { createScope, updateScope } from "../scope";
 import { ParseError, Scope, SymbolDef } from "../types/ScopeType";
-import { isJumpTargetOp, JumpTargetOperation, LoadStoreOperation, Location, Operation } from "../types/Operation";
+import { convertJumpTargetOps, isJumpTargetOp, JumpOffsetOperation, JumpTargetOperation, LoadStoreOperation, Location, Operation } from "../types/Operation";
 import { isVoidLike } from "../utils";
 import { ContractMethod } from "../types/CompileOptions";
 import { parseSymbol } from "./parseSymbol";
@@ -284,74 +284,50 @@ const appendError = (error: ParseError): ParseStatementState =>
 const appendErrors = (error: readonly ParseError[]): ParseStatementState =>
     state => ([[], { ...state, errors: ROA.concat(error)(state.errors) }]);
 
-const parseBody =
-    (scope: Scope) =>
-        (body: tsm.Node): E.Either<readonly ParseError[], ParseBodyResult> => {
-            if (tsm.Node.isStatement(body)) {
-                const [operations, state] = parseStatement(body)({ scope, errors: [], locals: [] });
-                if (ROA.isNonEmpty(state.errors)) {
-                    return E.left(state.errors);
-                } else {
-                    return E.of({ operations, locals: state.locals })
-                }
-            }
-            return E.left(ROA.of(makeParseError(body)(`parseBody ${body.getKindName()} not implemented`)));
-        }
+export const parseBody =
+    (node: tsm.FunctionDeclaration) =>
+        (scope: Scope) =>
+            (body: tsm.Node): E.Either<readonly ParseError[], ParseBodyResult> => {
+                if (tsm.Node.isStatement(body)) {
+                    let [operations, state] = parseStatement(body)({ scope, errors: [], locals: [] });
+                    if (ROA.isNonEmpty(state.errors)) {
+                        return E.left(state.errors);
+                    } else {
+                        operations = pipe(operations,
+                            // add return op at end of method
+                            ROA.append(returnOp as Operation),
+                            // add initslot op at start of method if there are locals or parameters
+                            ops => {
+                                const params = node.getParameters().length;
+                                const locals = state.locals.length;
+                                return (params > 0 || locals > 0)
+                                    ? ROA.prepend({ kind: 'initslot', locals, params } as Operation)(ops)
+                                    : ops;
+                            },
+                        );
 
-const convertJumpTargetOps =
-    (ops: readonly Operation[]) =>
-        (jumpTargetOps: readonly { index: number; op: JumpTargetOperation; }[]): O.Option<readonly Operation[]> => {
-            return pipe(
-                jumpTargetOps,
-                ROA.matchLeft(
-                    () => O.some(ops),
-                    (head, tail) => pipe(
-                        ops,
-                        ROA.findIndex($o => head.op.target === $o),
-                        O.chain(targetIndex => pipe(
-                            ops,
-                            ROA.modifyAt(head.index, () => ({
-                                kind: head.op.kind,
-                                offset: targetIndex - head.index,
-                                location: head.op.location,
-                            } as Operation))
-                        )),
-                        O.chain(ops => convertJumpTargetOps(ops)(tail))
-                    )
-                )
-            )
-        }
+                        return E.of({ operations, locals: state.locals })
+                    }
+                }
+                return E.left(ROA.of(makeParseError(body)(`parseBody ${body.getKindName()} not implemented`)));
+            }
+
 
 const makeContractMethod =
     (node: tsm.FunctionDeclaration) =>
         (result: ParseBodyResult): E.Either<ParseError, ContractMethod> => {
-            const ops = pipe(result.operations,
-                // add return op at end of method
-                ROA.append(returnOp as Operation),
-                // add initslot op at start of method if there are locals or parameters
-                ops => {
-                    const params = node.getParameters().length;
-                    const locals = result.locals.length;
-                    return (params > 0 || locals > 0)
-                        ? pipe(ops, ROA.prepend({ kind: 'initslot', locals, params } as Operation))
-                        : ops;
-                },
-            );
-
             return pipe(
-                ops,
+                result.operations,
                 // map all the jump target to jump offset operations
-                ROA.filterMapWithIndex(
-                    (index, op) => isJumpTargetOp(op)
-                        ? O.some({ op, index })
-                        : O.none),
-                convertJumpTargetOps(ops),
-                E.fromOption(() => makeParseError(node)('convertJumpTargetOps failed')),
+                convertJumpTargetOps,
+                E.mapLeft(makeParseError(node)),
                 E.bindTo('operations'),
                 E.bind('symbol', () => pipe(
                     node,
                     parseSymbol,
                     E.chain(flow(
+                        // _initialize is a special function emitted by the compiler
+                        // so block any function from having this name
                         E.fromPredicate(
                             sym => sym.getName() !== "_initialize",
                             sym => makeParseError(node)(`invalid contract method name "${sym.getName()}"`)
@@ -401,7 +377,7 @@ export const parseContractMethod =
                     E.fromNullable(makeParseError(node)("undefined body")),
                     E.mapLeft(ROA.of)
                 )),
-                E.chain(o => parseBody(o.scope)(o.body)),
+                E.chain(({body, scope}) => parseBody(node)(scope)(body)),
                 E.chain(r => pipe(r, makeContractMethod(node), E.mapLeft(ROA.of))),
             );
         }

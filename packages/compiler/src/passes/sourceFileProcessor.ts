@@ -6,7 +6,6 @@ import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option'
 import * as MONOID from 'fp-ts/Monoid'
 
-import { single } from "../utils";
 import { flow, identity, pipe } from "fp-ts/function";
 import { CompiledProject, CompilerState, ContractEvent, ContractMethod } from "../types/CompileOptions";
 import { $SymbolDef, makeParseDiagnostic, makeParseError, } from "../symbolDef";

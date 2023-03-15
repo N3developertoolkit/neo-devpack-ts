@@ -1,6 +1,9 @@
 import * as tsm from "ts-morph";
 import { sc } from '@cityofzion/neon-core';
 import { convertBigInteger } from "../utils";
+import { pipe } from 'fp-ts/function';
+import * as ROA from 'fp-ts/ReadonlyArray';
+import * as E from "fp-ts/Either";
 
 export type Location = tsm.Node | { start: tsm.Node, end: tsm.Node };
 
@@ -351,3 +354,64 @@ export function getOperationSize(op: Operation) {
     }
 }
 
+export const convertJumpTargetOps =
+    (ops: readonly Operation[]) => {
+        return pipe(
+            ops,
+            ROA.mapWithIndex((index, op) => {
+                return pipe(
+                    op,
+                    op => {
+                        if (isJumpTargetOp(op)) {
+                            return pipe(
+                                ops,
+                                ROA.findIndex(o => op.target === o),
+                                E.fromOption(() => "failed to locate target index"),
+                                E.map(targetIndex => {
+                                    return {
+                                        kind: op.kind,
+                                        offset: targetIndex - index,
+                                        location: op.location
+                                    } as Operation
+                                })
+                            )
+                        } else {
+                            return E.of(op);
+                        }
+                    }
+                )
+            }),
+            ROA.sequence(E.Applicative)
+        )
+    }
+
+export const convertJumpOffsetOps =
+    (ops: readonly Operation[]) => {
+        return pipe(
+            ops,
+            ROA.mapWithIndex((index, op) => {
+                return pipe(
+                    op,
+                    op => {
+                        if (isJumpOffsetOp(op)) {
+                            return pipe(
+                                ops,
+                                ROA.lookup(index + op.offset),
+                                E.fromOption(() => "failed to locate target offset"),
+                                E.map(target => {
+                                    return {
+                                        kind: op.kind,
+                                        target,
+                                        location: op.location
+                                    } as Operation
+                                })
+                            )
+                        } else {
+                            return E.of(op);
+                        }
+                    }
+                )
+            }),
+            ROA.sequence(E.Applicative)
+        )
+    }
