@@ -8,7 +8,7 @@ import * as O from 'fp-ts/Option'
 import { single } from "../utils";
 import { flow, identity, pipe } from "fp-ts/function";
 import { CompilerState, ContractMethod } from "../types/CompileOptions";
-import { $SymbolDef,  makeParseDiagnostic, makeParseError,  } from "../symbolDef";
+import { $SymbolDef, makeParseDiagnostic, makeParseError, } from "../symbolDef";
 import { parseContractMethod } from "./functionDeclarationProcessor";
 import { parseArguments, parseExpression } from './expressionProcessor';
 import { Operation } from "../types/Operation";
@@ -329,8 +329,8 @@ const parseSourceFile =
         }
 
 export const parseProject =
-    (scope: Scope) =>
-        (project: Project): CompilerState<ReadonlyArray<ContractMethod>> =>
+    (project: Project) =>
+        (scope: Scope): CompilerState<ReadonlyArray<ContractMethod>> =>
             (diagnostics) => {
 
                 let context: ParseSourceContext = {
@@ -368,7 +368,7 @@ export const parseProject =
 
                     const src = project.getSourceFiles()[0];
                     const name = "_initialize"
-                    const init = src.addFunction({ 
+                    const init = src.addFunction({
                         name,
                         isExported: true
                     });

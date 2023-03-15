@@ -109,7 +109,7 @@ function* generateManifestMethods(
     }
 }
 
-function *genDebugMethods(methods: ReadonlyArray<ContractMethod>) {
+function* genDebugMethods(methods: ReadonlyArray<ContractMethod>) {
     let address = 0;
     for (const method of methods) {
         const start = address;
@@ -118,7 +118,7 @@ function *genDebugMethods(methods: ReadonlyArray<ContractMethod>) {
         for (const op of method.operations) {
             end = address;
             if (op.location) {
-                sequencePoints.push({address, location: op.location})
+                sequencePoints.push({ address, location: op.location })
             }
             address += getOperationSize(op);
         }
@@ -218,29 +218,30 @@ export interface CompileArtifacts {
 }
 
 export const collectArtifacts =
-    (name: string, methods: ReadonlyArray<ContractMethod>, options: CompileOptions): CompilerState<CompileArtifacts> =>
-        diagnostics => {
-            const contractOps = [...genOperationAddresses(methods)];
-            const tokens = collectMethodTokens(methods);
-            const methodAddressMap = new Map(genMethodAddresses(methods));
-            const instructions = [...genInstructions(contractOps, tokens, methodAddressMap)];
+    (name: string, options: CompileOptions) =>
+        (methods: ReadonlyArray<ContractMethod>): CompilerState<CompileArtifacts> =>
+            diagnostics => {
+                const contractOps = [...genOperationAddresses(methods)];
+                const tokens = collectMethodTokens(methods);
+                const methodAddressMap = new Map(genMethodAddresses(methods));
+                const instructions = [...genInstructions(contractOps, tokens, methodAddressMap)];
 
-            const nef = new sc.NEF({
-                compiler: "neo-devpack-ts",
-                script: Buffer.from(ROA.flatten(instructions)).toString("hex"),
-                tokens: tokens.map(t => t.export()),
-            });
-            const hash = Buffer.from(u.hash160(nef.script), 'hex').reverse();
+                const nef = new sc.NEF({
+                    compiler: "neo-devpack-ts",
+                    script: Buffer.from(ROA.flatten(instructions)).toString("hex"),
+                    tokens: tokens.map(t => t.export()),
+                });
+                const hash = Buffer.from(u.hash160(nef.script), 'hex').reverse();
 
-            const manifestMethods = [...generateManifestMethods(methods, methodAddressMap)]
-            const manifest = new sc.ContractManifest({
-                name,
-                supportedStandards: [...options.standards],
-                abi: new sc.ContractAbi({ methods: manifestMethods })
-            });
+                const manifestMethods = [...generateManifestMethods(methods, methodAddressMap)]
+                const manifest = new sc.ContractManifest({
+                    name,
+                    supportedStandards: [...options.standards],
+                    abi: new sc.ContractAbi({ methods: manifestMethods })
+                });
 
-            const debugMethods = [...genDebugMethods(methods)];
-            const debugInfo = makeDebugInfo(nef, debugMethods);
+                const debugMethods = [...genDebugMethods(methods)];
+                const debugInfo = makeDebugInfo(nef, debugMethods);
 
-            return [{ nef, manifest, debugInfo }, diagnostics];
-        }
+                return [{ nef, manifest, debugInfo }, diagnostics];
+            }

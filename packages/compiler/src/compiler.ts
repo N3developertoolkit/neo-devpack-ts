@@ -1,7 +1,8 @@
 import * as tsm from "ts-morph";
 import { PathLike, accessSync } from 'fs';
+import { pipe } from "fp-ts/lib/function";
 import * as ROA from 'fp-ts/ReadonlyArray'
-
+import * as S from 'fp-ts/State'
 
 import { parseProjectLibrary } from "./projectLib";
 import { collectArtifacts } from "./collectArtifacts";
@@ -29,20 +30,17 @@ export function compile(
         standards: options?.standards ?? [],
     }
 
-    let [library, diagnostics] = parseProjectLibrary(project)(ROA.empty);
-    if (hasErrors(diagnostics)) { return { diagnostics } }
-
-    let globalScope;
-    [globalScope, diagnostics] = makeGlobalScope(library)(diagnostics);
-    if (hasErrors(diagnostics)) { return { diagnostics } }
-    
-    let methods;
-    [methods, diagnostics] = parseProject(globalScope)(project)(diagnostics);
-    if (hasErrors(diagnostics)) { return { diagnostics } }
-
-    let artifacts;
-    [artifacts, diagnostics] = collectArtifacts(contractName, methods, $options)(diagnostics);
-    if (hasErrors(diagnostics)) { return { diagnostics } }
+    let [{ methods, artifacts }, diagnostics] = pipe(
+        project.getPreEmitDiagnostics(),
+        ROA.map(d => d.compilerObject),
+        pipe(
+            parseProjectLibrary(project),
+            S.chain(makeGlobalScope),
+            S.chain(parseProject(project)),
+            S.bindTo('methods'),
+            S.bind('artifacts', ({ methods }) => collectArtifacts(contractName, $options)(methods))
+        )
+    );
 
     return { diagnostics, methods, ...artifacts };
 }
