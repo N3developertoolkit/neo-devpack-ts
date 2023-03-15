@@ -156,6 +156,7 @@ declare global {
     /** @nativeContract {0xfffdc93764dbaddd97c48f252a53ea4643faa3fd} */
     export const ContractManagement: ContractManagementConstructor;
 
+    // TODO: @nativeContract safe methods 
     export interface ContractManagementConstructor {
         /** @nativeContract getMinimumDeploymentFee */
         readonly minimumDeploymentFee: bigint;

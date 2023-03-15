@@ -217,6 +217,25 @@ export interface CompileArtifacts {
     readonly debugInfo: DebugInfo;
 }
 
+function collectPermissions(tokens: readonly sc.MethodToken[]): sc.ContractPermission[] {
+
+    const map = new Map<string, ReadonlySet<string>>();
+    for (const token of tokens) {
+        const hash = u.HexString.fromHex(token.hash, true).toString();
+        const methodSet = map.get(hash) ?? new Set<string>();
+        const newSet = new Set<string>(methodSet);
+        newSet.add(token.method);
+        map.set(hash, newSet);
+    }
+
+    return [...map.entries()].map(v => {
+        return new sc.ContractPermission({
+            contract: v[0],
+            methods: [...v[1]]
+        })
+    })
+}
+
 export const collectArtifacts =
     (name: string, options: CompileOptions) =>
         (methods: ReadonlyArray<ContractMethod>): CompilerState<CompileArtifacts> =>
@@ -237,6 +256,7 @@ export const collectArtifacts =
                 const manifest = new sc.ContractManifest({
                     name,
                     supportedStandards: [...options.standards],
+                    permissions: collectPermissions(tokens),
                     abi: new sc.ContractAbi({ methods: manifestMethods })
                 });
 
