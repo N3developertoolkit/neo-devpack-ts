@@ -5,24 +5,9 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "args": [
-                "--timeout",
-                "999999",
-                "--colors",
-            ],
-            "internalConsoleOptions": "openOnSessionStart",
-            "name": "Mocha Tests",
-            "program": "${workspaceFolder}/node_modules/mocha/bin/_mocha",
-            "request": "launch",
-            "skipFiles": [
-                "<node_internals>/**"
-            ],
-            "type": "node"
-        },
-        {
             "type": "node",
             "request": "launch",
-            "name": "Launch Program",
+            "name": "Run Compiler",
             "preLaunchTask": "tsc: build - tsconfig.json",
             "skipFiles": [
                 "<node_internals>/**"
@@ -30,18 +15,6 @@
             "program": "${workspaceFolder}/packages/compiler/src/main.ts",
             "outFiles": [
                 "${workspaceFolder}/**/*.js"
-            ]
-        },
-        {
-            "type": "node",
-            "request": "launch",
-            "name": "Launch Program via TS-Node",
-            "runtimeArgs": [
-                "-r",
-                "ts-node/register"
-            ],
-            "args": [
-                "${workspaceFolder}/packages/compiler/src/main.ts"
             ]
         },
         {
@@ -72,6 +45,21 @@
             "signers": [
                 "@owen"
             ]
+        },
+        {
+            "args": [
+                "--timeout",
+                "999999",
+                "--colors",
+            ],
+            "internalConsoleOptions": "openOnSessionStart",
+            "name": "Mocha Tests",
+            "program": "${workspaceFolder}/node_modules/mocha/bin/_mocha",
+            "request": "launch",
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
+            "type": "node"
         },
     ]
 }
