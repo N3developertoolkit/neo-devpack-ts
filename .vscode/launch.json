@@ -8,7 +8,7 @@
             "type": "node",
             "request": "launch",
             "name": "Run Compiler",
-            "preLaunchTask": "tsc: build - tsconfig.json",
+            "preLaunchTask": "tsc: watch - tsconfig.json",
             "skipFiles": [
                 "<node_internals>/**"
             ],

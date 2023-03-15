@@ -114,6 +114,16 @@ export const parseBooleanLiteral =
 export const parseIdentifier =
     (scope: Scope) =>
         (node: tsm.Identifier): E.Either<ParseError, readonly Operation[]> => {
+
+            // Not sure why, but 'undefined' gets parsed as an identifier rather
+            // than a keyword or literal. If an identifier's type is null or
+            // undefined, skip symbol resolution and simply push null.
+            
+            const type = node.getType();
+            if (type.isUndefined() || type.isNull()) {
+                return E.of(ROA.of({kind: 'pushnull'}))
+            }
+
             return pipe(
                 node,
                 parseSymbol,
@@ -123,7 +133,7 @@ export const parseIdentifier =
         }
 
 export const parseNullLiteral =
-    (node: tsm.NullLiteral): E.Either<ParseError, Operation> =>
+    (_node: tsm.Node): E.Either<ParseError, Operation> =>
         E.right({ kind: "pushnull" });
 
 export const parseNumericLiteral =
@@ -190,7 +200,9 @@ export const parseExpression =
             if (tsm.Node.isPrefixUnaryExpression(node)) return parsePrefixUnaryExpression(scope)(node);
             if (tsm.Node.isStringLiteral(node)) return parseLiteral(parseStringLiteral)(node);
             if (tsm.Node.isTrueLiteral(node)) return parseLiteral(parseBooleanLiteral)(node);
-            return E.left(makeParseError(node)(`parseExpression ${node.getKindName()} failed`))
+            if (tsm.Node.isUndefinedKeyword(node)) return parseLiteral(parseNullLiteral)(node);
+            var kind = (node as tsm.Node).getKindName();
+            return E.left(makeParseError(node)(`parseExpression ${kind} failed`))
 
             function parseLiteral<T>(func: (node: T) => E.Either<ParseError, Operation>) {
                 return flow(func, E.map(ROA.of));

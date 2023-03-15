@@ -11,7 +11,7 @@ export function query(domain: string): ByteString | undefined {
 export function register(domain: string): boolean {
     const key = concat(PREFIX_DOMAIN, domain);
     const currentOwner = Storage.context.get(key);
-    if (currentOwner !== null) {
+    if (currentOwner !== undefined) {
         log("Domain already registered");
         return false;
     }
@@ -23,7 +23,7 @@ export function register(domain: string): boolean {
 export function unregister(domain: string): boolean {
     const key = concat(PREFIX_DOMAIN, domain);
     const currentOwner = Storage.context.get(key);
-    if (!currentOwner) {
+    if (currentOwner === undefined) {
         log("Domain not registered");
         return false;
     }
