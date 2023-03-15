@@ -19,7 +19,24 @@
         },
         {
             "type": "neo-contract",
-            "name": "NEO: deploy",
+            "name": "NEO: register",
+            "request": "launch",
+            "program": "${workspaceFolder}/express/out/registrar.nef",
+            "neo-express": "${workspaceFolder}/express/default.neo-express",
+            "checkpoint": "${workspaceFolder}/express/out/registrar-sample-registered.neoxp-checkpoint",
+            "invocation": {
+                "operation": "register",
+                "args": [
+                    "sample-domain",
+                ]
+            },
+            "signers": [
+                "@owen"
+            ]
+        },
+        {
+            "type": "neo-contract",
+            "name": "NEO: deploy nep17token",
             "request": "launch",
             "program": "${workspaceFolder}/express/out/nep17token.nef",
             "neo-express": "${workspaceFolder}/express/default.neo-express",
@@ -28,7 +45,7 @@
         },
         {
             "type": "neo-contract",
-            "name": "NEO: transfer",
+            "name": "NEO: nep17token.transfer",
             "request": "launch",
             "program": "${workspaceFolder}/express/out/nep17token.nef",
             "neo-express": "${workspaceFolder}/express/default.neo-express",

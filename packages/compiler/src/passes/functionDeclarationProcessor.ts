@@ -194,6 +194,7 @@ const parseIfStatement =
     (node: tsm.IfStatement): ParseStatementState =>
         state => {
             const expr = node.getExpression();
+            const type = expr.getType().getText();
 
             let operations: readonly Operation[];
             [operations, state] = parseExpression(expr)(state);
