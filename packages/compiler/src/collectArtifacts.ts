@@ -227,7 +227,7 @@ function convertLoadStore(op: LoadStoreOperation) {
 
 
 
-function collectPermissions(tokens: readonly sc.MethodToken[]): sc.ContractPermission[] {
+function collectPermissions(tokens: readonly sc.MethodToken[], options: CompileOptions): sc.ContractPermission[] {
 
     const map = new Map<string, ReadonlySet<string>>();
     for (const token of tokens) {
@@ -236,6 +236,14 @@ function collectPermissions(tokens: readonly sc.MethodToken[]): sc.ContractPermi
         const newSet = new Set<string>(methodSet);
         newSet.add(token.method);
         map.set(hash, newSet);
+    }
+
+    // TODO: user specified mechanism (source declarative or cli parameter) mechanism to add permissions
+    if (options.standards.includes('NEP-17')) {
+        map.set("*", new Set(["onNEP17Payment"]))
+    }
+    if (options.standards.includes('NEP-11')) {
+        map.set("*", new Set(["onNEP11Payment"]))
     }
 
     return [...map.entries()].map(v => {
@@ -267,10 +275,11 @@ export const collectArtifacts =
                 const manifestMethods = [...generateManifestMethods(methods, methodAddressMap)];
                 const manifestEvents = [...generateManifestEvents(compiledProject.events)];
                 const manifest = new sc.ContractManifest({
+                    abi: new sc.ContractAbi({ methods: manifestMethods, events: manifestEvents }),
                     name,
+                    permissions: collectPermissions(tokens, options),
                     supportedStandards: [...options.standards],
-                    permissions: collectPermissions(tokens),
-                    abi: new sc.ContractAbi({ methods: manifestMethods, events: manifestEvents })
+                    trusts: []
                 });
 
                 const debugMethods = [...genDebugMethods(methods)];
