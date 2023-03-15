@@ -5,6 +5,7 @@ import { convertBigInteger } from "../utils";
 export type Location = tsm.Node | { start: tsm.Node, end: tsm.Node };
 
 export const simpleOperationKinds = [
+    'and',
     'add',
     'append',
     'concat',
@@ -35,6 +36,7 @@ export type SimpleOperationKind = typeof simpleOperationKinds[number];
 
 export function convertSimpleOperationKind(kind: SimpleOperationKind) {
     switch (kind) {
+        case 'and': return sc.OpCode.AND;
         case "add": return sc.OpCode.ADD;
         case "append": return sc.OpCode.APPEND;
         case "concat": return sc.OpCode.CAT;
@@ -293,32 +295,9 @@ export function parseOperation(kind: string, operand: string | undefined): Opera
 }
 
 export function getOperationSize(op: Operation) {
+    if (isSimpleOp(op)) return 1;
     switch (op.kind) {
-        case 'add':
-        case 'append':
-        case 'concat':
-        case 'drop':
-        case 'duplicate':
-        case 'equal':
-        case 'greaterthan':
-        case 'greaterthanorequal':
-        case 'isnull':
-        case 'lessthan':
-        case 'lessthanorequal':
-        case 'multiply':
-        case 'negate':
-        case 'newemptyarray':
-        case 'noop':
-        case 'not':
-        case 'notequal':
-        case 'pack':
-        case 'pickitem':
-        case 'pushbool':
-        case 'pushnull':
-        case 'power':
-        case 'return':
-        case 'subtract':
-        case 'throw':
+        case "pushbool":
             return 1;
         case 'convert':
         case 'initstatic':
