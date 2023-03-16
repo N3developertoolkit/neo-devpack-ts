@@ -56,6 +56,7 @@ export const parseBigIntLiteral =
     }
 
 const binaryOpTokenMap: ReadonlyMap<tsm.SyntaxKind, SimpleOperationKind> = new Map([
+    [tsm.SyntaxKind.AmpersandAmpersandToken, "and"],
     [tsm.SyntaxKind.AsteriskAsteriskToken, 'power'],
     [tsm.SyntaxKind.AsteriskToken, 'multiply'],
     [tsm.SyntaxKind.EqualsEqualsEqualsToken, 'equal'], // TODO: Should == and === be the same?
