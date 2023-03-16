@@ -8,7 +8,7 @@ import * as E from "fp-ts/Either";
 export type Location = tsm.Node | { start: tsm.Node, end: tsm.Node };
 
 export const simpleOperationKinds = [
-    'and',
+    'and', // Note, this is bitwise and between top two items on stack treated as integers
     'add',
     'append',
     'concat',
