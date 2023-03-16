@@ -257,7 +257,7 @@ function collectPermissions(tokens: readonly sc.MethodToken[], options: CompileO
 }
 
 
-export const collectArtifacts =
+const collectArtifactsThrows =
     (name: string, options: CompileOptions) =>
         (compiledProject: CompiledProject): CompilerState<CompiledProjectArtifacts> =>
             diagnostics => {
@@ -290,14 +290,14 @@ export const collectArtifacts =
                 return [{ nef, manifest, debugInfo }, diagnostics];
             }
 
-// wrap collect artifacts in E.tryCatch
-// TODO: stop using throw new Error in collect artifacts path
-export const collectArtifacts2 =
+// wrap collectArtifactsThrows in E.tryCatch
+// TODO: build a version of collectArtifactsThrows that doesn't throw
+export const collectArtifacts =
     (name: string, options: CompileOptions) =>
         (compiledProject: CompiledProject): CompilerState<O.Option<CompiledProjectArtifacts>> =>
             diagnostics => {
                 const result = E.tryCatch(
-                    () => collectArtifacts(name, options)(compiledProject)(diagnostics),
+                    () => collectArtifactsThrows(name, options)(compiledProject)(diagnostics),
                     e => createDiagnostic(getErrorMessage(e)));
 
                 return pipe(

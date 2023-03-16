@@ -6,7 +6,7 @@ import * as S from 'fp-ts/State'
 import * as O from 'fp-ts/Option'
 
 import { parseProjectLibrary } from "./projectLib";
-import { collectArtifacts, collectArtifacts2 } from "./collectArtifacts";
+import { collectArtifacts } from "./collectArtifacts";
 import { makeGlobalScope } from "./passes/builtins";
 import { parseProject } from "./passes/sourceFileProcessor";
 import { CompileOptions, CompileArtifacts } from "./types/CompileOptions";
@@ -34,7 +34,7 @@ export function compile(
             S.chain(makeGlobalScope),
             S.chain(parseProject(project)),
             S.bindTo('compiledProject'),
-            S.bind('artifacts', ({ compiledProject }) => collectArtifacts2(contractName, $options)(compiledProject))
+            S.bind('artifacts', ({ compiledProject }) => collectArtifacts(contractName, $options)(compiledProject))
         ),
     );
 
