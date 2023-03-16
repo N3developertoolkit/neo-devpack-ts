@@ -8,31 +8,47 @@ import * as E from "fp-ts/Either";
 export type Location = tsm.Node | { start: tsm.Node, end: tsm.Node };
 
 export const simpleOperationKinds = [
-    'and', // Note, this is bitwise and between top two items on stack treated as integers
-    'add',
-    'append',
-    'concat',
+
+    // constants 
+    'pushnull',
+
+    // flow control
+    'noop',
+    'throw',
+    'return',
+
+    // Stack Management
     'drop',
     'duplicate',
+
+    // splice
+    'concat',
+
+    // bitwise logic
+    'and', // Note, this is bitwise and between top two items on stack treated as integers
     'equal',
-    'greaterthan',
-    'greaterthanorequal',
-    'isnull',
+    'notequal',
+
+    // Arithmetic
+    'negate',
+    'add',
+    'subtract',
+    'multiply',
+    'power',
+    'not',
     'lessthan',
     'lessthanorequal',
-    'multiply',
-    'negate',
-    'newemptyarray',
-    'noop',
-    'not',
-    'notequal',
+    'greaterthan',
+    'greaterthanorequal',
+
+    // Compound-type
     'pack',
+    'newemptyarray',
+    'append',
     'pickitem',
-    'power',
-    'pushnull',
-    'return',
-    'subtract',
-    'throw'
+
+    // types
+    'isnull',
 ] as const;
 
 export type SimpleOperationKind = typeof simpleOperationKinds[number];
