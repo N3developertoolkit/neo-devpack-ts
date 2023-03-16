@@ -72,8 +72,10 @@ function main() {
         try {
 
             const options: Partial<CompileOptions> = contractName.startsWith('nep17')
-                ? { standards: ["NEP-17"] } 
-                : {}
+                ? { standards: ["NEP-17"] }
+                : contractName.startsWith('nep11')
+                    ? { standards: ["NEP-11"] }
+                    : {}
             const { diagnostics, compiledProject, nef, manifest, debugInfo } = compile(project, contractName, options);
 
             if (diagnostics.length > 0) printDiagnostics(diagnostics);
@@ -167,7 +169,7 @@ function dumpOperation(op: Operation, currentIndex: number) {
             const { offset } = op as JumpOffsetOperation;
             return `${op.kind} ${offset} (${offset + currentIndex})`
         }
-        case 'syscall':{
+        case 'syscall': {
             const { name } = op as SysCallOperation;
             return `${op.kind} ${name}`
         }
