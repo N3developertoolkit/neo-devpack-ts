@@ -5,14 +5,16 @@ import * as tsm from "ts-morph";
 
 import { identity, pipe } from 'fp-ts/function';
 import * as E from "fp-ts/Either";
+import * as O from 'fp-ts/Option';
 import * as ROA from 'fp-ts/ReadonlyArray';
 
-import { createTestProject, testRight } from '../src/utils.spec';
-import { makeFunctionDeclScope, parseBody } from '../src/passes/functionDeclarationProcessor'
-import { convertJumpOffsetOps, convertJumpTargetOps, Operation } from '../src/types/Operation';
+import { createTestProject } from '../src/utils.spec';
+import { makeFunctionDeclScope } from '../src/passes/functionDeclarationProcessor'
+import { Operation } from '../src/types/Operation';
 import { parseExpression } from '../src/passes/expressionProcessor';
 import { updateScope as $updateScope } from '../src/scope';
 import { Scope, SymbolDef } from '../src/types/ScopeType';
+import { makeParseError } from '../src/symbolDef';
 
 const updateScope = (def: SymbolDef) => (scope: Scope) => $updateScope(scope)([def]);
 
@@ -33,12 +35,25 @@ describe("helloworld", () => {
             }`;
 
         const { sourceFile, scope } = createTestProject(contract);
+
+        const init = sourceFile.addFunction({
+            name: "test",
+            isExported: true,
+            returnType: "boolean"
+        });
+        const symbol = init.getSymbol();
+        const t = init.getReturnType();
+
+        init.remove();
+        const q  = symbol?.getName();
+        const qq = t.getText();
+        const qqq = t.isBoolean();
+        
+
         const func = sourceFile.getFirstChildByKindOrThrow(tsm.SyntaxKind.FunctionDeclaration);
-        const ifStmt = func.getFirstDescendantByKindOrThrow(tsm.SyntaxKind.IfStatement);
         const owner = func.getDescendantsOfKind(tsm.SyntaxKind.VariableDeclaration).find(d => d.getSymbol()?.getName() === "owner");
         expect(owner).is.not.undefined;
-        
-        
+
         const pbr = pipe(
             func,
             makeFunctionDeclScope(scope),
@@ -52,7 +67,7 @@ describe("helloworld", () => {
                 } as Operation]
             })),
             E.chain(scope => pipe(
-                ifStmt.getExpression(),
+                func.getFirstDescendantByKindOrThrow(tsm.SyntaxKind.IfStatement).getExpression(),
                 parseExpression(scope),
                 E.mapLeft(ROA.of)
             )),

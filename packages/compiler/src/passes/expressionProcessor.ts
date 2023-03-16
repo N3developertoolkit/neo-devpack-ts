@@ -85,7 +85,15 @@ export const parseBinaryOperatorToken =
 export const parseBinaryExpression =
     (scope: Scope) =>
         (node: tsm.BinaryExpression): E.Either<ParseError, readonly Operation[]> => {
-            // TODO:  if left and right are strings, PlusToken op should be concat instead of add
+            const opToken = node.getOperatorToken().getKind();
+            if (opToken === tsm.SyntaxKind.AmpersandAmpersandToken) {
+                // logical and
+            }
+            if (opToken === tsm.SyntaxKind.BarBarToken) {
+                // logical or
+            }
+
+
             return pipe(
                 node.getOperatorToken(),
                 parseBinaryOperatorToken,
