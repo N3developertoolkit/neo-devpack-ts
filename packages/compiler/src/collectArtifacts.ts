@@ -3,9 +3,11 @@ import { sc, u } from "@cityofzion/neon-core";
 import { pipe } from "fp-ts/function";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROS from 'fp-ts/ReadonlySet'
+import * as E from 'fp-ts/Either'
+import * as O from 'fp-ts/Option'
 
 import { CallOperation, CallTokenOperation, convertJumpOperationKind, convertLoadStoreKind, convertSimpleOperationKind, getOperationSize, isCallOp, isCallTokenOp, isConvertOp, isInitSlotOp, isInitStaticOperation, isJumpOffsetOp, isJumpTargetOp, isLoadStoreOp, isPushBoolOp, isPushDataOp, isPushIntOp, isSimpleOp, isSysCallOp, JumpOffsetOperation, LoadStoreOperation, Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
-import { convertBigInteger } from "./utils";
+import { convertBigInteger, createDiagnostic, getErrorMessage } from "./utils";
 import { asContractParamType, asReturnType } from "./utility/asContractParamType";
 import { CompiledProject, CompiledProjectArtifacts, CompileOptions, CompilerState, ContractEvent, ContractMethod } from "./types/CompileOptions";
 import { DebugInfo, DebugInfoMethod, makeDebugInfo, SequencePoint } from "./types/DebugInfo";
@@ -286,4 +288,22 @@ export const collectArtifacts =
                 const debugInfo = makeDebugInfo(nef, debugMethods);
 
                 return [{ nef, manifest, debugInfo }, diagnostics];
+            }
+
+// wrap collect artifacts in E.tryCatch
+// TODO: stop using throw new Error in collect artifacts path
+export const collectArtifacts2 =
+    (name: string, options: CompileOptions) =>
+        (compiledProject: CompiledProject): CompilerState<O.Option<CompiledProjectArtifacts>> =>
+            diagnostics => {
+                const result = E.tryCatch(
+                    () => collectArtifacts(name, options)(compiledProject)(diagnostics),
+                    e => createDiagnostic(getErrorMessage(e)));
+
+                return pipe(
+                    result,
+                    E.match(
+                        diag => [O.none, ROA.append(diag)(diagnostics)],
+                        state => [O.of(state[0]), state[1]]
+                    ))
             }
