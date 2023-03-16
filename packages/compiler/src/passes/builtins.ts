@@ -13,7 +13,7 @@ import { createScope } from "../scope";
 import { CallableSymbolDef, ObjectSymbolDef, ParseArgumentsFunc, ParseError, Scope, SymbolDef } from "../types/ScopeType";
 import { $SymbolDef, makeParseError } from "../symbolDef";
 import { isVoidLike, single } from "../utils";
-import { Operation, isPushDataOp, PushDataOperation, parseOperation as $parseOperation } from "../types/Operation";
+import { Operation, isPushDataOp, PushDataOperation, parseOperation as $parseOperation, PushIntOperation } from "../types/Operation";
 
 import { getArguments, parseArguments, parseExpression } from "./expressionProcessor";
 
@@ -193,7 +193,7 @@ class CallContractFunctionDef extends $SymbolDef implements CallableSymbolDef {
                     targetArgs: args.slice(3)
                 })
             },
-            E.chain(({callArgs, targetArgs}) => {
+            E.chain(({ callArgs, targetArgs }) => {
                 return pipe(
                     targetArgs,
                     parseArgArray(scope),
@@ -207,7 +207,7 @@ class CallContractFunctionDef extends $SymbolDef implements CallableSymbolDef {
                         parseArgArray(scope),
                         E.map(ROA.append({ kind: "syscall", name: "System.Contract.Call" } as Operation))
                     )),
-                    E.map(({call, target}) => ROA.concat(call)(target))
+                    E.map(({ call, target }) => ROA.concat(call)(target))
                 );
             })
         );
@@ -267,7 +267,7 @@ class SysCallInterfaceMemberDef extends $SymbolDef implements ObjectSymbolDef {
 }
 
 class SysCallInterfaceDef extends $SymbolDef implements ObjectSymbolDef {
-    readonly props: ReadonlyArray<ObjectSymbolDef>;
+    readonly props: readonly ObjectSymbolDef[];
 
     constructor(readonly decl: tsm.InterfaceDeclaration) {
         super(decl);
@@ -497,6 +497,40 @@ class OperationsFunctionDef extends $SymbolDef implements CallableSymbolDef {
     }
 }
 
+class EnumMemberSymbolDef extends $SymbolDef {
+    readonly loadOps: readonly Operation[];
+
+    constructor(
+        readonly decl: tsm.EnumMember,
+    ) {
+        super(decl);
+        const value = decl.getValue();
+        if (value === undefined) throw new Error(`invalid EnumMemberSymbolDef ${this.name}`)
+        if (typeof value === 'number') {
+            this.loadOps = [{ kind: "pushint", value: BigInt(value) }];
+        } else {
+            this.loadOps = [{ kind: "pushdata", value: Buffer.from(value, 'utf8') }];
+        }
+    }
+
+}
+
+class EnumSymbolDef extends $SymbolDef implements ObjectSymbolDef {
+    readonly props: ReadonlyArray<SymbolDef>
+    readonly loadOps = [];
+
+    constructor(
+        readonly decl: tsm.EnumDeclaration,
+    ) {
+        super(decl);
+        this.props = pipe(
+            decl.getMembers(),
+            ROA.map(m => new EnumMemberSymbolDef(m))
+        )
+    }
+
+}
+
 
 export const makeGlobalScope =
     (decls: LibraryDeclarations): CompilerState<Scope> =>
@@ -537,11 +571,13 @@ export const makeGlobalScope =
                 ROA.concat(symbolDefs)
             )
 
-            const builtInVars: Record<string, (decl: tsm.VariableDeclaration) => SymbolDef> = {
-                "ByteString": decl => new StaticClassDef(decl),
-                "Error": decl => new CallableVariableDef(decl, errorCall),
-                "Runtime": decl => new StaticClassDef(decl),
-                "Storage": decl => new StaticClassDef(decl),
+            const builtInEnums: Record<string, (decl: tsm.EnumDeclaration) => SymbolDef> = {
+                "CallFlags": decl => new EnumSymbolDef(decl),
+            }
+
+
+            const builtInFunctions: Record<string, (decl: tsm.FunctionDeclaration) => SymbolDef> = {
+                "callContract": decl => new CallContractFunctionDef(decl),
             }
 
             const builtInInterfaces: Record<string, (decl: tsm.InterfaceDeclaration) => SymbolDef> = {
@@ -552,19 +588,23 @@ export const makeGlobalScope =
                 "StorageContext": decl => new SysCallInterfaceDef(decl),
             }
 
-            const builtInFunctions: Record<string, (decl: tsm.FunctionDeclaration) => SymbolDef> = {
-                "callContract": decl => new CallContractFunctionDef(decl),
+            const builtInVars: Record<string, (decl: tsm.VariableDeclaration) => SymbolDef> = {
+                "ByteString": decl => new StaticClassDef(decl),
+                "Error": decl => new CallableVariableDef(decl, errorCall),
+                "Runtime": decl => new StaticClassDef(decl),
+                "Storage": decl => new StaticClassDef(decl),
             }
 
-            symbolDefs = resolveBuiltins(builtInVars)(decls.variables)(symbolDefs);
-            symbolDefs = resolveBuiltins(builtInInterfaces)(decls.interfaces)(symbolDefs);
+            symbolDefs = resolveBuiltins(builtInEnums)(decls.enums)(symbolDefs);
             symbolDefs = resolveBuiltins(builtInFunctions)(decls.functions)(symbolDefs);
+            symbolDefs = resolveBuiltins(builtInInterfaces)(decls.interfaces)(symbolDefs);
+            symbolDefs = resolveBuiltins(builtInVars)(decls.variables)(symbolDefs);
 
             const scope = createScope()(symbolDefs);
             return [scope, diagnostics];
         }
 
-type LibraryDeclaration = tsm.VariableDeclaration | tsm.InterfaceDeclaration | tsm.FunctionDeclaration;
+type LibraryDeclaration = tsm.EnumDeclaration | tsm.FunctionDeclaration | tsm.InterfaceDeclaration | tsm.VariableDeclaration;
 
 function findDecls<T extends LibraryDeclaration>(declarations: ReadonlyArray<T>) {
     return (name: string) => pipe(declarations, ROA.filter(v => v.getName() === name));
@@ -576,8 +616,8 @@ function findDecl<T extends LibraryDeclaration>(declarations: ReadonlyArray<T>) 
 
 const resolveBuiltins =
     <T extends LibraryDeclaration>(map: ROR.ReadonlyRecord<string, (decl: T) => SymbolDef>) =>
-        (declarations: ReadonlyArray<T>) =>
-            (symbolDefs: ReadonlyArray<SymbolDef>) => {
+        (declarations: readonly T[]) =>
+            (symbolDefs: readonly SymbolDef[]) => {
 
                 const defs = pipe(
                     map,

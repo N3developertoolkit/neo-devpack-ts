@@ -6,7 +6,7 @@ import * as E from 'fp-ts/Either';
 import * as O from 'fp-ts/Option';
 import * as S from 'fp-ts/State';
 import * as ROS from 'fp-ts/ReadonlySet';
-import * as SG from 'fp-ts/Semigroup';
+import * as M from 'fp-ts/Monoid';
 import * as FP from 'fp-ts';
 import { JsonRecord } from "fp-ts/Json";
 import { posix } from 'path';
@@ -19,17 +19,23 @@ const isFunctionDeclaration = O.fromPredicate(tsm.Node.isFunctionDeclaration);
 const isInterfaceDeclaration = O.fromPredicate(tsm.Node.isInterfaceDeclaration);
 const isVariableStatement = O.fromPredicate(tsm.Node.isVariableStatement);
 const isModuleDeclaration = O.fromPredicate(tsm.Node.isModuleDeclaration);
+const isEnumDeclaration = O.fromPredicate(tsm.Node.isEnumDeclaration);
 const getVariableDeclarations = (node: tsm.VariableStatement) => node.getDeclarations();
 const getModuleBody = (node: tsm.ModuleDeclaration) => O.fromNullable(node.getBody());
 
 export type LibraryDeclarations = {
-    readonly functions: ReadonlyArray<tsm.FunctionDeclaration>,
-    readonly interfaces: ReadonlyArray<tsm.InterfaceDeclaration>,
-    readonly variables: ReadonlyArray<tsm.VariableDeclaration>,
+    readonly enums: readonly tsm.EnumDeclaration[],
+    readonly functions: readonly tsm.FunctionDeclaration[],
+    readonly interfaces: readonly tsm.InterfaceDeclaration[],
+    readonly variables: readonly tsm.VariableDeclaration[],
 }
 
 const parseDeclarations =
-    (children: ReadonlyArray<tsm.Node>) => {
+    (children: ReadonlyArray<tsm.Node>): LibraryDeclarations => {
+        const enums = pipe(
+            children,
+            ROA.filterMap(isEnumDeclaration),
+        );
         const functions = pipe(
             children,
             ROA.filterMap(isFunctionDeclaration)
@@ -43,15 +49,23 @@ const parseDeclarations =
             ROA.filterMap(isVariableStatement),
             ROA.chain(getVariableDeclarations)
         );
-        return { functions, interfaces, variables, }
+
+        return { enums, functions, interfaces, variables, }
     }
 
-const libDeclMonoid: SG.Semigroup<LibraryDeclarations> = {
+const libDeclMonoid: M.Monoid<LibraryDeclarations> = {
     concat: (x, y) => ({
+        enums: ROA.concat(y.enums)(x.enums),
         functions: ROA.concat(y.functions)(x.functions),
         interfaces: ROA.concat(y.interfaces)(x.interfaces),
         variables: ROA.concat(y.variables)(x.variables),
-    })
+    }),
+    empty: {
+        enums: ROA.empty,
+        functions: ROA.empty,
+        interfaces: ROA.empty,
+        variables: ROA.empty
+    }
 }
 
 const parseLibrarySourceFile =
@@ -188,11 +202,7 @@ export const parseProjectLibrary =
                 ROA.partitionMap(identity)
             )
             let parsed: ReadonlySet<string> = ROS.empty;
-            let declarations: LibraryDeclarations = {
-                functions: ROA.empty,
-                interfaces: ROA.empty,
-                variables: ROA.empty
-            }
+            let declarations = libDeclMonoid.empty;
 
             while (ROA.isNonEmpty(sources)) {
 

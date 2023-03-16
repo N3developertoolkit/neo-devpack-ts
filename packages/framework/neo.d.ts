@@ -35,12 +35,12 @@ declare global {
      */
     export function concat(value1: ByteString, value2: ByteString): ByteString;
 
-    export enum CallFlags {
+    export const enum CallFlags {
         None = 0,
-        ReadStates = 1,
-        WriteStates = 2,
-        AllowCall = 4,
-        AllowNotify = 8,
+        ReadStates = 1, // 1 << 0
+        WriteStates = 2, //1 << 1
+        AllowCall = 4, // 1 << 2
+        AllowNotify = 8, // 1 << 3
         States = 3, // ReadStates | WriteStates
         ReadOnly = 5, // ReadStates | AllowCall
         All = 15, // States | AllowCall | AllowNotify
