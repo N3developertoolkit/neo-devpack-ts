@@ -8,7 +8,7 @@ declare global {
     export interface ByteString { }
 
     export const ByteString: ByteStringConstructor;
-    
+
     export interface ByteStringConstructor {
         fromString(value: string): ByteString;
         fromHex(value: string): ByteString;
@@ -35,14 +35,16 @@ declare global {
      */
     export function concat(value1: ByteString, value2: ByteString): ByteString;
 
-    export const callFlagsNone = 0;
-    export const callFlagsReadStates = 1;
-    export const callFlagsWriteStates = 2;
-    export const callFlagsAllowCall = 4;
-    export const callFlagsAllowNotify = 8;
-    export const callFlagsStates = 3;
-    export const callFlagsReadOnly = 5;
-    export const callFlagsAll = 15
+    export enum CallFlags {
+        None = 0,
+        ReadStates = 1,
+        WriteStates = 2,
+        AllowCall = 4,
+        AllowNotify = 8,
+        States = 3, // ReadStates | WriteStates
+        ReadOnly = 5, // ReadStates | AllowCall
+        All = 15, // States | AllowCall | AllowNotify
+    }
 
     // Contract service:
     // 		three methods are internal use only: CallNative, NativeOnPersist and NativePostPersist
@@ -99,7 +101,7 @@ declare global {
 
     export interface RuntimeConstructor {
         /** @syscall System.Contract.GetCallFlags */
-        readonly callFlags: number;
+        readonly callFlags: CallFlags;
 
         /** @syscall System.Runtime.Platform */
         readonly platform: string;
@@ -138,11 +140,9 @@ declare global {
     /** @syscall System.Runtime.Notify*/
     export function notify(eventName: string, state: ReadonlyArray<any>): void;
     /** @syscall System.Runtime.LoadScript*/
-    export function loadScript(script: ByteString, callFlags: number, args: ReadonlyArray<any>): void;
+    export function loadScript(script: ByteString, callFlags: CallFlags, args: ReadonlyArray<any>): void;
 
-    export function callContract(scriptHash: ByteString, method: string, flags: number, ...args: any[]): any;
-    /** @syscall System.Contract.GetCallFlags*/
-    export function getCallFlags(): number;
+    export function callContract(scriptHash: ByteString, method: string, callFlags: CallFlags, ...args: any[]): any;
     /** @syscall System.Contract.CreateStandardAccount */
     export function createStandardAccount(pubKey: ByteString /*ecpoint*/): ByteString; // hash160
     /** @syscall System.Contract.CreateMultisigAccount */
@@ -351,12 +351,12 @@ declare global {
         readonly events: readonly ContractEventDescriptor[];
     }
 
-        /** @stackitem */
-        export interface ContractMethodDescriptor {
-            readonly name: string;
-            readonly parameters: readonly ContractParameterDefinition[];
-        }
-    
+    /** @stackitem */
+    export interface ContractMethodDescriptor {
+        readonly name: string;
+        readonly parameters: readonly ContractParameterDefinition[];
+    }
+
     /** @stackitem */
     export interface ContractEventDescriptor {
         readonly name: string;

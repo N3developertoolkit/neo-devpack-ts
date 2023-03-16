@@ -112,7 +112,7 @@ function postTransfer(from: ByteString | null, to: ByteString | null, amount: bi
     if (to) {
         const contract = ContractManagement.getContract(to);
         if (contract) {
-            callContract(to, "onNEP17Payment", 15 /*callFlagsAll*/, from, amount, data);
+            callContract(to, "onNEP17Payment", CallFlags.All, from, amount, data);
         }
     }
 }
