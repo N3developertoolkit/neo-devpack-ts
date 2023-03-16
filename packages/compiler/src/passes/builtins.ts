@@ -573,6 +573,7 @@ export const makeGlobalScope =
 
             const builtInEnums: Record<string, (decl: tsm.EnumDeclaration) => SymbolDef> = {
                 "CallFlags": decl => new EnumSymbolDef(decl),
+                "FindOptions": decl => new EnumSymbolDef(decl),
             }
 
 

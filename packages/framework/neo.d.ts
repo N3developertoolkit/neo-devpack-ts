@@ -1,19 +1,24 @@
-
-// There are 9 NeoVM Types: Pointer, Boolean, Integer, ByteString, Buffer, Array, Struct, Map, InteropInterface
-//  * five types have direct TS equivalents: Boolean/boolean, Integer/bigint, Buffer/Uint8Array, Array/Array, Map/Map
-//  * ByteString is defined as ReadonlyUint8Array as per https://www.growingwiththeweb.com/2020/10/typescript-readonly-typed-arrays.html
-//  * Pointer, Struct and InteropInterface are all TBD
-
 declare global {
-    export interface ByteString { }
-
-    export const ByteString: ByteStringConstructor;
-
+    export interface ByteString { 
+        toInteger(): bigint;
+    }
     export interface ByteStringConstructor {
         fromString(value: string): ByteString;
         fromHex(value: string): ByteString;
+        fromInteger(value: number | bigint): ByteString;
     }
+    export const ByteString: ByteStringConstructor;
 
+    export interface Hash160 { }
+    export interface Hash160Constructor {
+    }
+    export const Hash160: Hash160Constructor;
+    export interface Hash256 { }
+    export interface Hash256Constructor {
+    }
+    export const Hash256: Hash256Constructor;
+
+    // TODO: move to ByteArray.toInteger
     /**
      * @operation duplicate 
      * @operation isnull
@@ -25,6 +30,7 @@ declare global {
      */
     export function asInteger(value: ByteString | null | undefined): bigint;
 
+    // TODO: move to ByteArray.fromInteger
     /**
      * @operation convert ByteString
      */
@@ -33,35 +39,28 @@ declare global {
     /**
      * @operation concat
      */
-    export function concat(value1: ByteString, value2: ByteString): ByteString;
+    export function concat(value1: StorageType, value2: StorageType): ByteString;
 
     export const enum CallFlags {
         None = 0,
-        ReadStates = 1, // 1 << 0
-        WriteStates = 2, //1 << 1
-        AllowCall = 4, // 1 << 2
-        AllowNotify = 8, // 1 << 3
+        ReadStates = 1,
+        WriteStates = 2,
+        AllowCall = 4,
+        AllowNotify = 8,
         States = 3, // ReadStates | WriteStates
         ReadOnly = 5, // ReadStates | AllowCall
         All = 15, // States | AllowCall | AllowNotify
     }
 
-    // Contract service:
-    // 		three methods are internal use only: CallNative, NativeOnPersist and NativePostPersist
-    // 		one has no params: GetCallFlags - project as Runtime object property 
-    // 		remainder are projected as functions : Call, CreateStandardAccount, CreateMultisigAccount
-    // Crypto service
-    // 		both project as functions: CheckSig and CheckMultisig
-    // Iterator service: TBD
-    // Runtime Service
-    // 		13 are projected as readonly properties on Runtime object (plus GetCallFlags from Contract Service)
-    //      		GetTrigger, Platform, GetScriptContainer, GetExecutingScriptHash, GetCallingScriptHash, 
-    //      		GetEntryScriptHash, GetTime, GetInvocationCounter, GasLeft, GetAddressVersion
-    //      		GetNetwork, GetRandom, GetNotifications
-    //		remaining 5 are projected as functions: CheckWitness, Log, Notify, LoadScript, BurnGas
-    // Storage Service
-    //		This one is tricky, as the most *natural and familiar* projection is as a Storage Context object w/ instance methods
-
+    export const enum FindOptions {
+        None = 0, // No option is set. The results will be an iterator of (key, value).
+        KeysOnly = 1, // Indicates that only keys need to be returned. The results will be an iterator of keys.
+        RemovePrefix = 2, //Indicates that the prefix byte of keys should be removed before return.
+        ValuesOnly = 4, // Indicates that only values need to be returned. The results will be an iterator of values.
+        DeserializeValues = 8, // Indicates that values should be deserialized before return.
+        PickField0 = 16, // Indicates that only the field 0 of the deserialized values need to be returned. This flag must be set together with <see cref="DeserializeValues"/>.
+        PickField1 = 32, // Indicates that only the field 1 of the deserialized values need to be returned. This flag must be set together with <see cref="DeserializeValues"/>.
+    }
 
     export const Storage: StorageConstructor;
 
@@ -72,30 +71,23 @@ declare global {
         readonly readonlyContext: ReadonlyStorageContext;
     }
 
+    export type StorageType = ByteString | Hash160 | Hash256 | string;
+
     export interface ReadonlyStorageContext {
         /** @syscall System.Storage.Get */
-        get(key: ByteString): ByteString | undefined;
-        // /** @syscall System.Storage.Find */
-        // find(prefix: ByteString, options: FindOptions): Iterator
+        get(key: StorageType): ByteString | undefined;
+        /** @syscall System.Storage.Find */
+        find(prefix: ByteString, options: FindOptions): Iterator<unknown>
     }
 
     export interface StorageContext extends ReadonlyStorageContext {
         /** @syscall System.Storage.AsReadOnly */
         readonly asReadonly: ReadonlyStorageContext;
         /** @syscall System.Storage.Put */
-        put(key: ByteString, value: ByteString): void;
+        put(key: StorageType, value: StorageType): void;
         /** @syscall System.Storage.Delete */
-        delete(key: ByteString): void;
+        delete(key: StorageType): void;
     }
-
-    // FindOptions
-    // None = 0,                    No option is set. The results will be an iterator of (key, value).
-    // KeysOnly = 1 << 0,           Indicates that only keys need to be returned. The results will be an iterator of keys.
-    // RemovePrefix = 1 << 1,       Indicates that the prefix byte of keys should be removed before return.
-    // ValuesOnly = 1 << 2,         Indicates that only values need to be returned. The results will be an iterator of values.
-    // DeserializeValues = 1 << 3,  Indicates that values should be deserialized before return.
-    // PickField0 = 1 << 4,         Indicates that only the field 0 of the deserialized values need to be returned. This flag must be set together with <see cref="DeserializeValues"/>.
-    // PickField1 = 1 << 5,         Indicates that only the field 1 of the deserialized values need to be returned. This flag must be set together with <see cref="DeserializeValues"/>.
 
     export const Runtime: RuntimeConstructor;
 
@@ -163,8 +155,8 @@ declare global {
         getContract(hash: ByteString): Contract;
         hasMethod(hash: ByteString, method: string, pcount: number): boolean;
         getContractById(id: number): Contract;
-        // /** @nativeContract getContractHashes */
-        // readonly contractHashes: InteropInterface; // TODO: iterators
+        /** @nativeContract getContractHashes */
+        readonly contractHashes: Iterator<ByteString>; // not sure this is correct
         deploy(nefFile: ByteString, manifest: string, data?: any): Contract;
         update(nefFile: ByteString, manifest: string, data?: any): void;
         destroy(): void;
@@ -241,9 +233,9 @@ declare global {
         vote(account: ByteString, voteTo: ByteString): boolean;
 
         /** @nativeContract getCandidates */
-        readonly candidates: any[]; //(ECPoint, BigInteger)[]
-        // /** @nativeContract getAllCandidates */
-        // readonly allCandidates: Iterator;
+        readonly candidates: [ByteString, bigint][];
+        /** @nativeContract getAllCandidates */
+        readonly allCandidates: Iterator<[ByteString, bigint]>;
 
         getCandidateVote(pubKey: ByteString): bigint;
         /** @nativeContract getCommittee */
