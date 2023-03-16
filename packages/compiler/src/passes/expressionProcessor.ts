@@ -88,9 +88,8 @@ export const parseBinaryExpression =
 
             const opToken = node.getOperatorToken().getKind();
             if (opToken === tsm.SyntaxKind.AmpersandAmpersandToken) {
+                // logical "and" coerces left and right expressions to boolean
                 const endTarget = { kind: "noop" } as Operation;
-                const left = parseExpressionAsBoolean(scope)(node.getLeft());
-                const right = parseExpressionAsBoolean(scope)(node.getRight());
                 return pipe(
                     node.getLeft(),
                     parseExpressionAsBoolean(scope),
@@ -98,7 +97,7 @@ export const parseBinaryExpression =
                         { kind: "jumpif", offset: 3 },
                         { kind: "pushbool", value: false },
                         { kind: "jump", target: endTarget },
-                        { kind: "noop"}
+                        { kind: "noop" }
                     ] as Operation[])),
                     E.chain(ops => pipe(
                         node.getRight(),
@@ -109,6 +108,7 @@ export const parseBinaryExpression =
                 )
             }
             if (opToken === tsm.SyntaxKind.BarBarToken) {
+                // logical "or" coerces left and right expressions to boolean
                 const endTarget = { kind: "noop" } as Operation;
                 return pipe(
                     node.getLeft(),
@@ -117,7 +117,7 @@ export const parseBinaryExpression =
                         { kind: "jumpifnot", offset: 3 },
                         { kind: "pushbool", value: true },
                         { kind: "jump", target: endTarget },
-                        { kind: "noop"}
+                        { kind: "noop" }
                     ] as Operation[])),
                     E.chain(ops => pipe(
                         node.getRight(),
@@ -188,7 +188,6 @@ export const parseNumericLiteral =
     }
 
 const prefixUnaryOperatorMap: ReadonlyMap<tsm.SyntaxKind, SimpleOperationKind> = new Map([
-    [tsm.SyntaxKind.ExclamationToken, 'not'],
     [tsm.SyntaxKind.MinusToken, 'negate']
 ]);
 
@@ -206,6 +205,16 @@ export const parseUnaryOperatorToken =
 
 export const parsePrefixUnaryExpression = (scope: Scope) =>
     (node: tsm.PrefixUnaryExpression): E.Either<ParseError, readonly Operation[]> => {
+        const token = node.getOperatorToken();
+
+        if (token === tsm.SyntaxKind.ExclamationToken) {
+            // logical "not" coerces to boolean
+            return pipe(
+                node.getOperand(),
+                parseExpressionAsBoolean(scope),
+                E.map(ROA.append({ kind: "not" } as Operation))
+            )
+        }
         return pipe(
             node.getOperatorToken(),
             parseUnaryOperatorToken,
@@ -268,7 +277,7 @@ export function parseExpression(scope: Scope) {
 // convert an Expression to be boolean typed (as per JS boolean coercion rules)
 export function parseExpressionAsBoolean(scope: Scope) {
     return (node: tsm.Expression): E.Either<ParseError, readonly Operation[]> => {
-        
+
         const parseResult = parseExpression(scope)(node);
         const type = node.getType();
 
@@ -277,10 +286,10 @@ export function parseExpressionAsBoolean(scope: Scope) {
 
         // numeric expressiosn are converted by comparing value to zero
         if (isBigIntLike(type) || isNumberLike(type)) {
-            
+
             const convertOps: Operation[] = [
-                {kind: 'pushint', value:0n},
-                {kind: 'equal'},
+                { kind: 'pushint', value: 0n },
+                { kind: 'equal' },
             ]
             return pipe(parseResult, E.map(ROA.concat(convertOps)))
         }
@@ -298,16 +307,16 @@ export function parseExpressionAsBoolean(scope: Scope) {
         // convert bytestring to boolean by comparing to null and comparing length to zero
         if (isStringLike(type) || typeName === "ByteString") {
             const convertOps: Operation[] = [
-                {kind: 'duplicate'},
-                {kind: 'pushnull'},
-                {kind: 'equal'},
-                {kind: "jumpifnot", offset: 3},
-                {kind: 'pushbool', value: true},
-                {kind: "jump", offset: 4},
-                {kind: 'size'},
-                {kind: 'pushint', value:0n},
-                {kind: 'notequal'},
-                {kind: 'noop'}
+                { kind: 'duplicate' },
+                { kind: 'pushnull' },
+                { kind: 'equal' },
+                { kind: "jumpifnot", offset: 3 },
+                { kind: 'pushbool', value: true },
+                { kind: "jump", offset: 4 },
+                { kind: 'size' },
+                { kind: 'pushint', value: 0n },
+                { kind: 'notequal' },
+                { kind: 'noop' }
             ]
 
             return pipe(parseResult, E.map(ROA.concat(convertOps)))
