@@ -44,8 +44,9 @@ export const simpleOperationKinds = [
     // Compound-type
     'pack',
     'newemptyarray',
-    'append',
+    'size',
     'pickitem',
+    'append',
 
     // types
     'isnull',
@@ -78,6 +79,7 @@ export function convertSimpleOperationKind(kind: SimpleOperationKind) {
         case "power": return sc.OpCode.POW;
         case "pushnull": return sc.OpCode.PUSHNULL;
         case "return": return sc.OpCode.RET;
+        case 'size': return sc.OpCode.SIZE;
         case "subtract": return sc.OpCode.SUB;
         case "throw": return sc.OpCode.THROW;
     }

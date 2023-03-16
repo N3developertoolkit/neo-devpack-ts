@@ -28,9 +28,8 @@ export function _deploy(_data: any, update: boolean): void {
 }
 
 export function update(nefFile: ByteString, manifest: string) {
-    const owner = Storage.context.get(OWNER_KEY)!;
-    // TODO: support "if (owner && checkWitness(owner))"
-    if (checkWitness(owner)) {
+    const owner = Storage.context.get(OWNER_KEY);
+    if (owner && checkWitness(owner)) {
         ContractManagement.update(nefFile, manifest);
     } else {
         throw Error("Only the contract owner can update the contract");

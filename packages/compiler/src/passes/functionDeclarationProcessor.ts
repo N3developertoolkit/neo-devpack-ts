@@ -16,7 +16,7 @@ import { convertJumpTargetOps, isJumpTargetOp, JumpOffsetOperation, JumpTargetOp
 import { isVoidLike } from "../utils";
 import { ContractMethod } from "../types/CompileOptions";
 import { parseSymbol } from "./parseSymbol";
-import { parseExpression as $parseExpression } from "./expressionProcessor";
+import { parseExpression as $parseExpression, parseExpressionAsBoolean } from "./expressionProcessor";
 
 interface ParseFunctionContext {
     readonly scope: Scope;
@@ -72,21 +72,25 @@ class ParameterSymbolDef extends $SymbolDef {
 export const E_fromSeparated = <E, A>(s: SEP.Separated<readonly E[], A>): E.Either<readonly E[], A> =>
     ROA.isNonEmpty(s.left) ? E.left(s.left) : E.of(s.right)
 
-const parseExpression =
-    (node: tsm.Expression): ParseStatementState =>
-        state => {
-            return pipe(
-                node,
-                $parseExpression(state.scope),
-                E.match(
-                    error => [[], {
-                        ...state,
-                        errors: ROA.append(error)(state.errors)
-                    }],
-                    ops => [ops, state]
-                )
+const parseExpressionState =
+    (parseFunc: (scope: Scope) => (node: tsm.Expression) => E.Either<ParseError, readonly Operation[]>) =>
+    (node: tsm.Expression): ParseStatementState => 
+    state => {
+        return pipe(
+            node,
+            parseFunc(state.scope),
+            E.match(
+                error => [[], {
+                    ...state,
+                    errors: ROA.append(error)(state.errors)
+                }],
+                ops => [ops, state]
             )
-        }
+        )
+
+    }
+
+const parseExpression = parseExpressionState($parseExpression);
 
 const updateLocation =
     (location: Location) =>
@@ -194,9 +198,8 @@ const parseIfStatement =
     (node: tsm.IfStatement): ParseStatementState =>
         state => {
             const expr = node.getExpression();
-
             let operations: readonly Operation[];
-            [operations, state] = parseExpression(expr)(state);
+            [operations, state] = parseExpressionState(parseExpressionAsBoolean)(expr)(state);
             const closeParen = node.getLastChildByKind(tsm.SyntaxKind.CloseParenToken);
             operations = updateLocation(closeParen ? { start: node, end: closeParen } : expr)(operations);
 

@@ -10,7 +10,7 @@ import { resolve as $resolve } from "../scope";
 import { ParseError, Scope, SymbolDef } from "../types/ScopeType";
 import { isCallableDef, isObjectDef, makeParseError, parseLoadOps } from "../symbolDef";
 import { parseSymbol } from "./parseSymbol";
-import { single } from "../utils";
+import { isBigIntLike, isBooleanLike, isNumberLike, isStringLike, single } from "../utils";
 
 export const getArguments = (node: tsm.CallExpression) =>
     ROA.fromArray(node.getArguments() as tsm.Expression[])
@@ -85,14 +85,48 @@ export const parseBinaryOperatorToken =
 export const parseBinaryExpression =
     (scope: Scope) =>
         (node: tsm.BinaryExpression): E.Either<ParseError, readonly Operation[]> => {
+
             const opToken = node.getOperatorToken().getKind();
             if (opToken === tsm.SyntaxKind.AmpersandAmpersandToken) {
-                // logical and
+                const endTarget = { kind: "noop" } as Operation;
+                const left = parseExpressionAsBoolean(scope)(node.getLeft());
+                const right = parseExpressionAsBoolean(scope)(node.getRight());
+                return pipe(
+                    node.getLeft(),
+                    parseExpressionAsBoolean(scope),
+                    E.map(ROA.concat([
+                        { kind: "jumpif", offset: 3 },
+                        { kind: "pushbool", value: false },
+                        { kind: "jump", target: endTarget },
+                        { kind: "noop"}
+                    ] as Operation[])),
+                    E.chain(ops => pipe(
+                        node.getRight(),
+                        parseExpressionAsBoolean(scope),
+                        E.map(right => ROA.concat(right)(ops))
+                    )),
+                    E.map(ROA.append(endTarget))
+                )
             }
             if (opToken === tsm.SyntaxKind.BarBarToken) {
-                // logical or
+                const endTarget = { kind: "noop" } as Operation;
+                return pipe(
+                    node.getLeft(),
+                    parseExpressionAsBoolean(scope),
+                    E.map(ROA.concat([
+                        { kind: "jumpifnot", offset: 3 },
+                        { kind: "pushbool", value: true },
+                        { kind: "jump", target: endTarget },
+                        { kind: "noop"}
+                    ] as Operation[])),
+                    E.chain(ops => pipe(
+                        node.getRight(),
+                        parseExpressionAsBoolean(scope),
+                        E.map(right => ROA.concat(right)(ops))
+                    )),
+                    E.map(ROA.append(endTarget))
+                )
             }
-
 
             return pipe(
                 node.getOperatorToken(),
@@ -127,10 +161,10 @@ export const parseIdentifier =
             // Not sure why, but 'undefined' gets parsed as an identifier rather
             // than a keyword or literal. If an identifier's type is null or
             // undefined, skip symbol resolution and simply push null.
-            
+
             const type = node.getType();
             if (type.isUndefined() || type.isNull()) {
-                return E.of(ROA.of({kind: 'pushnull'}))
+                return E.of(ROA.of({ kind: 'pushnull' }))
             }
 
             return pipe(
@@ -194,29 +228,94 @@ export const parseStringLiteral =
         return E.right({ kind: "pushdata", value });
     }
 
-export const parseExpression =
-    (scope: Scope) =>
-        (node: tsm.Expression): E.Either<ParseError, readonly Operation[]> => {
+export function parseExpression(scope: Scope) {
+    return (node: tsm.Expression): E.Either<ParseError, readonly Operation[]> => {
 
-            if (tsm.Node.hasExpression(node)) return parseExpressionChain(scope)(node);
-            if (tsm.Node.isArrayLiteralExpression(node)) return parseArrayLiteral(scope)(node);
-            if (tsm.Node.isBigIntLiteral(node)) return parseLiteral(parseBigIntLiteral)(node);
-            if (tsm.Node.isBinaryExpression(node)) return parseBinaryExpression(scope)(node);
-            if (tsm.Node.isFalseLiteral(node)) return parseLiteral(parseBooleanLiteral)(node);
-            if (tsm.Node.isIdentifier(node)) return parseIdentifier(scope)(node);
-            if (tsm.Node.isNullLiteral(node)) return parseLiteral(parseNullLiteral)(node);
-            if (tsm.Node.isNumericLiteral(node)) return parseLiteral(parseNumericLiteral)(node);
-            if (tsm.Node.isPrefixUnaryExpression(node)) return parsePrefixUnaryExpression(scope)(node);
-            if (tsm.Node.isStringLiteral(node)) return parseLiteral(parseStringLiteral)(node);
-            if (tsm.Node.isTrueLiteral(node)) return parseLiteral(parseBooleanLiteral)(node);
-            if (tsm.Node.isUndefinedKeyword(node)) return parseLiteral(parseNullLiteral)(node);
-            var kind = (node as tsm.Node).getKindName();
-            return E.left(makeParseError(node)(`parseExpression ${kind} failed`))
+        if (tsm.Node.hasExpression(node))
+            return parseExpressionChain(scope)(node);
+        if (tsm.Node.isArrayLiteralExpression(node))
+            return parseArrayLiteral(scope)(node);
+        if (tsm.Node.isBigIntLiteral(node))
+            return parseLiteral(parseBigIntLiteral)(node);
+        if (tsm.Node.isBinaryExpression(node))
+            return parseBinaryExpression(scope)(node);
+        if (tsm.Node.isFalseLiteral(node))
+            return parseLiteral(parseBooleanLiteral)(node);
+        if (tsm.Node.isIdentifier(node))
+            return parseIdentifier(scope)(node);
+        if (tsm.Node.isNullLiteral(node))
+            return parseLiteral(parseNullLiteral)(node);
+        if (tsm.Node.isNumericLiteral(node))
+            return parseLiteral(parseNumericLiteral)(node);
+        if (tsm.Node.isPrefixUnaryExpression(node))
+            return parsePrefixUnaryExpression(scope)(node);
+        if (tsm.Node.isStringLiteral(node))
+            return parseLiteral(parseStringLiteral)(node);
+        if (tsm.Node.isTrueLiteral(node))
+            return parseLiteral(parseBooleanLiteral)(node);
+        if (tsm.Node.isUndefinedKeyword(node))
+            return parseLiteral(parseNullLiteral)(node);
+        var kind = (node as tsm.Node).getKindName();
+        return E.left(makeParseError(node)(`parseExpression ${kind} failed`));
 
-            function parseLiteral<T>(func: (node: T) => E.Either<ParseError, Operation>) {
-                return flow(func, E.map(ROA.of));
-            }
+        function parseLiteral<T>(func: (node: T) => E.Either<ParseError, Operation>) {
+            return flow(func, E.map(ROA.of));
         }
+    };
+}
+
+// TS inherits JS's odd concept of truthy/falsy. As such, this method include code to
+// convert an Expression to be boolean typed (as per JS boolean coercion rules)
+export function parseExpressionAsBoolean(scope: Scope) {
+    return (node: tsm.Expression): E.Either<ParseError, readonly Operation[]> => {
+        
+        const parseResult = parseExpression(scope)(node);
+        const type = node.getType();
+
+        // boolean experessions obviously don't need to be converted
+        if (isBooleanLike(type)) return parseResult;
+
+        // numeric expressiosn are converted by comparing value to zero
+        if (isBigIntLike(type) || isNumberLike(type)) {
+            
+            const convertOps: Operation[] = [
+                {kind: 'pushint', value:0n},
+                {kind: 'equal'},
+            ]
+            return pipe(parseResult, E.map(ROA.concat(convertOps)))
+        }
+
+        const typeName = pipe(
+            type,
+            TS.getTypeSymbol,
+            O.chain($resolve(scope)),
+            O.match(
+                () => "",
+                v => v.symbol.getName(),
+            )
+        )
+
+        // convert bytestring to boolean by comparing to null and comparing length to zero
+        if (isStringLike(type) || typeName === "ByteString") {
+            const convertOps: Operation[] = [
+                {kind: 'duplicate'},
+                {kind: 'pushnull'},
+                {kind: 'equal'},
+                {kind: "jumpifnot", offset: 3},
+                {kind: 'pushbool', value: true},
+                {kind: "jump", offset: 4},
+                {kind: 'size'},
+                {kind: 'pushint', value:0n},
+                {kind: 'notequal'},
+                {kind: 'noop'}
+            ]
+
+            return pipe(parseResult, E.map(ROA.concat(convertOps)))
+        }
+
+        return E.left(makeParseError(node)(`parseExpressionAsBoolean ${type.getText()} failed`));
+    };
+}
 
 interface ChainContext {
     readonly operations: ReadonlyArray<Operation>;

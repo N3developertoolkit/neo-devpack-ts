@@ -1,6 +1,6 @@
 
 const PREFIX_DOMAIN = ByteString.fromHex("0x00");
-const KEY_OWNER = ByteString.fromHex("0xFF");
+const OWNER_KEY = ByteString.fromHex("0xFF");
 
 /** @safe */
 export function query(domain: string): ByteString | undefined { 
@@ -48,4 +48,19 @@ export function unregister(domain: string): boolean {
     }
     Storage.context.delete(key);
     return true;
+}
+
+export function _deploy(_data: any, update: boolean): void { 
+    if (update) return;
+    const tx = Runtime.scriptContainer as Transaction;
+    Storage.context.put(OWNER_KEY, tx.sender);
+}
+
+export function update(nefFile: ByteString, manifest: string) {
+    const owner = Storage.context.get(OWNER_KEY);
+    if (owner && checkWitness(owner)) {
+        ContractManagement.update(nefFile, manifest);
+    } else {
+        throw Error("Only the contract owner can update the contract");
+    }
 }
