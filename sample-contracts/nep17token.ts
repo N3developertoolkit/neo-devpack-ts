@@ -10,8 +10,8 @@ const SYMBOL = "TANK";
 const DECIMALS = 4n;
 const INITIAL_SUPPLY = 1_000_000n;
 
-const SUPPLY_KEY = ByteString.fromHex("0xA0");
-const ACCOUNT_PREFIX = ByteString.fromHex("0xA1");
+const TOTAL_SUPPLY_KEY = ByteString.fromHex("0xA0");
+const BALANCE_PREFIX = ByteString.fromHex("0xA1");
 const OWNER_KEY = ByteString.fromHex("0xFF");
 
 /** @safe */
@@ -22,13 +22,13 @@ export function decimals() { return DECIMALS; }
 
 /** @safe */
 export function totalSupply( ) { 
-    const value = Storage.context.get(SUPPLY_KEY);
+    const value = Storage.context.get(TOTAL_SUPPLY_KEY);
     return asInteger(value);
 }
 
 /** @safe */
 export function balanceOf(account: ByteString) { 
-    const key = concat(ACCOUNT_PREFIX, account);
+    const key = concat(BALANCE_PREFIX, account);
     const value = Storage.context.get(key);
     return asInteger(value);
 }
@@ -87,12 +87,12 @@ function createTokens(account: ByteString, amount: bigint) {
 }
 
 function updateTotalSupply(amount: bigint) {
-    const totalSupply = asInteger(Storage.context.get(SUPPLY_KEY));
-    Storage.context.put(SUPPLY_KEY, asByteString(totalSupply + amount));
+    const totalSupply = asInteger(Storage.context.get(TOTAL_SUPPLY_KEY));
+    Storage.context.put(TOTAL_SUPPLY_KEY, asByteString(totalSupply + amount));
 }
 
 function updateBalance(account: ByteString, amount: bigint): boolean {
-    const key = concat(ACCOUNT_PREFIX, account);
+    const key = concat(BALANCE_PREFIX, account);
     const balance = asInteger(Storage.context.get(key)) + amount;
     if (balance < 0n) return false;
     if (balance === 0n) {

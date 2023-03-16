@@ -1,6 +1,11 @@
 const SYMBOL = "HVRCRFT";
 const DECIMALS = 0n;
 
+const TOTAL_SUPPLY_KEY = ByteString.fromHex("0x00");
+const BALANCE_PREFIX  = ByteString.fromHex("0x01");
+const TOKENID_PREFIX = ByteString.fromHex("0x02");
+const TOKEN_PREFIX = ByteString.fromHex("0x03");
+const ACCOUNT_TOKEN_PREFIX = ByteString.fromHex("0x04");
 const OWNER_KEY = ByteString.fromHex("0xFF");
 
 /** @event */
@@ -14,46 +19,83 @@ export function decimals() { return DECIMALS; }
 
 /** @safe */
 export function totalSupply( ) { 
-    // TBD returns int
-    return 0n;
+    const value = Storage.context.get(TOTAL_SUPPLY_KEY);
+    return asInteger(value);
 }
 
 /** @safe */
 export function balanceOf(account: ByteString) { 
-    // TBD returns int
-    return 0n;
+    // if (account is null || !account.IsValid) throw Error("The argument \"account\" is invalid.");
+    const key = concat(BALANCE_PREFIX, account);
+    const value = Storage.context.get(key);
+    return asInteger(value);
 }
 
 /** @safe */
 export function tokensOf(account: ByteString) { 
-        // TBD returns iterator
-
+    // if (account is null || !account.IsValid) throw Error("The argument \"account\" is invalid.");
+    const key = concat(ACCOUNT_TOKEN_PREFIX, account);
+    // Storage.context.find(key, FindOptions.KeysOnly | FindOptions.RemovePrefix)
     return null;
 }
 
 export function transfer(to: ByteString,tokenId: ByteString, data: any) {
+    // if (to is null || !to.IsValid) throw Error("The argument \"to\" is invalid.");
+    const key = concat(TOKEN_PREFIX, tokenId);
+    const serialzied = Storage.context.get(key);
+    // if (!serialzied) return false;
+    // deserialize token state
+    // checkwitness of token owner 
+    // changer token owner to to
+    // serialize token
+    // save serialzied token to key
+    // update balance of from and to 
+    // post transfer
+    // return true;
+
     // TBD returns boolean
     return false;
 }
 
 /** @safe */
 export function ownerof(tokenId: ByteString) { 
-    // TBD returns HASH160
-    return ByteString.fromHex("0x00");
+    const key = concat(TOKEN_PREFIX, tokenId);
+    const serialzied = Storage.context.get(key);
+    // deserialize token state
+    // return token owner
+    return ByteString.fromString('dummy');
 }
 
 /** @safe */
 export function tokens() { 
-    // TBD returns iterator
+    // Storage.context.find(TOKEN_PREFIX, FindOptions.KeysOnly | FindOptions.RemovePrefix)
+    
     return null;
 }
 
 // mint
-// burn
+export function mint(name: string, description: string, imageUrl: string) {
+    if (!checkOwner()) throw Error("Only the contract owner can mint tokens");
+    // generate new token id
+    // create token state struct
+    // create token storage key
+    // serialize token state
+    // save serialized token state to storage
+    // update balance
+    // update total supply
+    // post transfer
+    // return token id
+
+    return ByteString.fromString('dummy');
+
+}
 
 /** @safe */
-export function properties() { 
-    // TBD returns MAP
+export function properties(tokenId: ByteString) { 
+    const key = concat(TOKEN_PREFIX, tokenId);
+    const serialzied = Storage.context.get(key);
+    // deserialize token state
+    // convert token state to map and return
     return null;
 }
 
