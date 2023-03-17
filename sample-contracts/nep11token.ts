@@ -9,7 +9,7 @@ const ACCOUNT_TOKEN_PREFIX = ByteString.fromHex("0x04");
 const OWNER_KEY = ByteString.fromHex("0xFF");
 
 /** @event */
-declare function Transfer(from: ByteString | null, to: ByteString | null, amount: bigint, tokenId: ByteString): void;
+declare function Transfer(from: ByteStringInstance | null, to: ByteStringInstance | null, amount: bigint, tokenId: ByteStringInstance): void;
 
 /** @safe */
 export function symbol() { return SYMBOL; }
@@ -24,7 +24,7 @@ export function totalSupply() {
 }
 
 /** @safe */
-export function balanceOf(account: ByteString) {
+export function balanceOf(account: ByteStringInstance) {
     if (!account || account.length != 20) throw Error("The argument \"account\" is invalid.");
     const key = concat(BALANCE_PREFIX, account);
     const value = Storage.context.get(key);
@@ -32,14 +32,14 @@ export function balanceOf(account: ByteString) {
 }
 
 /** @safe */
-export function tokensOf(account: ByteString) {
+export function tokensOf(account: ByteStringInstance) {
     if (!account || account.length != 20) throw Error("The argument \"account\" is invalid.");
     const key = concat(ACCOUNT_TOKEN_PREFIX, account);
     // Storage.context.find(key, FindOptions.KeysOnly | FindOptions.RemovePrefix)
     return null;
 }
 
-export function transfer(to: ByteString, tokenId: ByteString, data: any) {
+export function transfer(to: ByteStringInstance, tokenId: ByteStringInstance, data: any) {
     // if (to is null || !to.IsValid) throw Error("The argument \"to\" is invalid.");
     const key = concat(TOKEN_PREFIX, tokenId);
     const serialzied = Storage.context.get(key);
@@ -57,7 +57,7 @@ export function transfer(to: ByteString, tokenId: ByteString, data: any) {
     return false;
 }
 
-function postTransfer(from: ByteString | null, to: ByteString | null, tokenId: ByteString, data: any) {
+function postTransfer(from: ByteStringInstance | null, to: ByteStringInstance | null, tokenId: ByteStringInstance, data: any) {
     Transfer(from, to, 1n, tokenId);
     if (to) {
         const contract = ContractManagement.getContract(to);
@@ -68,7 +68,7 @@ function postTransfer(from: ByteString | null, to: ByteString | null, tokenId: B
 }
 
 /** @safe */
-export function ownerof(tokenId: ByteString) {
+export function ownerof(tokenId: ByteStringInstance) {
     const key = concat(TOKEN_PREFIX, tokenId);
     const serialzied = Storage.context.get(key);
     // deserialize token state
@@ -101,7 +101,7 @@ export function mint(name: string, description: string, imageUrl: string) {
 }
 
 /** @safe */
-export function properties(tokenId: ByteString) {
+export function properties(tokenId: ByteStringInstance) {
     const key = concat(TOKEN_PREFIX, tokenId);
     const serialzied = Storage.context.get(key);
     // deserialize token state
@@ -115,7 +115,7 @@ export function _deploy(_data: any, update: boolean): void {
     Storage.context.put(OWNER_KEY, tx.sender);
 }
 
-export function update(nefFile: ByteString, manifest: string) {
+export function update(nefFile: ByteStringInstance, manifest: string) {
     if (checkOwner()) {
         ContractManagement.update(nefFile, manifest);
     } else {

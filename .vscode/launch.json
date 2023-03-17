@@ -60,6 +60,23 @@
             ]
         },
         {
+            "type": "neo-contract",
+            "name": "NEO: nep17token.balanceOf",
+            "request": "launch",
+            "program": "${workspaceFolder}/express/out/nep17token.nef",
+            "neo-express": "${workspaceFolder}/express/default.neo-express",
+            "checkpoint": "${workspaceFolder}/express/out/nep17-deployed.neoxp-checkpoint",
+            "invocation": {
+                "operation": "balanceOf",
+                "args": [
+                    "@owen"
+                ]
+            },
+            "signers": [
+                "@owen"
+            ]
+        },
+        {
             "args": [
                 "--timeout",
                 "999999",
