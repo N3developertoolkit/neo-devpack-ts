@@ -35,8 +35,7 @@ export function balanceOf(account: ByteStringInstance) {
 export function tokensOf(account: ByteStringInstance) {
     if (!account || account.length != 20) throw Error("The argument \"account\" is invalid.");
     const key = concat(ACCOUNT_TOKEN_PREFIX, account);
-    // Storage.context.find(key, FindOptions.KeysOnly | FindOptions.RemovePrefix)
-    return null;
+    return Storage.context.find(key, FindOptions.KeysOnly | FindOptions.RemovePrefix)
 }
 
 export function transfer(to: ByteStringInstance, tokenId: ByteStringInstance, data: any) {
@@ -78,9 +77,7 @@ export function ownerof(tokenId: ByteStringInstance) {
 
 /** @safe */
 export function tokens() {
-    // Storage.context.find(TOKEN_PREFIX, FindOptions.KeysOnly | FindOptions.RemovePrefix)
-
-    return null;
+    return Storage.context.find(TOKEN_PREFIX, FindOptions.KeysOnly | FindOptions.RemovePrefix)
 }
 
 // mint
@@ -124,6 +121,5 @@ export function update(nefFile: ByteStringInstance, manifest: string) {
 }
 
 function checkOwner() {
-    const owner = Storage.context.get(OWNER_KEY);
-    return owner && checkWitness(owner);
+    return checkWitness(Storage.context.get(OWNER_KEY)!);
 }
