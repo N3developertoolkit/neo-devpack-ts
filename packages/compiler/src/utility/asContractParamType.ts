@@ -15,7 +15,7 @@ export function asContractParamType(type: Type): sc.ContractParamType {
 
     const typeSymbol = type.getAliasSymbol() ?? type.getSymbolOrThrow();
     const typeFQN = typeSymbol.getFullyQualifiedName();
-    if (typeFQN === 'global.ByteString') {
+    if (typeFQN === "global.ByteStringInstance") {
         return sc.ContractParamType.ByteArray;
     }
 
