@@ -19,6 +19,10 @@ export function asContractParamType(type: Type): sc.ContractParamType {
         return sc.ContractParamType.ByteArray;
     }
 
+    if (typeFQN === "Iterator") {
+        return sc.ContractParamType.InteropInterface;
+    }
+
     return sc.ContractParamType.Any;
 }
 

@@ -251,6 +251,9 @@ function makeEnumObject(decl: tsm.EnumDeclaration) {
     return createBuiltInObject(decl, { props });
 }
 
+function makeIteratorInterface(decl: tsm.InterfaceDeclaration):SymbolDef {
+    return createBuiltInSymbol(decl);
+}
 
 export const makeGlobalScope =
     (decls: LibraryDeclarations): CompilerState<Scope> =>
@@ -300,6 +303,7 @@ export const makeGlobalScope =
             const builtInInterfaces: Record<string, (decl: tsm.InterfaceDeclaration) => SymbolDef> = {
                 "ByteStringConstructor": makeByteStringConstructor,
                 "ByteStringInstance": makeByteStringInterface,
+                "Iterator": makeIteratorInterface,
                 "ReadonlyStorageContext": makeSysCallInterface,
                 "RuntimeConstructor": makeSysCallInterface,
                 "StorageConstructor": makeSysCallInterface,
