@@ -448,7 +448,7 @@ const createChainContext =
             if (tsm.Node.isBinaryExpression(node)) return simpleExpression();
             return E.left(makeParseError(node)(`createParseChainContext ${node.getKindName()} failed`))
 
-            function simpleExpression() {
+            function simpleExpression(): E.Either<ParseError, ChainContext> {
                 return pipe(
                     node,
                     parseExpression(scope),
@@ -457,7 +457,7 @@ const createChainContext =
                             operations,
                             def: O.none,
                             endTarget: { kind: 'noop' }
-                        } as ChainContext
+                        }
                     })
                 )
             }
@@ -538,8 +538,6 @@ const parsePropertyAccessExpression =
             (node: tsm.PropertyAccessExpression): E.Either<ParseError, ChainContext> => {
                 const makeError = makeParseError(node);
 
-                const hasOptionalChain = node.hasQuestionDotToken();
-
                 return pipe(
                     node,
                     parseSymbol,
@@ -597,7 +595,7 @@ const parsePropertyAccessExpression =
                             ...context,
                             operations: ROA.concat(loadOps)(context.operations),
                             def: O.of(property)
-                        } as ChainContext);
+                        });
                     })
                 )
             }
