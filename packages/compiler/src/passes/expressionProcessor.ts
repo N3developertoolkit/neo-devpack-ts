@@ -11,6 +11,7 @@ import { ParseError, Scope, SymbolDef } from "../types/ScopeType";
 import { isCallableDef, isObjectDef, makeParseError, parseLoadOps } from "../symbolDef";
 import { parseSymbol } from "./parseSymbol";
 import { isBigIntLike, isBooleanLike, isNumberLike, isStringLike, single } from "../utils";
+import { getLeft } from "fp-ts/lib/These";
 
 export const getArguments = (node: tsm.CallExpression) =>
     ROA.fromArray(node.getArguments() as tsm.Expression[])
@@ -82,50 +83,82 @@ export const parseBinaryOperatorToken =
         );
     }
 
+function parseNullishCoalescingExpression(node: tsm.BinaryExpression, scope: Scope) {
+    const endTarget = { kind: "noop" } as Operation;
+    return pipe(
+        node.getLeft(),
+        parseExpression(scope),
+        E.map(ROA.concat([
+            { kind: "duplicate" },
+            { kind: "isnull" },
+            { kind: "jumpifnot", target: endTarget },
+            { kind: "drop" }
+        ] as Operation[])),
+        E.chain(ops => pipe(
+            node.getRight(),
+            parseExpression(scope),
+            E.map(right => ROA.concat(right)(ops))
+        )),
+        E.map(ROA.append(endTarget))
+    )
+}
+
+function parseLogicalAndExpression(node: tsm.BinaryExpression, scope: Scope) {
+    // logical "and" coerces left and right expressions to boolean
+    const endTarget = { kind: "noop" } as Operation;
+    return pipe(
+        node.getLeft(),
+        parseExpressionAsBoolean(scope),
+        E.map(ROA.concat([
+            { kind: "jumpif", offset: 3 },
+            { kind: "pushbool", value: false },
+            { kind: "jump", target: endTarget },
+            { kind: "noop" }
+        ] as Operation[])),
+        E.chain(ops => pipe(
+            node.getRight(),
+            parseExpressionAsBoolean(scope),
+            E.map(right => ROA.concat(right)(ops))
+        )),
+        E.map(ROA.append(endTarget))
+    );
+}
+
+function parseLogicalOrExpression(node: tsm.BinaryExpression, scope: Scope) {
+    // logical "or" coerces left and right expressions to boolean
+    const endTarget = { kind: "noop" } as Operation;
+    return pipe(
+        node.getLeft(),
+        parseExpressionAsBoolean(scope),
+        E.map(ROA.concat([
+            { kind: "jumpifnot", offset: 3 },
+            { kind: "pushbool", value: true },
+            { kind: "jump", target: endTarget },
+            { kind: "noop" }
+        ] as Operation[])),
+        E.chain(ops => pipe(
+            node.getRight(),
+            parseExpressionAsBoolean(scope),
+            E.map(right => ROA.concat(right)(ops))
+        )),
+        E.map(ROA.append(endTarget))
+    );
+}
+
+
 export const parseBinaryExpression =
     (scope: Scope) =>
         (node: tsm.BinaryExpression): E.Either<ParseError, readonly Operation[]> => {
 
             const opToken = node.getOperatorToken().getKind();
             if (opToken === tsm.SyntaxKind.AmpersandAmpersandToken) {
-                // logical "and" coerces left and right expressions to boolean
-                const endTarget = { kind: "noop" } as Operation;
-                return pipe(
-                    node.getLeft(),
-                    parseExpressionAsBoolean(scope),
-                    E.map(ROA.concat([
-                        { kind: "jumpif", offset: 3 },
-                        { kind: "pushbool", value: false },
-                        { kind: "jump", target: endTarget },
-                        { kind: "noop" }
-                    ] as Operation[])),
-                    E.chain(ops => pipe(
-                        node.getRight(),
-                        parseExpressionAsBoolean(scope),
-                        E.map(right => ROA.concat(right)(ops))
-                    )),
-                    E.map(ROA.append(endTarget))
-                )
+                return parseLogicalAndExpression(node, scope);
             }
             if (opToken === tsm.SyntaxKind.BarBarToken) {
-                // logical "or" coerces left and right expressions to boolean
-                const endTarget = { kind: "noop" } as Operation;
-                return pipe(
-                    node.getLeft(),
-                    parseExpressionAsBoolean(scope),
-                    E.map(ROA.concat([
-                        { kind: "jumpifnot", offset: 3 },
-                        { kind: "pushbool", value: true },
-                        { kind: "jump", target: endTarget },
-                        { kind: "noop" }
-                    ] as Operation[])),
-                    E.chain(ops => pipe(
-                        node.getRight(),
-                        parseExpressionAsBoolean(scope),
-                        E.map(right => ROA.concat(right)(ops))
-                    )),
-                    E.map(ROA.append(endTarget))
-                )
+                return parseLogicalOrExpression(node, scope);
+            }
+            if (opToken === tsm.SyntaxKind.QuestionQuestionToken) {
+                return parseNullishCoalescingExpression(node, scope);
             }
 
             return pipe(
@@ -262,6 +295,7 @@ export const parseStringLiteral =
         return E.right({ kind: "pushdata", value });
     }
 
+
 export function parseExpression(scope: Scope) {
     return (node: tsm.Expression): E.Either<ParseError, readonly Operation[]> => {
 
@@ -355,7 +389,7 @@ export function parseExpressionAsBoolean(scope: Scope) {
             return pipe(parseResult, E.map(ROA.append({ kind: 'isnull' } as Operation)))
         }
 
-        
+
         return E.left(makeParseError(node)(`parseExpressionAsBoolean ${type.getText()} failed`));
     };
 }
