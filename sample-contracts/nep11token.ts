@@ -18,17 +18,17 @@ export function symbol() { return SYMBOL; }
 export function decimals() { return DECIMALS; }
 
 /** @safe */
-export function totalSupply() {
+export function totalSupply(): bigint {
     const value = Storage.context.get(TOTAL_SUPPLY_KEY);
-    return value ? value.asInteger : 0;
+    return value ? value.asInteger() : 0n;
 }
 
 /** @safe */
-export function balanceOf(account: ByteStringInstance) {
+export function balanceOf(account: ByteStringInstance): bigint {
     if (!account || account.length != 20) throw Error("The argument \"account\" is invalid.");
     const key = concat(BALANCE_PREFIX, account);
     const value = Storage.context.get(key);
-    return value ? value.asInteger : 0;
+    return value ? value.asInteger() : 0n;
 }
 
 /** @safe */
