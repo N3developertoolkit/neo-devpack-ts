@@ -158,8 +158,8 @@ export const parseConditionalExpression =
     (scope: Scope) =>
         (node: tsm.ConditionalExpression): E.Either<ParseError, readonly Operation[]> => {
 
-            const falseTarget: Operation = {kind: "noop"};
-            const endTarget: Operation = {kind: "noop"};
+            const falseTarget: Operation = { kind: "noop" };
+            const endTarget: Operation = { kind: "noop" };
 
             return pipe(
                 node.getCondition(),
@@ -321,18 +321,20 @@ export function parseExpressionAsBoolean(scope: Scope) {
             return pipe(parseResult, E.map(ROA.concat(convertOps)))
         }
 
-        const typeName = pipe(
+        const resolvedType = pipe(
             type,
             TS.getTypeSymbol,
             O.chain($resolve(scope)),
-            O.match(
-                () => "",
-                v => v.symbol.getName(),
-            )
+        )
+
+        const matchTypeName = (name: string) => pipe(
+            resolvedType,
+            O.map(s => s.symbol.getName() === name),
+            O.match(() => false, identity)
         )
 
         // convert bytestring to boolean by comparing to null and comparing length to zero
-        if (isStringLike(type) || typeName === "ByteString") {
+        if (isStringLike(type) || matchTypeName("ByteStringInstance")) {
             const convertOps: Operation[] = [
                 { kind: 'duplicate' },
                 { kind: 'pushnull' },
@@ -349,6 +351,11 @@ export function parseExpressionAsBoolean(scope: Scope) {
             return pipe(parseResult, E.map(ROA.concat(convertOps)))
         }
 
+        if (O.isSome(resolvedType) && isObjectDef(resolvedType.value)) {
+            return pipe(parseResult, E.map(ROA.append({ kind: 'isnull' } as Operation)))
+        }
+
+        
         return E.left(makeParseError(node)(`parseExpressionAsBoolean ${type.getText()} failed`));
     };
 }

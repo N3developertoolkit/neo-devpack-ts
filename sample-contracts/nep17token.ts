@@ -27,14 +27,14 @@ export function totalSupply(): bigint {
 }
 
 /** @safe */
-export function balanceOf(account: ByteString): bigint {
+export function balanceOf(account: ByteStringInstance): bigint {
     if (!account || account.length != 20) throw Error("The argument \"account\" is invalid.");
     const key = concat(BALANCE_PREFIX, account);
     const value = Storage.context.get(key);
     return value ? value.asInteger() : 0n;
 }
 
-export function transfer(from: ByteString, to: ByteString, amount: bigint, data: any) {
+export function transfer(from: ByteStringInstance, to: ByteStringInstance, amount: bigint, data: any) {
     if (!from || from.length != 20) throw Error("The argument \"from\" is invalid.");
     if (!to || to.length != 20) throw Error("The argument \"to\" is invalid.");
     if (amount < 0n) throw Error("The amount must be a positive number");
@@ -47,14 +47,14 @@ export function transfer(from: ByteString, to: ByteString, amount: bigint, data:
     return true;
 }
 
-export function mint(account: ByteString, amount: bigint): boolean {
+export function mint(account: ByteStringInstance, amount: bigint): boolean {
     if (!account || account.length != 20) throw Error("The argument \"account\" is invalid.");
     if (!checkOwner()) throw Error("Only the contract owner can mint tokens");
     createTokens(account, amount);
     return true;
 }
 
-export function burn(account: ByteString, amount: bigint): boolean {
+export function burn(account: ByteStringInstance, amount: bigint): boolean {
     if (!account || account.length != 20) throw Error("The argument \"account\" is invalid.");
     if (amount < 0n) throw Error("amount must be greater than zero");
     if (!checkOwner()) throw Error("Only the contract owner can burn tokens");
@@ -73,7 +73,7 @@ export function _deploy(_data: any, update: boolean): void {
     createTokens(tx.sender, INITIAL_SUPPLY * (10n ** DECIMALS))
 }
 
-export function update(nefFile: ByteString, manifest: string) {
+export function update(nefFile: ByteStringInstance, manifest: string) {
     if (checkOwner()) {
         ContractManagement.update(nefFile, manifest);
     } else {
@@ -86,7 +86,7 @@ function checkOwner() {
     return owner && checkWitness(owner);
 }
 
-function createTokens(account: ByteString, amount: bigint) {
+function createTokens(account: ByteStringInstance, amount: bigint) {
     if (amount < 0n) throw Error("The amount must be a positive number");
     if (amount !== 0n) {
         updateTotalSupply(amount);
@@ -100,7 +100,7 @@ function updateTotalSupply(amount: bigint) {
     Storage.context.put(TOTAL_SUPPLY_KEY, ByteString.fromInteger(totalSupply + amount));
 }
 
-function updateBalance(account: ByteString, amount: bigint): boolean {
+function updateBalance(account: ByteStringInstance, amount: bigint): boolean {
     const key = concat(BALANCE_PREFIX, account);
     const balance = (Storage.context.get(key)?.asInteger() ?? 0n) + amount;
     if (balance < 0n) return false;
@@ -113,9 +113,9 @@ function updateBalance(account: ByteString, amount: bigint): boolean {
 }
 
 /** @event */
-declare function Transfer(from: ByteString | null, to: ByteString | null, amount: bigint): void;
+declare function Transfer(from: ByteStringInstance | null, to: ByteStringInstance | null, amount: bigint): void;
 
-function postTransfer(from: ByteString | null, to: ByteString | null, amount: bigint, data: any) {
+function postTransfer(from: ByteStringInstance | null, to: ByteStringInstance | null, amount: bigint, data: any) {
     Transfer(from, to, amount);
     if (to) {
         const contract = ContractManagement.getContract(to);
