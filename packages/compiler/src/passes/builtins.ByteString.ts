@@ -10,7 +10,6 @@ import * as TS from "../utility/TS";
 import { CallableSymbolDef, ObjectSymbolDef, ParseArgumentsFunc, ParseError, Scope, SymbolDef } from "../types/ScopeType";
 import { $SymbolDef, makeParseError } from "../symbolDef";
 import { single } from "../utils";
-import { StaticMethodDef, rorValues, checkErrors } from "./builtins";
 import { isPushDataOp, Operation, PushDataOperation } from "../types/Operation";
 import { getArguments, parseExpression } from "./expressionProcessor";
 import { parseMethods, parseProps } from "./parseMethods";
@@ -125,14 +124,6 @@ export class ByteStringConstructorDef extends $SymbolDef implements ObjectSymbol
     }
 }
 
-export class PropertyDef extends $SymbolDef {
-    constructor(
-        readonly sig: tsm.PropertySignature,
-        readonly loadOps: readonly Operation[]
-    ) {
-        super(sig);
-    }
-}
 export class ByteStringAsInteger extends $SymbolDef implements CallableSymbolDef {
     readonly props = [];
     readonly loadOps = [

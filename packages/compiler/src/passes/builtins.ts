@@ -17,17 +17,9 @@ import { Operation, parseOperation as $parseOperation } from "../types/Operation
 
 import { getArguments, parseArguments, parseExpression } from "./expressionProcessor";
 import { ByteStringConstructorDef, ByteStringInterfaceDef } from "./builtins.ByteString";
+import { checkErrors } from "./parseMethods";
 
 
-export function checkErrors(errorMessage: string) {
-    return <T>(results: readonly E.Either<string, T>[]): readonly T[] => {
-        const { left: errors, right: values } = pipe(results, ROA.separate);
-        if (errors.length > 0)
-            throw new Error(`${errorMessage}: ${errors.join()}`);
-
-        return values;
-    };
-}
 export function checkOption<T>(errorMessage: string) {
     return O.match<T, T>(
         () => { throw new Error(errorMessage); },
@@ -39,10 +31,6 @@ function getVariableStatement(node: tsm.VariableDeclaration) {
 }
 function isMethodOrProp(node: tsm.Node): node is (tsm.MethodSignature | tsm.PropertySignature) {
     return tsm.Node.isMethodSignature(node) || tsm.Node.isPropertySignature(node);
-}
-
-export function rorValues<K extends string, A>(r: Readonly<Record<K, A>>) {
-    return pipe(r, ROR.toEntries, ROA.map(t => t[1]));
 }
 
 module REGEX {
