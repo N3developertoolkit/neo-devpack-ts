@@ -25,9 +25,10 @@ export const simpleOperationKinds = [
     'concat',
 
     // bitwise logic
-    'and', // Note, this is bitwise and between top two items on stack treated as integers
+    'and', 
     'equal',
     'notequal',
+    'or',
 
     // Arithmetic
     'negate',
@@ -74,6 +75,7 @@ export function convertSimpleOperationKind(kind: SimpleOperationKind) {
         case "noop": return sc.OpCode.NOP;
         case "not": return sc.OpCode.NOT;
         case "notequal": return sc.OpCode.NOTEQUAL;
+        case "or": return sc.OpCode.OR;
         case "pack": return sc.OpCode.PACK;
         case "pickitem": return sc.OpCode.PICKITEM;
         case "power": return sc.OpCode.POW;
@@ -83,6 +85,10 @@ export function convertSimpleOperationKind(kind: SimpleOperationKind) {
         case "subtract": return sc.OpCode.SUB;
         case "throw": return sc.OpCode.THROW;
     }
+
+    throw new Error(`${kind} operation not implemented`)
+
+
 }
 
 const jumpOperationKinds = [

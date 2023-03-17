@@ -57,9 +57,10 @@ export const parseBigIntLiteral =
     }
 
 const binaryOpTokenMap: ReadonlyMap<tsm.SyntaxKind, SimpleOperationKind> = new Map([
-    [tsm.SyntaxKind.AmpersandAmpersandToken, "and"],
+    [tsm.SyntaxKind.AmpersandToken, "and"],
     [tsm.SyntaxKind.AsteriskAsteriskToken, 'power'],
     [tsm.SyntaxKind.AsteriskToken, 'multiply'],
+    [tsm.SyntaxKind.BarToken, 'or'],
     [tsm.SyntaxKind.EqualsEqualsEqualsToken, 'equal'], // TODO: Should == and === be the same?
     [tsm.SyntaxKind.EqualsEqualsToken, 'equal'],
     [tsm.SyntaxKind.ExclamationEqualsToken, 'notequal'], // TODO: Should != and !== be the same?
