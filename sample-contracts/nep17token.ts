@@ -22,8 +22,7 @@ export function decimals() { return DECIMALS; }
 
 /** @safe */
 export function totalSupply(): bigint {
-    const value = Storage.context.get(TOTAL_SUPPLY_KEY);
-    return value ? value.asInteger() : 0n;
+    return Storage.context.get(TOTAL_SUPPLY_KEY)!.asInteger();
 }
 
 /** @safe */
@@ -31,7 +30,7 @@ export function balanceOf(account: ByteStringInstance): bigint {
     if (!account || account.length != 20) throw Error("The argument \"account\" is invalid.");
     const key = concat(BALANCE_PREFIX, account);
     const value = Storage.context.get(key);
-    return value ? value.asInteger() : 0n;
+    return value?.asInteger() ?? 0n;
 }
 
 export function transfer(from: ByteStringInstance, to: ByteStringInstance, amount: bigint, data: any) {
@@ -96,7 +95,7 @@ function createTokens(account: ByteStringInstance, amount: bigint) {
 }
 
 function updateTotalSupply(amount: bigint) {
-    const totalSupply = Storage.context.get(TOTAL_SUPPLY_KEY)?.asInteger() ?? 0n;
+    const totalSupply = Storage.context.get(TOTAL_SUPPLY_KEY)!.asInteger();
     Storage.context.put(TOTAL_SUPPLY_KEY, ByteString.fromInteger(totalSupply + amount));
 }
 
