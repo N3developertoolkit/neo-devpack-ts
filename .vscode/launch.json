@@ -45,18 +45,14 @@
         },
         {
             "type": "neo-contract",
-            "name": "NEO: nep17token.transfer",
+            "name": "NEO: nep17token.totalSupply",
             "request": "launch",
             "program": "${workspaceFolder}/express/out/nep17token.nef",
             "neo-express": "${workspaceFolder}/express/default.neo-express",
             "checkpoint": "${workspaceFolder}/express/out/nep17-deployed.neoxp-checkpoint",
             "invocation": {
-                "operation": "transfer",
+                "operation": "totalSupply",
                 "args": [
-                    "@owen",
-                    "#TestReceiver",
-                    10000,
-                    null
                 ]
             },
             "signers": [

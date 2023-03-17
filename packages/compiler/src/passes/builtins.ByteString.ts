@@ -136,14 +136,7 @@ export class PropertyDef extends $SymbolDef {
 export class ByteStringAsInteger extends $SymbolDef implements CallableSymbolDef {
     readonly props = [];
     readonly loadOps = [
-        { kind: "duplicate" },
-        { kind: "isnull" },
-        { kind: "jumpif", offset: 3 },
         { kind: "convert", type: sc.StackItemType.Integer },
-        { kind: "jump", offset: 3 },
-        { kind: "drop" },
-        { kind: "pushint", value: 0n },
-        { kind: "noop" }
     ] as readonly Operation[];
     readonly parseArguments =  (scope: Scope) => (node: tsm.CallExpression) => E.of(ROA.empty)
 

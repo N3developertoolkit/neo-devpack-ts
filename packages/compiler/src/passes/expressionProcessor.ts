@@ -371,8 +371,7 @@ export function parseExpressionAsBoolean(scope: Scope) {
         if (isStringLike(type) || matchTypeName("ByteStringInstance")) {
             const convertOps: Operation[] = [
                 { kind: 'duplicate' },
-                { kind: 'pushnull' },
-                { kind: 'equal' },
+                { kind: 'isnull' },
                 { kind: "jumpifnot", offset: 3 },
                 { kind: 'pushbool', value: true },
                 { kind: "jump", offset: 4 },
@@ -386,7 +385,11 @@ export function parseExpressionAsBoolean(scope: Scope) {
         }
 
         if (O.isSome(resolvedType) && isObjectDef(resolvedType.value)) {
-            return pipe(parseResult, E.map(ROA.append({ kind: 'isnull' } as Operation)))
+            const convertOps: Operation[] = [
+                { kind: 'isnull' },
+                { kind: "not" },
+            ]
+            return pipe(parseResult, E.map(ROA.concat(convertOps)));
         }
 
 

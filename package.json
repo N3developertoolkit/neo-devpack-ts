@@ -7,7 +7,7 @@
     "packages/framework"
   ],
   "scripts": {
-    "config": "npm install && dotnet tool restore --tool-manifest ./express/.config/dotnet-tools.json",
+    "setup": "npm install && dotnet tool restore --tool-manifest ./express/.config/dotnet-tools.json",
     "build": "tsc --build tsconfig.json",
     "compile": "node ./packages/compiler/lib/main.js",
     "batch-nep17": "cd express && dotnet neoxp batch ./nep17.batch --reset",
