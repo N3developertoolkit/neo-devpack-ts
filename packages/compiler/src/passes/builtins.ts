@@ -16,7 +16,7 @@ import { isVoidLike, single } from "../utils";
 import { Operation, parseOperation as $parseOperation } from "../types/Operation";
 
 import { getArguments, parseArguments, parseExpression } from "./expressionProcessor";
-import { ByteStringConstructorDef } from "./builtins.ByteString";
+import { ByteStringConstructorDef, ByteStringInterfaceDef } from "./builtins.ByteString";
 
 
 export function checkErrors(errorMessage: string) {
@@ -28,7 +28,7 @@ export function checkErrors(errorMessage: string) {
         return values;
     };
 }
-function checkOption<T>(errorMessage: string) {
+export function checkOption<T>(errorMessage: string) {
     return O.match<T, T>(
         () => { throw new Error(errorMessage); },
         identity
@@ -481,6 +481,7 @@ export const makeGlobalScope =
             }
 
             const builtInInterfaces: Record<string, (decl: tsm.InterfaceDeclaration) => SymbolDef> = {
+                "ByteStringInstance": decl => new ByteStringInterfaceDef(decl),
                 "ByteStringConstructor": decl => new ByteStringConstructorDef(decl),
                 "ReadonlyStorageContext": decl => new SysCallInterfaceDef(decl),
                 "RuntimeConstructor": decl => new SysCallInterfaceDef(decl),
@@ -500,6 +501,7 @@ export const makeGlobalScope =
             symbolDefs = resolveBuiltins(builtInInterfaces)(decls.interfaces)(symbolDefs);
             symbolDefs = resolveBuiltins(builtInVars)(decls.variables)(symbolDefs);
 
+            const names = symbolDefs.map(v => [v.symbol.getName(), v]).sort();
             const scope = createScope()(symbolDefs);
             return [scope, diagnostics];
         }

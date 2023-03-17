@@ -7,16 +7,13 @@ import * as ROR from 'fp-ts/ReadonlyRecord'
 import * as O from 'fp-ts/Option'
 import * as TS from "../utility/TS";
 
-import { CallableSymbolDef, ObjectSymbolDef, ParseArgumentsFunc, ParseError, Scope } from "../types/ScopeType";
+import { CallableSymbolDef, ObjectSymbolDef, ParseArgumentsFunc, ParseError, Scope, SymbolDef } from "../types/ScopeType";
 import { $SymbolDef, makeParseError } from "../symbolDef";
 import { single } from "../utils";
 import { StaticMethodDef, rorValues, checkErrors } from "./builtins";
 import { isPushDataOp, Operation, PushDataOperation } from "../types/Operation";
 import { getArguments, parseExpression } from "./expressionProcessor";
-
-
-const isMethodSignature = O.fromPredicate(tsm.Node.isMethodSignature);
-const isPropertySignature = O.fromPredicate(tsm.Node.isPropertySignature);
+import { parseMethods, parseProps } from "./parseMethods";
 
 const fromEncoding =
     (encoding: BufferEncoding) =>
@@ -120,25 +117,11 @@ const byteStringCtorMethods: Record<string, ParseArgumentsFunc> = {
     "fromInteger": byteStringFromInteger
 };
 export class ByteStringConstructorDef extends $SymbolDef implements ObjectSymbolDef {
-    readonly props: ReadonlyArray<CallableSymbolDef>;
+    readonly props: ReadonlyArray<SymbolDef>;
 
     constructor(readonly decl: tsm.InterfaceDeclaration) {
         super(decl);
-        this.props = pipe(
-            byteStringCtorMethods,
-            ROR.mapWithIndex((key, func) => {
-                return pipe(
-                    key,
-                    TS.getTypeProperty(this.type),
-                    O.chain(sym => pipe(sym.getDeclarations(), single)),
-                    O.chain(O.fromPredicate(tsm.Node.isMethodSignature)),
-                    O.map(sig => new StaticMethodDef(sig, func)),
-                    E.fromOption(() => key)
-                );
-            }),
-            rorValues,
-            checkErrors('unresolved ByteString members')
-        );
+        this.props = parseMethods(decl)(byteStringCtorMethods);
     }
 }
 
@@ -163,25 +146,29 @@ const byteStringToInteger =
         ] as Operation[]);
     }
 
-const byteStringLength =
-    (scope: Scope) => (
-        node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
-        return E.of([
-            { kind: "size" },
-        ] as Operation[]);
+export class PropertyDef extends $SymbolDef {
+    constructor(
+        readonly sig: tsm.PropertySignature,
+        readonly loadOps: readonly Operation[]
+    ) {
+        super(sig);
     }
+}
 
 
 const byteStringMethods: Record<string, ParseArgumentsFunc> = {
-    "length": byteStringLength,
     "asInteger": byteStringToInteger
 }
 
-class ByteStringInterfaceDef extends $SymbolDef implements ObjectSymbolDef {
+const byteStringProps: Record<string, ReadonlyArray<Operation>> = {
+    "length": [{ kind: "size" }],
+}
+export class ByteStringInterfaceDef extends $SymbolDef implements ObjectSymbolDef {
     readonly loadOps: ReadonlyArray<Operation> = [];
-    readonly props: ReadonlyArray<CallableSymbolDef> = []
+    readonly props: ReadonlyArray<SymbolDef>;
 
-    constructor(readonly decl: tsm.VariableDeclaration) {
+    constructor(readonly decl: tsm.InterfaceDeclaration) {
         super(decl);
+        this.props = ROA.concat(parseMethods(decl)(byteStringMethods))(parseProps(decl)(byteStringProps));
     }
 }

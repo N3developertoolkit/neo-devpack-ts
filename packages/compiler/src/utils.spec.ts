@@ -10,11 +10,13 @@ import * as S from 'fp-ts/State';
 import { createContractProject } from './utils';
 import { parseProjectLibrary } from './projectLib';
 import { makeGlobalScope } from './passes/builtins';
+import { Scope, SymbolDef } from './types/ScopeType';
+import { createScope } from './scope';
+import { Operation } from './types/Operation';
 
-export function testRight<E, A>(value: E.Either<E, A>) {
-    if (E.isRight(value))
-        return value.right;
-    assert.fail("Either value is left");
+export const testRight = <E, A>(func?: (left: E) => string) => (value: E.Either<E, A>) => {
+    if (E.isRight(value)) return value.right;
+    assert.fail(func ? func(value.left) : "left Either value")
 }
 
 export function createTestProject(contract: string) {
@@ -22,7 +24,7 @@ export function createTestProject(contract: string) {
     const sourceFile = project.createSourceFile("contract.ts", contract);
     project.resolveSourceFileDependencies();
 
-    let [scope, diagnostics] = pipe(
+    let [globalScope, diagnostics] = pipe(
         project.getPreEmitDiagnostics(),
         ROA.map(d => d.compilerObject),
         pipe(
@@ -34,8 +36,26 @@ export function createTestProject(contract: string) {
     const errors = diagnostics.filter(d => d.category === tsm.ts.DiagnosticCategory.Error);
     expect(errors).lengthOf(0);
     
-    return { project, sourceFile, scope }
+    return { project, sourceFile, globalScope }
 }
+
+export const createTestScope = (scope: Scope) => (nodes: tsm.Node | tsm.Node[]) => {
+    const defs = (Array.isArray(nodes) ? nodes : [nodes]).map((v, i) => {
+        const symbol = v.getSymbolOrThrow();
+        return {
+            symbol,
+            type: v.getType(),
+            loadOps:
+                [{
+                    kind: "loadlocal",
+                    index: i,
+                    debug: symbol.getName(),
+                } as Operation]
+        } as SymbolDef;
+    })
+    return createScope(scope)(defs);
+}
+
 
 export const bufferEquals =
     (hex: string) =>

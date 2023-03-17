@@ -1,12 +1,17 @@
 declare global {
-    export interface ByteString { 
+
+    // typescript doesn't differentiate between the symbol for an interface and the symbol for a variable.
+    // so I renamed interface ByteString => interface ByteStringInstance for now.
+    // this is a crappy dev experience, but it will do for now while I figure out what I want to do to solve this
+
+    export interface ByteStringInstance { 
         readonly length: number; 
         asInteger(): bigint;
     }
     export interface ByteStringConstructor {
-        fromString(value: string): ByteString;
-        fromHex(value: string): ByteString;
-        fromInteger(value: number | bigint): ByteString;
+        fromString(value: string): ByteStringInstance;
+        fromHex(value: string): ByteStringInstance;
+        fromInteger(value: number | bigint): ByteStringInstance;
     }
     export const ByteString: ByteStringConstructor;
 
@@ -40,7 +45,7 @@ declare global {
     /**
      * @operation concat
      */
-    export function concat(value1: StorageType, value2: StorageType): ByteString;
+    export function concat(value1: StorageType, value2: StorageType): ByteStringInstance;
 
     export const enum CallFlags {
         None = 0,
@@ -72,13 +77,13 @@ declare global {
         readonly readonlyContext: ReadonlyStorageContext;
     }
 
-    export type StorageType = ByteString | string //| Hash160 | Hash256;
+    export type StorageType = ByteStringInstance | string //| Hash160 | Hash256;
 
     export interface ReadonlyStorageContext {
         /** @syscall System.Storage.Get */
-        get(key: StorageType): ByteString | undefined;
+        get(key: StorageType): ByteStringInstance | undefined;
         /** @syscall System.Storage.Find */
-        find(prefix: ByteString, options: FindOptions): Iterator<unknown>
+        find(prefix: ByteStringInstance, options: FindOptions): Iterator<unknown>
     }
 
     export interface StorageContext extends ReadonlyStorageContext {
@@ -109,11 +114,11 @@ declare global {
         /** @syscall System.Runtime.GetScriptContainer */
         readonly scriptContainer: any;
         /** @syscall System.Runtime.GetExecutingScriptHash */
-        readonly executingScriptHash: ByteString;
+        readonly executingScriptHash: ByteStringInstance;
         /** @syscall System.Runtime.GetCallingScriptHash */
-        readonly callingScriptHash: ByteString;
+        readonly callingScriptHash: ByteStringInstance;
         /** @syscall System.Runtime.GetEntryScriptHash */
-        readonly entryScriptHash: ByteString;
+        readonly entryScriptHash: ByteStringInstance;
         /** @syscall System.Runtime.GetInvocationCounter */
         readonly invocationCounter: number;
         /** @syscall System.Runtime.GetRandom */
@@ -125,7 +130,7 @@ declare global {
     }
 
     /** @syscall System.Runtime.CheckWitness */
-    export function checkWitness(account: ByteString): boolean;
+    export function checkWitness(account: ByteStringInstance): boolean;
     /** @syscall System.Runtime.BurnGas */
     export function burnGas(amount: bigint): void;
     /** @syscall System.Runtime.Log */
@@ -133,18 +138,18 @@ declare global {
     /** @syscall System.Runtime.Notify*/
     export function notify(eventName: string, state: ReadonlyArray<any>): void;
     /** @syscall System.Runtime.LoadScript*/
-    export function loadScript(script: ByteString, callFlags: CallFlags, args: ReadonlyArray<any>): void;
+    export function loadScript(script: ByteStringInstance, callFlags: CallFlags, args: ReadonlyArray<any>): void;
 
-    export function callContract(scriptHash: ByteString, method: string, callFlags: CallFlags, ...args: any[]): any;
+    export function callContract(scriptHash: ByteStringInstance, method: string, callFlags: CallFlags, ...args: any[]): any;
     /** @syscall System.Contract.CreateStandardAccount */
-    export function createStandardAccount(pubKey: ByteString /*ecpoint*/): ByteString; // hash160
+    export function createStandardAccount(pubKey: ByteStringInstance /*ecpoint*/): ByteStringInstance; // hash160
     /** @syscall System.Contract.CreateMultisigAccount */
-    export function createMultisigAccount(count: number, pubKeys: ByteString[] /*ecpoint*/): ByteString; // hash160
+    export function createMultisigAccount(count: number, pubKeys: ByteStringInstance[] /*ecpoint*/): ByteStringInstance; // hash160
 
     /** @syscall System.Crypto.CheckSig */
-    export function checkSignature(pubKey: ByteString, signature: ByteString): boolean;
+    export function checkSignature(pubKey: ByteStringInstance, signature: ByteStringInstance): boolean;
     /** @syscall System.Crypto.CheckMultisig */
-    export function checkMultiSignature(pubKey: ByteString[], signature: ByteString[]): boolean;
+    export function checkMultiSignature(pubKey: ByteStringInstance[], signature: ByteStringInstance[]): boolean;
 
     /** @nativeContract {0xfffdc93764dbaddd97c48f252a53ea4643faa3fd} */
     export const ContractManagement: ContractManagementConstructor;
@@ -153,13 +158,13 @@ declare global {
     export interface ContractManagementConstructor {
         /** @nativeContract getMinimumDeploymentFee */
         readonly minimumDeploymentFee: bigint;
-        getContract(hash: ByteString): Contract | undefined;
-        hasMethod(hash: ByteString, method: string, pcount: number): boolean;
+        getContract(hash: ByteStringInstance): Contract | undefined;
+        hasMethod(hash: ByteStringInstance, method: string, pcount: number): boolean;
         getContractById(id: number): Contract;
         /** @nativeContract getContractHashes */
-        readonly contractHashes: Iterator<ByteString>; // not sure this is correct
-        deploy(nefFile: ByteString, manifest: string, data?: any): Contract;
-        update(nefFile: ByteString, manifest: string, data?: any): void;
+        readonly contractHashes: Iterator<ByteStringInstance>; // not sure this is correct
+        deploy(nefFile: ByteStringInstance, manifest: string, data?: any): Contract;
+        update(nefFile: ByteStringInstance, manifest: string, data?: any): void;
         destroy(): void;
     }
 
@@ -169,18 +174,18 @@ declare global {
     export interface StdLibConstructor {
         atoi(value: string, base?: number): bigint;
         itoa(value: bigint, base?: bigint): string;
-        base58CheckDecode(s: string): ByteString;
-        base58CheckEncode(data: ByteString): string;
-        base58Decode(s: string): ByteString;
-        base58Encode(data: ByteString): string;
-        base64Decode(s: string): ByteString;
-        base64Encode(data: ByteString): string;
-        serialize(item: any): ByteString;
-        deserialize(data: ByteString): any;
-        jsonDeserialize(json: ByteString): any;
-        jsonSerialize(item: any): ByteString;
-        memoryCompare(str1: ByteString, str2: ByteString): number;
-        memorySearch(mem: ByteString, value: ByteString, start?: number, backward?: boolean): number;
+        base58CheckDecode(s: string): ByteStringInstance;
+        base58CheckEncode(data: ByteStringInstance): string;
+        base58Decode(s: string): ByteStringInstance;
+        base58Encode(data: ByteStringInstance): string;
+        base64Decode(s: string): ByteStringInstance;
+        base64Encode(data: ByteStringInstance): string;
+        serialize(item: any): ByteStringInstance;
+        deserialize(data: ByteStringInstance): any;
+        jsonDeserialize(json: ByteStringInstance): any;
+        jsonSerialize(item: any): ByteStringInstance;
+        memoryCompare(str1: ByteStringInstance, str2: ByteStringInstance): number;
+        memorySearch(mem: ByteStringInstance, value: ByteStringInstance, start?: number, backward?: boolean): number;
         stringSplit(str: string, separator: string, removeEmptyEntries?: boolean): string[];
     }
 
@@ -188,10 +193,10 @@ declare global {
     export const CryptoLib: CryptoLibConstructor;
 
     export interface CryptoLibConstructor {
-        murmur32(data: ByteString, seed: number): ByteString;
-        ripemd160(data: ByteString): ByteString;
-        sha256(data: ByteString): ByteString;
-        verifyWithECDsa(message: ByteString, pubkey: ByteString, signature: ByteString, curve: number): boolean;
+        murmur32(data: ByteStringInstance, seed: number): ByteStringInstance;
+        ripemd160(data: ByteStringInstance): ByteStringInstance;
+        sha256(data: ByteStringInstance): ByteStringInstance;
+        verifyWithECDsa(message: ByteStringInstance, pubkey: ByteStringInstance, signature: ByteStringInstance, curve: number): boolean;
     }
 
     // for verifyWithECDsa curve param
@@ -203,14 +208,14 @@ declare global {
     export const Ledger: LedgerConstructor;
 
     export interface LedgerConstructor {
-        readonly currentHash: ByteString;
+        readonly currentHash: ByteStringInstance;
         readonly currentIndex: number;
-        getBlock(indexOrHash: number | ByteString): Block;
-        getTransaction(hash: ByteString): Transaction;
-        getTransactionFromBlock(blockIndexOrHash: number | ByteString, txIndex: number): Transaction;
-        getTransactionHeight(hash: ByteString): number;
-        getTransactionSigners(hash: ByteString): Signer[];
-        getTransactionVMState(hash: ByteString): number;
+        getBlock(indexOrHash: number | ByteStringInstance): Block;
+        getTransaction(hash: ByteStringInstance): Transaction;
+        getTransactionFromBlock(blockIndexOrHash: number | ByteStringInstance, txIndex: number): Transaction;
+        getTransactionHeight(hash: ByteStringInstance): number;
+        getTransactionSigners(hash: ByteStringInstance): Signer[];
+        getTransactionVMState(hash: ByteStringInstance): number;
     }
 
     // for getTransactionVMState return value
@@ -228,23 +233,23 @@ declare global {
         readonly gasPerBlock: bigint;
         /** @nativeContract getRegisterPrice */
         readonly registerPrice: bigint;
-        unclaimedGas(account: ByteString, end: number): bigint;
-        registerCandidate(pubkey: ByteString): boolean;
-        unregisterCandidate(pubkey: ByteString): boolean;
-        vote(account: ByteString, voteTo: ByteString): boolean;
+        unclaimedGas(account: ByteStringInstance, end: number): bigint;
+        registerCandidate(pubkey: ByteStringInstance): boolean;
+        unregisterCandidate(pubkey: ByteStringInstance): boolean;
+        vote(account: ByteStringInstance, voteTo: ByteStringInstance): boolean;
 
         /** @nativeContract getCandidates */
-        readonly candidates: [ByteString, bigint][];
+        readonly candidates: [ByteStringInstance, bigint][];
         /** @nativeContract getAllCandidates */
-        readonly allCandidates: Iterator<[ByteString, bigint]>;
+        readonly allCandidates: Iterator<[ByteStringInstance, bigint]>;
 
-        getCandidateVote(pubKey: ByteString): bigint;
+        getCandidateVote(pubKey: ByteStringInstance): bigint;
         /** @nativeContract getCommittee */
-        readonly committee: ByteString[];
+        readonly committee: ByteStringInstance[];
         /** @nativeContract getNextBlockValidators */
-        readonly nextBlockValidators: ByteString[];
+        readonly nextBlockValidators: ByteStringInstance[];
 
-        getAccountState(account: ByteString): NeoAccountState[];
+        getAccountState(account: ByteStringInstance): NeoAccountState[];
     }
 
     /** @nativeContract {0xd2a4cff31913016155e38e474a2c06d08be276cf} */
@@ -254,8 +259,8 @@ declare global {
         readonly decimals: number;
         readonly symbol: string;
         readonly totalSupply: bigint;
-        balanceOf(account: ByteString): bigint;
-        transfer(from: ByteString, to: ByteString, amount: bigint, data?: any): boolean;
+        balanceOf(account: ByteStringInstance): bigint;
+        transfer(from: ByteStringInstance, to: ByteStringInstance, amount: bigint, data?: any): boolean;
     }
 
     /** @nativeContract {0xcc5e4edd9f5f8dba8bb65734541df7a1c081c67b} */
@@ -268,14 +273,14 @@ declare global {
         readonly execFeeFactor: number;
         /** @nativeContract getStoragePrice */
         readonly storagePrice: number;
-        isBlocked(account: ByteString): boolean;
+        isBlocked(account: ByteStringInstance): boolean;
     }
 
     /** @nativeContract {0x49cf4e5378ffcd4dec034fd98a174c5491e395e2} */
     export const RoleManagement: RoleManagementConstructor;
 
     export interface RoleManagementConstructor {
-        getDesignatedByRole(role: number, index: number): ByteString[];
+        getDesignatedByRole(role: number, index: number): ByteStringInstance[];
     }
 
     // for getDesignatedByRole role param
@@ -293,27 +298,27 @@ declare global {
 
     /** @stackitem */
     export interface Transaction {
-        readonly hash: ByteString,
+        readonly hash: ByteStringInstance,
         readonly version: number,
         readonly nonce: number,
-        readonly sender: ByteString,
+        readonly sender: ByteStringInstance,
         readonly systemFee: bigint,
         readonly networkFee: bigint,
         readonly validUntilBlock: number,
-        readonly script: ByteString
+        readonly script: ByteStringInstance
     }
 
     /** @stackitem */
     export interface Block {
-        readonly hash: ByteString,
+        readonly hash: ByteStringInstance,
         readonly version: number,
-        readonly previousHash: ByteString,
-        readonly merkleRoot: ByteString,
+        readonly previousHash: ByteStringInstance,
+        readonly merkleRoot: ByteStringInstance,
         readonly timestamp: bigint,
         readonly nonce: bigint,
         readonly index: number,
         readonly primaryIndex: number,
-        readonly nextConsensus: ByteString,
+        readonly nextConsensus: ByteStringInstance,
         readonly transactionsCount: number
     }
 
@@ -321,8 +326,8 @@ declare global {
     export interface Contract {
         readonly id: number;
         readonly updateCounter: number;
-        readonly hash: ByteString;
-        readonly nef: ByteString;
+        readonly hash: ByteStringInstance;
+        readonly nef: ByteStringInstance;
         readonly manifest: ContractManifest;
     }
 
@@ -368,17 +373,17 @@ declare global {
 
     /** @stackitem */
     export interface Notification {
-        readonly hash: ByteString;
+        readonly hash: ByteStringInstance;
         readonly eventName: string;
         readonly state: ReadonlyArray<any>;
     }
 
     /** @stackitem */
     export interface Signer {
-        readonly account: ByteString;
+        readonly account: ByteStringInstance;
         readonly scopes: number;
-        readonly allowedContracts: ByteString[];
-        readonly alowedGroups: ByteString[];
+        readonly allowedContracts: ByteStringInstance[];
+        readonly alowedGroups: ByteStringInstance[];
         // readonly rules: any[];
     }
 
@@ -386,7 +391,7 @@ declare global {
     export interface NeoAccountState {
         readonly balance: bigint,
         readonly height: number,
-        readonly voteTo: ByteString
+        readonly voteTo: ByteStringInstance
     }
 
 }

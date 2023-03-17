@@ -161,11 +161,6 @@ export const parseConditionalExpression =
             const falseTarget: Operation = {kind: "noop"};
             const endTarget: Operation = {kind: "noop"};
 
-            
-            const condition = parseExpressionAsBoolean(scope)(node.getCondition());
-            const $true = parseExpression(scope)(node.getWhenTrue());
-            const $false = parseExpression(scope)(node.getWhenFalse());
-
             return pipe(
                 node.getCondition(),
                 parseExpressionAsBoolean(scope),
@@ -491,6 +486,11 @@ const parsePropertyAccessExpression =
         (context: ChainContext) =>
             (node: tsm.PropertyAccessExpression): E.Either<ParseError, ChainContext> => {
                 const makeError = makeParseError(node);
+
+                const symbol = node.getSymbol();
+                const type = node.getType();
+                const def = pipe(context.def, O.toUndefined)
+
                 return pipe(
                     node,
                     parseSymbol,
@@ -510,7 +510,9 @@ const parsePropertyAccessExpression =
                                 return pipe(type,
                                     E.fromPredicate(
                                         isObjectDef,
-                                        () => makeError(`${type.symbol.getName()} is not an object`)
+                                        () => {
+                                            return makeError(`${type.symbol.getName()} is not an object`);
+                                        }
                                     )
                                 );
                             })
