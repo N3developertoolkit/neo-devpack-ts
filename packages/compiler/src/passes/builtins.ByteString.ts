@@ -125,27 +125,6 @@ export class ByteStringConstructorDef extends $SymbolDef implements ObjectSymbol
     }
 }
 
-const byteStringToInteger =
-    (scope: Scope) => (
-        node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
-
-        // this code is similar to the ByteString => BigInteger cast from C# devpack, except
-        // that it skips the convert call if value is null. COnvert is one of the most expensive
-        // operations and it seems more cost efficient to add a single jump to the not-null case
-        // in exchage for skipping the convert call in the null case
-
-        return E.of([
-            { kind: "duplicate" },
-            { kind: "isnull" },
-            { kind: "jumpif", offset: 3 },
-            { kind: "convert", type: sc.StackItemType.Integer },
-            { kind: "jump", offset: 3 },
-            { kind: "drop" },
-            { kind: "pushint", value: 0n },
-            { kind: "noop" }
-        ] as Operation[]);
-    }
-
 export class PropertyDef extends $SymbolDef {
     constructor(
         readonly sig: tsm.PropertySignature,
@@ -154,10 +133,24 @@ export class PropertyDef extends $SymbolDef {
         super(sig);
     }
 }
+export class ByteStringAsInteger extends $SymbolDef implements CallableSymbolDef {
+    readonly props = [];
+    readonly loadOps = [
+        { kind: "duplicate" },
+        { kind: "isnull" },
+        { kind: "jumpif", offset: 3 },
+        { kind: "convert", type: sc.StackItemType.Integer },
+        { kind: "jump", offset: 3 },
+        { kind: "drop" },
+        { kind: "pushint", value: 0n },
+        { kind: "noop" }
+    ] as readonly Operation[];
+    readonly parseArguments =  (scope: Scope) => (node: tsm.CallExpression) => E.of(ROA.empty)
 
+    constructor(readonly sig: tsm.MethodSignature) {
+        super(sig);
+    }
 
-const byteStringMethods: Record<string, ParseArgumentsFunc> = {
-    "asInteger": byteStringToInteger
 }
 
 const byteStringProps: Record<string, ReadonlyArray<Operation>> = {
@@ -169,6 +162,7 @@ export class ByteStringInterfaceDef extends $SymbolDef implements ObjectSymbolDe
 
     constructor(readonly decl: tsm.InterfaceDeclaration) {
         super(decl);
-        this.props = ROA.concat(parseMethods(decl)(byteStringMethods))(parseProps(decl)(byteStringProps));
+        const asInt:SymbolDef = new ByteStringAsInteger(decl.getMethodOrThrow("asInteger"));
+        this.props = ROA.append(asInt)(parseProps(decl)(byteStringProps));
     }
 }

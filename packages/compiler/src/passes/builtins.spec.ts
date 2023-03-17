@@ -34,6 +34,24 @@ describe("builtins", () => {
         expect(ops[2]).has.property('kind').that.equals('concat');
     });
 
+    describe("Storage", () => {
+        it("get", () => {
+            const contract = /*javascript*/`
+            const value = ByteString.fromHex('0x00');
+            const result = Storage.context.get(value);
+        `;
+
+            const { sourceFile, globalScope } = createTestProject(contract);
+            const decls = sourceFile.getVariableStatements();
+            const value = decls[0].getDeclarations()[0];
+            const resultExpr = decls[1].getDeclarations()[0].getInitializerOrThrow();
+            const scope = createTestScope(globalScope)(value);
+
+            const ops = pipe(resultExpr, parseExpression(scope), testRight(e => e.message));
+
+        })
+    });
+
     describe("ByteString", () => {
 
         it("fromHex", () => {
@@ -82,7 +100,10 @@ describe("builtins", () => {
             const scope = createTestScope(globalScope)(value);
 
             const ops = pipe(resultExpr, parseExpression(scope), testRight(e => e.message));
+            expect(ops).length(9)
             expect(ops[0]).has.property('kind').that.equals('loadlocal');
+            expect(ops[1]).has.property('kind').that.equals('duplicate');
+            expect(ops[8]).has.property('kind').that.equals('noop');
 
 
         })
