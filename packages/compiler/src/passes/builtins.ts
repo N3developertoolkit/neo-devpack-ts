@@ -1,6 +1,6 @@
 import * as tsm from "ts-morph";
 import { sc, u } from "@cityofzion/neon-core";
-import { flow, identity, pipe } from "fp-ts/lib/function";
+import { pipe } from "fp-ts/lib/function";
 import * as E from "fp-ts/Either";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROR from 'fp-ts/ReadonlyRecord'
@@ -10,25 +10,15 @@ import * as TS from "../utility/TS";
 import { LibraryDeclarations } from "../projectLib";
 import { CompilerState } from "../types/CompileOptions";
 import { createScope } from "../scope";
-import { CallableSymbolDef, ObjectSymbolDef, ParseArgumentsFunc, ParseError, Scope, SymbolDef } from "../types/ScopeType";
-import { $SymbolDef, makeParseError } from "../symbolDef";
+import { ParseError, Scope, SymbolDef } from "../types/ScopeType";
+import { makeParseError } from "../symbolDef";
 import { isVoidLike, single } from "../utils";
 import { Operation, parseOperation as $parseOperation } from "../types/Operation";
 
-import { getArguments, parseArguments, parseExpression } from "./expressionProcessor";
+import { getArguments, parseExpression } from "./expressionProcessor";
 import { makeByteStringConstructor, makeByteStringInterface } from "./builtins.ByteString";
-import { checkErrors, createBuiltInCallable, createBuiltInObject, createBuiltInSymbol } from "./builtins.SymbolDefs";
+import { checkErrors, createBuiltInCallable, createBuiltInObject, createBuiltInSymbol, rorValues } from "./builtins.SymbolDefs";
 
-
-export function checkOption<T>(errorMessage: string) {
-    return O.match<T, T>(
-        () => { throw new Error(errorMessage); },
-        identity
-    );
-}
-function getVariableStatement(node: tsm.VariableDeclaration) {
-    return O.fromNullable(node.getVariableStatement());
-}
 function isMethodOrProp(node: tsm.Node): node is (tsm.MethodSignature | tsm.PropertySignature) {
     return tsm.Node.isMethodSignature(node) || tsm.Node.isPropertySignature(node);
 }
@@ -37,132 +27,34 @@ module REGEX {
     export const match = (regex: RegExp) => (value: string) => O.fromNullable(value.match(regex));
 }
 
-class StaticClassDef extends $SymbolDef {
-    readonly loadOps: ReadonlyArray<Operation> = [];
-
-    constructor(readonly decl: tsm.VariableDeclaration) {
-        super(decl);
-    }
+function sigToSymbolDef(sig: tsm.MethodSignature | tsm.PropertySignature, loadOps: readonly Operation[]) {
+    return tsm.Node.isMethodSignature(sig)
+        ? createBuiltInCallable(sig, { loadOps })
+        : createBuiltInSymbol(sig, loadOps);
 }
 
-class SysCallInterfaceMemberDef extends $SymbolDef implements ObjectSymbolDef {
-    readonly loadOps: readonly Operation[];
-    readonly props = [];
-    readonly parseArguments?: ParseArgumentsFunc;
+function makeSysCallInterface(decl: tsm.InterfaceDeclaration) {
 
-    constructor(
-        readonly sig: tsm.MethodSignature | tsm.PropertySignature,
-        readonly serviceName: string
-    ) {
-        super(sig);
-        this.loadOps = [{ kind: "syscall", name: this.serviceName }]
-        if (tsm.Node.isMethodSignature(sig)) {
-            this.parseArguments = parseArguments;
-        }
-    }
-}
-
-class SysCallInterfaceDef extends $SymbolDef implements ObjectSymbolDef {
-    readonly props: readonly ObjectSymbolDef[];
-
-    constructor(readonly decl: tsm.InterfaceDeclaration) {
-        super(decl);
-        this.props = pipe(
-            this.type.getProperties(),
-            ROA.chain(symbol => symbol.getDeclarations()),
-            ROA.map(member => pipe(
+    const props = pipe(
+        decl.getType().getProperties(),
+        ROA.chain(s => s.getDeclarations()),
+        ROA.filter(isMethodOrProp),
+        ROA.map(member => {
+            const name = pipe(
                 member,
-                O.fromPredicate(isMethodOrProp),
-                O.map(signature => {
-                    const name = pipe(
-                        signature,
-                        TS.getTagComment('syscall'),
-                        O.match(() => signature.getSymbolOrThrow().getName(), identity));
+                TS.getTagComment('syscall'),
+                O.toUndefined
+            )
+            if (!name) {
+                throw new Error(`${decl.getSymbol()?.getName()} invalid syscall jsdoc tag`)
+            }
+            const loadOps = [{ kind: "syscall", name } as Operation];
 
-                    return new SysCallInterfaceMemberDef(signature, name);
-                }),
-                E.fromOption(() => member.getSymbolOrThrow().getName())
-            )),
-            checkErrors("Invalid syscall interface members")
-        )
-    }
+            return sigToSymbolDef(member, loadOps);
+        }),
+    );
+    return createBuiltInObject(decl, { props })
 }
-
-
-class NativeContractMemberDef extends $SymbolDef implements ObjectSymbolDef {
-    readonly props = [];
-    readonly loadOps: readonly Operation[];
-    readonly parseArguments?: ParseArgumentsFunc;
-
-    constructor(
-        readonly sig: tsm.MethodSignature | tsm.PropertySignature,
-        readonly hash: u.HexString,
-        readonly method: string,
-    ) {
-        super(sig);
-
-        let parametersCount = 0;
-        let returnType = sig.getType();
-        if (tsm.Node.isMethodSignature(sig)) {
-            parametersCount = sig.getParameters().length;
-            returnType = sig.getReturnType();
-            this.parseArguments = parseArguments
-        }
-        const token = new sc.MethodToken({
-            hash: hash.toString(),
-            method: method,
-            parametersCount: parametersCount,
-            hasReturnValue: !isVoidLike(returnType),
-            callFlags: sc.CallFlags.All
-        })
-        this.loadOps = [
-            { kind: 'calltoken', token }
-        ]
-    }
-}
-
-class NativeContractConstructorDef extends $SymbolDef implements ObjectSymbolDef {
-    readonly loadOps: ReadonlyArray<Operation> = [];
-    readonly props: ReadonlyArray<ObjectSymbolDef>
-
-    constructor(
-        readonly hash: u.HexString,
-        readonly decl: tsm.InterfaceDeclaration,
-    ) {
-        super(decl);
-        this.props = pipe(
-            this.type.getProperties(),
-            ROA.chain(symbol => symbol.getDeclarations()),
-            ROA.map(member => pipe(
-                member,
-                O.fromPredicate(isMethodOrProp),
-                O.map(signature => {
-                    const name = pipe(
-                        signature,
-                        TS.getTagComment("nativeContract"),
-                        O.match(() => signature.getSymbolOrThrow().getName(), identity));
-
-                    return new NativeContractMemberDef(signature, hash, name);
-                }),
-                E.fromOption(() => member.getSymbolOrThrow().getName())
-            )),
-            checkErrors("Invalid stack item members")
-        )
-    }
-
-}
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -174,33 +66,56 @@ class NativeContractConstructorDef extends $SymbolDef implements ObjectSymbolDef
 const regexMethodToken = /\{((?:0x)?[0-9a-fA-F]{40})\}/;
 function makeNativeContract(decl: tsm.VariableDeclaration) {
     const hash = pipe(
-        decl,
-        getVariableStatement,
+        decl.getVariableStatement(),
+        O.fromNullable,
         O.chain(TS.getTagComment("nativeContract")),
         O.chain(REGEX.match(regexMethodToken)),
         O.chain(ROA.lookup(1)),
         O.map(v => u.HexString.fromHex(v, true)),
-        O.match(
-            () => { throw new Error(`invalid hash for ${decl.getSymbol()?.getName()} native contract declaration`); },
-            identity
-        )
+        O.toUndefined,
     )
 
-    const typeDef = pipe(
-        decl,
-        TS.getType,
-        t => O.fromNullable(t.getSymbol()),
-        O.map(TS.getSymbolDeclarations),
-        O.chain(single),
-        O.chain(O.fromPredicate(tsm.Node.isInterfaceDeclaration)),
-        O.map(decl => new NativeContractConstructorDef(hash, decl)),
-        O.match(
-            () => { throw new Error(`invalid declaration for ${decl.getSymbol()?.getName()} native contract`); },
-            identity
-        )
+    if (!hash) {
+        throw new Error(`invalid hash for ${decl.getSymbol()?.getName()} native contract declaration`);
+    }
+
+    const props = pipe(
+        decl.getType().getProperties(),
+        ROA.chain(s => s.getDeclarations()),
+        ROA.filter(isMethodOrProp),
+        ROA.map(member => {
+            const method = pipe(
+                member,
+                TS.getTagComment("nativeContract"),
+                O.getOrElse(() => member.getSymbolOrThrow().getName())
+            );
+            const [parametersCount, returnType] = tsm.Node.isPropertySignature(member)
+                ? [0, member.getType()]
+                : [member.getParameters().length, member.getReturnType()];
+            const token = new sc.MethodToken({
+                hash: hash.toString(),
+                method,
+                parametersCount: parametersCount,
+                hasReturnValue: !isVoidLike(returnType),
+                callFlags: sc.CallFlags.All
+            })
+            const loadOps = [{ kind: "calltoken", token } as Operation];
+            return sigToSymbolDef(member, loadOps);
+        })
     );
 
-    return [new StaticClassDef(decl), typeDef]
+    const typeDecl = pipe(
+        decl.getType().getSymbol(),
+        O.fromNullable,
+        ROA.fromOption,
+        ROA.chain(s => s.getDeclarations()),
+        ROA.head,
+        O.toUndefined
+    );
+    if (!typeDecl) throw new Error(`${decl.getName()} invalid type decl`)
+    const varTypeDef = createBuiltInObject(typeDecl, { props })
+
+    return [createBuiltInSymbol(decl), varTypeDef]
 }
 
 
@@ -302,7 +217,9 @@ function makeOperationsFunction(decl: tsm.FunctionDeclaration) {
         checkErrors(`invalid @operation function ${decl.getSymbol()?.getName()}`)
     )
 
-    // like standard parseArguments in ExpressionProcessor.ts, but without the argument reverrse
+    // like standard parseArguments in ExpressionProcessor.ts, but without the argument reverse
+    // Right now (nep11 spike) there is only one @operation function (concat). It probably makes 
+    // sense to move this to ByteArrayInstance instead of a free function
     const parseArguments =
         (scope: Scope) =>
             (node: tsm.CallExpression) => {
@@ -339,26 +256,23 @@ export const makeGlobalScope =
     (decls: LibraryDeclarations): CompilerState<Scope> =>
         diagnostics => {
 
-            let symbolDefs: ReadonlyArray<SymbolDef> = ROA.empty;
-
-            symbolDefs = pipe(
+            let symbolDefs: ReadonlyArray<SymbolDef> = pipe(
                 decls.interfaces,
                 ROA.filter(TS.hasTag("stackitem")),
                 ROA.map(makeStackItemObject),
-                ROA.concat(symbolDefs)
             )
 
-            // symbolDefs = pipe(
-            //     decls.variables,
-            //     ROA.filter(flow(
-            //         getVariableStatement,
-            //         O.map(TS.hasTag('nativeContract')),
-            //         O.match(() => false, identity)
-            //     )),
-            //     ROA.map(NativeContractConstructorDef.makeNativeContract),
-            //     ROA.flatten,
-            //     ROA.concat(symbolDefs)
-            // )
+            symbolDefs = pipe(
+                decls.variables,
+                ROA.filter(decl => pipe(
+                    decl.getVariableStatement(),
+                    O.fromNullable,
+                    O.map(TS.hasTag('nativeContract')),
+                    O.getOrElse(() => false)
+                )),
+                ROA.chain(makeNativeContract),
+                ROA.concat(symbolDefs)
+            )
 
             symbolDefs = pipe(
                 decls.functions,
@@ -386,17 +300,17 @@ export const makeGlobalScope =
             const builtInInterfaces: Record<string, (decl: tsm.InterfaceDeclaration) => SymbolDef> = {
                 "ByteStringConstructor": makeByteStringConstructor,
                 "ByteStringInstance": makeByteStringInterface,
-                "ReadonlyStorageContext": decl => new SysCallInterfaceDef(decl),
-                "RuntimeConstructor": decl => new SysCallInterfaceDef(decl),
-                "StorageConstructor": decl => new SysCallInterfaceDef(decl),
-                "StorageContext": decl => new SysCallInterfaceDef(decl),
+                "ReadonlyStorageContext": makeSysCallInterface,
+                "RuntimeConstructor": makeSysCallInterface,
+                "StorageConstructor": makeSysCallInterface,
+                "StorageContext": makeSysCallInterface,
             }
 
             const builtInVars: Record<string, (decl: tsm.VariableDeclaration) => SymbolDef> = {
-                "ByteString": decl => new StaticClassDef(decl),
+                "ByteString": createBuiltInSymbol,
                 "Error": decl => createBuiltInCallable(decl, { parseArguments: invokeError }),
-                "Runtime": decl => new StaticClassDef(decl),
-                "Storage": decl => new StaticClassDef(decl),
+                "Runtime": createBuiltInSymbol,
+                "Storage": createBuiltInSymbol,
             }
 
             symbolDefs = resolveBuiltins(builtInEnums)(decls.enums)(symbolDefs);
@@ -404,38 +318,27 @@ export const makeGlobalScope =
             symbolDefs = resolveBuiltins(builtInInterfaces)(decls.interfaces)(symbolDefs);
             symbolDefs = resolveBuiltins(builtInVars)(decls.variables)(symbolDefs);
 
-            const names = symbolDefs.map(v => [v.symbol.getName(), v]).sort();
             const scope = createScope()(symbolDefs);
             return [scope, diagnostics];
         }
 
 type LibraryDeclaration = tsm.EnumDeclaration | tsm.FunctionDeclaration | tsm.InterfaceDeclaration | tsm.VariableDeclaration;
 
-function findDecls<T extends LibraryDeclaration>(declarations: ReadonlyArray<T>) {
-    return (name: string) => pipe(declarations, ROA.filter(v => v.getName() === name));
-}
-
-function findDecl<T extends LibraryDeclaration>(declarations: ReadonlyArray<T>) {
-    return (name: string) => pipe(name, findDecls(declarations), single);
-}
-
 const resolveBuiltins =
     <T extends LibraryDeclaration>(map: ROR.ReadonlyRecord<string, (decl: T) => SymbolDef>) =>
         (declarations: readonly T[]) =>
             (symbolDefs: readonly SymbolDef[]) => {
-
                 const defs = pipe(
                     map,
                     ROR.mapWithIndex((key, func) => pipe(
-                        key,
-                        findDecl(declarations),
+                        declarations,
+                        ROA.filter(d => d.getName() === key),
+                        single,
                         O.map(func),
                         E.fromOption(() => key),
                     )),
-                    ROR.toEntries,
-                    ROA.map(([_, def]) => def),
+                    rorValues,
                     checkErrors('unresolved built in variables'),
                 )
-
                 return ROA.concat(defs)(symbolDefs);
             }
