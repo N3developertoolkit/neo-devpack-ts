@@ -81,8 +81,7 @@ export function update(nefFile: ByteStringInstance, manifest: string) {
 }
 
 function checkOwner() {
-    const owner = Storage.context.get(OWNER_KEY);
-    return owner && checkWitness(owner);
+    return checkWitness(Storage.context.get(OWNER_KEY)!);
 }
 
 function createTokens(account: ByteStringInstance, amount: bigint) {
