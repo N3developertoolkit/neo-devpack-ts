@@ -13,12 +13,13 @@ import { createScope } from "../scope";
 import { CallableSymbolDef, ObjectSymbolDef, ParseArgumentsFunc, ParseError, Scope, SymbolDef } from "../types/ScopeType";
 import { $SymbolDef, makeParseError } from "../symbolDef";
 import { isVoidLike, single } from "../utils";
-import { Operation, isPushDataOp, PushDataOperation, parseOperation as $parseOperation, PushIntOperation } from "../types/Operation";
+import { Operation, parseOperation as $parseOperation } from "../types/Operation";
 
 import { getArguments, parseArguments, parseExpression } from "./expressionProcessor";
+import { ByteStringConstructorDef } from "./builtins.ByteString";
 
 
-function checkErrors(errorMessage: string) {
+export function checkErrors(errorMessage: string) {
     return <T>(results: readonly E.Either<string, T>[]): readonly T[] => {
         const { left: errors, right: values } = pipe(results, ROA.separate);
         if (errors.length > 0)
@@ -40,7 +41,7 @@ function isMethodOrProp(node: tsm.Node): node is (tsm.MethodSignature | tsm.Prop
     return tsm.Node.isMethodSignature(node) || tsm.Node.isPropertySignature(node);
 }
 
-function rorValues<K extends string, A>(r: Readonly<Record<K, A>>) {
+export function rorValues<K extends string, A>(r: Readonly<Record<K, A>>) {
     return pipe(r, ROR.toEntries, ROA.map(t => t[1]));
 }
 
@@ -81,83 +82,7 @@ class CallableVariableDef extends $SymbolDef implements CallableSymbolDef {
     }
 }
 
-const fromEncoding =
-    (encoding: BufferEncoding) =>
-        (value: string): O.Option<Uint8Array> => {
-            return O.tryCatch(() => Buffer.from(value, encoding))
-        }
-
-const fromHex =
-    (value: string): O.Option<Uint8Array> => {
-        value = value.startsWith('0x') || value.startsWith('0X')
-            ? value.substring(2)
-            : value;
-        return pipe(
-            value,
-            fromEncoding('hex'),
-            O.chain(buffer => buffer.length * 2 === value.length ? O.some(buffer) : O.none)
-        );
-    }
-
-const exprAsString = (scope: Scope) => (expr: tsm.Expression): O.Option<string> => {
-    return pipe(
-        expr,
-        parseExpression(scope),
-        O.fromEither,
-        O.chain(single),
-        O.chain(O.fromPredicate(isPushDataOp)),
-        O.chain(op => O.tryCatch(() => Buffer.from(op.value).toString()))
-    )
-}
-
-const byteStringFromHex =
-    (scope: Scope) =>
-        (node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
-            const makeError = makeParseError(node);
-            return pipe(
-                node,
-                getArguments,
-                ROA.head,
-                E.fromOption(() => makeError('invalid arguments')),
-                E.chain(expr => {
-                    return pipe(
-                        expr,
-                        exprAsString(scope),
-                        O.chain(fromHex),
-                        O.map(value => {
-                            return ({ kind: 'pushdata', value } as PushDataOperation);
-                        }),
-                        O.map(ROA.of),
-                        E.fromOption(() => makeError('invalid hex string'))
-                    );
-                })
-            )
-        }
-
-const byteStringFromString =
-    (scope: Scope) => (
-        node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
-        const makeError = makeParseError(node);
-        return pipe(
-            node,
-            getArguments,
-            ROA.head,
-            E.fromOption(() => makeError('invalid arguments')),
-            E.chain(expr => {
-                return pipe(
-                    expr,
-                    parseExpression(scope),
-                    O.fromEither,
-                    O.chain(single),
-                    O.chain(O.fromPredicate(isPushDataOp)),
-                    O.map(ROA.of),
-                    E.fromOption(() => makeError('invalid string argument'))
-                )
-            })
-        )
-    }
-
-class StaticMethodDef extends $SymbolDef implements CallableSymbolDef {
+export class StaticMethodDef extends $SymbolDef implements CallableSymbolDef {
     readonly loadOps = [];
     readonly props = [];
     constructor(
@@ -221,33 +146,7 @@ class CallContractFunctionDef extends $SymbolDef implements CallableSymbolDef {
 
 }
 
-const byteStringMethods: Record<string, ParseArgumentsFunc> = {
-    "fromHex": byteStringFromHex,
-    "fromString": byteStringFromString,
-}
 
-class ByteStringConstructorDef extends $SymbolDef implements ObjectSymbolDef {
-    readonly props: ReadonlyArray<CallableSymbolDef>
-
-    constructor(readonly decl: tsm.InterfaceDeclaration) {
-        super(decl);
-        this.props = pipe(
-            byteStringMethods,
-            ROR.mapWithIndex((key, func) => {
-                return pipe(
-                    key,
-                    TS.getTypeProperty(this.type),
-                    O.chain(sym => pipe(sym.getDeclarations(), single)),
-                    O.chain(O.fromPredicate(tsm.Node.isMethodSignature)),
-                    O.map(sig => new StaticMethodDef(sig, func)),
-                    E.fromOption(() => key)
-                );
-            }),
-            rorValues,
-            checkErrors('unresolved ByteString members'),
-        );
-    }
-}
 
 class SysCallInterfaceMemberDef extends $SymbolDef implements ObjectSymbolDef {
     readonly loadOps: readonly Operation[];

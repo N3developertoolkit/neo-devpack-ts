@@ -20,20 +20,20 @@ export function decimals() { return DECIMALS; }
 /** @safe */
 export function totalSupply() {
     const value = Storage.context.get(TOTAL_SUPPLY_KEY);
-    return asInteger(value);
+    return value ? value.asInteger : 0;
 }
 
 /** @safe */
 export function balanceOf(account: ByteString) {
-    // if (account is null || !account.IsValid) throw Error("The argument \"account\" is invalid.");
+    if (!account || account.length != 20) throw Error("The argument \"account\" is invalid.");
     const key = concat(BALANCE_PREFIX, account);
     const value = Storage.context.get(key);
-    return asInteger(value);
+    return value ? value.asInteger : 0;
 }
 
 /** @safe */
 export function tokensOf(account: ByteString) {
-    // if (account is null || !account.IsValid) throw Error("The argument \"account\" is invalid.");
+    if (!account || account.length != 20) throw Error("The argument \"account\" is invalid.");
     const key = concat(ACCOUNT_TOKEN_PREFIX, account);
     // Storage.context.find(key, FindOptions.KeysOnly | FindOptions.RemovePrefix)
     return null;

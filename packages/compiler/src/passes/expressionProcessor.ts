@@ -154,6 +154,36 @@ export const parseBooleanLiteral =
         return E.right({ kind: "pushbool", value });
     }
 
+export const parseConditionalExpression =
+    (scope: Scope) =>
+        (node: tsm.ConditionalExpression): E.Either<ParseError, readonly Operation[]> => {
+
+            const falseTarget: Operation = {kind: "noop"};
+            const endTarget: Operation = {kind: "noop"};
+
+            
+            const condition = parseExpressionAsBoolean(scope)(node.getCondition());
+            const $true = parseExpression(scope)(node.getWhenTrue());
+            const $false = parseExpression(scope)(node.getWhenFalse());
+
+            return pipe(
+                node.getCondition(),
+                parseExpressionAsBoolean(scope),
+                E.bindTo('condition'),
+                E.bind("whenTrue", () => pipe(node.getWhenTrue(), parseExpression(scope))),
+                E.bind("whenFalse", () => pipe(node.getWhenFalse(), parseExpression(scope))),
+                E.map(o => pipe(
+                    o.condition,
+                    ROA.append({ kind: 'jumpifnot', target: falseTarget } as Operation),
+                    ROA.concat(o.whenTrue),
+                    ROA.append({ kind: 'jump', target: endTarget } as Operation),
+                    ROA.append(falseTarget as Operation),
+                    ROA.concat(o.whenFalse),
+                    ROA.append(endTarget as Operation)
+                ))
+            )
+        }
+
 export const parseIdentifier =
     (scope: Scope) =>
         (node: tsm.Identifier): E.Either<ParseError, readonly Operation[]> => {
@@ -248,6 +278,8 @@ export function parseExpression(scope: Scope) {
             return parseLiteral(parseBigIntLiteral)(node);
         if (tsm.Node.isBinaryExpression(node))
             return parseBinaryExpression(scope)(node);
+        if (tsm.Node.isConditionalExpression(node))
+            return parseConditionalExpression(scope)(node);
         if (tsm.Node.isFalseLiteral(node))
             return parseLiteral(parseBooleanLiteral)(node);
         if (tsm.Node.isIdentifier(node))

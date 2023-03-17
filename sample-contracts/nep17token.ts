@@ -21,19 +21,22 @@ export function symbol() { return SYMBOL; }
 export function decimals() { return DECIMALS; }
 
 /** @safe */
-export function totalSupply( ) { 
+export function totalSupply(): bigint {
     const value = Storage.context.get(TOTAL_SUPPLY_KEY);
-    return asInteger(value);
+    return value ? value.asInteger() : 0n;
 }
 
 /** @safe */
-export function balanceOf(account: ByteString) { 
+export function balanceOf(account: ByteString): bigint {
+    if (!account || account.length != 20) throw Error("The argument \"account\" is invalid.");
     const key = concat(BALANCE_PREFIX, account);
     const value = Storage.context.get(key);
-    return asInteger(value);
+    return value ? value.asInteger() : 0n;
 }
 
 export function transfer(from: ByteString, to: ByteString, amount: bigint, data: any) {
+    if (!from || from.length != 20) throw Error("The argument \"from\" is invalid.");
+    if (!to || to.length != 20) throw Error("The argument \"to\" is invalid.");
     if (amount < 0n) throw Error("The amount must be a positive number");
     if (!checkWitness(from)) return false;
     if (amount != 0n) {
@@ -44,21 +47,26 @@ export function transfer(from: ByteString, to: ByteString, amount: bigint, data:
     return true;
 }
 
-export function mint(account: ByteString, amount: bigint): void {
+export function mint(account: ByteString, amount: bigint): boolean {
+    if (!account || account.length != 20) throw Error("The argument \"account\" is invalid.");
     if (!checkOwner()) throw Error("Only the contract owner can mint tokens");
     createTokens(account, amount);
+    return true;
 }
 
-export function burn(account: ByteString, amount: bigint): void {
-    if (amount === 0n) return;
+export function burn(account: ByteString, amount: bigint): boolean {
+    if (!account || account.length != 20) throw Error("The argument \"account\" is invalid.");
     if (amount < 0n) throw Error("amount must be greater than zero");
-    if (!checkOwner()) throw Error("Only the contract owner can mint tokens");
-    if (!updateBalance(account, -amount)) throw Error("account did not have sufficient funds to burn");
-    updateTotalSupply(-amount);
+    if (!checkOwner()) throw Error("Only the contract owner can burn tokens");
+    if (amount != 0n) {
+        if (!updateBalance(account, -amount)) return false;
+        updateTotalSupply(-amount);
+    }
     postTransfer(account, null, amount, null);
+    return true;
 }
 
-export function _deploy(_data: any, update: boolean): void { 
+export function _deploy(_data: any, update: boolean): void {
     if (update) return;
     const tx = Runtime.scriptContainer as Transaction;
     Storage.context.put(OWNER_KEY, tx.sender);
@@ -79,26 +87,27 @@ function checkOwner() {
 }
 
 function createTokens(account: ByteString, amount: bigint) {
-    if (amount === 0n) return;
     if (amount < 0n) throw Error("The amount must be a positive number");
-    updateTotalSupply(amount);
-    updateBalance(account, amount);
+    if (amount !== 0n) {
+        updateTotalSupply(amount);
+        updateBalance(account, amount);
+    }
     postTransfer(null, account, amount, null);
 }
 
 function updateTotalSupply(amount: bigint) {
-    const totalSupply = asInteger(Storage.context.get(TOTAL_SUPPLY_KEY));
-    Storage.context.put(TOTAL_SUPPLY_KEY, asByteString(totalSupply + amount));
+    const totalSupply = Storage.context.get(TOTAL_SUPPLY_KEY)?.asInteger() ?? 0n;
+    Storage.context.put(TOTAL_SUPPLY_KEY, ByteString.fromInteger(totalSupply + amount));
 }
 
 function updateBalance(account: ByteString, amount: bigint): boolean {
     const key = concat(BALANCE_PREFIX, account);
-    const balance = asInteger(Storage.context.get(key)) + amount;
+    const balance = (Storage.context.get(key)?.asInteger() ?? 0n) + amount;
     if (balance < 0n) return false;
     if (balance === 0n) {
         Storage.context.delete(key);
     } else {
-        Storage.context.put(key, asByteString(balance));
+        Storage.context.put(key, ByteString.fromInteger(balance));
     }
     return true;
 }

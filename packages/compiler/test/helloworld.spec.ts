@@ -36,18 +36,18 @@ describe("helloworld", () => {
 
         const { sourceFile, scope } = createTestProject(contract);
 
-        const init = sourceFile.addFunction({
-            name: "test",
-            isExported: true,
-            returnType: "boolean"
-        });
-        const symbol = init.getSymbol();
-        const t = init.getReturnType();
+        // const init = sourceFile.addFunction({
+        //     name: "test",
+        //     isExported: true,
+        //     returnType: "boolean"
+        // });
+        // const symbol = init.getSymbol();
+        // const t = init.getReturnType();
 
-        init.remove();
-        const q  = symbol?.getName();
-        const qq = t.getText();
-        const qqq = t.isBoolean();
+        // init.remove();
+        // const q  = symbol?.getName();
+        // const qq = t.getText();
+        // const qqq = t.isBoolean();
         
 
         const func = sourceFile.getFirstChildByKindOrThrow(tsm.SyntaxKind.FunctionDeclaration);

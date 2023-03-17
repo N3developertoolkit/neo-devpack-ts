@@ -203,15 +203,6 @@ const parseIfStatement =
             const closeParen = node.getLastChildByKind(tsm.SyntaxKind.CloseParenToken);
             operations = updateLocation(closeParen ? { start: node, end: closeParen } : expr)(operations);
 
-            if (!expr.getType().isBoolean()) {
-                // TODO: complete falsy implementation. for now, compare to null
-                operations = pipe(
-                    operations,
-                    ROA.append({ kind: "isnull" } as Operation),
-                    ROA.append({ kind: 'not' } as Operation)
-                );
-            }
-
             let $thenOps: readonly Operation[];
             [$thenOps, state] = parseStatement(node.getThenStatement())(state);
             const thenOps = ROA.append({ kind: 'noop' } as Operation)($thenOps);

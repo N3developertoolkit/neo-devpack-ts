@@ -1,6 +1,7 @@
 declare global {
     export interface ByteString { 
-        toInteger(): bigint;
+        readonly length: number; 
+        asInteger(): bigint;
     }
     export interface ByteStringConstructor {
         fromString(value: string): ByteString;
@@ -9,32 +10,32 @@ declare global {
     }
     export const ByteString: ByteStringConstructor;
 
-    export interface Hash160 { }
-    export interface Hash160Constructor {
-    }
-    export const Hash160: Hash160Constructor;
-    export interface Hash256 { }
-    export interface Hash256Constructor {
-    }
-    export const Hash256: Hash256Constructor;
+    // export interface Hash160 { }
+    // export interface Hash160Constructor {
+    // }
+    // export const Hash160: Hash160Constructor;
+    // export interface Hash256 { }
+    // export interface Hash256Constructor {
+    // }
+    // export const Hash256: Hash256Constructor;
 
-    // TODO: move to ByteArray.toInteger
-    /**
-     * @operation duplicate 
-     * @operation isnull
-     * @operation jumpif 3
-     * @operation convert Integer 
-     * @operation jump 3
-     * @operation drop 
-     * @operation pushint 0
-     */
-    export function asInteger(value: ByteString | null | undefined): bigint;
+    // // TODO: move to ByteArray.toInteger
+    // /**
+    //  * @operation duplicate 
+    //  * @operation isnull
+    //  * @operation jumpif 3
+    //  * @operation convert Integer 
+    //  * @operation jump 3
+    //  * @operation drop 
+    //  * @operation pushint 0
+    //  */
+    // export function asInteger(value: ByteString | null | undefined): bigint;
 
-    // TODO: move to ByteArray.fromInteger
-    /**
-     * @operation convert ByteString
-     */
-    export function asByteString(value: bigint): ByteString;
+    // // TODO: move to ByteArray.fromInteger
+    // /**
+    //  * @operation convert ByteString
+    //  */
+    // export function asByteString(value: bigint): ByteString;
 
     /**
      * @operation concat
@@ -71,7 +72,7 @@ declare global {
         readonly readonlyContext: ReadonlyStorageContext;
     }
 
-    export type StorageType = ByteString | Hash160 | Hash256 | string;
+    export type StorageType = ByteString | string //| Hash160 | Hash256;
 
     export interface ReadonlyStorageContext {
         /** @syscall System.Storage.Get */
@@ -152,7 +153,7 @@ declare global {
     export interface ContractManagementConstructor {
         /** @nativeContract getMinimumDeploymentFee */
         readonly minimumDeploymentFee: bigint;
-        getContract(hash: ByteString): Contract;
+        getContract(hash: ByteString): Contract | undefined;
         hasMethod(hash: ByteString, method: string, pcount: number): boolean;
         getContractById(id: number): Contract;
         /** @nativeContract getContractHashes */

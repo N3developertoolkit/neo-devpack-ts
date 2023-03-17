@@ -28,5 +28,14 @@ describe("builtins", () => {
         expect(ops[1]).has.property('kind').that.equals('pushdata');
         expect(ops[1]).has.property('value').and.satisfies(bufferEquals('FF'))
         expect(ops[2]).has.property('kind').that.equals('concat');
-    })
+    });
+
 });
+
+// /** @safe */
+// export function balanceOf(account: ByteString): bigint {
+//     if (!account || account.length != 20) throw Error("The argument \"account\" is invalid.");
+//     const key = concat(BALANCE_PREFIX, account);
+//     const value = Storage.context.get(key);
+//     return value ? value.asInteger() : 0n;
+// }
