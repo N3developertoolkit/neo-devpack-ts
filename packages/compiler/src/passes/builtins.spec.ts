@@ -82,6 +82,8 @@ describe("builtins", () => {
             const scope = createTestScope(globalScope)(value);
 
             const ops = pipe(resultExpr, parseExpression(scope), testRight(e => e.message));
+            expect(ops[0]).has.property('kind').that.equals('loadlocal');
+
 
         })
 
