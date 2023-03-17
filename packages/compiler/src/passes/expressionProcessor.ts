@@ -400,6 +400,7 @@ export function parseExpressionAsBoolean(scope: Scope) {
 interface ChainContext {
     readonly operations: ReadonlyArray<Operation>;
     readonly def: O.Option<SymbolDef>,
+    readonly endTarget: Operation
 }
 
 
@@ -432,6 +433,7 @@ export const parseIdentifierChain =
                             return ({
                                 def: O.of(def),
                                 operations,
+                                endTarget: { kind: 'noop' }
                             });
                         })
                     )
@@ -453,7 +455,8 @@ const createChainContext =
                     E.map(operations => {
                         return {
                             operations,
-                            def: O.none
+                            def: O.none,
+                            endTarget: { kind: 'noop' }
                         } as ChainContext
                     })
                 )
@@ -481,15 +484,15 @@ const parseAsExpression =
                     O.map(flow(
                         resolve(node)(scope),
                         E.map(def => ({
-                            operations: context.operations,
+                            ...context,
                             def: O.of(def),
-                        } as ChainContext))
+                        }))
                     )),
                     O.match(
                         () => E.of({
-                            operations: context.operations,
+                            ...context,
                             def: O.none
-                        } as ChainContext),
+                        }),
                         identity
                     )
                 );
@@ -520,7 +523,11 @@ const parseCallExpression =
                         return resolveType(node)(scope)(node.getType());
                     }),
                     E.map(ctx => {
-                        return ctx as ChainContext;
+                        return {
+                            ...context,
+                            def: ctx.def,
+                            operations: ctx.operations
+                        };
                     })
                 )
             }
@@ -531,9 +538,7 @@ const parsePropertyAccessExpression =
             (node: tsm.PropertyAccessExpression): E.Either<ParseError, ChainContext> => {
                 const makeError = makeParseError(node);
 
-                const symbol = node.getSymbol();
-                const type = node.getType();
-                const def = pipe(context.def, O.toUndefined)
+                const hasOptionalChain = node.hasQuestionDotToken();
 
                 return pipe(
                     node,
@@ -571,13 +576,25 @@ const parsePropertyAccessExpression =
                         );
                     }),
                     E.bind('loadOps', ({ property }) => {
-                        return parseLoadOps(node)(property);
+                        return pipe(
+                            property,
+                            parseLoadOps(node),
+                            E.map(ops => {
+                                return node.hasQuestionDotToken()
+                                    ? ROA.concat(ops)([
+                                        { kind: "duplicate" },
+                                        { kind: "isnull" },
+                                        { kind: "jumpif", target: context.endTarget }
+                                    ] as Operation[]) : ops;
+                            })
+                        );
                     }),
                     E.map(({
                         loadOps,
                         property
                     }) => {
                         return ({
+                            ...context,
                             operations: ROA.concat(loadOps)(context.operations),
                             def: O.of(property)
                         } as ChainContext);
@@ -616,7 +633,9 @@ export function parseExpressionChain(scope: Scope) {
                     reduceChainContext(scope)
                 )
             )),
-            E.map(context => context.operations)
+            E.map(context => {
+                return ROA.append(context.endTarget)(context.operations);
+            })
         );
 
         function makeExpressionChain(node: tsm.Expression): RNEA.ReadonlyNonEmptyArray<tsm.Expression> {
