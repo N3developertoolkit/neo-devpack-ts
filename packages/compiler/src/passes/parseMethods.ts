@@ -50,7 +50,7 @@ export function parseProps(decl: tsm.InterfaceDeclaration) {
     };
 }
 
-export class MethodDef extends $SymbolDef implements CallableSymbolDef {
+export class StaticMethodDef extends $SymbolDef implements CallableSymbolDef {
     readonly loadOps = [];
     readonly props = [];
     constructor(
@@ -61,14 +61,42 @@ export class MethodDef extends $SymbolDef implements CallableSymbolDef {
     }
 }
 
-export function parseMethods(decl: tsm.InterfaceDeclaration) {
+export function parseStaticMethods(decl: tsm.InterfaceDeclaration) {
     return (methods: Record<string, ParseArgumentsFunc>): readonly SymbolDef[] => {
         return pipe(
             methods,
             ROR.mapWithIndex((key, value) => pipe(
                 decl.getMethod(key),
                 O.fromNullable,
-                O.map(sig => new MethodDef(sig, value)),
+                O.map(sig => new StaticMethodDef(sig, value)),
+                E.fromOption(() => key)
+            )),
+            rorValues,
+            checkErrors(`unresolved ${decl.getSymbol()?.getName()} methods`)
+        );
+    };
+}
+
+class InstanceMethodDef extends $SymbolDef implements CallableSymbolDef {
+    readonly props = [];
+
+    constructor(
+        readonly sig: tsm.MethodSignature,
+        readonly loadOps: readonly Operation[],
+        readonly parseArguments: ParseArgumentsFunc
+    ) {
+        super(sig);
+    }
+}
+
+export function parseInstanceMethods(decl: tsm.InterfaceDeclaration) {
+    return (methods: Record<string, [ReadonlyArray<Operation>, ParseArgumentsFunc]>): readonly SymbolDef[] => {
+        return pipe(
+            methods,
+            ROR.mapWithIndex((key, [loadOps, parseArgs]) => pipe(
+                decl.getMethod(key),
+                O.fromNullable,
+                O.map(sig => new InstanceMethodDef(sig, loadOps, parseArgs)),
                 E.fromOption(() => key)
             )),
             rorValues,

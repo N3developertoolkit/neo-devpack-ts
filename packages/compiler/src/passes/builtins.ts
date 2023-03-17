@@ -70,17 +70,6 @@ class CallableVariableDef extends $SymbolDef implements CallableSymbolDef {
     }
 }
 
-export class StaticMethodDef extends $SymbolDef implements CallableSymbolDef {
-    readonly loadOps = [];
-    readonly props = [];
-    constructor(
-        readonly sig: tsm.MethodSignature,
-        readonly parseArguments: ParseArgumentsFunc
-    ) {
-        super(sig);
-    }
-}
-
 const parseArgArray = (scope: Scope) => (args: readonly tsm.Expression[]) => {
     return pipe(
         args,

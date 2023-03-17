@@ -12,7 +12,7 @@ import { $SymbolDef, makeParseError } from "../symbolDef";
 import { single } from "../utils";
 import { isPushDataOp, Operation, PushDataOperation } from "../types/Operation";
 import { getArguments, parseExpression } from "./expressionProcessor";
-import { parseMethods, parseProps } from "./parseMethods";
+import { parseStaticMethods, parseProps, parseInstanceMethods } from "./parseMethods";
 
 const fromEncoding =
     (encoding: BufferEncoding) =>
@@ -120,33 +120,29 @@ export class ByteStringConstructorDef extends $SymbolDef implements ObjectSymbol
 
     constructor(readonly decl: tsm.InterfaceDeclaration) {
         super(decl);
-        this.props = parseMethods(decl)(byteStringCtorMethods);
+        this.props = parseStaticMethods(decl)(byteStringCtorMethods);
     }
 }
 
-export class ByteStringAsInteger extends $SymbolDef implements CallableSymbolDef {
-    readonly props = [];
-    readonly loadOps = [
-        { kind: "convert", type: sc.StackItemType.Integer },
-    ] as readonly Operation[];
-    readonly parseArguments =  (scope: Scope) => (node: tsm.CallExpression) => E.of(ROA.empty)
-
-    constructor(readonly sig: tsm.MethodSignature) {
-        super(sig);
-    }
-
-}
-
-const byteStringProps: Record<string, ReadonlyArray<Operation>> = {
+const byteStringInstanceProps: Record<string, ReadonlyArray<Operation>> = {
     "length": [{ kind: "size" }],
 }
+
+const byteStringInstanceMethods: Record<string, [ReadonlyArray<Operation>, ParseArgumentsFunc]> = {
+    "asInteger": [
+        [{ kind: "convert", type: sc.StackItemType.Integer }],
+        (_scope) => (_node) => E.of(ROA.empty)
+    ]
+}
+
 export class ByteStringInterfaceDef extends $SymbolDef implements ObjectSymbolDef {
     readonly loadOps: ReadonlyArray<Operation> = [];
     readonly props: ReadonlyArray<SymbolDef>;
 
     constructor(readonly decl: tsm.InterfaceDeclaration) {
         super(decl);
-        const asInt:SymbolDef = new ByteStringAsInteger(decl.getMethodOrThrow("asInteger"));
-        this.props = ROA.append(asInt)(parseProps(decl)(byteStringProps));
+        const methods = parseInstanceMethods(decl)(byteStringInstanceMethods);
+        const props = parseProps(decl)(byteStringInstanceProps);
+        this.props = ROA.concat(methods)(props);
     }
 }
