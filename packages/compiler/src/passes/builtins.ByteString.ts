@@ -12,7 +12,7 @@ import { $SymbolDef, makeParseError } from "../symbolDef";
 import { single } from "../utils";
 import { isPushDataOp, Operation, PushDataOperation } from "../types/Operation";
 import { getArguments, parseExpression } from "./expressionProcessor";
-import { parseStaticMethods, parseProps, parseInstanceMethods } from "./parseMethods";
+import { BuiltInCallableOptions, createBuiltInObject, parseBuiltInCallables, parseBuiltInSymbols } from "./builtins.SymbolDefs";
 
 const fromEncoding =
     (encoding: BufferEncoding) =>
@@ -110,17 +110,21 @@ export const byteStringFromInteger =
         )
     }
 
-const byteStringCtorMethods: Record<string, ParseArgumentsFunc> = {
-    "fromHex": byteStringFromHex,
-    "fromString": byteStringFromString,
-    "fromInteger": byteStringFromInteger
+const byteStringCtorMethods: Record<string, BuiltInCallableOptions> = {
+    "fromHex": { parseArguments: byteStringFromHex },
+    "fromString": { parseArguments: byteStringFromString },
+    "fromInteger": { parseArguments: byteStringFromInteger },
 };
-export class ByteStringConstructorDef extends $SymbolDef implements ObjectSymbolDef {
-    readonly props: ReadonlyArray<SymbolDef>;
 
-    constructor(readonly decl: tsm.InterfaceDeclaration) {
-        super(decl);
-        this.props = parseStaticMethods(decl)(byteStringCtorMethods);
+export function makeByteStringConstructor(decl: tsm.InterfaceDeclaration) {
+    const props = parseBuiltInCallables(decl)(byteStringCtorMethods);
+    return createBuiltInObject(decl, { props });
+}
+
+const byteStringInstanceMethods: Record<string, BuiltInCallableOptions> = {
+    "asInteger": {
+        loadOps: [{ kind: "convert", type: sc.StackItemType.Integer }],
+        parseArguments: (_scope) => (_node) => E.of(ROA.empty)
     }
 }
 
@@ -128,21 +132,10 @@ const byteStringInstanceProps: Record<string, ReadonlyArray<Operation>> = {
     "length": [{ kind: "size" }],
 }
 
-const byteStringInstanceMethods: Record<string, [ReadonlyArray<Operation>, ParseArgumentsFunc]> = {
-    "asInteger": [
-        [{ kind: "convert", type: sc.StackItemType.Integer }],
-        (_scope) => (_node) => E.of(ROA.empty)
-    ]
-}
+export function makeByteStringInterface(decl: tsm.InterfaceDeclaration) {
+    const methods = parseBuiltInCallables(decl)(byteStringInstanceMethods);
+    const properties = parseBuiltInSymbols(decl)(byteStringInstanceProps);
 
-export class ByteStringInterfaceDef extends $SymbolDef implements ObjectSymbolDef {
-    readonly loadOps: ReadonlyArray<Operation> = [];
-    readonly props: ReadonlyArray<SymbolDef>;
-
-    constructor(readonly decl: tsm.InterfaceDeclaration) {
-        super(decl);
-        const methods = parseInstanceMethods(decl)(byteStringInstanceMethods);
-        const props = parseProps(decl)(byteStringInstanceProps);
-        this.props = ROA.concat(methods)(props);
-    }
+    const props = ROA.concat(methods)(properties);
+    return createBuiltInObject(decl, { props });
 }
