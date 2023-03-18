@@ -34,8 +34,8 @@ export function balanceOf(account: ByteStringInstance): bigint {
 /** @safe */
 export function tokensOf(account: ByteStringInstance) {
     if (!account || account.length != 20) throw Error("The argument \"account\" is invalid.");
-    const key = concat(ACCOUNT_TOKEN_PREFIX, account);
-    return Storage.context.find(key, FindOptions.KeysOnly | FindOptions.RemovePrefix)
+    const prefix = concat(ACCOUNT_TOKEN_PREFIX, account);
+    return Storage.context.keys(prefix, true)
 }
 
 export function transfer(to: ByteStringInstance, tokenId: ByteStringInstance, data: any) {
@@ -77,7 +77,7 @@ export function ownerof(tokenId: ByteStringInstance) {
 
 /** @safe */
 export function tokens() {
-    return Storage.context.find(TOKEN_PREFIX, FindOptions.KeysOnly | FindOptions.RemovePrefix)
+    return Storage.context.keys(TOKEN_PREFIX, true);
 }
 
 // mint

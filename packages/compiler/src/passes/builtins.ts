@@ -17,11 +17,9 @@ import { Operation, parseOperation as $parseOperation } from "../types/Operation
 
 import { getArguments, parseExpression } from "./expressionProcessor";
 import { makeByteStringConstructor, makeByteStringInterface } from "./builtins.ByteString";
-import { checkErrors, createBuiltInCallable, createBuiltInObject, createBuiltInSymbol, rorValues } from "./builtins.SymbolDefs";
+import { checkErrors, createBuiltInCallable, createBuiltInObject, createBuiltInSymbol, isMethodOrProp, rorValues } from "./builtins.SymbolDefs";
+import { makeReadonlyStorageContext, makeStorageConstructor, makeStorageContext } from "./builtins.Storage";
 
-function isMethodOrProp(node: tsm.Node): node is (tsm.MethodSignature | tsm.PropertySignature) {
-    return tsm.Node.isMethodSignature(node) || tsm.Node.isPropertySignature(node);
-}
 
 module REGEX {
     export const match = (regex: RegExp) => (value: string) => O.fromNullable(value.match(regex));
@@ -304,10 +302,10 @@ export const makeGlobalScope =
                 "ByteStringConstructor": makeByteStringConstructor,
                 "ByteStringInstance": makeByteStringInterface,
                 "Iterator": makeIteratorInterface,
-                "ReadonlyStorageContext": makeSysCallInterface,
+                "ReadonlyStorageContext": makeReadonlyStorageContext,
                 "RuntimeConstructor": makeSysCallInterface,
-                "StorageConstructor": makeSysCallInterface,
-                "StorageContext": makeSysCallInterface,
+                "StorageConstructor": makeStorageConstructor,
+                "StorageContext": makeStorageContext,
             }
 
             const builtInVars: Record<string, (decl: tsm.VariableDeclaration) => SymbolDef> = {

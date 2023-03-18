@@ -188,28 +188,35 @@ export const parseBooleanLiteral =
         return E.right({ kind: "pushbool", value });
     }
 
+export function makeConditionalExpression({ condition, whenTrue, whenFalse }: {
+    condition: readonly Operation[];
+    whenTrue: readonly Operation[];
+    whenFalse: readonly Operation[];
+}): readonly Operation[] {
+
+    const falseTarget: Operation = { kind: "noop" };
+    const endTarget: Operation = { kind: "noop" };
+    return pipe(
+        condition,
+        ROA.append({ kind: 'jumpifnot', target: falseTarget } as Operation),
+        ROA.concat(whenTrue),
+        ROA.append({ kind: 'jump', target: endTarget } as Operation),
+        ROA.append(falseTarget as Operation),
+        ROA.concat(whenFalse),
+        ROA.append(endTarget as Operation)
+    );
+}
+
 export const parseConditionalExpression =
     (scope: Scope) =>
         (node: tsm.ConditionalExpression): E.Either<ParseError, readonly Operation[]> => {
-
-            const falseTarget: Operation = { kind: "noop" };
-            const endTarget: Operation = { kind: "noop" };
-
             return pipe(
                 node.getCondition(),
                 parseExpressionAsBoolean(scope),
                 E.bindTo('condition'),
                 E.bind("whenTrue", () => pipe(node.getWhenTrue(), parseExpression(scope))),
                 E.bind("whenFalse", () => pipe(node.getWhenFalse(), parseExpression(scope))),
-                E.map(o => pipe(
-                    o.condition,
-                    ROA.append({ kind: 'jumpifnot', target: falseTarget } as Operation),
-                    ROA.concat(o.whenTrue),
-                    ROA.append({ kind: 'jump', target: endTarget } as Operation),
-                    ROA.append(falseTarget as Operation),
-                    ROA.concat(o.whenFalse),
-                    ROA.append(endTarget as Operation)
-                ))
+                E.map(makeConditionalExpression)
             )
         }
 

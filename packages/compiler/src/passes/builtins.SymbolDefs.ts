@@ -9,6 +9,10 @@ import { Operation } from "../types/Operation";
 import { $SymbolDef } from "../symbolDef";
 import { parseArguments } from "./expressionProcessor";
 
+export function isMethodOrProp(node: tsm.Node): node is (tsm.MethodSignature | tsm.PropertySignature) {
+    return tsm.Node.isMethodSignature(node) || tsm.Node.isPropertySignature(node);
+}
+
 export function checkErrors(errorMessage: string) {
     return <T>(results: readonly E.Either<string, T>[]): readonly T[] => {
         const { left: errors, right: values } = pipe(results, ROA.separate);
@@ -38,15 +42,22 @@ export function createBuiltInSymbol(node: tsm.Node, loadOps?: readonly Operation
         loadOps ?? []);
 }
 
-type MemberedNode = tsm.TypeElementMemberedNode & { getSymbol(): tsm.Symbol | undefined };
+type MemberedNode = tsm.TypeElementMemberedNode & { getSymbol(): tsm.Symbol | undefined, getType(): tsm.Type };
 
-const getMember = (name: string)=> (decl: tsm.TypeElementMemberedNode) => {
-    return pipe(
-        decl.getMembers(),
-        ROA.findFirst(m => m.getSymbol()?.getName() === name),
-        E.fromOption(() => name)
-    )
-}
+const getMember =
+    (name: string) =>
+        (decl: MemberedNode) => {
+            const q = pipe(
+                // use getType().getProperties() to get all members in the inheritance chain
+                decl.getType().getProperties(),
+                ROA.chain(s => s.getDeclarations()),
+                ROA.filter(isMethodOrProp),
+                ROA.findFirst(m => m.getSymbol()?.getName() === name),
+                E.fromOption(() => name)
+            )
+
+            return q;
+        }
 
 export function parseBuiltInSymbols(decl: MemberedNode) {
     return (props: Record<string, ReadonlyArray<Operation>>): readonly SymbolDef[] => {
@@ -62,7 +73,6 @@ export function parseBuiltInSymbols(decl: MemberedNode) {
             }),
             rorValues,
             checkErrors(`unresolved ${decl.getSymbol()?.getName()} properties`)
-
         );
     };
 }
@@ -89,24 +99,6 @@ export function createBuiltInObject(node: tsm.Node, options: BuiltInObjectOption
         options.loadOps ?? [],
         options.props ?? []);
 }
-
-// export function parseBuiltInObject(decl: MemberedNode) {
-//     return (props: Record<string, BuiltInObjectOptions>): readonly SymbolDef[] => {
-
-//         return pipe(
-//             props,
-//             ROR.mapWithIndex((key, value) => {
-//                 return pipe(
-//                     decl,
-//                     getMember(key),
-//                     E.map(sig => createBuiltInObject(sig, value))
-//                 );
-//             }),
-//             rorValues,
-//             checkErrors(`unresolved ${decl.getSymbol()?.getName()} objects`)
-//         );
-//     };
-// }
 
 export class BuiltInCallableDef extends $SymbolDef implements CallableSymbolDef {
 
@@ -136,9 +128,6 @@ export function createBuiltInCallable(node: tsm.Node, options: BuiltInCallableOp
 export function parseBuiltInCallables(decl: MemberedNode) {
     return (props: Record<string, BuiltInCallableOptions>): readonly SymbolDef[] => {
 
-        const q = decl.getMembers();
-        q[0].getSymbol()?.getName();
-        
         return pipe(
             props,
             ROR.mapWithIndex((key, value) => {

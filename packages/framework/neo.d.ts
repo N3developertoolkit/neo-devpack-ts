@@ -71,21 +71,33 @@ declare global {
     export const Storage: StorageConstructor;
 
     export interface StorageConstructor {
-        /** @syscall System.Storage.GetContext */
         readonly context: StorageContext;
-        /** @syscall System.Storage.GetReadOnlyContext */
         readonly readonlyContext: ReadonlyStorageContext;
     }
 
     export type StorageType = ByteStringInstance | string //| Hash160 | Hash256;
 
     export interface ReadonlyStorageContext {
-        /** @syscall System.Storage.Get */
         get(key: StorageType): ByteStringInstance | undefined;
-        /** @syscall System.Storage.Find */
-        find(prefix: ByteStringInstance, options: FindOptions): Iterator<unknown>
-    }
+        find(prefix: ByteStringInstance, options: FindOptions): Iterator<unknown>;
 
+        // the following three methods map to StorageContext.Find, with what I would argue are the most common
+        // combinations of Flag Options:
+
+        // with and without RemovePrefix
+        entries(prefix?: ByteStringInstance, removePrefix?: boolean): Iterator<[ByteStringInstance, ByteStringInstance]>;
+        // KeysOnly with and without RemovePrefix
+        keys(prefix?: ByteStringInstance, removePrefix?: boolean): Iterator<ByteStringInstance>;
+        // ValuesOnly
+        values(prefix?: ByteStringInstance): Iterator<ByteStringInstance>;
+
+        // this interface will need a mechanism for surfacing the DeserializeValues option.
+        // for now, author can simply call StdLib.deserialize, but that's a pricy call to execute
+        // for every item in the iterator when using the DeserializeValues option does it for free.
+
+        // not sure if PickField0/1 are really that useful.
+    }        
+        
     export interface StorageContext extends ReadonlyStorageContext {
         /** @syscall System.Storage.AsReadOnly */
         readonly asReadonly: ReadonlyStorageContext;
