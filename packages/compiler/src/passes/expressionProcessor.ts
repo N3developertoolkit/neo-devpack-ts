@@ -5,7 +5,7 @@ import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option'
 import * as TS from "../utility/TS";
-import { Operation, SimpleOperationKind } from "../types/Operation";
+import { isJumpOffsetOp, isJumpTargetOp, Operation, SimpleOperationKind } from "../types/Operation";
 import { resolve as $resolve } from "../scope";
 import { ParseError, Scope, SymbolDef } from "../types/ScopeType";
 import { isCallableDef, isObjectDef, makeParseError, parseLoadOps } from "../symbolDef";
@@ -633,7 +633,17 @@ export function parseExpressionChain(scope: Scope) {
                 )
             )),
             E.map(context => {
-                return ROA.append(context.endTarget)(context.operations);
+                const endJumps = pipe(
+                    context.operations,
+                    ROA.filter(isJumpTargetOp),
+                    ROA.filter(op => op.target === context.endTarget),
+                )
+
+                // only add the endTarget operation if there is at least 
+                // one jump ops targeting it
+                return endJumps.length > 0
+                    ? ROA.append(context.endTarget)(context.operations)
+                    : context.operations;
             })
         );
 
