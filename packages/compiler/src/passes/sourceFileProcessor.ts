@@ -15,6 +15,7 @@ import { Operation } from "../types/Operation";
 import { createScope, updateScope } from "../scope";
 import { CallableSymbolDef, ParseArgumentsFunc, ParseError, Scope, SymbolDef } from "../types/ScopeType";
 import { parseSymbol } from "./parseSymbol";
+import { single } from "../utils";
 
 interface ParseSourceContext {
     readonly scope: Scope
@@ -156,9 +157,17 @@ const parseConstVariableDeclaration =
                 E.bindTo('init'),
                 E.bind('symbol', () => parseSymbol(node)),
                 E.map(({ init, symbol }) => {
-
-                    if (init.length === 1 && isPushOp(init[0])) {
-                        const def = new ConstantSymbolDef(node, symbol, init[0])
+                    const initOp = pipe(
+                        init,
+                        ROA.filter(op => op.kind != 'noop'),
+                        single,
+                        O.toUndefined
+                    )
+                    // if the init expression is a single push operation, register 
+                    // a constant symbol, which enables the value to be inserted
+                    // at compile time rather than loaded at runtime 
+                    if (initOp && isPushOp(initOp)) {
+                        const def = new ConstantSymbolDef(node, symbol, initOp)
                         const scope = updateScope(context.scope)([def]);
                         return { ...context, scope } as ParseSourceContext;
                     } else {
