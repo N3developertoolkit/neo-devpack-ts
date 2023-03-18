@@ -38,22 +38,37 @@ export function tokensOf(account: ByteStringInstance) {
     return Storage.context.keys(prefix, true)
 }
 
+interface TokenState
+{
+    owner: ByteStringInstance,
+    name: string,
+    description: string,
+    image: string,
+}
+
 export function transfer(to: ByteStringInstance, tokenId: ByteStringInstance, data: any) {
     // if (to is null || !to.IsValid) throw Error("The argument \"to\" is invalid.");
     const key = concat(TOKEN_PREFIX, tokenId);
     const serialzied = Storage.context.get(key);
-    // if (!serialzied) return false;
-    // deserialize token state
-    // checkwitness of token owner 
-    // changer token owner to to
-    // serialize token
-    // save serialzied token to key
-    // update balance of from and to 
-    // post transfer
-    // return true;
+    if (!serialzied) {
+        log("invalid tokenId");
+        return false;
+    }
+    const token = StdLib.deserialize(serialzied) as TokenState;
+    const owner = token.owner;
+    if (!checkWitness(owner)) {
+        log("only token owner can transfer");
+        return false;
+    }
 
-    // TBD returns boolean
-    return false;
+    if (owner !== to) {
+        token.owner = to;
+        Storage.context.put(key, StdLib.serialize(token));
+        // updateBalance(owner, tokenId, -1);
+        // updateBalance(to, tokenId, +1);
+    }
+    postTransfer(owner, to, tokenId, data);
+    return true;
 }
 
 function postTransfer(from: ByteStringInstance | null, to: ByteStringInstance | null, tokenId: ByteStringInstance, data: any) {
@@ -70,9 +85,12 @@ function postTransfer(from: ByteStringInstance | null, to: ByteStringInstance | 
 export function ownerof(tokenId: ByteStringInstance) {
     const key = concat(TOKEN_PREFIX, tokenId);
     const serialzied = Storage.context.get(key);
-    // deserialize token state
-    // return token owner
-    return ByteString.fromString('dummy');
+    if (serialzied) {
+        const token = StdLib.deserialize(serialzied) as TokenState;
+        return token.owner;
+    } else {
+        return null;
+    }
 }
 
 /** @safe */
@@ -101,9 +119,17 @@ export function mint(name: string, description: string, imageUrl: string) {
 export function properties(tokenId: ByteStringInstance) {
     const key = concat(TOKEN_PREFIX, tokenId);
     const serialzied = Storage.context.get(key);
-    // deserialize token state
-    // convert token state to map and return
-    return null;
+    if (serialzied) {
+        const token = StdLib.deserialize(serialzied) as TokenState;
+        const map = new Map<string, any>();
+        map.set("owner", token.owner);
+        map.set("name", token.name);
+        map.set("description", token.description);
+        map.set("image", token.image);
+        return map;
+    } else {
+        return null;
+    }
 }
 
 export function _deploy(_data: any, update: boolean): void {
