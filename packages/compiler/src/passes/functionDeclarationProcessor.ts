@@ -9,7 +9,7 @@ import * as SEP from 'fp-ts/Separated';
 import * as FP from 'fp-ts'
 import * as TS from "../utility/TS";
 
-import { $SymbolDef, makeParseError } from "../symbolDef";
+import { makeParseError } from "../symbolDef";
 import { createScope, updateScope } from "../scope";
 import { ParseError, Scope, SymbolDef } from "../types/ScopeType";
 import { convertJumpTargetOps, isJumpTargetOp, JumpOffsetOperation, JumpTargetOperation, LoadStoreOperation, Location, Operation } from "../types/Operation";
@@ -17,6 +17,7 @@ import { isVoidLike } from "../utils";
 import { ContractMethod } from "../types/CompileOptions";
 import { parseSymbol } from "./parseSymbol";
 import { parseExpression as $parseExpression, parseExpressionAsBoolean } from "./expressionProcessor";
+import { LocalVariableSymbolDef, ParameterSymbolDef } from "./sourceSymbolDefs";
 
 interface ParseFunctionContext {
     readonly scope: Scope;
@@ -30,44 +31,6 @@ interface ParseBodyResult {
 }
 
 type ParseStatementState = S.State<ParseFunctionContext, readonly Operation[]>
-
-class LocalVariableSymbolDef extends $SymbolDef {
-
-    get loadOps(): readonly Operation[] {
-        return [{ kind: "loadlocal", index: this.index }];
-    }
-    get storeOps(): readonly Operation[] {
-        return [{ kind: "storelocal", index: this.index }];
-    }
-
-    constructor(
-        readonly decl: tsm.VariableDeclaration,
-        symbol: tsm.Symbol,
-        readonly index: number
-    ) {
-        super(decl, symbol);
-        this.type = decl.getType();
-    }
-
-    type: tsm.Type<tsm.ts.Type>;
-}
-
-class ParameterSymbolDef extends $SymbolDef {
-    get loadOps() {
-        return [{ kind: "loadarg", index: this.index }];
-    }
-    get storeOps() {
-        return [{ kind: "storearg", index: this.index }];
-    }
-
-    constructor(
-        readonly decl: tsm.ParameterDeclaration,
-        symbol: tsm.Symbol,
-        readonly index: number
-    ) {
-        super(decl, symbol);
-    }
-}
 
 export const E_fromSeparated = <E, A>(s: SEP.Separated<readonly E[], A>): E.Either<readonly E[], A> =>
     ROA.isNonEmpty(s.left) ? E.left(s.left) : E.of(s.right)

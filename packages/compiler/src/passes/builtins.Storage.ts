@@ -1,19 +1,14 @@
 import * as tsm from "ts-morph";
-import { sc, u } from "@cityofzion/neon-core";
-import { flow, identity, pipe } from "fp-ts/lib/function";
+import { flow, pipe } from "fp-ts/lib/function";
 import * as E from "fp-ts/Either";
 import * as ROA from 'fp-ts/ReadonlyArray'
-import * as ROR from 'fp-ts/ReadonlyRecord'
 import * as O from 'fp-ts/Option'
-import * as TS from "../utility/TS";
 
-import { CallableSymbolDef, ObjectSymbolDef, ParseArgumentsFunc, ParseError, Scope, SymbolDef } from "../types/ScopeType";
-import { $SymbolDef, makeParseError } from "../symbolDef";
+import { ParseError, Scope } from "../types/ScopeType";
 import { single } from "../utils";
-import { isPushBoolOp, isPushDataOp, Operation, PushDataOperation } from "../types/Operation";
+import { isPushBoolOp, Operation } from "../types/Operation";
 import { getArguments, makeConditionalExpression, parseExpression, parseExpressionAsBoolean } from "./expressionProcessor";
-import { BuiltInCallableOptions, BuiltInSymbolDef, createBuiltInObject, parseBuiltInCallables, parseBuiltInSymbols } from "./builtins.SymbolDefs";
-import { concat } from "fp-ts/lib/ReadonlyNonEmptyArray";
+import { BuiltInCallableOptions, createBuiltInObject, parseBuiltInCallables, parseBuiltInSymbols } from "./builtins.SymbolDefs";
 
 const enum FindOptions {
     None = 0,
@@ -35,7 +30,7 @@ const parsePrefix = (scope: Scope) => (arg: O.Option<tsm.Expression>) => {
 }
 
 const parseRemovePrefix =
-    (trueOpt: FindOptions, falseOpt: FindOptions) =>
+    (trueOptions: FindOptions, falseOptions: FindOptions) =>
         (scope: Scope) => (arg: O.Option<tsm.Expression>) => {
             return pipe(
                 arg,
@@ -53,12 +48,12 @@ const parseRemovePrefix =
 
                     if (op && isPushBoolOp(op)) {
                         // if the arg is a hard coded true or false, calculate the find option at compile time
-                        const option = op.value ? trueOpt : falseOpt;
+                        const option = op.value ? trueOptions : falseOptions;
                         return ROA.of({ kind: 'pushint', value: BigInt(option) } as Operation)
                     } else {
                         // otherwise, insert a conditional to calculate the find option at runtime
-                        const whenTrue = ROA.of({ kind: 'pushint', value: BigInt(trueOpt) } as Operation);
-                        const whenFalse = ROA.of({ kind: 'pushint', value: BigInt(falseOpt) } as Operation);
+                        const whenTrue = ROA.of({ kind: 'pushint', value: BigInt(trueOptions) } as Operation);
+                        const whenFalse = ROA.of({ kind: 'pushint', value: BigInt(falseOptions) } as Operation);
                         return makeConditionalExpression({ condition, whenTrue, whenFalse })
                     }
                 })
@@ -66,7 +61,7 @@ const parseRemovePrefix =
         }
 
 export const invokeFindRemovePrefix =
-    (trueOpt: FindOptions, falseOpt: FindOptions) =>
+    (trueOptions: FindOptions, falseOptions: FindOptions) =>
         (scope: Scope) => (
             node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
             return pipe(
@@ -81,7 +76,7 @@ export const invokeFindRemovePrefix =
                         E.bind('removePrefix', () => pipe(
                             args,
                             ROA.lookup(1),
-                            parseRemovePrefix(trueOpt, falseOpt)(scope))
+                            parseRemovePrefix(trueOptions, falseOptions)(scope))
                         ),
                         E.map(o => ROA.concat(o.prefix)(o.removePrefix))
                     )

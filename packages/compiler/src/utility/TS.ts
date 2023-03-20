@@ -54,3 +54,22 @@ export const getExpression =
         tsm.Node.hasExpression(node)
             ? O.of(node.getExpression())
             : O.none;
+            
+export type MemberedNode = tsm.TypeElementMemberedNode & { getSymbol(): tsm.Symbol | undefined, getType(): tsm.Type };
+
+export function isMethodOrProp(node: tsm.Node): node is (tsm.MethodSignature | tsm.PropertySignature) {
+    return tsm.Node.isMethodSignature(node) || tsm.Node.isPropertySignature(node);
+}
+
+export const getMember =
+    (name: string) =>
+        (decl: MemberedNode) => {
+            return pipe(
+                // use getType().getProperties() to get all members in the inheritance chain
+                decl.getType(),
+                getTypeProperties,
+                ROA.chain(s => s.getDeclarations()),
+                ROA.filter(isMethodOrProp),
+                ROA.findFirst(m => m.getSymbol()?.getName() === name),
+            )
+        }

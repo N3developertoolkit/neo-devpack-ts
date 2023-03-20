@@ -38,6 +38,7 @@ export function tokensOf(account: ByteStringInstance) {
     return Storage.context.keys(prefix, true)
 }
 
+/** @struct */
 interface TokenState
 {
     owner: ByteStringInstance,
@@ -119,17 +120,18 @@ export function mint(name: string, description: string, imageUrl: string) {
 export function properties(tokenId: ByteStringInstance) {
     const key = concat(TOKEN_PREFIX, tokenId);
     const serialzied = Storage.context.get(key);
-    if (serialzied) {
-        const token = StdLib.deserialize(serialzied) as TokenState;
-        const map = new Map<string, any>();
-        map.set("owner", token.owner);
-        map.set("name", token.name);
-        map.set("description", token.description);
-        map.set("image", token.image);
-        return map;
-    } else {
+    
+    // if (serialzied) {
+    //     const token = StdLib.deserialize(serialzied) as TokenState;
+    //     const map = new Map<string, any>();
+    //     map.set("owner", token.owner);
+    //     map.set("name", token.name);
+    //     map.set("description", token.description);
+    //     map.set("image", token.image);
+    //     return map;
+    // } else {
         return null;
-    }
+    // }
 }
 
 export function _deploy(_data: any, update: boolean): void {

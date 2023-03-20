@@ -1,4 +1,4 @@
-import { Node, Symbol, FunctionDeclaration, JSDocTag, VariableStatement, Expression, SyntaxKind, VariableDeclarationKind, SourceFile, VariableDeclaration, CallExpression, Project } from "ts-morph";
+import { Node, Symbol, FunctionDeclaration, JSDocTag, VariableStatement, Expression, SyntaxKind, VariableDeclarationKind, SourceFile, VariableDeclaration, CallExpression, Project, InterfaceDeclaration, PropertySignature } from "ts-morph";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as S from 'fp-ts/State'
 import * as TS from '../utility/TS';
@@ -13,9 +13,10 @@ import { parseContractMethod } from "./functionDeclarationProcessor";
 import { parseArguments, parseExpression } from './expressionProcessor';
 import { Operation } from "../types/Operation";
 import { createScope, updateScope } from "../scope";
-import { CallableSymbolDef, ParseArgumentsFunc, ParseError, Scope, SymbolDef } from "../types/ScopeType";
+import { CallableSymbolDef, ObjectSymbolDef, ParseArgumentsFunc, ParseError, Scope, SymbolDef } from "../types/ScopeType";
 import { parseSymbol } from "./parseSymbol";
 import { single } from "../utils";
+import { ConstantSymbolDef, EventFunctionSymbolDef, LocalFunctionSymbolDef, StaticVarSymbolDef, StructMemberSymbolDef, StructSymbolDef } from "./sourceSymbolDefs";
 
 interface ParseSourceContext {
     readonly scope: Scope
@@ -28,95 +29,6 @@ export interface ParseSourceResults {
     readonly staticVars: readonly StaticVarSymbolDef[],
 }
 
-class StaticVarSymbolDef extends $SymbolDef {
-    get loadOps(): readonly Operation[] {
-        return [{ kind: "loadstatic", index: this.index }];
-    }
-    get storeOps(): readonly Operation[] {
-        return [{ kind: "storestatic", index: this.index }];
-    }
-
-    constructor(
-        readonly decl: VariableDeclaration,
-        symbol: Symbol,
-        readonly index: number,
-        readonly initOps?: readonly Operation[]
-    ) {
-        super(decl, symbol);
-    }
-}
-
-class ConstantSymbolDef extends $SymbolDef {
-    readonly loadOps: readonly Operation[];
-
-    constructor(
-        readonly decl: VariableDeclaration,
-        symbol: Symbol,
-        op: Operation
-    ) {
-        super(decl, symbol);
-        this.loadOps = [op];
-    }
-}
-
-class EventFunctionSymbolDef extends $SymbolDef implements CallableSymbolDef {
-
-    readonly loadOps: readonly Operation[];
-    readonly props = [];
-
-    constructor(
-        readonly decl: FunctionDeclaration,
-        symbol: Symbol,
-        readonly eventName: string
-    ) {
-        super(decl, symbol);
-        this.loadOps = ROA.of({ kind: 'syscall', name: "System.Runtime.Notify" })
-    }
-
-    parseArguments = (scope: Scope) => (node: CallExpression): E.Either<ParseError, ReadonlyArray<Operation>> => {
-        return pipe(
-            node,
-            parseArguments(scope),
-            E.map(ROA.concat([
-                { kind: "pushint", value: BigInt(node.getArguments().length) },
-                { kind: 'pack' },
-                { kind: 'pushdata', value: Buffer.from(this.name, 'utf8') }
-            ] as readonly Operation[]))
-        );
-    }
-
-    static create(decl: FunctionDeclaration, tag: JSDocTag): E.Either<ParseError, EventFunctionSymbolDef> {
-        return pipe(
-            decl,
-            parseSymbol,
-            E.map(symbol => {
-                const eventName = tag.getCommentText() ?? symbol.getName();
-                return new EventFunctionSymbolDef(decl, symbol, eventName);
-            })
-        );
-    }
-}
-
-class LocalFunctionSymbolDef extends $SymbolDef implements CallableSymbolDef {
-
-    readonly loadOps: readonly Operation[];
-    readonly props = [];
-    readonly parseArguments: ParseArgumentsFunc;
-
-    constructor(readonly decl: FunctionDeclaration, symbol: Symbol) {
-        super(decl, symbol);
-        this.loadOps = [{ kind: 'call', method: this.symbol }]
-        this.parseArguments = parseArguments;
-    }
-
-    static create(decl: FunctionDeclaration): E.Either<ParseError, LocalFunctionSymbolDef> {
-        return pipe(
-            decl,
-            parseSymbol,
-            E.map(symbol => new LocalFunctionSymbolDef(decl, symbol)),
-        )
-    }
-}
 
 const parseSrcFunctionDeclaration = (node: FunctionDeclaration): E.Either<ParseError, SymbolDef> => {
     if (node.hasDeclareKeyword()) {
@@ -129,6 +41,49 @@ const parseSrcFunctionDeclaration = (node: FunctionDeclaration): E.Either<ParseE
     } else {
         return LocalFunctionSymbolDef.create(node);
     }
+}
+
+const parseSrcInterfaceDeclaration = (node: InterfaceDeclaration): E.Either<ParseError, SymbolDef> => {
+
+    return pipe(
+        node,
+        TS.getTag("struct"),
+        E.fromOption(() => makeParseError(node)('only @struct interfaces are supported')),
+        E.chain(() => {
+            return pipe(
+                node,
+                TS.getType,
+                TS.getTypeProperties,
+                ROA.mapWithIndex((index, symbol) => {
+                    return pipe(
+                        symbol.getDeclarations(),
+                        single,
+                        O.chain(O.fromPredicate(Node.isPropertySignature)),
+                        O.map(sig => new StructMemberSymbolDef(sig, index)),
+                        E.fromOption(() => `${symbol.getName()} invalid struct property`));
+                }),
+                ROA.separate,
+                ({left: errors, right: members }) => {
+                    return errors.length > 0
+                        ? E.left<ParseError, readonly SymbolDef[]>(makeParseError(node)(errors.join(", ")))
+                        : E.of<ParseError, readonly SymbolDef[]>(members);
+                },
+                E.map(props => {
+                    return new StructSymbolDef(node, props);
+                })
+            );
+        })
+    )
+}
+
+const parseSrcNode = (node: Node): E.Either<ParseError, O.Option<SymbolDef>> => {
+    if (Node.isFunctionDeclaration(node)) {
+        return pipe(node, parseSrcFunctionDeclaration, E.map(O.of))
+    }
+    if (Node.isInterfaceDeclaration(node)) {
+        return pipe(node, parseSrcInterfaceDeclaration, E.map(O.of))
+    }
+    return E.of(O.none);
 }
 
 function isPushOp(op: Operation) {
@@ -221,15 +176,24 @@ const parseVariableStatement =
     (node: VariableStatement) =>
         (context: ParseSourceContext): ParseSourceContext => {
 
-            const pareDecl = node.getDeclarationKind() === VariableDeclarationKind.Const
+            const parseDecl = node.getDeclarationKind() === VariableDeclarationKind.Const
                 ? parseConstVariableDeclaration
                 : parseLetVariableDeclaration;
 
             for (const decl of node.getDeclarations()) {
-                context = pareDecl(decl)(context);
+                context = parseDecl(decl)(context);
             }
             return context;
         }
+
+const parseInterfaceDeclaration =
+    (node: InterfaceDeclaration) =>
+        (context: ParseSourceContext): ParseSourceContext => {
+
+
+            return context;
+        }
+
 
 const parseSourceNode =
     (node: Node): S.State<ParseSourceContext, CompiledProject> =>
@@ -268,20 +232,34 @@ const parseSourceNode =
             if (Node.isVariableStatement(node)) {
                 return [compiledProjectMonoid.empty, parseVariableStatement(node)(context)]
             }
+            // interface declarations are handled in the first pass of parseSourceFile
+            if (Node.isInterfaceDeclaration(node)) return [compiledProjectMonoid.empty, context];
             if (node.getKind() === SyntaxKind.EndOfFileToken) return [compiledProjectMonoid.empty, context];
 
             const error = makeParseError(node)(`parseSourceNode ${node.getKindName()} not impl`);
             return [compiledProjectMonoid.empty, { ...context, errors: ROA.append(error)(context.errors) }]
         }
 
+
+function asOptionEither<E, A>(item: E.Either<E, O.Option<A>>) {
+    return pipe(item, E.match(
+        error => O.some(E.left<E, A>(error)),
+        flow(O.match(
+            () => O.none,
+            value => O.some(E.of<E, A>(value))
+        ))
+    ))
+}
+
 const parseSourceFile =
     (src: SourceFile): S.State<ParseSourceContext, CompiledProject> =>
         context => {
             const children = pipe(src, TS.getChildren);
-            const { left: errors, right: functionDefs } = pipe(
+            const { left: errors, right: defs } = pipe(
                 children,
-                ROA.filterMap(O.fromPredicate(Node.isFunctionDeclaration)),
-                ROA.map(parseSrcFunctionDeclaration),
+                ROA.map(parseSrcNode),
+                // filter out src nodes that didn't return a symbol def
+                ROA.filterMap(asOptionEither),
                 ROA.separate
             );
 
@@ -292,7 +270,7 @@ const parseSourceFile =
                 }]
             }
 
-            context = { ...context, scope: createScope(context.scope)(functionDefs) };
+            context = { ...context, scope: createScope(context.scope)(defs) };
             let compiledProject = compiledProjectMonoid.empty;
             for (const node of children) {
                 let results;

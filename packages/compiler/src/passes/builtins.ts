@@ -17,7 +17,7 @@ import { Operation, parseOperation as $parseOperation } from "../types/Operation
 
 import { getArguments, parseExpression } from "./expressionProcessor";
 import { makeByteStringConstructor, makeByteStringInterface } from "./builtins.ByteString";
-import { checkErrors, createBuiltInCallable, createBuiltInObject, createBuiltInSymbol, isMethodOrProp, rorValues } from "./builtins.SymbolDefs";
+import { checkErrors, createBuiltInCallable, createBuiltInObject, createBuiltInSymbol, rorValues } from "./builtins.SymbolDefs";
 import { makeReadonlyStorageContext, makeStorageConstructor, makeStorageContext } from "./builtins.Storage";
 
 
@@ -36,7 +36,7 @@ function makeSysCallInterface(decl: tsm.InterfaceDeclaration) {
     const props = pipe(
         decl.getType().getProperties(),
         ROA.chain(s => s.getDeclarations()),
-        ROA.filter(isMethodOrProp),
+        ROA.filter(TS.isMethodOrProp),
         ROA.map(member => {
             const name = pipe(
                 member,
@@ -80,7 +80,7 @@ function makeNativeContract(decl: tsm.VariableDeclaration) {
     const props = pipe(
         decl.getType().getProperties(),
         ROA.chain(s => s.getDeclarations()),
-        ROA.filter(isMethodOrProp),
+        ROA.filter(TS.isMethodOrProp),
         ROA.map(member => {
             const method = pipe(
                 member,

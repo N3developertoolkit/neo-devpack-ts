@@ -1,14 +1,12 @@
 import * as tsm from "ts-morph";
-import { sc, u } from "@cityofzion/neon-core";
-import { flow, identity, pipe } from "fp-ts/lib/function";
+import { sc } from "@cityofzion/neon-core";
+import { pipe } from "fp-ts/lib/function";
 import * as E from "fp-ts/Either";
 import * as ROA from 'fp-ts/ReadonlyArray'
-import * as ROR from 'fp-ts/ReadonlyRecord'
 import * as O from 'fp-ts/Option'
-import * as TS from "../utility/TS";
 
-import { CallableSymbolDef, ObjectSymbolDef, ParseArgumentsFunc, ParseError, Scope, SymbolDef } from "../types/ScopeType";
-import { $SymbolDef, makeParseError } from "../symbolDef";
+import { ParseError, Scope } from "../types/ScopeType";
+import { makeParseError } from "../symbolDef";
 import { single } from "../utils";
 import { isPushDataOp, Operation, PushDataOperation } from "../types/Operation";
 import { getArguments, parseExpression } from "./expressionProcessor";

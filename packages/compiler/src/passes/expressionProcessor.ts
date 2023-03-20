@@ -5,13 +5,12 @@ import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option'
 import * as TS from "../utility/TS";
-import { isJumpOffsetOp, isJumpTargetOp, Operation, SimpleOperationKind } from "../types/Operation";
+import { isJumpTargetOp, Operation, SimpleOperationKind } from "../types/Operation";
 import { resolve as $resolve } from "../scope";
 import { ParseError, Scope, SymbolDef } from "../types/ScopeType";
-import { isCallableDef, isObjectDef, makeParseError, parseLoadOps } from "../symbolDef";
+import { isCallableDef, isObjectDef, makeParseError, parseLoadOps, parseStoreOps } from "../symbolDef";
 import { parseSymbol } from "./parseSymbol";
 import { isBigIntLike, isBooleanLike, isNumberLike, isStringLike, single } from "../utils";
-import { getLeft } from "fp-ts/lib/These";
 
 export const getArguments = (node: tsm.CallExpression) =>
     ROA.fromArray(node.getArguments() as tsm.Expression[])
@@ -146,6 +145,95 @@ function parseLogicalOrExpression(node: tsm.BinaryExpression, scope: Scope) {
     );
 }
 
+function parseAssignmentExpression(node: tsm.BinaryExpression, scope: Scope) {
+
+    const chain = makeExpressionChain(node.getLeft());
+
+    const qqq = pipe(
+        chain,
+        RNEA.init,
+        init => ROA.isNonEmpty(init)
+            ? pipe(
+                init,
+                RNEA.matchLeft((head, tail) => pipe(
+                    tail,
+                    ROA.reduce(
+                        createChainContext(scope)(head),
+                        reduceChainContext(scope)
+                    )
+                ))
+            )
+            : E.of({ operations: [], def: O.none, endTarget: { kind: 'noop' } } as ChainContext),
+        E.bindTo('context'),
+        E.bind('last', () => E.of(RNEA.last(chain))),
+        E.chain(({ context, last }) => {
+
+            if (tsm.Node.isPropertyAccessExpression(last)) {
+                const q = pipe(
+                    last, 
+                    resolvePropertyAccessExpression(scope, context),
+                    E.chain(({property}) => {
+                        const zz = pipe(property, parseStoreOps(node))
+
+
+                        return E.of(12);
+                    })
+                );
+
+
+                // return pipe(
+                //     node,
+                //     resolvePropertyAccessExpression(scope, context),
+                //     E.bind('loadOps', ({ property }) => {
+                //         return pipe(
+                //             property,
+                //             parseLoadOps(node),
+                //             E.map(ops => {
+                //                 return node.hasQuestionDotToken()
+                //                     ? ROA.concat(ops)([
+                //                         { kind: "duplicate" },
+                //                         { kind: "isnull" },
+                //                         { kind: "jumpif", target: context.endTarget }
+                //                     ] as Operation[]) : ops;
+                //             })
+                //         );
+                //     }),
+                //     E.map(({
+                //         loadOps,
+                //         property
+                //     }) => {
+                //         return ({
+                //             ...context,
+                //             operations: ROA.concat(loadOps)(context.operations),
+                //             def: O.of(property)
+                //         });
+                //     })
+                // )
+
+            }
+
+            return E.left(makeParseError(last)(`parseAssignmentExpression ${last.getKindName()} not implemented`));
+
+        })
+    )
+
+
+
+    const q = pipe(
+        node.getRight(),
+        parseExpression(scope),
+        E.map(ROA.append({ kind: "duplicate" } as Operation)),
+        E.chain(ops => pipe(
+            node.getLeft(),
+            parseExpression(scope),
+            E.map(right => ROA.concat(right)(ops))
+
+        ))
+    )
+
+    return E.left(makeParseError(node)('parseAssignmentExpression'));
+}
+
 
 export const parseBinaryExpression =
     (scope: Scope) =>
@@ -160,6 +248,9 @@ export const parseBinaryExpression =
             }
             if (opToken === tsm.SyntaxKind.QuestionQuestionToken) {
                 return parseNullishCoalescingExpression(node, scope);
+            }
+            if (opToken === tsm.SyntaxKind.EqualsToken) {
+                return parseAssignmentExpression(node, scope);
             }
 
             return pipe(
@@ -350,10 +441,10 @@ export function parseExpressionAsBoolean(scope: Scope) {
         const parseResult = parseExpression(scope)(node);
         const type = node.getType();
 
-        // boolean experessions obviously don't need to be converted
+        // boolean experessions don't need to be converted
         if (isBooleanLike(type)) return parseResult;
 
-        // numeric expressiosn are converted by comparing value to zero
+        // numeric expressions are converted by comparing value to zero
         if (isBigIntLike(type) || isNumberLike(type)) {
 
             const convertOps: Operation[] = [
@@ -392,6 +483,7 @@ export function parseExpressionAsBoolean(scope: Scope) {
             return pipe(parseResult, E.map(ROA.concat(convertOps)))
         }
 
+        // convert other objects by comparing to null
         if (O.isSome(resolvedType) && isObjectDef(resolvedType.value)) {
             const convertOps: Operation[] = [
                 { kind: 'isnull' },
@@ -399,7 +491,6 @@ export function parseExpressionAsBoolean(scope: Scope) {
             ]
             return pipe(parseResult, E.map(ROA.concat(convertOps)));
         }
-
 
         return E.left(makeParseError(node)(`parseExpressionAsBoolean ${type.getText()} failed`));
     };
@@ -410,7 +501,6 @@ interface ChainContext {
     readonly def: O.Option<SymbolDef>,
     readonly endTarget: Operation
 }
-
 
 const resolveType =
     (node: tsm.Node) =>
@@ -471,13 +561,15 @@ const createChainContext =
             }
         }
 
-const parseContextDef = (node: tsm.Node) => (context: ChainContext) => {
-    return pipe(
-        context.def,
-        E.fromOption(() => {
-            return makeParseError(node)(`no context def`);
-        })
-    )
+function parseContextDef(node: tsm.Node) {
+    return (context: ChainContext) => {
+        return pipe(
+            context.def,
+            E.fromOption(() => {
+                return makeParseError(node)(`no context def`);
+            })
+        );
+    };
 }
 
 const parseAsExpression =
@@ -540,6 +632,49 @@ const parseCallExpression =
                 )
             }
 
+
+function resolvePropertyAccessExpression(scope: Scope, context: ChainContext) {
+    return (node: tsm.PropertyAccessExpression) => {
+        const makeError = makeParseError(node);
+
+        return pipe(
+            node,
+            parseSymbol,
+            E.bindTo('symbol'),
+            E.bind('type', ({ symbol }) => {
+                return pipe(
+                    context,
+                    parseContextDef(node),
+                    E.chain(def => {
+                        return pipe(
+                            def.type,
+                            resolveType(node)(scope),
+                            E.chain(E.fromOption(() => makeError(`${symbol.getName()} resolved to void`)))
+                        );
+                    }),
+                    E.chain(type => {
+                        return pipe(type,
+                            E.fromPredicate(
+                                isObjectDef,
+                                () => {
+                                    return makeError(`${type.symbol.getName()} is not an object`);
+                                }
+                            )
+                        );
+                    })
+                );
+            }),
+            E.bind('property', ({ symbol, type }) => {
+                return pipe(
+                    type.props,
+                    ROA.filter(p => p.symbol === symbol),
+                    single,
+                    E.fromOption(() => makeError(`failed to resolve ${symbol.getName()} on ${type.symbol.getName()}`))
+                );
+            })
+        );
+    };
+}
 const parsePropertyAccessExpression =
     (scope: Scope) =>
         (context: ChainContext) =>
@@ -548,39 +683,7 @@ const parsePropertyAccessExpression =
 
                 return pipe(
                     node,
-                    parseSymbol,
-                    E.bindTo('symbol'),
-                    E.bind('type', ({ symbol }) => {
-                        return pipe(
-                            context,
-                            parseContextDef(node),
-                            E.chain(def => {
-                                return pipe(
-                                    def.type,
-                                    resolveType(node)(scope),
-                                    E.chain(E.fromOption(() => makeError(`${symbol.getName()} resolved to void`)))
-                                );
-                            }),
-                            E.chain(type => {
-                                return pipe(type,
-                                    E.fromPredicate(
-                                        isObjectDef,
-                                        () => {
-                                            return makeError(`${type.symbol.getName()} is not an object`);
-                                        }
-                                    )
-                                );
-                            })
-                        )
-                    }),
-                    E.bind('property', ({ symbol, type }) => {
-                        return pipe(
-                            type.props,
-                            ROA.filter(p => p.symbol === symbol),
-                            single,
-                            E.fromOption(() => makeError(`failed to resolve ${symbol.getName()} on ${type.symbol.getName()}`))
-                        );
-                    }),
+                    resolvePropertyAccessExpression(scope, context),
                     E.bind('loadOps', ({ property }) => {
                         return pipe(
                             property,
@@ -595,15 +698,12 @@ const parsePropertyAccessExpression =
                             })
                         );
                     }),
-                    E.map(({
-                        loadOps,
-                        property
-                    }) => {
-                        return ({
+                    E.map(({ loadOps, property }) => {
+                        return {
                             ...context,
                             operations: ROA.concat(loadOps)(context.operations),
                             def: O.of(property)
-                        });
+                        };
                     })
                 )
             }
@@ -625,10 +725,26 @@ const reduceChainContext =
             )
         }
 
+function makeExpressionChain(node: tsm.Expression): RNEA.ReadonlyNonEmptyArray<tsm.Expression> {
+    return makeChain(RNEA.of<tsm.Expression>(node));
+
+    function makeChain(
+        chain: RNEA.ReadonlyNonEmptyArray<tsm.Expression>
+    ): RNEA.ReadonlyNonEmptyArray<tsm.Expression> {
+        return pipe(
+            chain,
+            RNEA.head,
+            TS.getExpression,
+            O.match(
+                () => chain,
+                expr => makeChain(ROA.prepend(expr)(chain))
+            )
+        );
+    }
+}
+
 export function parseExpressionChain(scope: Scope) {
     return (node: tsm.Expression): E.Either<ParseError, ReadonlyArray<Operation>> => {
-        const chain = pipe(node, makeExpressionChain);
-
         return pipe(
             node,
             makeExpressionChain,
@@ -653,23 +769,5 @@ export function parseExpressionChain(scope: Scope) {
                     : context.operations;
             })
         );
-
-        function makeExpressionChain(node: tsm.Expression): RNEA.ReadonlyNonEmptyArray<tsm.Expression> {
-            return makeChain(RNEA.of<tsm.Expression>(node));
-
-            function makeChain(
-                chain: RNEA.ReadonlyNonEmptyArray<tsm.Expression>
-            ): RNEA.ReadonlyNonEmptyArray<tsm.Expression> {
-                return pipe(
-                    chain,
-                    RNEA.head,
-                    TS.getExpression,
-                    O.match(
-                        () => chain,
-                        expr => makeChain(ROA.prepend(expr)(chain))
-                    )
-                );
-            }
-        }
     };
 }

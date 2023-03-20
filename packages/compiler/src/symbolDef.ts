@@ -2,7 +2,6 @@ import * as tsm from "ts-morph";
 import { pipe } from 'fp-ts/function';
 import * as E from "fp-ts/Either";
 import { CallableSymbolDef, ObjectSymbolDef, ParseError, SymbolDef } from "./types/ScopeType";
-import { Operation } from "./types/Operation";
 import { createDiagnostic as $createDiagnostic } from "./utils";
 
 export const makeParseError =
@@ -30,6 +29,12 @@ export const parseLoadOps =
         E.fromNullable(makeParseError(node)(`${def.symbol.getName()} has no load ops`))
     );
 
+export const parseStoreOps =
+    (node: tsm.Node) => (def: SymbolDef) => pipe(
+        def.storeOps,
+        E.fromNullable(makeParseError(node)(`${def.symbol.getName()} has no store ops`))
+    );
+
 export class $SymbolDef implements SymbolDef {
     readonly symbol: tsm.Symbol;
     readonly type: tsm.Type;
@@ -37,11 +42,8 @@ export class $SymbolDef implements SymbolDef {
     get name() { return this.symbol.getName(); }
     get typeName() { return this.type.getSymbol()?.getName(); }
 
-    protected constructor(
-        private readonly node: tsm.Node,
-        private _symbol?: tsm.Symbol
-    ) {
-        this.symbol = _symbol ?? node.getSymbolOrThrow();
+    protected constructor(readonly node: tsm.Node, symbol?: tsm.Symbol) {
+        this.symbol = symbol ?? node.getSymbolOrThrow();
         this.type = node.getType();
     }
 }
