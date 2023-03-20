@@ -29,12 +29,6 @@ export const parseLoadOps =
         E.fromNullable(makeParseError(node)(`${def.symbol.getName()} has no load ops`))
     );
 
-export const parseStoreOps =
-    (node: tsm.Node) => (def: SymbolDef) => pipe(
-        def.storeOps,
-        E.fromNullable(makeParseError(node)(`${def.symbol.getName()} has no store ops`))
-    );
-
 export class $SymbolDef implements SymbolDef {
     readonly symbol: tsm.Symbol;
     readonly type: tsm.Type;

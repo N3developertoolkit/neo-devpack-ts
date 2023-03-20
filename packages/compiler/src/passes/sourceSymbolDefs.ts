@@ -1,5 +1,5 @@
 import * as tsm from "ts-morph";
-import { $SymbolDef } from "../symbolDef";
+import { $SymbolDef, makeParseError } from "../symbolDef";
 import { Operation } from "../types/Operation";
 import { CallableSymbolDef, ObjectSymbolDef, ParseArgumentsFunc, ParseError, Scope, SymbolDef } from "../types/ScopeType";
 import * as ROA from 'fp-ts/ReadonlyArray'
@@ -13,8 +13,13 @@ export class LocalVariableSymbolDef extends $SymbolDef {
     get loadOps(): readonly Operation[] {
         return [{ kind: "loadlocal", index: this.index }];
     }
-    get storeOps(): readonly Operation[] {
-        return [{ kind: "storelocal", index: this.index }];
+
+    parseStore(loadOps: readonly Operation[], valueOps: readonly Operation[]): E.Either<ParseError, readonly Operation[]> {
+        return E.left(makeParseError()('LocalVariableSymbolDef.parseStore not impl'));
+        // return pipe(
+        //     loadOps,
+        //     ROA.append({ kind: "storelocal", index: this.index } as Operation),
+        //     E.of)
     }
 
     constructor(
@@ -37,6 +42,14 @@ export class ParameterSymbolDef extends $SymbolDef {
         return [{ kind: "storearg", index: this.index }];
     }
 
+    parseStore(loadOps: readonly Operation[], valueOps: readonly Operation[]): E.Either<ParseError, readonly Operation[]> {
+        return E.left(makeParseError()('ParameterSymbolDef.parseStore not impl'));
+        // return pipe(
+        //     loadOps, 
+        //     ROA.append({ kind: "storearg", index: this.index } as Operation),
+        //     E.of)
+    }
+
     constructor(
         readonly decl: tsm.ParameterDeclaration,
         symbol: tsm.Symbol,
@@ -53,6 +66,14 @@ export class StaticVarSymbolDef extends $SymbolDef {
     }
     get storeOps(): readonly Operation[] {
         return [{ kind: "storestatic", index: this.index }];
+    }
+
+    parseStore(loadOps: readonly Operation[], valueOps: readonly Operation[]): E.Either<ParseError, readonly Operation[]> {
+        return E.left(makeParseError()('StaticVarSymbolDef.parseStore not impl'));
+        // return pipe(
+        //     ops, 
+        //     ROA.append({ kind: "storestatic", index: this.index } as Operation),
+        //     E.of)
     }
 
     constructor(
@@ -140,6 +161,20 @@ export class LocalFunctionSymbolDef extends $SymbolDef implements CallableSymbol
 export class StructMemberSymbolDef extends $SymbolDef {
     readonly loadOps: readonly Operation[];
     readonly storeOps: readonly Operation[];
+
+    parseStore(loadOps: readonly Operation[], valueOps: readonly Operation[]): E.Either<ParseError, readonly Operation[]> {
+        return pipe(
+            valueOps, 
+            ROA.append({ kind: "duplicate" } as Operation),
+            ROA.concat(loadOps),
+            ROA.concat([
+                { kind: "pushint", value: BigInt(this.index)},
+                { kind: 'rotate' },
+                { kind: "setitem" }
+            ] as Operation[]),
+            E.of)
+    }
+
     constructor(
         readonly sig: tsm.PropertySignature,
         readonly index: number

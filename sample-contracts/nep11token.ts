@@ -48,7 +48,7 @@ interface TokenState
 }
 
 export function transfer(to: ByteStringInstance, tokenId: ByteStringInstance, data: any) {
-    // if (to is null || !to.IsValid) throw Error("The argument \"to\" is invalid.");
+    if (!to || to.length != 20) throw Error("The argument \"to\" is invalid.");
     const key = concat(TOKEN_PREFIX, tokenId);
     const serialzied = Storage.context.get(key);
     if (!serialzied) {
@@ -65,8 +65,8 @@ export function transfer(to: ByteStringInstance, tokenId: ByteStringInstance, da
     if (owner !== to) {
         token.owner = to;
         Storage.context.put(key, StdLib.serialize(token));
-        // updateBalance(owner, tokenId, -1);
-        // updateBalance(to, tokenId, +1);
+        updateBalance(owner, tokenId, -1n);
+        updateBalance(to, tokenId, 1n);
     }
     postTransfer(owner, to, tokenId, data);
     return true;
@@ -102,6 +102,7 @@ export function tokens() {
 // mint
 export function mint(name: string, description: string, imageUrl: string) {
     if (!checkOwner()) throw Error("Only the contract owner can mint tokens");
+    
     // generate new token id
     // create token state struct
     // create token storage key
@@ -151,3 +152,23 @@ export function update(nefFile: ByteStringInstance, manifest: string) {
 function checkOwner() {
     return checkWitness(Storage.context.get(OWNER_KEY)!);
 }
+
+function updateTotalSupply(increment: bigint) {
+    const totalSupply = Storage.context.get(TOTAL_SUPPLY_KEY)?.asInteger() ?? 0n;
+    Storage.context.put(TOTAL_SUPPLY_KEY, ByteString.fromInteger(totalSupply + increment))
+
+}
+
+function updateBalance(account: ByteStringInstance, tokenId: ByteStringInstance, increment: bigint) {
+    const balanceKey = concat(BALANCE_PREFIX, account);
+    const balance = Storage.context.get(balanceKey)?.asInteger() ?? 0n;
+    const newBalance = balance + increment;
+    if (newBalance < 0) throw Error();
+    else if (newBalance === 0n) Storage.context.delete(balanceKey);
+    else Storage.context.put(balanceKey, ByteString.fromInteger(newBalance))
+
+    const accountTokenKey = concat(ACCOUNT_TOKEN_PREFIX, concat(account, tokenId));
+    if (increment > 0n) Storage.context.put(accountTokenKey, ByteString.fromInteger(0n))
+    else Storage.context.delete(accountTokenKey);
+}
+

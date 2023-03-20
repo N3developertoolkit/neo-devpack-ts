@@ -13,7 +13,7 @@ export interface SymbolDef {
     readonly symbol: tsm.Symbol;
     readonly type: tsm.Type;
     readonly loadOps?: ReadonlyArray<Operation>;
-    readonly storeOps?: ReadonlyArray<Operation>;
+    readonly parseStore?: (loadOps: readonly Operation[], valueOps: readonly Operation[]) => E.Either<ParseError, readonly Operation[]>;
 }
 
 export interface ObjectSymbolDef extends SymbolDef {

@@ -15,11 +15,12 @@ export const simpleOperationKinds = [
     // flow control
     'noop',
     'throw',
-    'return',
+    'return', // The top three items on the stack are rotated to the left.
 
     // Stack Management
     'drop',
     'duplicate',
+    'rotate',
 
     // splice
     'concat',
@@ -48,6 +49,7 @@ export const simpleOperationKinds = [
     'size',
     'pickitem',
     'append',
+    'setitem',
 
     // types
     'isnull',
@@ -81,6 +83,8 @@ export function convertSimpleOperationKind(kind: SimpleOperationKind) {
         case "power": return sc.OpCode.POW;
         case "pushnull": return sc.OpCode.PUSHNULL;
         case "return": return sc.OpCode.RET;
+        case "rotate": return sc.OpCode.ROT;
+        case "setitem": return sc.OpCode.SETITEM;
         case 'size': return sc.OpCode.SIZE;
         case "subtract": return sc.OpCode.SUB;
         case "throw": return sc.OpCode.THROW;

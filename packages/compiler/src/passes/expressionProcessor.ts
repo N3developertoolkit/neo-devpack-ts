@@ -8,9 +8,10 @@ import * as TS from "../utility/TS";
 import { isJumpTargetOp, Operation, SimpleOperationKind } from "../types/Operation";
 import { resolve as $resolve } from "../scope";
 import { ParseError, Scope, SymbolDef } from "../types/ScopeType";
-import { isCallableDef, isObjectDef, makeParseError, parseLoadOps, parseStoreOps } from "../symbolDef";
+import { isCallableDef, isObjectDef, makeParseError, parseLoadOps } from "../symbolDef";
 import { parseSymbol } from "./parseSymbol";
 import { isBigIntLike, isBooleanLike, isNumberLike, isStringLike, single } from "../utils";
+import { reduce } from "fp-ts/lib/Foldable";
 
 export const getArguments = (node: tsm.CallExpression) =>
     ROA.fromArray(node.getArguments() as tsm.Expression[])
@@ -145,95 +146,53 @@ function parseLogicalOrExpression(node: tsm.BinaryExpression, scope: Scope) {
     );
 }
 
-function parseAssignmentExpression(node: tsm.BinaryExpression, scope: Scope) {
-
-    const chain = makeExpressionChain(node.getLeft());
-
-    const qqq = pipe(
-        chain,
-        RNEA.init,
-        init => ROA.isNonEmpty(init)
-            ? pipe(
-                init,
-                RNEA.matchLeft((head, tail) => pipe(
-                    tail,
-                    ROA.reduce(
-                        createChainContext(scope)(head),
-                        reduceChainContext(scope)
-                    )
-                ))
-            )
-            : E.of({ operations: [], def: O.none, endTarget: { kind: 'noop' } } as ChainContext),
-        E.bindTo('context'),
-        E.bind('last', () => E.of(RNEA.last(chain))),
-        E.chain(({ context, last }) => {
-
-            if (tsm.Node.isPropertyAccessExpression(last)) {
-                const q = pipe(
-                    last, 
-                    resolvePropertyAccessExpression(scope, context),
-                    E.chain(({property}) => {
-                        const zz = pipe(property, parseStoreOps(node))
-
-
-                        return E.of(12);
-                    })
+function parsePropertyAccessAssignment(node: tsm.PropertyAccessExpression, valueOps: readonly Operation[], scope: Scope, context: ChainContext) {
+    return pipe(
+        node, 
+        resolvePropertyAccessExpression(scope, context),
+        E.chain(({property}) => {
+            if (property.parseStore) {
+                return pipe (
+                    property.parseStore(context.operations, valueOps),
                 );
-
-
-                // return pipe(
-                //     node,
-                //     resolvePropertyAccessExpression(scope, context),
-                //     E.bind('loadOps', ({ property }) => {
-                //         return pipe(
-                //             property,
-                //             parseLoadOps(node),
-                //             E.map(ops => {
-                //                 return node.hasQuestionDotToken()
-                //                     ? ROA.concat(ops)([
-                //                         { kind: "duplicate" },
-                //                         { kind: "isnull" },
-                //                         { kind: "jumpif", target: context.endTarget }
-                //                     ] as Operation[]) : ops;
-                //             })
-                //         );
-                //     }),
-                //     E.map(({
-                //         loadOps,
-                //         property
-                //     }) => {
-                //         return ({
-                //             ...context,
-                //             operations: ROA.concat(loadOps)(context.operations),
-                //             def: O.of(property)
-                //         });
-                //     })
-                // )
-
+            } else {
+                return E.left(makeParseError(node)("parseStore not implemented"))
             }
-
-            return E.left(makeParseError(last)(`parseAssignmentExpression ${last.getKindName()} not implemented`));
-
         })
     )
-
-
-
-    const q = pipe(
-        node.getRight(),
-        parseExpression(scope),
-        E.map(ROA.append({ kind: "duplicate" } as Operation)),
-        E.chain(ops => pipe(
-            node.getLeft(),
-            parseExpression(scope),
-            E.map(right => ROA.concat(right)(ops))
-
-        ))
-    )
-
-    return E.left(makeParseError(node)('parseAssignmentExpression'));
 }
 
+function parseAssignmentExpression(node: tsm.BinaryExpression, scope: Scope) {
+    return pipe(
+        node.getRight(),
+        parseExpression(scope),
+        E.chain(value => {
+            const chain = makeExpressionChain(node.getLeft());
+            return pipe(
+                chain, 
+                RNEA.init, 
+                init => ROA.isNonEmpty(init)
+                    ? pipe(init,
+                        RNEA.matchLeft((head, tail) => pipe(
+                            tail,
+                            ROA.reduce(
+                                createChainContext(scope)(head),
+                                reduceChainContext(scope)
+                            )
+                        ))
+                    )
+                    : E.of({ operations: [], def: O.none, endTarget: { kind: 'noop' } } as ChainContext),
+                E.chain(context => {
+                    const last = RNEA.last(chain);
+                    if (tsm.Node.isPropertyAccessExpression(last)) {
+                        return parsePropertyAccessAssignment(last, value, scope, context);
+                    }
+                    return E.left(makeParseError(last)(`parseAssignmentExpression ${last.getKindName()} not supported`));
+                })
+            )
+        }),
+    )
+}
 
 export const parseBinaryExpression =
     (scope: Scope) =>
