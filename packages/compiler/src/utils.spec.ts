@@ -34,7 +34,9 @@ export function createTestProject(contract: string) {
     );
 
     const errors = diagnostics.filter(d => d.category === tsm.ts.DiagnosticCategory.Error);
-    expect(errors).lengthOf(0);
+    if (errors.length > 0) {
+        expect.fail(errors.map(d => d.messageText).join(","));
+    }
     
     return { project, sourceFile, globalScope }
 }

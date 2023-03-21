@@ -100,12 +100,10 @@ describe("builtins", () => {
             const scope = createTestScope(globalScope)(value);
 
             const ops = pipe(resultExpr, parseExpression(scope), testRight(e => e.message));
-            expect(ops).length(9)
+            expect(ops).length(2)
             expect(ops[0]).has.property('kind').that.equals('loadlocal');
-            expect(ops[1]).has.property('kind').that.equals('duplicate');
-            expect(ops[8]).has.property('kind').that.equals('noop');
-
-
+            expect(ops[1]).has.property('kind').that.equals('convert');
+            expect(ops[1]).has.property('type').that.equals(33);
         })
 
     })

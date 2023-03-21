@@ -13,7 +13,7 @@ export function get() {
     return Storage.context.get(VALUE_KEY);
 }
 
-export function set(value: ByteString) {
+export function set(value: ByteStringInstance) {
     Storage.context.put(VALUE_KEY, value);
 }
 
@@ -27,7 +27,7 @@ export function _deploy(_data: any, update: boolean): void {
     Storage.context.put(OWNER_KEY, tx.sender);
 }
 
-export function update(nefFile: ByteString, manifest: string) {
+export function update(nefFile: ByteStringInstance, manifest: string) {
     const owner = Storage.context.get(OWNER_KEY);
     if (owner && checkWitness(owner)) {
         ContractManagement.update(nefFile, manifest);

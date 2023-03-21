@@ -307,7 +307,7 @@ const prefixUnaryOperatorMap: ReadonlyMap<tsm.SyntaxKind, SimpleOperationKind> =
     [tsm.SyntaxKind.MinusToken, 'negate']
 ]);
 
-export const parseUnaryOperatorToken =
+export const parsePrefixUnaryOperatorToken =
     (token: tsm.ts.PrefixUnaryOperator): E.Either<ParseError, Operation> => {
         return pipe(
             token,
@@ -333,7 +333,7 @@ export const parsePrefixUnaryExpression = (scope: Scope) =>
         }
         return pipe(
             node.getOperatorToken(),
-            parseUnaryOperatorToken,
+            parsePrefixUnaryOperatorToken,
             // map errors to reference the expression node 
             E.mapLeft(e => makeParseError(node)(e.message)),
             E.chain(op => pipe(
@@ -359,8 +359,8 @@ export function parseExpression(scope: Scope) {
 
         if (tsm.Node.hasExpression(node))
             return parseExpressionChain(scope)(node);
-        if (tsm.Node.isArrayLiteralExpression(node))
-            return parseArrayLiteral(scope)(node);
+        // if (tsm.Node.isArrayLiteralExpression(node))
+        //     return parseArrayLiteral(scope)(node);
         if (tsm.Node.isBigIntLiteral(node))
             return parseLiteral(parseBigIntLiteral)(node);
         if (tsm.Node.isBinaryExpression(node))

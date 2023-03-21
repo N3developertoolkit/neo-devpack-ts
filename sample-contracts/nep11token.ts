@@ -3,7 +3,7 @@ const DECIMALS = 0n;
 
 const TOTAL_SUPPLY_KEY = ByteString.fromHex("0x00");
 const BALANCE_PREFIX = ByteString.fromHex("0x01");
-const TOKENID_PREFIX = ByteString.fromHex("0x02");
+const TOKENID_KEY = ByteString.fromHex("0x02");
 const TOKEN_PREFIX = ByteString.fromHex("0x03");
 const ACCOUNT_TOKEN_PREFIX = ByteString.fromHex("0x04");
 const OWNER_KEY = ByteString.fromHex("0xFF");
@@ -100,21 +100,22 @@ export function tokens() {
 }
 
 // mint
-export function mint(name: string, description: string, imageUrl: string) {
+export function mint(owner: ByteStringInstance, name: string, description: string, image: string) {
     if (!checkOwner()) throw Error("Only the contract owner can mint tokens");
-    
-    // generate new token id
-    // create token state struct
-    // create token storage key
-    // serialize token state
-    // save serialized token state to storage
-    // update balance
-    // update total supply
-    // post transfer
-    // return token id
 
-    return ByteString.fromString('dummy');
+    const id = Storage.context.get(TOKENID_KEY)?.asInteger() ?? 0n;
+    Storage.context.put(TOKENID_KEY, ByteString.fromInteger(id + 1n));
 
+    const idString = concat(SYMBOL, ByteString.fromInteger(id));
+    const tokenId = CryptoLib.sha256(idString);
+
+    const tokenState: TokenState = { owner, name, description, image, };
+    const serializedState = StdLib.serialize(tokenState);
+    const tokenKey = concat(TOKEN_PREFIX, tokenId);
+    updateBalance(tokenState.owner, tokenId, 1n);
+    updateTotalSupply(1n);
+    postTransfer(null, tokenState.owner, tokenId, null);
+    return tokenId;
 }
 
 /** @safe */
