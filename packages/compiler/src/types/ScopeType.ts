@@ -7,6 +7,7 @@ import { Operation } from "./Operation";
 export interface Scope {
     readonly parentScope: O.Option<Scope>;
     readonly symbols: ReadonlyMap<tsm.Symbol, SymbolDef>;
+    readonly types: ReadonlyMap<tsm.Symbol, TypeDef>;
 }
 
 export interface SymbolDef {
@@ -14,6 +15,10 @@ export interface SymbolDef {
     readonly type: tsm.Type;
     readonly loadOps?: ReadonlyArray<Operation>;
     readonly parseStore?: (loadOps: readonly Operation[], valueOps: readonly Operation[]) => E.Either<ParseError, readonly Operation[]>;
+}
+
+export interface TypeDef {
+    readonly symbol: tsm.Symbol;
 }
 
 export interface ObjectSymbolDef extends SymbolDef {

@@ -9,7 +9,7 @@ const ACCOUNT_TOKEN_PREFIX = ByteString.fromHex("0x04");
 const OWNER_KEY = ByteString.fromHex("0xFF");
 
 /** @event */
-declare function Transfer(from: ByteStringInstance | null, to: ByteStringInstance | null, amount: bigint, tokenId: ByteStringInstance): void;
+declare function Transfer(from: ByteString | null, to: ByteString | null, amount: bigint, tokenId: ByteString): void;
 
 /** @safe */
 export function symbol() { return SYMBOL; }
@@ -24,7 +24,7 @@ export function totalSupply(): bigint {
 }
 
 /** @safe */
-export function balanceOf(account: ByteStringInstance): bigint {
+export function balanceOf(account: ByteString): bigint {
     if (!account || account.length != 20) throw Error("The argument \"account\" is invalid.");
     const key = concat(BALANCE_PREFIX, account);
     const value = Storage.context.get(key);
@@ -32,7 +32,7 @@ export function balanceOf(account: ByteStringInstance): bigint {
 }
 
 /** @safe */
-export function tokensOf(account: ByteStringInstance) {
+export function tokensOf(account: ByteString) {
     if (!account || account.length != 20) throw Error("The argument \"account\" is invalid.");
     const prefix = concat(ACCOUNT_TOKEN_PREFIX, account);
     return Storage.context.keys(prefix, true)
@@ -41,13 +41,13 @@ export function tokensOf(account: ByteStringInstance) {
 /** @struct */
 interface TokenState
 {
-    owner: ByteStringInstance,
+    owner: ByteString,
     name: string,
     description: string,
     image: string,
 }
 
-export function transfer(to: ByteStringInstance, tokenId: ByteStringInstance, data: any) {
+export function transfer(to: ByteString, tokenId: ByteString, data: any) {
     if (!to || to.length != 20) throw Error("The argument \"to\" is invalid.");
     const key = concat(TOKEN_PREFIX, tokenId);
     const serialzied = Storage.context.get(key);
@@ -72,7 +72,7 @@ export function transfer(to: ByteStringInstance, tokenId: ByteStringInstance, da
     return true;
 }
 
-function postTransfer(from: ByteStringInstance | null, to: ByteStringInstance | null, tokenId: ByteStringInstance, data: any) {
+function postTransfer(from: ByteString | null, to: ByteString | null, tokenId: ByteString, data: any) {
     Transfer(from, to, 1n, tokenId);
     if (to) {
         const contract = ContractManagement.getContract(to);
@@ -83,7 +83,7 @@ function postTransfer(from: ByteStringInstance | null, to: ByteStringInstance | 
 }
 
 /** @safe */
-export function ownerof(tokenId: ByteStringInstance) {
+export function ownerof(tokenId: ByteString) {
     const key = concat(TOKEN_PREFIX, tokenId);
     const serialzied = Storage.context.get(key);
     if (serialzied) {
@@ -100,7 +100,7 @@ export function tokens() {
 }
 
 // mint
-export function mint(owner: ByteStringInstance, name: string, description: string, image: string) {
+export function mint(owner: ByteString, name: string, description: string, image: string) {
     if (!checkOwner()) throw Error("Only the contract owner can mint tokens");
 
     const id = Storage.context.get(TOKENID_KEY)?.asInteger() ?? 0n;
@@ -119,7 +119,7 @@ export function mint(owner: ByteStringInstance, name: string, description: strin
 }
 
 /** @safe */
-export function properties(tokenId: ByteStringInstance) {
+export function properties(tokenId: ByteString) {
     const key = concat(TOKEN_PREFIX, tokenId);
     const serialzied = Storage.context.get(key);
     
@@ -142,7 +142,7 @@ export function _deploy(_data: any, update: boolean): void {
     Storage.context.put(OWNER_KEY, tx.sender);
 }
 
-export function update(nefFile: ByteStringInstance, manifest: string) {
+export function update(nefFile: ByteString, manifest: string) {
     if (checkOwner()) {
         ContractManagement.update(nefFile, manifest);
     } else {
@@ -160,7 +160,7 @@ function updateTotalSupply(increment: bigint) {
 
 }
 
-function updateBalance(account: ByteStringInstance, tokenId: ByteStringInstance, increment: bigint) {
+function updateBalance(account: ByteString, tokenId: ByteString, increment: bigint) {
     const balanceKey = concat(BALANCE_PREFIX, account);
     const balance = Storage.context.get(balanceKey)?.asInteger() ?? 0n;
     const newBalance = balance + increment;

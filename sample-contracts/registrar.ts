@@ -3,7 +3,7 @@ const PREFIX_DOMAIN = ByteString.fromHex("0x00");
 const OWNER_KEY = ByteString.fromHex("0xFF");
 
 /** @safe */
-export function query(domain: string): ByteStringInstance | undefined { 
+export function query(domain: string): ByteString | undefined { 
     const key = concat(PREFIX_DOMAIN, domain);
     return Storage.context.get(key);
 }
@@ -20,7 +20,7 @@ export function register(domain: string): boolean {
     return true;
 }
 
-export function transfer(domain: string, receiver: ByteStringInstance): boolean {
+export function transfer(domain: string, receiver: ByteString): boolean {
     const key = concat(PREFIX_DOMAIN, domain);
     const currentOwner = Storage.context.get(key);
     if (!currentOwner) {
@@ -56,7 +56,7 @@ export function _deploy(_data: any, update: boolean): void {
     Storage.context.put(OWNER_KEY, tx.sender);
 }
 
-export function update(nefFile: ByteStringInstance, manifest: string) {
+export function update(nefFile: ByteString, manifest: string) {
     const owner = Storage.context.get(OWNER_KEY);
     if (owner && checkWitness(owner)) {
         ContractManagement.update(nefFile, manifest);

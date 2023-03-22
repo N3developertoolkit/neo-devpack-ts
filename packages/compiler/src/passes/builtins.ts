@@ -7,7 +7,6 @@ import * as ROR from 'fp-ts/ReadonlyRecord'
 import * as O from 'fp-ts/Option'
 import * as TS from "../utility/TS";
 
-import { LibraryDeclaration } from "../projectLib";
 import { CompilerState } from "../types/CompileOptions";
 import { createScope } from "../scope";
 import { ParseError, Scope, SymbolDef } from "../types/ScopeType";
@@ -19,6 +18,8 @@ import { getArguments, parseExpression } from "./expressionProcessor";
 import { makeByteStringConstructor, makeByteStringInterface } from "./builtins.ByteString";
 import { checkErrors, createBuiltInCallable, createBuiltInObject, createBuiltInSymbol, rorValues } from "./builtins.SymbolDefs";
 import { makeReadonlyStorageContext, makeStorageConstructor, makeStorageContext } from "./builtins.Storage";
+import { LibraryDeclaration } from "../projectLib";
+import { type } from "os";
 
 
 module REGEX {
@@ -62,7 +63,7 @@ function makeSysCallInterface(decl: tsm.InterfaceDeclaration) {
 
 
 const regexMethodToken = /\{((?:0x)?[0-9a-fA-F]{40})\}/;
-function makeNativeContract(decl: tsm.VariableDeclaration) {
+function makeNativeContractTypeDef(decl: tsm.VariableDeclaration) {
     const hash = pipe(
         decl.getVariableStatement(),
         O.fromNullable,
@@ -111,9 +112,7 @@ function makeNativeContract(decl: tsm.VariableDeclaration) {
         O.toUndefined
     );
     if (!typeDecl) throw new Error(`${decl.getName()} invalid type decl`)
-    const varTypeDef = createBuiltInObject(typeDecl, { props })
-
-    return [createBuiltInSymbol(decl), varTypeDef]
+    return createBuiltInObject(typeDecl, { props })
 }
 
 
@@ -253,94 +252,114 @@ function makeIteratorInterface(decl: tsm.InterfaceDeclaration):SymbolDef {
     return createBuiltInSymbol(decl);
 }
 
+const isFunctionDeclaration = O.fromPredicate(tsm.Node.isFunctionDeclaration);
+const isInterfaceDeclaration = O.fromPredicate(tsm.Node.isInterfaceDeclaration);
+const isVariableStatement = O.fromPredicate(tsm.Node.isVariableStatement);
+const isEnumDeclaration = O.fromPredicate(tsm.Node.isEnumDeclaration);
+
 export const makeGlobalScope =
     (decls: readonly LibraryDeclaration[]): CompilerState<Scope> =>
         diagnostics => {
 
-            // let symbolDefs: ReadonlyArray<SymbolDef> = pipe(
-            //     decls.interfaces,
-            //     ROA.filter(TS.hasTag("stackitem")),
-            //     ROA.map(makeStackItemObject),
-            // )
+            const enums = pipe(decls, ROA.filterMap(isEnumDeclaration));
+            const functions = pipe(decls, ROA.filterMap(isFunctionDeclaration));
+            const interfaces = pipe(decls, ROA.filterMap(isInterfaceDeclaration));
+            const varStatements = pipe(decls, ROA.filterMap(isVariableStatement));
+            const variables = pipe(varStatements, ROA.chain(s => s.getDeclarations()));
 
-            // symbolDefs = pipe(
-            //     decls.variables,
-            //     ROA.filter(decl => pipe(
-            //         decl.getVariableStatement(),
-            //         O.fromNullable,
-            //         O.map(TS.hasTag('nativeContract')),
-            //         O.getOrElse(() => false)
-            //     )),
-            //     ROA.chain(makeNativeContract),
-            //     ROA.concat(symbolDefs)
-            // )
+            let typeDefs: ReadonlyArray<SymbolDef> = [];
+            let symbolDefs: ReadonlyArray<SymbolDef> = [];
 
-            // symbolDefs = pipe(
-            //     decls.functions,
-            //     ROA.filter(TS.hasTag('syscall')),
-            //     ROA.map(makeSysCallFunction),
-            //     ROA.concat(symbolDefs)
-            // )
+            typeDefs = pipe(
+                interfaces,
+                ROA.filter(TS.hasTag("stackitem")),
+                ROA.map(makeStackItemObject),
+                ROA.concat(typeDefs)
+            )
 
-            // symbolDefs = pipe(
-            //     decls.functions,
-            //     ROA.filter(TS.hasTag('operation')),
-            //     ROA.map(makeOperationsFunction),
-            //     ROA.concat(symbolDefs)
-            // )
+            typeDefs = pipe(
+                varStatements,
+                ROA.filter(TS.hasTag('nativeContract')),
+                ROA.chain(s => s.getDeclarations()),
+                ROA.map(makeNativeContractTypeDef),
+                ROA.concat(typeDefs)
+            )
 
-            // const builtInEnums: Record<string, (decl: tsm.EnumDeclaration) => SymbolDef> = {
-            //     "CallFlags": makeEnumObject,
-            //     "FindOptions": makeEnumObject,
-            // }
+            symbolDefs = pipe(
+                varStatements,
+                ROA.filter(TS.hasTag('nativeContract')),
+                ROA.chain(s => s.getDeclarations()),
+                ROA.map(createBuiltInSymbol),
+                ROA.concat(symbolDefs)
+            )
 
-            // const builtInFunctions: Record<string, (decl: tsm.FunctionDeclaration) => SymbolDef> = {
-            //     "callContract": decl => createBuiltInCallable(decl, { parseArguments: invokeCallContract }),
-            // }
+            symbolDefs = pipe(
+                functions,
+                ROA.filter(TS.hasTag('syscall')),
+                ROA.map(makeSysCallFunction),
+                ROA.concat(symbolDefs)
+            )
 
-            // const builtInInterfaces: Record<string, (decl: tsm.InterfaceDeclaration) => SymbolDef> = {
-            //     "ByteStringConstructor": makeByteStringConstructor,
-            //     "ByteStringInstance": makeByteStringInterface,
-            //     "Iterator": makeIteratorInterface,
-            //     "ReadonlyStorageContext": makeReadonlyStorageContext,
-            //     "RuntimeConstructor": makeSysCallInterface,
-            //     "StorageConstructor": makeStorageConstructor,
-            //     "StorageContext": makeStorageContext,
-            // }
+            symbolDefs = pipe(
+                functions,
+                ROA.filter(TS.hasTag('operation')),
+                ROA.map(makeOperationsFunction),
+                ROA.concat(symbolDefs)
+            )
 
-            // const builtInVars: Record<string, (decl: tsm.VariableDeclaration) => SymbolDef> = {
-            //     "ByteString": createBuiltInSymbol,
-            //     "Error": decl => createBuiltInCallable(decl, { parseArguments: invokeError }),
-            //     "Runtime": createBuiltInSymbol,
-            //     "Storage": createBuiltInSymbol,
-            // }
+            const builtInEnums: Record<string, (decl: tsm.EnumDeclaration) => SymbolDef> = {
+                "CallFlags": makeEnumObject,
+                "FindOptions": makeEnumObject,
+            }
 
-            // symbolDefs = resolveBuiltins(builtInEnums)(decls.enums)(symbolDefs);
-            // symbolDefs = resolveBuiltins(builtInFunctions)(decls.functions)(symbolDefs);
-            // symbolDefs = resolveBuiltins(builtInInterfaces)(decls.interfaces)(symbolDefs);
-            // symbolDefs = resolveBuiltins(builtInVars)(decls.variables)(symbolDefs);
+            const builtInFunctions: Record<string, (decl: tsm.FunctionDeclaration) => SymbolDef> = {
+                "callContract": decl => createBuiltInCallable(decl, { parseArguments: invokeCallContract }),
+            }
+
+            const builtInInterfaces: Record<string, (decl: tsm.InterfaceDeclaration) => SymbolDef> = {
+                "ByteStringConstructor": makeByteStringConstructor,
+                "ByteString": makeByteStringInterface,
+                "Iterator": makeIteratorInterface,
+                "ReadonlyStorageContext": makeReadonlyStorageContext,
+                "RuntimeConstructor": makeSysCallInterface,
+                "StorageConstructor": makeStorageConstructor,
+                "StorageContext": makeStorageContext,
+            }
+
+            const builtInVars: Record<string, (decl: tsm.VariableDeclaration) => SymbolDef> = {
+                "ByteString": createBuiltInSymbol,
+                "Error": decl => createBuiltInCallable(decl, { parseArguments: invokeError }),
+                "Runtime": createBuiltInSymbol,
+                "Storage": createBuiltInSymbol,
+            }
+
+            symbolDefs = resolveBuiltins(builtInEnums)(enums)(symbolDefs);
+            symbolDefs = resolveBuiltins(builtInFunctions)(functions)(symbolDefs);
+            symbolDefs = resolveBuiltins(builtInVars)(variables)(symbolDefs);
+
+            typeDefs = resolveBuiltins(builtInInterfaces)(interfaces)(typeDefs);
 
             const scope = createScope()(ROA.empty);
             return [scope, diagnostics];
         }
 
-// type LibraryDeclaration = tsm.EnumDeclaration | tsm.FunctionDeclaration | tsm.InterfaceDeclaration | tsm.VariableDeclaration;
+export type BuiltinDeclaration = tsm.EnumDeclaration | tsm.FunctionDeclaration | tsm.InterfaceDeclaration | tsm.VariableDeclaration;
 
-// const resolveBuiltins =
-//     <T extends LibraryDeclaration>(map: ROR.ReadonlyRecord<string, (decl: T) => SymbolDef>) =>
-//         (declarations: readonly T[]) =>
-//             (symbolDefs: readonly SymbolDef[]) => {
-//                 const defs = pipe(
-//                     map,
-//                     ROR.mapWithIndex((key, func) => pipe(
-//                         declarations,
-//                         ROA.filter(d => d.getName() === key),
-//                         single,
-//                         O.map(func),
-//                         E.fromOption(() => key),
-//                     )),
-//                     rorValues,
-//                     checkErrors('unresolved built in variables'),
-//                 )
-//                 return ROA.concat(defs)(symbolDefs);
-//             }
+const resolveBuiltins =
+    <T extends BuiltinDeclaration>(map: ROR.ReadonlyRecord<string, (decl: T) => SymbolDef>) =>
+        (declarations: readonly T[]) =>
+            (symbolDefs: readonly SymbolDef[]) => {
+                const defs = pipe(
+                    map,
+                    ROR.mapWithIndex((key, func) => pipe(
+                        declarations,
+                        ROA.filter(d => d.getName() === key),
+                        single,
+                        O.map(func),
+                        E.fromOption(() => key),
+                    )),
+                    rorValues,
+                    checkErrors('unresolved built in variables'),
+                )
+                return ROA.concat(defs)(symbolDefs);
+            }

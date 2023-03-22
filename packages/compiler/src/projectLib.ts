@@ -9,7 +9,7 @@ import { empty as ROS_empty, elem as ROS_elem, insert as ROS_insert } from 'fp-t
 import { Json, JsonRecord, parse } from "fp-ts/Json";
 import { lookup as ROR_lookup } from 'fp-ts/ReadonlyRecord';
 import { Eq as STR_Eq } from 'fp-ts/string';
-import { posix, resolve } from 'path';
+import { posix } from 'path';
 
 import { createDiagnostic } from "./utils";
 import { CompilerState } from "./types/CompileOptions";
@@ -26,7 +26,12 @@ function getFileReferenceName(file: tsm.FileReference) {
     return file.getFileName(); 
 }
 
-export type LibraryDeclaration = tsm.EnumDeclaration | tsm.FunctionDeclaration | tsm.InterfaceDeclaration | tsm.VariableStatement;
+export type LibraryDeclaration = 
+    tsm.EnumDeclaration | 
+    tsm.FunctionDeclaration | 
+    tsm.InterfaceDeclaration | 
+    tsm.TypeAliasDeclaration |
+    tsm.VariableStatement;
 
 const collectDeclarations =
     (resolver: Resolver) =>

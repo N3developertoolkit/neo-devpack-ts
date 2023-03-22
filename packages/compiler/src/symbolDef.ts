@@ -33,11 +33,13 @@ export class $SymbolDef implements SymbolDef {
     readonly symbol: tsm.Symbol;
     readonly type: tsm.Type;
 
-    get name() { return this.symbol.getName(); }
-    get typeName() { return this.type.getSymbol()?.getName(); }
+    readonly name: string;
+    readonly typeName: string | undefined;
 
     protected constructor(readonly node: tsm.Node, symbol?: tsm.Symbol) {
         this.symbol = symbol ?? node.getSymbolOrThrow();
         this.type = node.getType();
+        this.name = this.symbol.getName();
+        this.typeName = this.type.getSymbol()?.getName();
     }
 }

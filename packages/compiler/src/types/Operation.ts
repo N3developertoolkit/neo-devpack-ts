@@ -91,8 +91,6 @@ export function convertSimpleOperationKind(kind: SimpleOperationKind) {
     }
 
     throw new Error(`${kind} operation not implemented`)
-
-
 }
 
 const jumpOperationKinds = [
