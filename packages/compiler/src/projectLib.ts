@@ -4,124 +4,142 @@ import * as ROA from 'fp-ts/ReadonlyArray';
 import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from 'fp-ts/Either';
 import * as O from 'fp-ts/Option';
-import * as S from 'fp-ts/State';
-import * as ROS from 'fp-ts/ReadonlySet';
-import * as M from 'fp-ts/Monoid';
-import * as FP from 'fp-ts';
-import { JsonRecord } from "fp-ts/Json";
-import { posix } from 'path';
+import { State } from 'fp-ts/State';
+import { empty as ROS_empty, elem as ROS_elem, insert as ROS_insert } from 'fp-ts/ReadonlySet';
+import { Json, JsonRecord, parse } from "fp-ts/Json";
+import { lookup as ROR_lookup } from 'fp-ts/ReadonlyRecord';
+import { Eq as STR_Eq } from 'fp-ts/string';
+import { posix, resolve } from 'path';
 
 import { createDiagnostic } from "./utils";
 import { CompilerState } from "./types/CompileOptions";
-import * as TS from './utility/TS'
 
-const isFunctionDeclaration = O.fromPredicate(tsm.Node.isFunctionDeclaration);
-const isInterfaceDeclaration = O.fromPredicate(tsm.Node.isInterfaceDeclaration);
-const isVariableStatement = O.fromPredicate(tsm.Node.isVariableStatement);
-const isModuleDeclaration = O.fromPredicate(tsm.Node.isModuleDeclaration);
-const isEnumDeclaration = O.fromPredicate(tsm.Node.isEnumDeclaration);
-const getVariableDeclarations = (node: tsm.VariableStatement) => node.getDeclarations();
-const getModuleBody = (node: tsm.ModuleDeclaration) => O.fromNullable(node.getBody());
-
-export type LibraryDeclarations = {
-    readonly enums: readonly tsm.EnumDeclaration[],
-    readonly functions: readonly tsm.FunctionDeclaration[],
-    readonly interfaces: readonly tsm.InterfaceDeclaration[],
-    readonly variables: readonly tsm.VariableDeclaration[],
+function isJsonRecord(json: Json): json is JsonRecord {
+    return json !== null && typeof json === 'object' && !(json instanceof Array);
 }
 
-const parseDeclarations =
-    (children: ReadonlyArray<tsm.Node>): LibraryDeclarations => {
-        const enums = pipe(
-            children,
-            ROA.filterMap(isEnumDeclaration),
-        );
-        const functions = pipe(
-            children,
-            ROA.filterMap(isFunctionDeclaration)
-        );
-        const interfaces = pipe(
-            children,
-            ROA.filterMap(isInterfaceDeclaration)
-        );
-        const variables = pipe(
-            children,
-            ROA.filterMap(isVariableStatement),
-            ROA.chain(getVariableDeclarations)
-        );
-
-        return { enums, functions, interfaces, variables, }
-    }
-
-const libDeclMonoid: M.Monoid<LibraryDeclarations> = {
-    concat: (x, y) => ({
-        enums: ROA.concat(y.enums)(x.enums),
-        functions: ROA.concat(y.functions)(x.functions),
-        interfaces: ROA.concat(y.interfaces)(x.interfaces),
-        variables: ROA.concat(y.variables)(x.variables),
-    }),
-    empty: {
-        enums: ROA.empty,
-        functions: ROA.empty,
-        interfaces: ROA.empty,
-        variables: ROA.empty
-    }
+function isJsonString(json: Json): json is string {
+    return typeof json === 'string';
 }
 
-const parseLibrarySourceFile =
+function getFileReferenceName(file: tsm.FileReference) { 
+    return file.getFileName(); 
+}
+
+export type LibraryDeclaration = tsm.EnumDeclaration | tsm.FunctionDeclaration | tsm.InterfaceDeclaration | tsm.VariableStatement;
+
+const collectDeclarations =
     (resolver: Resolver) =>
-        (src: tsm.SourceFile): S.State<LibraryDeclarations, ReadonlyArray<E.Either<string, tsm.SourceFile>>> =>
-            declarations => {
-                const children = pipe(src, TS.getChildren);
-                let childDecls = parseDeclarations(children);
+        (node: tsm.Node): readonly LibraryDeclaration[] => {
 
-                const globalModules = pipe(
-                    children,
-                    ROA.filterMap(isModuleDeclaration),
-                    ROA.filter(m => m.getDeclarationKind() === tsm.ModuleDeclarationKind.Global)
-                );
+            let declarations: readonly LibraryDeclaration[] = ROA.empty;
+            node.forEachChild(child => {
+                switch (child.getKind()) {
+                    case tsm.SyntaxKind.EnumDeclaration:
+                    case tsm.SyntaxKind.FunctionDeclaration:
+                    case tsm.SyntaxKind.InterfaceDeclaration:
+                    case tsm.SyntaxKind.TypeAliasDeclaration:
+                    case tsm.SyntaxKind.VariableStatement:
+                        declarations = ROA.append(child as LibraryDeclaration)(declarations);
+                        break;
 
-                for (const module of globalModules) {
-                    const modDecls = pipe(
-                        module,
-                        getModuleBody,
-                        O.map(TS.getChildren),
-                        O.map(parseDeclarations),
-                        E.fromOption(
-                            () => `${posix.basename(src.getFilePath())} global module`
-                        )
-                    )
+                    case tsm.SyntaxKind.ModuleDeclaration: {
+                        const body = (child as tsm.ModuleDeclaration).getBody();
+                        const modDecls = body ? collectDeclarations(resolver)(body) : [];
+                        declarations = ROA.concat(modDecls)(declarations);
+                        break;
+                    }
 
-                    // if module.getBody returns undefined, exit without
-                    // including any declarations defined in the current file
-                    if (E.isLeft(modDecls)) return [ROA.of(modDecls), declarations];
-                    childDecls = libDeclMonoid.concat(childDecls, modDecls.right);
+                    case tsm.SyntaxKind.ExportDeclaration: {
+                        const exports = (child as tsm.ExportDeclaration).getNamedExports();
+                        if (ROA.isNonEmpty(exports)) {
+                            throw new Error('non empty ExportDeclaration')
+                        }
+                        break;
+                    }
+
+                    case tsm.SyntaxKind.EndOfFileToken:
+                        break;
+
+                    default:
+                        throw new Error(`collectDeclarations ${child.getKindName()}`)
                 }
+            })
+
+            return declarations;
+        }
+
+const collectSourceFileDeclarations =
+    (resolver: Resolver) =>
+        (src: tsm.SourceFile): State<readonly LibraryDeclaration[], ReadonlyArray<E.Either<string, tsm.SourceFile>>> =>
+            declarations => {
 
                 const libs = pipe(
                     src.getLibReferenceDirectives(),
-                    ROA.map(l => l.getFileName()));
+                    ROA.map(getFileReferenceName));
                 const types = pipe(
                     src.getTypeReferenceDirectives(),
-                    ROA.map(t => t.getFileName()));
+                    ROA.map(getFileReferenceName));
+                const $declarations = collectDeclarations(resolver)(src);
 
                 return [
                     resolveReferences(resolver)(libs, types),
-                    libDeclMonoid.concat(childDecls, declarations)
+                    ROA.concat($declarations)(declarations)
                 ];
             }
 
-const LIB_PATH = `/node_modules/typescript/lib/`;
+export const collectProjectDeclarations =
+    (project: tsm.Project): CompilerState<readonly LibraryDeclaration[]> =>
+        diagnostics => {
+            const resolver = makeResolver(project);
+            const $parseLibrarySourceFile = collectSourceFileDeclarations(resolver);
+
+            const opts = project.compilerOptions.get();
+            let { left: failures, right: sources } = pipe(
+                opts,
+                opts => resolveReferences(resolver)(opts.lib ?? [], opts.types ?? []),
+                ROA.partitionMap(identity)
+            )
+            let parsed: ReadonlySet<string> = ROS_empty;
+            let declarations: readonly LibraryDeclaration[] = ROA.empty;
+
+            while (ROA.isNonEmpty(sources)) {
+                pipe(
+                    sources,
+                    RNEA.matchLeft((head, tail) => {
+                        sources = tail;
+                        const headPath = head.getFilePath();
+                        if (ROS_elem(STR_Eq)(headPath)(parsed)) return;
+                        parsed = ROS_insert(STR_Eq)(headPath)(parsed);
+
+                        let results;
+                        [results, declarations] = $parseLibrarySourceFile(head)(declarations);
+
+                        const { left: $failures, right: $sources } = pipe(results, ROA.partitionMap(identity));
+                        failures = ROA.concat($failures)(failures);
+                        sources = ROA.concat($sources)(sources);
+                    })
+                )
+            }
+
+            const $diagnostics = pipe(failures, ROA.map(createDiagnostic));
+            return [declarations, ROA.concat($diagnostics)(diagnostics)];
+        }
 
 interface Resolver {
     resolveLib(lib: string): E.Either<string, tsm.SourceFile>,
     resolveTypes(types: string): E.Either<string, tsm.SourceFile>,
 }
 
-const isJsonRecord = (json: FP.json.Json): json is JsonRecord =>
-    json !== null && typeof json === 'object' && !(json instanceof Array)
+function resolveReferences(resolver: Resolver) {
+    return (libs: ReadonlyArray<string>, types: ReadonlyArray<string>) => {
+        const resolvedLibs = pipe(libs, ROA.map(resolver.resolveLib));
+        const resolbedTypes = pipe(types, ROA.map(resolver.resolveTypes));
+        return ROA.concat(resolvedLibs)(resolbedTypes);
+    };
+}
 
-const isJsonString = (json: FP.json.Json): json is string => typeof json === 'string'
+const LIB_PATH = `/node_modules/typescript/lib/`;
 
 function makeResolver(project: tsm.Project): Resolver {
 
@@ -151,17 +169,17 @@ function makeResolver(project: tsm.Project): Resolver {
                 return pipe(
                     packagepath,
                     getFile,
-                    O.chain(flow(FP.json.parse, O.fromEither)),
+                    O.chain(flow(parse, O.fromEither)),
                     O.chain(O.fromPredicate(isJsonRecord)),
                     O.bindTo('$package'),
                     // look in typings and types properties for relative path
                     // to declarations file
                     O.chain(({ $package }) => pipe(
                         $package,
-                        FP.record.lookup('typings'),
+                        ROR_lookup('typings'),
                         O.alt(() => pipe(
                             $package,
-                            FP.record.lookup('types')
+                            ROR_lookup('types')
                         ))
                     )),
                     // cast JSON value to string
@@ -180,46 +198,3 @@ function makeResolver(project: tsm.Project): Resolver {
         resolveTypes
     }
 }
-
-const resolveReferences =
-    (resolver: Resolver) =>
-        (libs: ReadonlyArray<string>, types: ReadonlyArray<string>) => {
-            const resolvedLibs = pipe(libs, ROA.map(resolver.resolveLib));
-            const resolbedTypes = pipe(types, ROA.map(resolver.resolveTypes));
-            return ROA.concat(resolvedLibs)(resolbedTypes);
-        }
-
-export const parseProjectLibrary =
-    (project: tsm.Project): CompilerState<LibraryDeclarations> =>
-        diagnostics => {
-            const resolver = makeResolver(project);
-            const $parseLibrarySourceFile = parseLibrarySourceFile(resolver);
-
-            const opts = project.compilerOptions.get();
-            let { left: failures, right: sources } = pipe(
-                opts,
-                opts => resolveReferences(resolver)(opts.lib ?? [], opts.types ?? []),
-                ROA.partitionMap(identity)
-            )
-            let parsed: ReadonlySet<string> = ROS.empty;
-            let declarations = libDeclMonoid.empty;
-
-            while (ROA.isNonEmpty(sources)) {
-
-                const head = RNEA.head(sources);
-                sources = RNEA.tail(sources);
-
-                const headPath = head.getFilePath();
-                if (ROS.elem(FP.string.Eq)(headPath)(parsed)) continue;
-                parsed = ROS.insert(FP.string.Eq)(headPath)(parsed);
-
-                let results;
-                [results, declarations] = $parseLibrarySourceFile(head)(declarations);
-
-                const { left: $failures, right: $sources } = pipe(results, ROA.partitionMap(identity));
-                failures = ROA.concat($failures)(failures);
-                sources = ROA.concat($sources)(sources);
-            }
-
-            return [declarations, ROA.concat(failures.map(f => createDiagnostic(f)))(diagnostics)];
-        }

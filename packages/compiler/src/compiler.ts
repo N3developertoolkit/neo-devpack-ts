@@ -5,7 +5,7 @@ import * as ROA from 'fp-ts/ReadonlyArray'
 import * as S from 'fp-ts/State'
 import * as O from 'fp-ts/Option'
 
-import { parseProjectLibrary } from "./projectLib";
+import { collectProjectDeclarations } from "./projectLib";
 import { collectArtifacts } from "./collectArtifacts";
 import { makeGlobalScope } from "./passes/builtins";
 import { parseProject } from "./passes/sourceFileProcessor";
@@ -30,7 +30,7 @@ export function compile(
         project.getPreEmitDiagnostics(),
         ROA.map(d => d.compilerObject),
         pipe(
-            parseProjectLibrary(project),
+            collectProjectDeclarations(project),
             S.chain(makeGlobalScope),
             S.chain(parseProject(project)),
             S.bindTo('compiledProject'),
