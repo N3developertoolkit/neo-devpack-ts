@@ -121,7 +121,9 @@ main();
 
 
 function dumpContractMethod(method: ContractMethod) {
-    console.log(magenta, method.symbol.getName());
+
+    const params = method.node.getParameters().map(p => p.getName()).join(", ");
+    console.log(magenta, `${method.symbol.getName()}(${params})`);
     method.operations.forEach((v, i) => {
         if (v.location) { console.log(cyan, `  ${dumpLocation(v.location)}`); }
         console.log(`    ${i}: ${dumpOperation(v, i)}`);
