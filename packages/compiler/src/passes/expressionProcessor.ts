@@ -6,12 +6,11 @@ import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option'
 import * as TS from "../utility/TS";
 import { isJumpTargetOp, Operation, SimpleOperationKind } from "../types/Operation";
-import { resolve as $resolve } from "../scope";
-import { ParseError, Scope, SymbolDef } from "../types/ScopeType";
+import { resolve as $resolve, resolveType } from "../scope";
+import { ParseError, Scope, SymbolDef, TypeDef } from "../types/ScopeType";
 import { isCallableDef, isObjectDef, makeParseError, parseLoadOps } from "../symbolDef";
 import { parseSymbol } from "./parseSymbol";
 import { isBigIntLike, isBooleanLike, isNumberLike, isStringLike, single } from "../utils";
-import { reduce } from "fp-ts/lib/Foldable";
 
 export const getArguments = (node: tsm.CallExpression) =>
     ROA.fromArray(node.getArguments() as tsm.Expression[])
@@ -461,20 +460,6 @@ interface ChainContext {
     readonly endTarget: Operation
 }
 
-const resolveType =
-    (node: tsm.Node) =>
-        (scope: Scope) =>
-            (type: tsm.Type): E.Either<ParseError, O.Option<SymbolDef>> => {
-                const symbol = type.getSymbol();
-                return symbol
-                    ? pipe(
-                        symbol,
-                        resolve(node)(scope),
-                        E.map(def => O.of(def))
-                    )
-                    : E.of(O.none);
-            }
-
 export const parseIdentifierChain =
     (scope: Scope) =>
         (node: tsm.Identifier): E.Either<ParseError, ChainContext> => {
@@ -579,18 +564,22 @@ const parseCallExpression =
                     }),
                     E.bindTo('operations'),
                     E.bind('def', () => {
-                        return resolveType(node)(scope)(node.getType());
+                        const typeDef = pipe(
+                            node.getType().getSymbol(),
+                            O.fromNullable,
+                            O.chain(resolveType(scope)),
+                        )
+                        return E.of(typeDef);
                     }),
                     E.map(ctx => {
                         return {
                             ...context,
                             def: ctx.def,
                             operations: ctx.operations
-                        };
+                        } as ChainContext;
                     })
                 )
             }
-
 
 function resolvePropertyAccessExpression(scope: Scope, context: ChainContext) {
     return (node: tsm.PropertyAccessExpression) => {
@@ -606,30 +595,25 @@ function resolvePropertyAccessExpression(scope: Scope, context: ChainContext) {
                     parseContextDef(node),
                     E.chain(def => {
                         return pipe(
-                            def.type,
-                            resolveType(node)(scope),
-                            E.chain(E.fromOption(() => makeError(`${symbol.getName()} resolved to void`)))
+                            def.type.getSymbol(),
+                            O.fromNullable,
+                            O.chain(resolveType(scope)),
+                            E.fromOption(() => makeError(`could not resolve ${symbol.getName()} type`))
                         );
                     }),
-                    E.chain(type => {
-                        return pipe(type,
-                            E.fromPredicate(
-                                isObjectDef,
-                                () => {
-                                    return makeError(`${type.symbol.getName()} is not an object`);
-                                }
-                            )
-                        );
-                    })
                 );
             }),
             E.bind('property', ({ symbol, type }) => {
-                return pipe(
-                    type.props,
-                    ROA.filter(p => p.symbol === symbol),
-                    single,
-                    E.fromOption(() => makeError(`failed to resolve ${symbol.getName()} on ${type.symbol.getName()}`))
-                );
+                if ("props" in type && Array.isArray(type.props)) {
+                    const props = type.props as readonly SymbolDef[];
+                    return pipe(
+                        props,
+                        ROA.findFirst(d => d.symbol === symbol),
+                        E.fromOption(() => makeError(`failed to resolve ${symbol.getName()} on ${type.symbol.getName()}`))
+                    )
+                } else {
+                    return E.left(makeError(`${type.symbol.getName()} does not have properties`));
+                }
             })
         );
     };
@@ -715,14 +699,13 @@ export function parseExpressionChain(scope: Scope) {
                 )
             )),
             E.map(context => {
+                // only add the endTarget operation if there is at least 
+                // one jump ops targeting it
                 const endJumps = pipe(
                     context.operations,
                     ROA.filter(isJumpTargetOp),
                     ROA.filter(op => op.target === context.endTarget),
                 )
-
-                // only add the endTarget operation if there is at least 
-                // one jump ops targeting it
                 return endJumps.length > 0
                     ? ROA.append(context.endTarget)(context.operations)
                     : context.operations;

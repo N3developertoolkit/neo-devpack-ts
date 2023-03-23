@@ -41,6 +41,34 @@ export const resolveType =
             );
         }
 
+export const resolveName =
+    (scope: Scope) =>
+        (name: string): O.Option<SymbolDef> => {
+            return pipe(
+                [...scope.symbols.entries()],
+                ROA.findFirst(e => e[0].getName() === name),
+                O.map(t => t[1]),
+                O.alt(() => pipe(
+                    scope.parentScope,
+                    O.chain(p => resolveName(p)(name))
+                ))
+            );
+        }
+
+export const resolveTypeName =
+    (scope: Scope) =>
+        (name: string): O.Option<TypeDef> => {
+            return pipe(
+                [...scope.types.entries()],
+                ROA.findFirst(e => e[0].getName() === name),
+                O.map(t => t[1]),
+                O.alt(() => pipe(
+                    scope.parentScope,
+                    O.chain(p => resolveTypeName(p)(name))
+                ))
+            );
+        }
+
 
 function isArray<T>(value: T | readonly T[]): value is readonly T[] {
     return Array.isArray(value);
