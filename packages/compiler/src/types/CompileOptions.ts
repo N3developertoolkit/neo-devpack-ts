@@ -13,11 +13,15 @@ export interface CompileOptions {
     readonly standards: ReadonlyArray<string>;
 }
 
+export interface ContractSlot {
+    name: string; 
+    type: tsm.Type
+}
 export interface ContractMethod {
     symbol: tsm.Symbol;
     node: tsm.FunctionDeclaration;
-    operations: ReadonlyArray<Operation>;
-    variables: ReadonlyArray<{ name: string; type: tsm.Type; }>;
+    operations: readonly Operation[];
+    variables: readonly ContractSlot[];
 }
 
 export interface ContractEvent {
@@ -26,8 +30,9 @@ export interface ContractEvent {
 }
 
 export interface CompiledProject {
-    readonly methods: readonly ContractMethod[],
-    readonly events: readonly ContractEvent[],
+    readonly methods: readonly ContractMethod[];
+    readonly events: readonly ContractEvent[];
+    readonly staticVars: readonly ContractSlot[];
 }
 
 export interface CompiledProjectArtifacts {

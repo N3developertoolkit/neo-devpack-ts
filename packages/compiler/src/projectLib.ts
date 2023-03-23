@@ -4,6 +4,7 @@ import * as ROA from 'fp-ts/ReadonlyArray';
 import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from 'fp-ts/Either';
 import * as O from 'fp-ts/Option';
+import * as TS from './utility/TS'
 import { State } from 'fp-ts/State';
 import { empty as ROS_empty, elem as ROS_elem, insert as ROS_insert } from 'fp-ts/ReadonlySet';
 import { Json, JsonRecord, parse } from "fp-ts/Json";
@@ -38,6 +39,7 @@ const collectDeclarations =
         (node: tsm.Node): readonly LibraryDeclaration[] => {
 
             let declarations: readonly LibraryDeclaration[] = ROA.empty;
+
             node.forEachChild(child => {
                 switch (child.getKind()) {
                     case tsm.SyntaxKind.EnumDeclaration:

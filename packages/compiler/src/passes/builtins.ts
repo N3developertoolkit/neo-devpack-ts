@@ -8,10 +8,10 @@ import * as O from 'fp-ts/Option'
 import * as TS from "../utility/TS";
 
 import { CompilerState } from "../types/CompileOptions";
-import { createScope } from "../scope";
+import { createEmptyScope, createScope } from "../scope";
 import { ParseError, Scope, SymbolDef } from "../types/ScopeType";
 import { makeParseError } from "../symbolDef";
-import { isVoidLike, single } from "../utils";
+import { createDiagnostic, isVoidLike, single } from "../utils";
 import { Operation, parseOperation as $parseOperation } from "../types/Operation";
 
 import { getArguments, parseExpression } from "./expressionProcessor";
@@ -248,7 +248,7 @@ function makeEnumObject(decl: tsm.EnumDeclaration) {
     return createBuiltInObject(decl, { props });
 }
 
-function makeIteratorInterface(decl: tsm.InterfaceDeclaration):SymbolDef {
+function makeIteratorInterface(decl: tsm.InterfaceDeclaration): SymbolDef {
     return createBuiltInSymbol(decl);
 }
 
@@ -339,8 +339,18 @@ export const makeGlobalScope =
 
             typeDefs = resolveBuiltins(builtInInterfaces)(interfaces)(typeDefs);
 
-            const scope = createScope()(ROA.empty);
-            return [scope, diagnostics];
+            return pipe(
+                createScope()(symbolDefs, typeDefs),
+                E.match(
+                    error => {
+                        diagnostics = ROA.append(createDiagnostic(error))(diagnostics);
+                        return [createEmptyScope(), diagnostics];
+                    },
+                    scope => {
+                        return [scope, diagnostics];
+                    }
+                )
+            );
         }
 
 export type BuiltinDeclaration = tsm.EnumDeclaration | tsm.FunctionDeclaration | tsm.InterfaceDeclaration | tsm.VariableDeclaration;

@@ -10,7 +10,7 @@ import * as FP from 'fp-ts'
 import * as TS from "../utility/TS";
 
 import { makeParseError } from "../symbolDef";
-import { createScope, updateScope } from "../scope";
+import { createScope } from "../scope";
 import { ParseError, Scope, SymbolDef } from "../types/ScopeType";
 import { convertJumpTargetOps, isJumpTargetOp, JumpOffsetOperation, JumpTargetOperation, LoadStoreOperation, Location, Operation } from "../types/Operation";
 import { isVoidLike } from "../utils";
@@ -70,9 +70,9 @@ const parseBlock =
 
             let operations: readonly Operation[] = ROA.empty;
             for (const stmt of node.getStatements()) {
-                let ops;
-                [ops, $state] = parseStatement(stmt)($state);
-                operations = ROA.concat(ops)(operations);
+                // let ops;
+                // [ops, $state] = parseStatement(stmt)($state);
+                // operations = ROA.concat(ops)(operations);
             }
 
             const open = node.getFirstChildByKind(tsm.SyntaxKind.OpenBraceToken);
@@ -130,7 +130,7 @@ const parseVariableDeclarations =
             state = {
                 ...state,
                 locals: ROA.concat(declarations)(state.locals),
-                scope: updateScope(state.scope)(defs as readonly SymbolDef[])
+                // scope: updateScope(state.scope)(defs as readonly SymbolDef[])
             };
 
             return [operations, state];
@@ -318,17 +318,18 @@ const makeContractMethod =
 export const makeFunctionDeclScope =
     (parentScope: Scope) =>
         (node: tsm.FunctionDeclaration): E.Either<readonly ParseError[], Scope> => {
-            return pipe(
-                node.getParameters(),
-                ROA.mapWithIndex((index, node) => pipe(
-                    node,
-                    parseSymbol,
-                    E.map(symbol => new ParameterSymbolDef(node, symbol, index))
-                )),
-                ROA.separate,
-                E_fromSeparated,
-                E.map(defs => createScope(parentScope)(defs as readonly SymbolDef[]))
-            );
+            return E.left(ROA.of(makeParseError(node)("not impl")))
+            // return pipe(
+            //     node.getParameters(),
+            //     ROA.mapWithIndex((index, node) => pipe(
+            //         node,
+            //         parseSymbol,
+            //         E.map(symbol => new ParameterSymbolDef(node, symbol, index))
+            //     )),
+            //     ROA.separate,
+            //     E_fromSeparated,
+            //     E.map(defs => createScope(parentScope)(defs as readonly SymbolDef[]))
+            // );
         }
 
 export const parseContractMethod =

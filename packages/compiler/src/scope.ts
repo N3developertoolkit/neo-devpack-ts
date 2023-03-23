@@ -1,9 +1,12 @@
 import * as tsm from "ts-morph";
 import { pipe } from 'fp-ts/lib/function';
 import * as O from 'fp-ts/Option';
+import * as E from 'fp-ts/Either';
 import * as ROM from 'fp-ts/ReadonlyMap';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as Eq from 'fp-ts/Eq';
+import * as STR from 'fp-ts/string';
+
 import { Scope, SymbolDef, TypeDef } from "./types/ScopeType";
 
 const symbolEq: Eq.Eq<tsm.Symbol> = { equals: (x, y) => x === y }
@@ -39,28 +42,55 @@ export const resolveType =
         }
 
 
-function createSymbolMap<T extends { readonly symbol: tsm.Symbol }>(items: readonly T[]) {
-    return ROM.fromMap(new Map(items.map(v => [v.symbol, v])))
+function isArray<T>(value: T | readonly T[]): value is readonly T[] {
+    return Array.isArray(value);
+}
+
+function validateDefs<T extends { readonly symbol: tsm.Symbol }>(defs: readonly T[]): E.Either<string, ReadonlyMap<tsm.Symbol, T>> {
+    const names = pipe(defs, ROA.map(d => d.symbol.getName()));
+    const diff = pipe(names, ROA.difference(STR.Eq)(pipe(names, ROA.uniq(STR.Eq))));
+    return diff.length === 0
+        ? E.of(ROM.fromMap(new Map(defs.map(v => [v.symbol, v]))))
+        : E.left(`validateDefs duplicate names: ${diff.join(', ')}`);
+}
+
+export const createEmptyScope = (parentScope?: Scope): Scope => {
+    return {
+        parentScope: O.fromNullable(parentScope),
+        symbols: new Map(),
+        types: new Map(),
+    }
 }
 
 export const createScope = (parentScope?: Scope) =>
-    (defs: readonly SymbolDef[], types: readonly TypeDef[] = []): Scope => {
-        return {
-            parentScope: O.fromNullable(parentScope),
-            symbols: createSymbolMap(defs),
-            types: createSymbolMap(types),
-        };
+    (defs: readonly SymbolDef[], types: readonly TypeDef[] = []): E.Either<string, Scope> => {
+        return pipe(
+            E.Do,
+            E.bind("symbols", () => pipe(defs, validateDefs)),
+            E.bind("types", () => pipe(types, validateDefs)),
+            E.bind("parentScope", () => E.of(O.fromNullable(parentScope)))
+        )
     }
 
-export const updateScope = (scope: Scope) =>
-    (defs: ReadonlyArray<SymbolDef>, types: readonly TypeDef[] = []): Scope => {
 
-        defs = ROA.concat(defs)([...scope.symbols.values()]);
-        types = ROA.concat(types)([...scope.types.values()]);
-
-        return {
-            parentScope: scope.parentScope,
-            symbols: createSymbolMap(defs),
-            types: createSymbolMap(types),
+export const updateScopeSymbols =
+    (scope: Scope) =>
+        (def: SymbolDef | readonly SymbolDef[]): E.Either<string, Scope> => {
+            return pipe(
+                isArray(def) ? def : ROA.of(def),
+                defs => ROA.concat(defs)([...scope.symbols.values()]),
+                validateDefs,
+                E.map(symbols => ({ ...scope, symbols } as Scope))
+            )
         }
-    }
+
+export const updateScopeTypes =
+    (scope: Scope) =>
+        (def: TypeDef | readonly TypeDef[]): E.Either<string, Scope> => {
+            return pipe(
+                isArray(def) ? def : ROA.of(def),
+                defs => ROA.concat(defs)([...scope.types.values()]),
+                validateDefs,
+                E.map(types => ({ ...scope, types } as Scope))
+            )
+        }
