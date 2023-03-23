@@ -147,11 +147,11 @@ function parseLogicalOrExpression(node: tsm.BinaryExpression, scope: Scope) {
 
 function parsePropertyAccessAssignment(node: tsm.PropertyAccessExpression, valueOps: readonly Operation[], scope: Scope, context: ChainContext) {
     return pipe(
-        node, 
+        node,
         resolvePropertyAccessExpression(scope, context),
-        E.chain(({property}) => {
+        E.chain(({ property }) => {
             if (property.parseStore) {
-                return pipe (
+                return pipe(
                     property.parseStore(context.operations, valueOps),
                 );
             } else {
@@ -168,8 +168,8 @@ function parseAssignmentExpression(node: tsm.BinaryExpression, scope: Scope) {
         E.chain(value => {
             const chain = makeExpressionChain(node.getLeft());
             return pipe(
-                chain, 
-                RNEA.init, 
+                chain,
+                RNEA.init,
                 init => ROA.isNonEmpty(init)
                     ? pipe(init,
                         RNEA.matchLeft((head, tail) => pipe(
@@ -415,7 +415,7 @@ export function parseExpressionAsBoolean(scope: Scope) {
         const resolvedType = pipe(
             type,
             TS.getTypeSymbol,
-            O.chain($resolve(scope)),
+            O.chain(resolveType(scope)),
         )
 
         const matchTypeName = (name: string) => pipe(
@@ -442,7 +442,7 @@ export function parseExpressionAsBoolean(scope: Scope) {
         }
 
         // convert other objects by comparing to null
-        if (O.isSome(resolvedType) && isObjectDef(resolvedType.value)) {
+        if (O.isSome(resolvedType) && "props" in resolvedType.value) {
             const convertOps: Operation[] = [
                 { kind: 'isnull' },
                 { kind: "not" },
@@ -521,25 +521,14 @@ const parseAsExpression =
         (context: ChainContext) =>
             (node: tsm.AsExpression): E.Either<ParseError, ChainContext> => {
 
-                return pipe(
-                    node,
-                    TS.getType,
-                    TS.getTypeSymbol,
-                    O.map(flow(
-                        resolve(node)(scope),
-                        E.map(def => ({
-                            ...context,
-                            def: O.of(def),
-                        }))
-                    )),
-                    O.match(
-                        () => E.of({
-                            ...context,
-                            def: O.none
-                        }),
-                        identity
-                    )
+                const def = pipe(
+                    node.getType().getSymbol(),
+                    O.fromNullable,
+                    O.chain(resolveType(scope)),
+                    O.map(def => def as SymbolDef)
                 );
+
+                return E.of({ ...context, def })
             }
 
 const parseCallExpression =
@@ -618,6 +607,7 @@ function resolvePropertyAccessExpression(scope: Scope, context: ChainContext) {
         );
     };
 }
+
 const parsePropertyAccessExpression =
     (scope: Scope) =>
         (context: ChainContext) =>
