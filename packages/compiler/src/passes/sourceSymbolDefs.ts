@@ -8,6 +8,15 @@ import { pipe } from "fp-ts/function";
 import { parseArguments } from "./expressionProcessor";
 import { parseSymbol } from "./parseSymbol";
 
+function parseStore(loadOps: readonly Operation[], valueOps: readonly Operation[], storeOp: Operation) {
+    return pipe(
+        valueOps,
+        ROA.concat(loadOps),
+        ROA.append(storeOp),
+        E.of
+    );
+}
+
 export class LocalVariableSymbolDef extends $SymbolDef {
 
     get loadOps(): readonly Operation[] {
@@ -15,11 +24,7 @@ export class LocalVariableSymbolDef extends $SymbolDef {
     }
 
     parseStore(loadOps: readonly Operation[], valueOps: readonly Operation[]): E.Either<ParseError, readonly Operation[]> {
-        return E.left(makeParseError()('LocalVariableSymbolDef.parseStore not impl'));
-        // return pipe(
-        //     loadOps,
-        //     ROA.append({ kind: "storelocal", index: this.index } as Operation),
-        //     E.of)
+        return parseStore(loadOps, valueOps, { kind: "storelocal", index: this.index });
     }
 
     constructor(
@@ -38,16 +43,9 @@ export class ParameterSymbolDef extends $SymbolDef {
     get loadOps() {
         return [{ kind: "loadarg", index: this.index }];
     }
-    get storeOps() {
-        return [{ kind: "storearg", index: this.index }];
-    }
 
     parseStore(loadOps: readonly Operation[], valueOps: readonly Operation[]): E.Either<ParseError, readonly Operation[]> {
-        return E.left(makeParseError()('ParameterSymbolDef.parseStore not impl'));
-        // return pipe(
-        //     loadOps, 
-        //     ROA.append({ kind: "storearg", index: this.index } as Operation),
-        //     E.of)
+        return parseStore(loadOps, valueOps, { kind: "storearg", index: this.index });
     }
 
     constructor(
@@ -64,16 +62,9 @@ export class StaticVarSymbolDef extends $SymbolDef {
     get loadOps(): readonly Operation[] {
         return [{ kind: "loadstatic", index: this.index }];
     }
-    get storeOps(): readonly Operation[] {
-        return [{ kind: "storestatic", index: this.index }];
-    }
 
     parseStore(loadOps: readonly Operation[], valueOps: readonly Operation[]): E.Either<ParseError, readonly Operation[]> {
-        return E.left(makeParseError()('StaticVarSymbolDef.parseStore not impl'));
-        // return pipe(
-        //     ops, 
-        //     ROA.append({ kind: "storestatic", index: this.index } as Operation),
-        //     E.of)
+        return parseStore(loadOps, valueOps, { kind: "storestatic", index: this.index });
     }
 
     constructor(
