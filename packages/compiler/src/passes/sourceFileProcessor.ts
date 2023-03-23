@@ -13,7 +13,7 @@ import { Operation } from "../types/Operation";
 import { updateScopeSymbols, updateScopeTypes, createEmptyScope } from "../scope";
 import { ParseError, Scope, SymbolDef, TypeDef } from "../types/ScopeType";
 import { parseSymbol } from "./parseSymbol";
-import { createDiagnostic, single } from "../utils";
+import { createDiagnostic, E_fromSeparated, single } from "../utils";
 import { ConstantSymbolDef, EventFunctionSymbolDef as EventSymbolDef, LocalFunctionSymbolDef as FunctionSymbolDef, StaticVarSymbolDef, StructMemberSymbolDef, StructSymbolDef } from "./sourceSymbolDefs";
 
 const handleHoistResult =
@@ -307,7 +307,8 @@ export const parseProject =
                     ROA.filter(src => !src.isDeclarationFile()),
                     ROA.map(parseSourceFile(scope)),
                     ROA.separate,
-                    ({left, right}) => left.length > 0 ? E.left(ROA.flatten(left)) : E.of(right),
+                    E_fromSeparated,
+                    E.mapLeft(ROA.flatten),
                     E.mapLeft(ROA.map(makeParseDiagnostic)),
                     E.match(
                         diags => {

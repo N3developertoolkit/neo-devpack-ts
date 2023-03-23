@@ -13,7 +13,7 @@ import { makeParseError } from "../symbolDef";
 import { createScope } from "../scope";
 import { ParseError, Scope, SymbolDef } from "../types/ScopeType";
 import { convertJumpTargetOps, isJumpTargetOp, JumpOffsetOperation, JumpTargetOperation, LoadStoreOperation, Location, Operation } from "../types/Operation";
-import { isVoidLike } from "../utils";
+import { E_fromSeparated, isVoidLike } from "../utils";
 import { ContractMethod } from "../types/CompileOptions";
 import { parseSymbol } from "./parseSymbol";
 import { parseExpression as $parseExpression, parseExpressionAsBoolean } from "./expressionProcessor";
@@ -32,26 +32,24 @@ interface ParseBodyResult {
 
 type ParseStatementState = S.State<ParseFunctionContext, readonly Operation[]>
 
-export const E_fromSeparated = <E, A>(s: SEP.Separated<readonly E[], A>): E.Either<readonly E[], A> =>
-    ROA.isNonEmpty(s.left) ? E.left(s.left) : E.of(s.right)
 
 const parseExpressionState =
     (parseFunc: (scope: Scope) => (node: tsm.Expression) => E.Either<ParseError, readonly Operation[]>) =>
-    (node: tsm.Expression): ParseStatementState => 
-    state => {
-        return pipe(
-            node,
-            parseFunc(state.scope),
-            E.match(
-                error => [[], {
-                    ...state,
-                    errors: ROA.append(error)(state.errors)
-                }],
-                ops => [ops, state]
-            )
-        )
+        (node: tsm.Expression): ParseStatementState =>
+            state => {
+                return pipe(
+                    node,
+                    parseFunc(state.scope),
+                    E.match(
+                        error => [[], {
+                            ...state,
+                            errors: ROA.append(error)(state.errors)
+                        }],
+                        ops => [ops, state]
+                    )
+                )
 
-    }
+            }
 
 const parseExpression = parseExpressionState($parseExpression);
 
@@ -318,18 +316,24 @@ const makeContractMethod =
 export const makeFunctionDeclScope =
     (parentScope: Scope) =>
         (node: tsm.FunctionDeclaration): E.Either<readonly ParseError[], Scope> => {
-            return E.left(ROA.of(makeParseError(node)("not impl")))
-            // return pipe(
-            //     node.getParameters(),
-            //     ROA.mapWithIndex((index, node) => pipe(
-            //         node,
-            //         parseSymbol,
-            //         E.map(symbol => new ParameterSymbolDef(node, symbol, index))
-            //     )),
-            //     ROA.separate,
-            //     E_fromSeparated,
-            //     E.map(defs => createScope(parentScope)(defs as readonly SymbolDef[]))
-            // );
+
+            return pipe(
+                node.getParameters(),
+                ROA.mapWithIndex((index, node) => pipe(
+                    node,
+                    parseSymbol,
+                    E.map(symbol => new ParameterSymbolDef(node, symbol, index))
+                )),
+                ROA.separate,
+                E_fromSeparated,
+                E.chain(defs => {
+                    return pipe(
+                        defs as readonly SymbolDef[],
+                        createScope(parentScope),
+                        E.mapLeft(msg => ROA.of(makeParseError(node)(msg)))
+                    );
+                })
+            );
         }
 
 export const parseContractMethod =
