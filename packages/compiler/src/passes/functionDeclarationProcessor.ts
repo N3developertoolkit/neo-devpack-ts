@@ -1,13 +1,14 @@
 import * as tsm from "ts-morph";
-import { flow, pipe } from 'fp-ts/function';
+import { flow, identity, pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
 import * as S from 'fp-ts/State';
-import * as FP from 'fp-ts'
+import * as O from 'fp-ts/Option';
+import * as MONOID from 'fp-ts/Monoid'
 
 import { makeParseError } from "../symbolDef";
-import { createEmptyScope, createScope } from "../scope";
+import { createEmptyScope, createScope, updateScopeSymbols } from "../scope";
 import { ParseError, Scope, SymbolDef } from "../types/ScopeType";
 import { convertJumpTargetOps, JumpTargetOperation, LoadStoreOperation, Location, Operation } from "../types/Operation";
 import { E_fromSeparated, isVoidLike } from "../utils";
@@ -84,58 +85,73 @@ const parseBlock =
             return [operations, { ...$state, scope: state.scope }];
         }
 
-const parseVariableDeclarations =
-    (declarations: readonly tsm.VariableDeclaration[]): ParseStatementState =>
-        state => {
-            // create an Either containing an array of VariableSymbolDefs and the operations
-            // needed to initialize each variable
-            const parseDeclsResult = pipe(
-                declarations,
-                ROA.mapWithIndex((index, decl) => pipe(
-                    decl,
-                    parseSymbol,
-                    E.map(symbol => ({
-                        def: new LocalVariableSymbolDef(decl, symbol, index + state.locals.length),
-                        node: decl
-                    }))
-                )),
-                ROA.separate,
-                E_fromSeparated,
-                E.map(ROA.map(({ node, def }) => {
-                    const init = node.getInitializer();
-                    let operations: readonly Operation[] = ROA.empty;
-                    if (init) {
-                        [operations, state] = parseExpression(init)(state);
-                        const op: LoadStoreOperation = { kind: "storelocal", index: def.index };
-                        operations = ROA.append<Operation>(op)(operations);
-                    }
-                    operations = updateLocation(node)(operations);
-                    return { operations, def: def }
-                }))
+const parseVariableDeclaration =
+    (context: ParseFunctionContext) =>
+        (index: number, decl: tsm.VariableDeclaration): E.Either<ParseError, {
+            def: LocalVariableSymbolDef;
+            operations: readonly Operation[];
+        }> => {
+            return pipe(
+                decl,
+                parseSymbol,
+                E.chain(symbol => {
+                    const def = new LocalVariableSymbolDef(decl, symbol, index + context.locals.length);
+                    return pipe(
+                        decl.getInitializer(),
+                        O.fromNullable,
+                        O.map(flow(
+                            $parseExpression(context.scope),
+                            E.map(ops => ROA.append({ kind: "storelocal", index: def.index } as Operation)(ops)),
+                            E.map(updateLocation(decl))
+                        )),
+                        O.match(
+                            () => E.of(ROA.empty),
+                            identity
+                        ),
+                        E.map(operations => ({ def, operations }))
+                    )
+                }),
             )
-
-            // bail out if there were any issues parsing the declarations
-            if (E.isLeft(parseDeclsResult)) return appendErrors(parseDeclsResult.left)(state);
-
-            // concat all the initialization instructions 
-            const operations = FP.monoid.concatAll(ROA.getMonoid<Operation>())(parseDeclsResult.right.map(o => o.operations))
-
-            // update the current scope with the new declarations
-            const defs = parseDeclsResult.right.map(o => o.def);
-            state = {
-                ...state,
-                locals: ROA.concat(declarations)(state.locals),
-                // scope: updateScope(state.scope)(defs as readonly SymbolDef[])
-            };
-
-            return [operations, state];
         }
 
 const parseVariableStatement =
     (node: tsm.VariableStatement): ParseStatementState =>
         state => {
             const declarations = node.getDeclarations();
-            return parseVariableDeclarations(declarations)(state);
+            return pipe(
+                declarations,
+                ROA.mapWithIndex((index, decl) => parseVariableDeclaration(state)(index, decl)),
+                ROA.separate,
+                E_fromSeparated,
+                E.chain(results => {
+
+                    const operations = MONOID.concatAll(ROA.getMonoid<Operation>())(results.map(r => r.operations));
+                    const defs = results.map(r => r.def);
+                    const locals = ROA.concat(declarations)(state.locals);
+                    return pipe(
+                        defs,
+                        updateScopeSymbols(state.scope),
+                        E.mapLeft(msg => ROA.of(makeParseError(node)(msg))),
+                        E.map(scope => {
+                            return [operations, {
+                                ...state,
+                                locals,
+                                scope,
+                            }] as [readonly Operation[], ParseFunctionContext]
+                        }),
+                    );
+                }),
+                E.match(
+                    errors => {
+                        const context = {
+                            ...state,
+                            errors: ROA.concat(errors)(state.errors)
+                        }
+                        return [[], context] as [readonly Operation[], ParseFunctionContext]
+                    },
+                    identity
+                )
+            )
         }
 
 const parseExpressionStatement =
@@ -237,32 +253,23 @@ const appendErrors = (error: readonly ParseError[]): ParseStatementState =>
     state => ([[], { ...state, errors: ROA.concat(error)(state.errors) }]);
 
 export const parseBody =
-    (node: tsm.FunctionDeclaration) =>
-        (scope: Scope) =>
-            (body: tsm.Node): E.Either<readonly ParseError[], ParseBodyResult> => {
-                if (tsm.Node.isStatement(body)) {
-                    let [operations, state] = parseStatement(body)({ scope, errors: [], locals: [] });
-                    if (ROA.isNonEmpty(state.errors)) {
-                        return E.left(state.errors);
-                    } else {
-                        operations = pipe(operations,
-                            // add return op at end of method
-                            ROA.append(returnOp as Operation),
-                            // add initslot op at start of method if there are locals or parameters
-                            ops => {
-                                const params = node.getParameters().length;
-                                const locals = state.locals.length;
-                                return (params > 0 || locals > 0)
-                                    ? ROA.prepend({ kind: 'initslot', locals, params } as Operation)(ops)
-                                    : ops;
-                            },
-                        );
-
-                        return E.of({ operations, locals: state.locals })
-                    }
+    (scope: Scope) =>
+        (body: tsm.Node): E.Either<readonly ParseError[], ParseBodyResult> => {
+            if (tsm.Node.isStatement(body)) {
+                let [operations, state] = parseStatement(body)({ scope, errors: [], locals: [] });
+                if (ROA.isNonEmpty(state.errors)) {
+                    return E.left(state.errors);
+                } else {
+                    return pipe(operations,
+                        // add return op at end of method
+                        ROA.append(returnOp as Operation),
+                        operations => E.of({ operations, locals: state.locals })
+                    );
                 }
-                return E.left(ROA.of(makeParseError(body)(`parseBody ${body.getKindName()} not implemented`)));
             }
+            const error = makeParseError(body)(`parseBody ${body.getKindName()} not implemented`)
+            return E.left(ROA.of(error));
+        }
 
 
 const makeContractMethod =
@@ -310,10 +317,9 @@ const makeContractMethod =
             );
         }
 
-export const makeFunctionDeclScope =
+export const parseFunctionDeclaration =
     (parentScope: Scope) =>
-        (node: tsm.FunctionDeclaration): E.Either<readonly ParseError[], Scope> => {
-
+        (node: tsm.FunctionDeclaration): E.Either<readonly ParseError[], ParseBodyResult> => {
             return pipe(
                 node.getParameters(),
                 ROA.mapWithIndex((index, node) => pipe(
@@ -329,6 +335,21 @@ export const makeFunctionDeclScope =
                         createScope(parentScope),
                         E.mapLeft(msg => ROA.of(makeParseError(node)(msg)))
                     );
+                }),
+                E.bindTo('scope'),
+                E.bind('body', () => pipe(
+                    node.getBody(),
+                    E.fromNullable(makeParseError(node)("undefined body")),
+                    E.mapLeft(ROA.of)
+                )),
+                E.chain(({ body, scope }) => parseBody(scope)(body)),
+                E.map(result => {
+                    const params = node.getParameters().length;
+                    const locals = result.locals.length;
+                    const operations = (params > 0 || locals > 0)
+                        ? ROA.prepend({ kind: 'initslot', locals, params } as Operation)(result.operations)
+                        : result.operations;
+                    return { ...result, operations } as ParseBodyResult;
                 })
             );
         }
@@ -338,14 +359,7 @@ export const parseContractMethod =
         (node: tsm.FunctionDeclaration): E.Either<readonly ParseError[], ContractMethod> => {
             return pipe(
                 node,
-                makeFunctionDeclScope(parentScope),
-                E.bindTo('scope'),
-                E.bind('body', () => pipe(
-                    node.getBody(),
-                    E.fromNullable(makeParseError(node)("undefined body")),
-                    E.mapLeft(ROA.of)
-                )),
-                E.chain(({ body, scope }) => parseBody(node)(scope)(body)),
-                E.chain(r => pipe(r, makeContractMethod(node), E.mapLeft(ROA.of))),
+                parseFunctionDeclaration(parentScope),
+                E.chain(flow(makeContractMethod(node), E.mapLeft(ROA.of))),
             );
         }
