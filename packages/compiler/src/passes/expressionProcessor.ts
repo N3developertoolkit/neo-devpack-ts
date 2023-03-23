@@ -425,7 +425,7 @@ export function parseExpressionAsBoolean(scope: Scope) {
         )
 
         // convert bytestring to boolean by comparing to null and comparing length to zero
-        if (isStringLike(type) || matchTypeName("ByteStringInstance")) {
+        if (isStringLike(type) || matchTypeName("ByteString")) {
             const convertOps: Operation[] = [
                 { kind: 'duplicate' },
                 { kind: 'isnull' },

@@ -3,16 +3,13 @@ import { flow, pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
-import * as O from 'fp-ts/Option'
 import * as S from 'fp-ts/State';
-import * as SEP from 'fp-ts/Separated';
 import * as FP from 'fp-ts'
-import * as TS from "../utility/TS";
 
 import { makeParseError } from "../symbolDef";
-import { createScope } from "../scope";
+import { createEmptyScope, createScope } from "../scope";
 import { ParseError, Scope, SymbolDef } from "../types/ScopeType";
-import { convertJumpTargetOps, isJumpTargetOp, JumpOffsetOperation, JumpTargetOperation, LoadStoreOperation, Location, Operation } from "../types/Operation";
+import { convertJumpTargetOps, JumpTargetOperation, LoadStoreOperation, Location, Operation } from "../types/Operation";
 import { E_fromSeparated, isVoidLike } from "../utils";
 import { ContractMethod } from "../types/CompileOptions";
 import { parseSymbol } from "./parseSymbol";
@@ -64,13 +61,13 @@ const parseBlock =
     (node: tsm.Block): ParseStatementState =>
         state => {
             // create a new scope for the statements within the block
-            let $state = { ...state, scope: createScope(state.scope)([]) }
+            let $state = { ...state, scope: createEmptyScope(state.scope) }
 
             let operations: readonly Operation[] = ROA.empty;
             for (const stmt of node.getStatements()) {
-                // let ops;
-                // [ops, $state] = parseStatement(stmt)($state);
-                // operations = ROA.concat(ops)(operations);
+                let ops;
+                [ops, $state] = parseStatement(stmt)($state);
+                operations = ROA.concat(ops)(operations);
             }
 
             const open = node.getFirstChildByKind(tsm.SyntaxKind.OpenBraceToken);
