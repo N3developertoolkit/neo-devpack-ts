@@ -597,22 +597,6 @@ const reduceChainContext = (node: tsm.Expression) =>
         return E.left(makeParseError(node)(`reduceChainContext ${node.getKindName()}`));
     }
 
-function reduceExpressionChain(node: tsm.Expression, scope: Scope) {
-    const initialContext: ChainContext = {
-        endTarget: { kind: 'noop' },
-        operations: ROA.empty,
-        scope,
-    }
-
-    return pipe(
-        node,
-        makeExpressionChain,
-        ROA.reduce(
-            E.of<ParseError, ChainContext>(initialContext),
-            (ctx, node) => pipe(ctx, E.chain(reduceChainContext(node)))
-        ),
-    );
-}
 
 function reduceChain(scope: Scope) {
     return (chain: readonly tsm.Expression[]) => {
