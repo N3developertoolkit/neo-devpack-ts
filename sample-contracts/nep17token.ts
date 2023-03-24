@@ -94,8 +94,8 @@ function createTokens(account: ByteString, amount: bigint) {
 }
 
 function updateTotalSupply(amount: bigint) {
-    const totalSupply = Storage.context.get(TOTAL_SUPPLY_KEY)!.asInteger();
-    Storage.context.put(TOTAL_SUPPLY_KEY, ByteString.fromInteger(totalSupply + amount));
+    const totalSupply = Storage.context.get(TOTAL_SUPPLY_KEY)!.asInteger() + amount;
+    Storage.context.put(TOTAL_SUPPLY_KEY, ByteString.fromInteger(totalSupply));
 }
 
 function updateBalance(account: ByteString, amount: bigint): boolean {
