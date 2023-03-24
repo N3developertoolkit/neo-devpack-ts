@@ -1,19 +1,13 @@
 import 'mocha';
-import { assert, expect } from 'chai';
 
 import * as tsm from "ts-morph";
 
-import { flow, identity, pipe } from 'fp-ts/function';
+import { flow, pipe } from 'fp-ts/function';
 import * as E from "fp-ts/Either";
-import * as O from 'fp-ts/Option';
-import * as ROA from 'fp-ts/ReadonlyArray';
 
 import { createTestProject, createTestScope, testRight } from '../utils.spec';
-import { makeFunctionDeclScope } from '../passes/functionDeclarationProcessor'
-import { convertJumpTargetOps, Operation } from '../types/Operation';
+import { convertJumpTargetOps } from '../types/Operation';
 import { parseExpression } from './expressionProcessor';
-import { createScope, updateScope as $updateScope } from '../scope';
-import { ParseError, Scope, SymbolDef } from '../types/ScopeType';
 import { makeParseError } from '../symbolDef';
 
 
