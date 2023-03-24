@@ -317,9 +317,10 @@ const makeContractMethod =
             );
         }
 
-export const parseFunctionDeclaration =
+export const makeFunctionScope =
     (parentScope: Scope) =>
-        (node: tsm.FunctionDeclaration): E.Either<readonly ParseError[], ParseBodyResult> => {
+        (node: tsm.FunctionDeclaration): E.Either<readonly ParseError[], Scope> => {
+
             return pipe(
                 node.getParameters(),
                 ROA.mapWithIndex((index, node) => pipe(
@@ -335,7 +336,16 @@ export const parseFunctionDeclaration =
                         createScope(parentScope),
                         E.mapLeft(msg => ROA.of(makeParseError(node)(msg)))
                     );
-                }),
+                })
+            );
+        }
+
+export const parseFunctionDeclaration =
+    (parentScope: Scope) =>
+        (node: tsm.FunctionDeclaration): E.Either<readonly ParseError[], ParseBodyResult> => {
+            return pipe(
+                node,
+                makeFunctionScope(parentScope),
                 E.bindTo('scope'),
                 E.bind('body', () => pipe(
                     node.getBody(),

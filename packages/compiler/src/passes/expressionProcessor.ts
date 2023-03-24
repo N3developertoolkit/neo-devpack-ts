@@ -384,7 +384,7 @@ const parseObjectLiteralProperty =
 
 export const parseObjectLiteralExpression =
     (scope: Scope) => (node: tsm.ObjectLiteralExpression): E.Either<ParseError, readonly Operation[]> => {
-        const q = pipe(
+        return pipe(
             node.getProperties(),
             ROA.map(prop => {
                 return pipe(
@@ -400,8 +400,6 @@ export const parseObjectLiteralExpression =
                 return ROA.of({ kind: 'packmap', values } as Operation)
             })
         )
-
-        return E.left(makeParseError(node)('not impl'))
     }
 
 export const parseStringLiteral =
