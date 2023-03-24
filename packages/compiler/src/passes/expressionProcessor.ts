@@ -413,6 +413,18 @@ export const parseStringLiteral =
 export function parseExpression(scope: Scope) {
     return (node: tsm.Expression): E.Either<ParseError, readonly Operation[]> => {
 
+        // I'm thinking this code could be cleaned up by treating *everything* 
+        // as an expression chain. As it currently stands, some expression kinds 
+        // have to be implemented twice - once for the singleton scenario and once 
+        // for being part of a chain. For example `{ hello: "world" }` is a singleton
+        // but `{ hello: "world" } as Greeting` is a chain.
+
+        // WIP updating reduceChainContext to handle all these node types.
+        // once that's done, can probably eliminate parseExpressionChain and put
+        // all that code here in parseExpression
+
+        const c = pipe(node, makeExpressionChain, reduceChain(scope));
+
         if (tsm.Node.hasExpression(node))
             return parseExpressionChain(scope)(node);
         if (tsm.Node.isArrayLiteralExpression(node))
@@ -631,14 +643,12 @@ const reduceCallExpression =
             )
         }
 
-const reduceChainContext = (node: tsm.Expression) =>
-    (ctx: ChainContext): E.Either<ParseError, ChainContext> => {
-
-        if (tsm.Node.isAsExpression(node)) return E.of({ ...ctx, currentType: node.getType() });
-        if (tsm.Node.isBinaryExpression(node)) {
+const reduceBinaryExpression =
+    (node: tsm.BinaryExpression) =>
+        (ctx: ChainContext): E.Either<ParseError, ChainContext> => {
             return pipe(
                 node,
-                parseExpression(ctx.scope),
+                parseBinaryExpression(ctx.scope),
                 E.map(operations => {
                     return {
                         ...ctx,
@@ -649,14 +659,64 @@ const reduceChainContext = (node: tsm.Expression) =>
                 })
             )
         }
-        if (tsm.Node.isCallExpression(node)) return reduceCallExpression(node)(ctx);
-        if (tsm.Node.isIdentifier(node)) return reduceIdentifier(node)(ctx);
-        if (tsm.Node.isNonNullExpression(node)) return E.of(ctx);
-        if (tsm.Node.isParenthesizedExpression(node)) return E.of(ctx);
-        if (tsm.Node.isPropertyAccessExpression(node)) return reducePropertyAccessExpression(node)(ctx);
 
-        return E.left(makeParseError(node)(`reduceChainContext ${node.getKindName()}`));
+function reduceLiteral<T extends tsm.Node>(node: T, ctx: ChainContext, func: (node: T) => E.Either<ParseError, Operation>) {
+    return pipe(
+        node,
+        func,
+        E.map(op => {
+            return {
+                ...ctx,
+                current: undefined,
+                currentType: node.getType(),
+                operations: ROA.append(op)(ctx.operations)
+            };
+        })
+    );
+}
+
+const reduceChainContext = (node: tsm.Expression) =>
+    (ctx: ChainContext): E.Either<ParseError, ChainContext> => {
+
+        if (tsm.Node.isAsExpression(node))
+            return E.of({ ...ctx, currentType: node.getType() });
+        if (tsm.Node.isBigIntLiteral(node))
+            return reduceLiteral(node, ctx, parseBigIntLiteral);
+        if (tsm.Node.isBinaryExpression(node))
+            return reduceBinaryExpression(node)(ctx);
+        if (tsm.Node.isCallExpression(node))
+            return reduceCallExpression(node)(ctx);
+        if (tsm.Node.isFalseLiteral(node))
+            return reduceLiteral(node, ctx, parseBooleanLiteral);
+        if (tsm.Node.isIdentifier(node))
+            return reduceIdentifier(node)(ctx);
+        if (tsm.Node.isNonNullExpression(node))
+            return E.of(ctx);
+        if (tsm.Node.isNullLiteral(node))
+            return reduceLiteral(node, ctx, parseNullLiteral);
+        if (tsm.Node.isNumericLiteral(node))
+            return reduceLiteral(node, ctx, parseNumericLiteral);
+        if (tsm.Node.isParenthesizedExpression(node))
+            return E.of(ctx);
+        if (tsm.Node.isPropertyAccessExpression(node))
+            return reducePropertyAccessExpression(node)(ctx);
+        if (tsm.Node.isTrueLiteral(node))
+            return reduceLiteral(node, ctx, parseBooleanLiteral);
+        if (tsm.Node.isStringLiteral(node))
+            return reduceLiteral(node, ctx, parseStringLiteral);
+        if (tsm.Node.isUndefinedKeyword(node))
+            return reduceLiteral(node, ctx, parseNullLiteral);
+
+        return E.left(makeParseError(node)(`reduceChainContext ${(node as any).getKindName()}`));
     }
+
+// remaining node types from parseExpression to handle in reduceChainContext
+    // if (tsm.Node.isArrayLiteralExpression(node)) return parseArrayLiteral(scope)(node);
+    // if (tsm.Node.isBinaryExpression(node)) return parseBinaryExpression(scope)(node);
+    // if (tsm.Node.isConditionalExpression(node)) return parseConditionalExpression(scope)(node);
+    // if (tsm.Node.isIdentifier(node)) return parseIdentifier(scope)(node);
+    // if (tsm.Node.isPrefixUnaryExpression(node)) return parsePrefixUnaryExpression(scope)(node);
+    // if (tsm.Node.isObjectLiteralExpression(node)) return parseObjectLiteralExpression(scope)(node);
 
 
 function reduceChain(scope: Scope) {
