@@ -145,7 +145,6 @@ export function convertLoadStoreKind(kind: LoadStoreOperationKind) {
 }
 
 export type Operation =
-    ArrayLiteralOperation |
     CallOperation |
     CallTokenOperation |
     ConvertOperation |
@@ -154,7 +153,9 @@ export type Operation =
     JumpOffsetOperation |
     JumpTargetOperation |
     LoadStoreOperation |
-    ObjectLiteralOperation |
+    PackArrayOperation |
+    PackMapOperation |
+    PackStructOperation |
     PushBoolOperation |
     PushDataOperation |
     PushIntOperation |
@@ -218,7 +219,6 @@ export interface InitStaticOperation {
 
 export const isInitStaticOperation = (op: Operation): op is InitStaticOperation => op.kind === 'initstatic';
 
-
 export interface PushDataOperation {
     readonly kind: 'pushdata';
     readonly value: Uint8Array
@@ -243,21 +243,30 @@ export interface PushBoolOperation {
 
 export const isPushBoolOp = (op: Operation): op is PushBoolOperation => op.kind === 'pushbool';
 
-export interface ObjectLiteralOperation {
-    readonly kind: 'objectliteral';
-    readonly values: ReadonlyMap<tsm.Symbol, readonly Operation[]>;
+type MapKey = boolean | bigint | string | Uint8Array;
+export interface PackMapOperation {
+    readonly kind: 'packmap';
+    readonly values: ReadonlyMap<MapKey, readonly Operation[]>;
     location?: Location,
 }
 
-export const isObjectLiteralOp = (op: Operation): op is ObjectLiteralOperation => op.kind === 'objectliteral';
+export const isObjectLiteralOp = (op: Operation): op is PackMapOperation => op.kind === 'packmap';
 
-export interface ArrayLiteralOperation {
-    readonly kind: 'arrayliteral';
+export interface PackArrayOperation {
+    readonly kind: 'packarray';
     readonly values: ReadonlyArray<readonly Operation[]>;
     location?: Location,
 }
 
-export const isArrayLiteralOp = (op: Operation): op is ArrayLiteralOperation => op.kind === 'arrayliteral';
+export const isPackArrayOp = (op: Operation): op is PackArrayOperation => op.kind === 'packarray';
+
+export interface PackStructOperation {
+    readonly kind: 'packstruct';
+    readonly values: ReadonlyArray<readonly Operation[]>;
+    location?: Location,
+}
+
+export const isPackStructOp = (op: Operation): op is PackStructOperation => op.kind === 'packstruct';
 
 // during function parsing, it's typically easier to specify the jump target
 // via the target operation instead of via the index offset. However,

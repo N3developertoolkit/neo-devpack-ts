@@ -45,7 +45,7 @@ export const parseArrayLiteral =
                 ROA.map(parseExpression(scope)),
                 ROA.sequence(E.Applicative),
                 E.map(values => {
-                    return ROA.of({ kind: 'arrayliteral', values } as Operation)
+                    return ROA.of({ kind: 'packarray', values } as Operation)
                 })
             )
         }
@@ -344,7 +344,7 @@ export const parsePrefixUnaryExpression = (scope: Scope) =>
 
 const parseObjectLiteralProperty =
     (scope: Scope) =>
-        (prop: tsm.ObjectLiteralElementLike) => {
+        (prop: tsm.ObjectLiteralElementLike): E.Either<ParseError, readonly Operation[]> => {
             const makeError = makeParseError(prop);
 
             if (tsm.Node.isPropertyAssignment(prop)) {
@@ -352,8 +352,6 @@ const parseObjectLiteralProperty =
                     prop.getInitializer(),
                     E.fromNullable(makeError("invalid initializer")),
                     E.chain(parseExpression(scope)),
-                    E.bindTo('ops'),
-                    E.bind('symbol', () => pipe(prop, parseSymbol))
                 )
             }
 
@@ -378,8 +376,6 @@ const parseObjectLiteralProperty =
                         ),
                         parseExpression(scope)
                     ),
-                    E.bindTo('ops'),
-                    E.bind('symbol', () => pipe(prop, parseSymbol))
                 )
             }
 
@@ -388,15 +384,24 @@ const parseObjectLiteralProperty =
 
 export const parseObjectLiteralExpression =
     (scope: Scope) => (node: tsm.ObjectLiteralExpression): E.Either<ParseError, readonly Operation[]> => {
-        return pipe(
+        const q = pipe(
             node.getProperties(),
-            ROA.map(parseObjectLiteralProperty(scope)),
+            ROA.map(prop => {
+                return pipe(
+                    prop,
+                    parseObjectLiteralProperty(scope),
+                    E.bindTo('value'),
+                    E.bind('key', () => pipe(prop, parseSymbol, E.map(s => s.getName()))),
+                );
+            }),
             ROA.sequence(E.Applicative),
             E.map(entities => {
-                const values = new Map(entities.map(v => [v.symbol, v.ops]));
-                return ROA.of({ kind: 'objectliteral', values } as Operation)
+                const values = new Map(entities.map(v => [v.key, v.value]));
+                return ROA.of({ kind: 'packmap', values } as Operation)
             })
         )
+
+        return E.left(makeParseError(node)('not impl'))
     }
 
 export const parseStringLiteral =
