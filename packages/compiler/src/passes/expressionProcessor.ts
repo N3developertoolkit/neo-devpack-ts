@@ -1,16 +1,16 @@
 import * as tsm from "ts-morph";
-import { flow, identity, pipe } from 'fp-ts/function';
+import { flow, pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option'
 import * as TS from "../utility/TS";
 import { isJumpTargetOp, Operation, SimpleOperationKind } from "../types/Operation";
-import { resolve as $resolve, resolveType } from "../scope";
-import { ParseError, Scope, SymbolDef, TypeDef } from "../types/ScopeType";
+import { resolve as $resolve, resolveName, resolveType } from "../scope";
+import { ParseError, Scope, SymbolDef } from "../types/ScopeType";
 import { isCallableDef, isObjectDef, makeParseError, parseLoadOps } from "../symbolDef";
 import { parseSymbol } from "./parseSymbol";
-import { isBigIntLike, isBooleanLike, isNumberLike, isStringLike, single } from "../utils";
+import { isBigIntLike, isBooleanLike, isNumberLike, isStringLike } from "../utils";
 
 export const getArguments = (node: tsm.CallExpression) =>
     ROA.fromArray(node.getArguments() as tsm.Expression[])
@@ -40,12 +40,13 @@ export const parseArguments = (scope: Scope) => (node: tsm.CallExpression) => {
 export const parseArrayLiteral =
     (scope: Scope) =>
         (node: tsm.ArrayLiteralExpression): E.Either<ParseError, readonly Operation[]> => {
-            // TODO: this doesn't seem right. SHouldn't there be a newarray op here?
             return pipe(
                 node.getElements(),
                 ROA.map(parseExpression(scope)),
                 ROA.sequence(E.Applicative),
-                E.map(ROA.flatten)
+                E.map(values => {
+                    return ROA.of({ kind: 'arrayliteral', values } as Operation)
+                })
             )
         }
 
@@ -54,8 +55,6 @@ export const parseBigIntLiteral =
         const value = node.getLiteralValue() as bigint;
         return E.right({ kind: "pushint", value });
     }
-
-
 
 function parseNullishCoalescingExpression(node: tsm.BinaryExpression, scope: Scope) {
     const endTarget = { kind: "noop" } as Operation;
@@ -135,8 +134,8 @@ const makeAssignment = (store: tsm.Expression, scope: Scope) => (operations: rea
             );
         }),
     )
-
 }
+
 const binaryOpTokenMap: ReadonlyMap<tsm.SyntaxKind, SimpleOperationKind> = new Map([
     [tsm.SyntaxKind.AmpersandToken, "and"],
     [tsm.SyntaxKind.AsteriskAsteriskToken, 'power'],
@@ -343,6 +342,63 @@ export const parsePrefixUnaryExpression = (scope: Scope) =>
         )
     }
 
+const parseObjectLiteralProperty =
+    (scope: Scope) =>
+        (prop: tsm.ObjectLiteralElementLike) => {
+            const makeError = makeParseError(prop);
+
+            if (tsm.Node.isPropertyAssignment(prop)) {
+                return pipe(
+                    prop.getInitializer(),
+                    E.fromNullable(makeError("invalid initializer")),
+                    E.chain(parseExpression(scope)),
+                    E.bindTo('ops'),
+                    E.bind('symbol', () => pipe(prop, parseSymbol))
+                )
+            }
+
+            if (tsm.Node.isShorthandPropertyAssignment(prop)) {
+                return pipe(
+                    prop.getObjectAssignmentInitializer(),
+                    O.fromNullable,
+                    O.match(
+                        () => pipe(
+                            prop,
+                            parseSymbol,
+                            E.map(s => s.getName()),
+                            E.chain(name => pipe(
+                                name,
+                                resolveName(scope),
+                                E.fromOption(() => makeError(`failed to resolve ${name}`))
+                            )),
+                            E.chain(def => def.loadOps
+                                ? E.of(def.loadOps)
+                                : E.left(makeError(`${def.symbol.getName()} invalid load ops}`))
+                            )
+                        ),
+                        parseExpression(scope)
+                    ),
+                    E.bindTo('ops'),
+                    E.bind('symbol', () => pipe(prop, parseSymbol))
+                )
+            }
+
+            return E.left(makeError(`parseObjectLiteralProperty ${prop.getKindName()} not impl`))
+        }
+
+export const parseObjectLiteralExpression =
+    (scope: Scope) => (node: tsm.ObjectLiteralExpression): E.Either<ParseError, readonly Operation[]> => {
+        return pipe(
+            node.getProperties(),
+            ROA.map(parseObjectLiteralProperty(scope)),
+            ROA.sequence(E.Applicative),
+            E.map(entities => {
+                const values = new Map(entities.map(v => [v.symbol, v.ops]));
+                return ROA.of({ kind: 'objectliteral', values } as Operation)
+            })
+        )
+    }
+
 export const parseStringLiteral =
     (node: tsm.StringLiteral): E.Either<ParseError, Operation> => {
         const literal = node.getLiteralValue();
@@ -356,8 +412,8 @@ export function parseExpression(scope: Scope) {
 
         if (tsm.Node.hasExpression(node))
             return parseExpressionChain(scope)(node);
-        // if (tsm.Node.isArrayLiteralExpression(node))
-        //     return parseArrayLiteral(scope)(node);
+        if (tsm.Node.isArrayLiteralExpression(node))
+            return parseArrayLiteral(scope)(node);
         if (tsm.Node.isBigIntLiteral(node))
             return parseLiteral(parseBigIntLiteral)(node);
         if (tsm.Node.isBinaryExpression(node))
@@ -374,6 +430,8 @@ export function parseExpression(scope: Scope) {
             return parseLiteral(parseNumericLiteral)(node);
         if (tsm.Node.isPrefixUnaryExpression(node))
             return parsePrefixUnaryExpression(scope)(node);
+        if (tsm.Node.isObjectLiteralExpression(node))
+            return parseObjectLiteralExpression(scope)(node);
         if (tsm.Node.isStringLiteral(node))
             return parseLiteral(parseStringLiteral)(node);
         if (tsm.Node.isTrueLiteral(node))

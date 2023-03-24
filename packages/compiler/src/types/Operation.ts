@@ -145,6 +145,7 @@ export function convertLoadStoreKind(kind: LoadStoreOperationKind) {
 }
 
 export type Operation =
+    ArrayLiteralOperation |
     CallOperation |
     CallTokenOperation |
     ConvertOperation |
@@ -153,6 +154,7 @@ export type Operation =
     JumpOffsetOperation |
     JumpTargetOperation |
     LoadStoreOperation |
+    ObjectLiteralOperation |
     PushBoolOperation |
     PushDataOperation |
     PushIntOperation |
@@ -241,6 +243,21 @@ export interface PushBoolOperation {
 
 export const isPushBoolOp = (op: Operation): op is PushBoolOperation => op.kind === 'pushbool';
 
+export interface ObjectLiteralOperation {
+    readonly kind: 'objectliteral';
+    readonly values: ReadonlyMap<tsm.Symbol, readonly Operation[]>;
+    location?: Location,
+}
+
+export const isObjectLiteralOp = (op: Operation): op is ObjectLiteralOperation => op.kind === 'objectliteral';
+
+export interface ArrayLiteralOperation {
+    readonly kind: 'arrayliteral';
+    readonly values: ReadonlyArray<readonly Operation[]>;
+    location?: Location,
+}
+
+export const isArrayLiteralOp = (op: Operation): op is ArrayLiteralOperation => op.kind === 'arrayliteral';
 
 // during function parsing, it's typically easier to specify the jump target
 // via the target operation instead of via the index offset. However,
@@ -278,7 +295,6 @@ export interface LoadStoreOperation {
 
 export const isLoadStoreOp = (op: Operation): op is LoadStoreOperation => 
     loadStoreOperationKinds.includes(op.kind as LoadStoreOperationKind);
-
 
 export function parseOperation(kind: string, operand: string | undefined): Operation | undefined {
     if (jumpOperationKinds.includes(kind as JumpOperationKind)) {
@@ -375,8 +391,8 @@ export function getOperationSize(op: Operation) {
             const {buffer} = convertBigInteger(value);
             return 1 + buffer.length;
         }
-        // default:
-        //     throw new Error(`getOperationSize ${op.kind}`);
+        default:
+            throw new Error(`getOperationSize ${op.kind}`);
     }
 }
 
