@@ -16,12 +16,6 @@ export const resolve =
         (symbol: tsm.Symbol): O.Option<SymbolDef> => {
             return pipe(
                 ROM.lookup(symbolEq)(symbol)(scope.symbols),
-                // since I'm breaking out types, do I still need this?
-                // O.alt(() => pipe(
-                //     symbol.getValueDeclaration()?.getSymbol(),
-                //     O.fromNullable,
-                //     O.chain(s => ROM.lookup(symbolEq)(s)(scope.symbols))
-                // )),
                 O.alt(() => pipe(
                     scope.parentScope,
                     O.chain(p => resolve(p)(symbol))
