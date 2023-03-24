@@ -131,7 +131,7 @@ function parseFunctionDeclaration(context: ParseNodeContext, node: tsm.FunctionD
                 error => {
                     return { ...context, errors: ROA.append(error)(context.errors ?? []) } as ParseNodeContext
                 },
-                event => { 
+                event => {
                     return { ...context, events: ROA.append(event)(context.events ?? []) }
                 }
             )
@@ -145,7 +145,7 @@ function parseFunctionDeclaration(context: ParseNodeContext, node: tsm.FunctionD
             errors => {
                 return { ...context, errors: ROA.concat(errors)(context.errors ?? []) } as ParseNodeContext
             },
-            method => { 
+            method => {
                 return { ...context, methods: ROA.append(method)(context.methods ?? []) }
             }
         )
@@ -280,10 +280,14 @@ const parseSourceNodes = (node: tsm.Node) => (scope: Scope) => {
             parseSourceNode
         )
     )
-    return errors && errors.length > 0
-        ? E.left(errors)
-        : E.of({ events, methods, staticVars } as CompiledProject);
 
+    const project: CompiledProject = {
+        events: events ?? [],
+        methods: methods ?? [],
+        staticVars: staticVars ?? []
+    }
+
+    return errors && errors.length > 0 ? E.left(errors) : E.of(project);
 }
 
 const parseSourceFile =
@@ -321,7 +325,7 @@ export const parseProject =
                             }
                             const msg = results.length === 0
                                 ? "no compile results found"
-                                : "multiple source files not implemented"; 
+                                : "multiple source files not implemented";
                             diagnostics = ROA.append(createDiagnostic(msg))(diagnostics);
                             return [{ events: [], methods: [], staticVars: [] }, diagnostics]
                         }
