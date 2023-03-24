@@ -659,23 +659,6 @@ const reduceCallExpression =
             )
         }
 
-const reduceBinaryExpression =
-    (node: tsm.BinaryExpression) =>
-        (ctx: ChainContext): E.Either<ParseError, ChainContext> => {
-            return pipe(
-                node,
-                parseBinaryExpression(ctx.scope),
-                E.map(operations => {
-                    return {
-                        ...ctx,
-                        current: undefined,
-                        currentType: node.getType(),
-                        operations: ROA.concat(operations)(ctx.operations)
-                    }
-                })
-            )
-        }
-
 function reduceParseFunction<T extends tsm.Node>(node: T, ctx: ChainContext, func: (node: T) => E.Either<ParseError, readonly Operation[]>) {
     return pipe(
         node,
@@ -689,7 +672,6 @@ function reduceParseFunction<T extends tsm.Node>(node: T, ctx: ChainContext, fun
             };
         })
     );
-
 }
 
 function reduceLiteral<T extends tsm.Node>(node: T, ctx: ChainContext, func: (node: T) => E.Either<ParseError, Operation>) {
@@ -699,6 +681,8 @@ function reduceLiteral<T extends tsm.Node>(node: T, ctx: ChainContext, func: (no
 const reduceChainContext = (node: tsm.Expression) =>
     (ctx: ChainContext): E.Either<ParseError, ChainContext> => {
 
+        if (tsm.Node.isArrayLiteralExpression(node)) 
+            return reduceParseFunction(node, ctx, parseArrayLiteral(ctx.scope));
         if (tsm.Node.isAsExpression(node))
             return E.of({ ...ctx, currentType: node.getType() });
         if (tsm.Node.isBigIntLiteral(node))
@@ -707,6 +691,8 @@ const reduceChainContext = (node: tsm.Expression) =>
             return reduceParseFunction(node, ctx, parseBinaryExpression(ctx.scope));
         if (tsm.Node.isCallExpression(node))
             return reduceCallExpression(node)(ctx);
+        if (tsm.Node.isConditionalExpression(node))
+            return reduceParseFunction(node, ctx, parseConditionalExpression(ctx.scope));
         if (tsm.Node.isFalseLiteral(node))
             return reduceLiteral(node, ctx, parseBooleanLiteral);
         if (tsm.Node.isIdentifier(node))
@@ -717,6 +703,8 @@ const reduceChainContext = (node: tsm.Expression) =>
             return reduceLiteral(node, ctx, parseNullLiteral);
         if (tsm.Node.isNumericLiteral(node))
             return reduceLiteral(node, ctx, parseNumericLiteral);
+        if (tsm.Node.isObjectLiteralExpression(node)) 
+            return reduceParseFunction(node, ctx, parseObjectLiteralExpression(ctx.scope));
         if (tsm.Node.isParenthesizedExpression(node))
             return E.of(ctx);
         if (tsm.Node.isPrefixUnaryExpression(node))
