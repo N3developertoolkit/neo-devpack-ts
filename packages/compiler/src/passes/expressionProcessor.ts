@@ -55,33 +55,7 @@ export const parseBigIntLiteral =
         return E.right({ kind: "pushint", value });
     }
 
-const binaryOpTokenMap: ReadonlyMap<tsm.SyntaxKind, SimpleOperationKind> = new Map([
-    [tsm.SyntaxKind.AmpersandToken, "and"],
-    [tsm.SyntaxKind.AsteriskAsteriskToken, 'power'],
-    [tsm.SyntaxKind.AsteriskToken, 'multiply'],
-    [tsm.SyntaxKind.BarToken, 'or'],
-    [tsm.SyntaxKind.EqualsEqualsEqualsToken, 'equal'], // TODO: Should == and === be the same?
-    [tsm.SyntaxKind.EqualsEqualsToken, 'equal'],
-    [tsm.SyntaxKind.ExclamationEqualsToken, 'notequal'], // TODO: Should != and !== be the same?
-    [tsm.SyntaxKind.ExclamationEqualsEqualsToken, 'notequal'],
-    [tsm.SyntaxKind.GreaterThanEqualsToken, 'greaterthanorequal'],
-    [tsm.SyntaxKind.GreaterThanToken, 'greaterthan'],
-    [tsm.SyntaxKind.LessThanEqualsToken, 'lessthanorequal'],
-    [tsm.SyntaxKind.LessThanToken, 'lessthan'],
-    [tsm.SyntaxKind.PlusToken, 'add']
-]);
 
-export const parseBinaryOperatorToken =
-    (node: tsm.Node<tsm.ts.BinaryOperatorToken>): E.Either<ParseError, Operation> => {
-        return pipe(
-            node.getKind(),
-            k => binaryOpTokenMap.get(k),
-            E.fromNullable(
-                makeParseError(node)(`parseBinaryOperatorToken ${node.getKindName()} not supported`)
-            ),
-            E.map(kind => ({ kind }) as Operation)
-        );
-    }
 
 function parseNullishCoalescingExpression(node: tsm.BinaryExpression, scope: Scope) {
     const endTarget = { kind: "noop" } as Operation;
@@ -103,36 +77,17 @@ function parseNullishCoalescingExpression(node: tsm.BinaryExpression, scope: Sco
     )
 }
 
-function parseLogicalAndExpression(node: tsm.BinaryExpression, scope: Scope) {
-    // logical "and" coerces left and right expressions to boolean
+function parseLogicalExpression(node: tsm.BinaryExpression, scope: Scope, isOrOperation: boolean) {
+    // logical expressions coerce left and right expressions to boolean
     const endTarget = { kind: "noop" } as Operation;
-    return pipe(
-        node.getLeft(),
-        parseExpressionAsBoolean(scope),
-        E.map(ROA.concat([
-            { kind: "jumpif", offset: 3 },
-            { kind: "pushbool", value: false },
-            { kind: "jump", target: endTarget },
-            { kind: "noop" }
-        ] as Operation[])),
-        E.chain(ops => pipe(
-            node.getRight(),
-            parseExpressionAsBoolean(scope),
-            E.map(right => ROA.concat(right)(ops))
-        )),
-        E.map(ROA.append(endTarget))
-    );
-}
 
-function parseLogicalOrExpression(node: tsm.BinaryExpression, scope: Scope) {
-    // logical "or" coerces left and right expressions to boolean
-    const endTarget = { kind: "noop" } as Operation;
+    const jumpKind = isOrOperation ? "jumpifnot" : "jumpif";
     return pipe(
         node.getLeft(),
         parseExpressionAsBoolean(scope),
         E.map(ROA.concat([
-            { kind: "jumpifnot", offset: 3 },
-            { kind: "pushbool", value: true },
+            { kind: jumpKind, offset: 3 },
+            { kind: "pushbool", value: isOrOperation },
             { kind: "jump", target: endTarget },
             { kind: "noop" }
         ] as Operation[])),
@@ -148,45 +103,74 @@ function parseLogicalOrExpression(node: tsm.BinaryExpression, scope: Scope) {
 const parseStoreSymbol = (node: tsm.Expression) => (context: ChainContext): E.Either<ParseError, [ChainContext, SymbolDef]> => {
     if (tsm.Node.isIdentifier(node))
         return pipe(
-            node, 
-            parseSymbol, 
+            node,
+            parseSymbol,
             E.chain(resolve(node)(context.scope)),
             E.map(def => [context, def])
         );
-    if (tsm.Node.isPropertyAccessExpression(node)) 
+    if (tsm.Node.isPropertyAccessExpression(node))
         return pipe(
-            node, 
+            node,
             resolveProperty(context),
             E.map(def => [context, def])
         );
     return E.left(makeParseError(node)(`parseStore ${node.getKindName()} not impl`));
 }
 
-function parseAssignmentExpression(node: tsm.BinaryExpression, scope: Scope) {
+const makeAssignment = (store: tsm.Expression, scope: Scope) => (operations: readonly Operation[]) => {
     return pipe(
-        node.getRight(),
-        parseExpression(scope),
-        E.chain(operations => {
-            return pipe(
-                node.getLeft(),
-                makeExpressionChain,
-                RNEA.matchRight((init, last) => {
-                    return pipe(init,
-                         reduceChain(scope),
-                         E.chain(parseStoreSymbol(last)),
-                         E.chain(([context, def]) => {
-                            if (def.parseStore) {
-                                return def.parseStore(context.operations, operations);
-                            } else {
-                                return E.left(makeParseError(node)('parseStore not implemented'))
-                            }
-                         })
-                        );
-                }),
-            )
+        store,
+        makeExpressionChain,
+        RNEA.matchRight((init, last) => {
+            return pipe(init,
+                reduceChain(scope),
+                E.chain(parseStoreSymbol(last)),
+                E.chain(([context, def]) => {
+                    if (def.parseStore) {
+                        return def.parseStore(context.operations, operations);
+                    } else {
+                        return E.left(makeParseError(store)('parseStore not implemented'))
+                    }
+                })
+            );
         }),
     )
+
 }
+const binaryOpTokenMap: ReadonlyMap<tsm.SyntaxKind, SimpleOperationKind> = new Map([
+    [tsm.SyntaxKind.AmpersandToken, "and"],
+    [tsm.SyntaxKind.AsteriskAsteriskToken, 'power'],
+    [tsm.SyntaxKind.AsteriskToken, 'multiply'],
+    [tsm.SyntaxKind.BarToken, 'or'],
+    [tsm.SyntaxKind.EqualsEqualsEqualsToken, 'equal'], // TODO: Should == and === be the same?
+    [tsm.SyntaxKind.EqualsEqualsToken, 'equal'],
+    [tsm.SyntaxKind.ExclamationEqualsToken, 'notequal'], // TODO: Should != and !== be the same?
+    [tsm.SyntaxKind.ExclamationEqualsEqualsToken, 'notequal'],
+    [tsm.SyntaxKind.GreaterThanEqualsToken, 'greaterthanorequal'],
+    [tsm.SyntaxKind.GreaterThanToken, 'greaterthan'],
+    [tsm.SyntaxKind.LessThanEqualsToken, 'lessthanorequal'],
+    [tsm.SyntaxKind.LessThanToken, 'lessthan'],
+    [tsm.SyntaxKind.PlusToken, 'add']
+]);
+
+// SlashEqualsToken = 68, DIV
+// PercentEqualsToken = 69, MOD
+// LessThanLessThanEqualsToken = 70, SHL
+// GreaterThanGreaterThanEqualsToken = 71, SHR
+// GreaterThanGreaterThanGreaterThanEqualsToken = 72, ???
+// AmpersandEqualsToken = 73, AND/BOOLAND
+// BarEqualsToken = 74, OR/BOOLOR
+// BarBarEqualsToken = 75, BOOLOR
+// AmpersandAmpersandEqualsToken = 76, BOOLAND
+// QuestionQuestionEqualsToken = 77, CoalesceAssignment
+// CaretEqualsToken = 78, XOR
+
+const compoundAssignmentTokenMap: ReadonlyMap<tsm.SyntaxKind, SimpleOperationKind> = new Map([
+    [tsm.SyntaxKind.AsteriskAsteriskEqualsToken, 'power'],
+    [tsm.SyntaxKind.AsteriskEqualsToken, 'multiply'],
+    [tsm.SyntaxKind.MinusEqualsToken, 'subtract'],
+    [tsm.SyntaxKind.PlusEqualsToken, 'add']
+]);
 
 export const parseBinaryExpression =
     (scope: Scope) =>
@@ -194,36 +178,55 @@ export const parseBinaryExpression =
 
             const opToken = node.getOperatorToken().getKind();
             if (opToken === tsm.SyntaxKind.AmpersandAmpersandToken) {
-                return parseLogicalAndExpression(node, scope);
+                return parseLogicalExpression(node, scope, false);
             }
             if (opToken === tsm.SyntaxKind.BarBarToken) {
-                return parseLogicalOrExpression(node, scope);
+                return parseLogicalExpression(node, scope, true);
             }
             if (opToken === tsm.SyntaxKind.QuestionQuestionToken) {
                 return parseNullishCoalescingExpression(node, scope);
             }
             if (opToken === tsm.SyntaxKind.EqualsToken) {
-                return parseAssignmentExpression(node, scope);
-            }
-
-            return pipe(
-                node.getOperatorToken(),
-                parseBinaryOperatorToken,
-                // map errors to reference the expression node 
-                E.mapLeft(e => makeParseError(node)(e.message)),
-                E.chain(op => pipe(
+                return pipe(
                     node.getRight(),
                     parseExpression(scope),
-                    E.map(ROA.append(op))
-                )),
-                E.chain(ops => pipe(
-                    node.getLeft(),
+                    E.chain(makeAssignment(node.getLeft(), scope)),
+                )
+            }
+
+            const compoundAssignmentOpKind = compoundAssignmentTokenMap.get(opToken);
+            if (compoundAssignmentOpKind) {
+                const left = node.getLeft();
+                return pipe(
+                    node.getRight(),
                     parseExpression(scope),
-                    E.map(
-                        ROA.concat(ops)
-                    )
-                )),
-            )
+                    E.chain(ops => pipe(
+                        left,
+                        parseExpression(scope),
+                        E.map(ROA.concat(ops))
+                    )),
+                    E.map(ROA.append({ kind: compoundAssignmentOpKind } as Operation)),
+                    E.map(ROA.append({ kind: 'duplicate' } as Operation)),
+                    E.chain(makeAssignment(left, scope)),
+                )
+            }
+
+            const binaryOpKind = binaryOpTokenMap.get(opToken);
+            if (binaryOpKind) {
+                return pipe(
+                    node.getRight(),
+                    parseExpression(scope),
+                    E.chain(right => pipe(
+                        node.getLeft(),
+                        parseExpression(scope),
+                        E.map(ROA.concat(right))
+                    )),
+                    E.map(ROA.append({ kind: binaryOpKind } as Operation)),
+                    E.map(ROA.append({ kind: 'duplicate' } as Operation)),
+                )
+            }
+
+            return E.left(makeParseError(node)(`parseBinaryOperatorToken ${node.getKindName()} not supported`))
         }
 
 export const parseBooleanLiteral =
