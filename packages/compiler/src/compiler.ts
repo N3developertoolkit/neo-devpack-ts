@@ -38,11 +38,7 @@ export function compile(
         ),
     );
 
-    if (O.isNone(artifacts)) {
-        return { diagnostics, compiledProject }; 
-    } else {
-        return { diagnostics, compiledProject, ...artifacts.value };
-    }
+    return { diagnostics, compiledProject, ...artifacts };
 }
 
 function exists(rootPath: PathLike) {
