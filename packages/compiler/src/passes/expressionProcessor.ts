@@ -423,42 +423,58 @@ export function parseExpression(scope: Scope) {
         // once that's done, can probably eliminate parseExpressionChain and put
         // all that code here in parseExpression
 
-        const c = pipe(node, makeExpressionChain, reduceChain(scope));
+        return pipe(
+            node, 
+            makeExpressionChain, 
+            reduceChain(scope),
+            E.map(context => {
+                // only add the endTarget operation if there is at least 
+                // one jump op targeting it
+                const endJumps = pipe(
+                    context.operations,
+                    ROA.filter(isJumpTargetOp),
+                    ROA.filter(op => op.target === context.endTarget),
+                )
+                return endJumps.length > 0
+                    ? ROA.append(context.endTarget)(context.operations)
+                    : context.operations;
+            })
+        );
 
-        if (tsm.Node.hasExpression(node))
-            return parseExpressionChain(scope)(node);
-        if (tsm.Node.isArrayLiteralExpression(node))
-            return parseArrayLiteral(scope)(node);
-        if (tsm.Node.isBigIntLiteral(node))
-            return parseLiteral(parseBigIntLiteral)(node);
-        if (tsm.Node.isBinaryExpression(node))
-            return parseBinaryExpression(scope)(node);
-        if (tsm.Node.isConditionalExpression(node))
-            return parseConditionalExpression(scope)(node);
-        if (tsm.Node.isFalseLiteral(node))
-            return parseLiteral(parseBooleanLiteral)(node);
-        if (tsm.Node.isIdentifier(node))
-            return parseIdentifier(scope)(node);
-        if (tsm.Node.isNullLiteral(node))
-            return parseLiteral(parseNullLiteral)(node);
-        if (tsm.Node.isNumericLiteral(node))
-            return parseLiteral(parseNumericLiteral)(node);
-        if (tsm.Node.isPrefixUnaryExpression(node))
-            return parsePrefixUnaryExpression(scope)(node);
-        if (tsm.Node.isObjectLiteralExpression(node))
-            return parseObjectLiteralExpression(scope)(node);
-        if (tsm.Node.isStringLiteral(node))
-            return parseLiteral(parseStringLiteral)(node);
-        if (tsm.Node.isTrueLiteral(node))
-            return parseLiteral(parseBooleanLiteral)(node);
-        if (tsm.Node.isUndefinedKeyword(node))
-            return parseLiteral(parseNullLiteral)(node);
-        var kind = (node as tsm.Node).getKindName();
-        return E.left(makeParseError(node)(`parseExpression ${kind} failed`));
+        // if (tsm.Node.hasExpression(node))
+        //     return parseExpressionChain(scope)(node);
+        // if (tsm.Node.isArrayLiteralExpression(node))
+        //     return parseArrayLiteral(scope)(node);
+        // if (tsm.Node.isBigIntLiteral(node))
+        //     return parseLiteral(parseBigIntLiteral)(node);
+        // if (tsm.Node.isBinaryExpression(node))
+        //     return parseBinaryExpression(scope)(node);
+        // if (tsm.Node.isConditionalExpression(node))
+        //     return parseConditionalExpression(scope)(node);
+        // if (tsm.Node.isFalseLiteral(node))
+        //     return parseLiteral(parseBooleanLiteral)(node);
+        // if (tsm.Node.isIdentifier(node))
+        //     return parseIdentifier(scope)(node);
+        // if (tsm.Node.isNullLiteral(node))
+        //     return parseLiteral(parseNullLiteral)(node);
+        // if (tsm.Node.isNumericLiteral(node))
+        //     return parseLiteral(parseNumericLiteral)(node);
+        // if (tsm.Node.isPrefixUnaryExpression(node))
+        //     return parsePrefixUnaryExpression(scope)(node);
+        // if (tsm.Node.isObjectLiteralExpression(node))
+        //     return parseObjectLiteralExpression(scope)(node);
+        // if (tsm.Node.isStringLiteral(node))
+        //     return parseLiteral(parseStringLiteral)(node);
+        // if (tsm.Node.isTrueLiteral(node))
+        //     return parseLiteral(parseBooleanLiteral)(node);
+        // if (tsm.Node.isUndefinedKeyword(node))
+        //     return parseLiteral(parseNullLiteral)(node);
+        // var kind = (node as tsm.Node).getKindName();
+        // return E.left(makeParseError(node)(`parseExpression ${kind} failed`));
 
-        function parseLiteral<T>(func: (node: T) => E.Either<ParseError, Operation>) {
-            return flow(func, E.map(ROA.of));
-        }
+        // function parseLiteral<T>(func: (node: T) => E.Either<ParseError, Operation>) {
+        //     return flow(func, E.map(ROA.of));
+        // }
     };
 }
 
@@ -643,49 +659,40 @@ const reduceCallExpression =
             )
         }
 
-const reduceBinaryExpression =
-    (node: tsm.BinaryExpression) =>
-        (ctx: ChainContext): E.Either<ParseError, ChainContext> => {
-            return pipe(
-                node,
-                parseBinaryExpression(ctx.scope),
-                E.map(operations => {
-                    return {
-                        ...ctx,
-                        current: undefined,
-                        currentType: node.getType(),
-                        operations: ROA.concat(operations)(ctx.operations)
-                    }
-                })
-            )
-        }
-
-function reduceLiteral<T extends tsm.Node>(node: T, ctx: ChainContext, func: (node: T) => E.Either<ParseError, Operation>) {
+function reduceParseFunction<T extends tsm.Node>(node: T, ctx: ChainContext, func: (node: T) => E.Either<ParseError, readonly Operation[]>) {
     return pipe(
         node,
         func,
-        E.map(op => {
+        E.map(ops => {
             return {
                 ...ctx,
                 current: undefined,
                 currentType: node.getType(),
-                operations: ROA.append(op)(ctx.operations)
+                operations: ROA.concat(ops)(ctx.operations)
             };
         })
     );
 }
 
+function reduceLiteral<T extends tsm.Node>(node: T, ctx: ChainContext, func: (node: T) => E.Either<ParseError, Operation>) {
+    return reduceParseFunction(node, ctx, flow(func, E.map(ROA.of)));
+}
+
 const reduceChainContext = (node: tsm.Expression) =>
     (ctx: ChainContext): E.Either<ParseError, ChainContext> => {
 
+        if (tsm.Node.isArrayLiteralExpression(node)) 
+            return reduceParseFunction(node, ctx, parseArrayLiteral(ctx.scope));
         if (tsm.Node.isAsExpression(node))
             return E.of({ ...ctx, currentType: node.getType() });
         if (tsm.Node.isBigIntLiteral(node))
             return reduceLiteral(node, ctx, parseBigIntLiteral);
         if (tsm.Node.isBinaryExpression(node))
-            return reduceBinaryExpression(node)(ctx);
+            return reduceParseFunction(node, ctx, parseBinaryExpression(ctx.scope));
         if (tsm.Node.isCallExpression(node))
             return reduceCallExpression(node)(ctx);
+        if (tsm.Node.isConditionalExpression(node))
+            return reduceParseFunction(node, ctx, parseConditionalExpression(ctx.scope));
         if (tsm.Node.isFalseLiteral(node))
             return reduceLiteral(node, ctx, parseBooleanLiteral);
         if (tsm.Node.isIdentifier(node))
@@ -696,8 +703,12 @@ const reduceChainContext = (node: tsm.Expression) =>
             return reduceLiteral(node, ctx, parseNullLiteral);
         if (tsm.Node.isNumericLiteral(node))
             return reduceLiteral(node, ctx, parseNumericLiteral);
+        if (tsm.Node.isObjectLiteralExpression(node)) 
+            return reduceParseFunction(node, ctx, parseObjectLiteralExpression(ctx.scope));
         if (tsm.Node.isParenthesizedExpression(node))
             return E.of(ctx);
+        if (tsm.Node.isPrefixUnaryExpression(node))
+            return reduceParseFunction(node, ctx, parsePrefixUnaryExpression(ctx.scope));
         if (tsm.Node.isPropertyAccessExpression(node))
             return reducePropertyAccessExpression(node)(ctx);
         if (tsm.Node.isTrueLiteral(node))
