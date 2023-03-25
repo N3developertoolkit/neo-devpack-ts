@@ -26,7 +26,9 @@ function collectMethodTokens(methods: ReadonlyArray<ContractMethod>): ReadonlyAr
     return [...set.values()];
 }
 
-function* genOperationAddresses(methods: ReadonlyArray<ContractMethod>) {
+function* genOperationAddresses(
+    methods: ReadonlyArray<ContractMethod>
+): Generator<{ address: number; op: Operation; }> {
     let address = 0;
     for (const method of methods) {
         for (const op of method.operations) {
@@ -36,7 +38,9 @@ function* genOperationAddresses(methods: ReadonlyArray<ContractMethod>) {
     }
 }
 
-function* genMethodAddresses(methods: ReadonlyArray<ContractMethod>): Generator<[tsm.Symbol, number], void, unknown> {
+function* genMethodAddresses(
+    methods: ReadonlyArray<ContractMethod>
+): Generator<[tsm.Symbol, number]> {
     let address = 0;
     for (const method of methods) {
         yield [method.symbol, address];
@@ -51,12 +55,16 @@ interface Instruction {
     operand?: Uint8Array
 }
 
-function convertSysCall({ name }: SysCallOperation): Instruction {
+function convertSysCall(
+    { name }: SysCallOperation
+): Instruction {
     const operand = Buffer.from(sc.generateInteropServiceCode(name), 'hex');
     return { opCode: sc.OpCode.SYSCALL, operand }
 }
 
-function convertPushInt({ value }: PushIntOperation): Instruction {
+function convertPushInt(
+    { value }: PushIntOperation
+): Instruction {
     if (value <= 16n && value >= -1n) {
         const opCode = sc.OpCode.PUSH0 + Number(value);
         return { opCode };
@@ -66,7 +74,9 @@ function convertPushInt({ value }: PushIntOperation): Instruction {
     }
 }
 
-function convertPushData({ value }: PushDataOperation): E.Either<string, Instruction> {
+function convertPushData(
+    { value }: PushDataOperation
+): E.Either<string, Instruction> {
     if (value.length <= 255) /* byte.MaxValue */ {
         const operand = Uint8Array.from([value.length, ...value]);
         return E.of({ opCode: sc.OpCode.PUSHDATA1, operand })
@@ -87,8 +97,12 @@ function convertPushData({ value }: PushDataOperation): E.Either<string, Instruc
     return E.left(`pushData length ${value.length} too long`);
 }
 
-
-function convertJump(index: number, address: number, op: JumpOffsetOperation, contractOps: ReadonlyArray<{ address: number; op: Operation; }>): Instruction {
+function convertJump(
+    index: number, 
+    address: number, 
+    op: JumpOffsetOperation, 
+    contractOps: ReadonlyArray<{ address: number; op: Operation; }>
+): Instruction {
     const targetIndex = index + op.offset;
     const targetAddress = contractOps[targetIndex].address;
     const addressOffset = targetAddress - address;
@@ -98,7 +112,10 @@ function convertJump(index: number, address: number, op: JumpOffsetOperation, co
     return { opCode, operand: new Uint8Array(buffer) };
 }
 
-function convertCallToken({ token }: CallTokenOperation, tokens: ReadonlyArray<sc.MethodToken>): Instruction {
+function convertCallToken(
+    { token }: CallTokenOperation, 
+    tokens: ReadonlyArray<sc.MethodToken>
+): Instruction {
     const index = tokens.findIndex(t => t.hash === token.hash && t.method === token.method);
     if (index < 0) throw new Error(`convertCallToken: ${token.hash} ${token.method}`);
     const buffer = new ArrayBuffer(2);
@@ -106,7 +123,9 @@ function convertCallToken({ token }: CallTokenOperation, tokens: ReadonlyArray<s
     return { opCode: sc.OpCode.CALLT, operand: new Uint8Array(buffer) };
 }
 
-function convertLoadStore(op: LoadStoreOperation): Instruction {
+function convertLoadStore(
+    op: LoadStoreOperation
+): Instruction {
     const opCode = convertLoadStoreKind(op.kind);
     return (op.index <= 6)
         ? { opCode: opCode + op.index - 7 }
@@ -114,7 +133,11 @@ function convertLoadStore(op: LoadStoreOperation): Instruction {
 }
 
 
-function convertCall(methodAddressMap: ReadonlyMap<tsm.Symbol, number>, op: CallOperation, address: number): Instruction {
+function convertCall(
+    methodAddressMap: ReadonlyMap<tsm.Symbol, number>, 
+    op: CallOperation, 
+    address: number
+): Instruction {
     const targetAddress = methodAddressMap.get(op.method);
     if (!targetAddress) throw new Error(`${op.method.getName()} invalid address`);
     const addressOffset = targetAddress - address;
@@ -162,7 +185,7 @@ function* genInstructions(
 function collectManifestMethods(
     methods: ReadonlyArray<ContractMethod>,
     methodAddressMap: ReadonlyMap<tsm.Symbol, number>
-) {
+): E.Either<readonly string[], readonly sc.ContractMethodDefinition[]> {
     return pipe(
         methods,
         ROA.filter(m => !!m.node.getExportKeyword()),
@@ -200,7 +223,9 @@ function collectManifestMethods(
     }
 }
 
-function collectManifestEvents(events: ReadonlyArray<ContractEvent>) {
+function collectManifestEvents(
+    events: ReadonlyArray<ContractEvent>
+): readonly sc.ContractEventDefiniton[] {
     return pipe(
         events,
         ROA.map(e => {
@@ -216,7 +241,9 @@ function collectManifestEvents(events: ReadonlyArray<ContractEvent>) {
     )
 }
 
-function collectDebugMethods(methods: ReadonlyArray<ContractMethod>) {
+function collectDebugMethods(
+    methods: ReadonlyArray<ContractMethod>
+): readonly DebugInfoMethod[] {
     let address = 0;
 
     return pipe(
@@ -256,7 +283,10 @@ function collectDebugMethods(methods: ReadonlyArray<ContractMethod>) {
 }
 
 
-function collectPermissions(tokens: readonly sc.MethodToken[], options: CompileOptions): sc.ContractPermission[] {
+function collectPermissions(
+    tokens: readonly sc.MethodToken[], 
+    options: CompileOptions
+): sc.ContractPermission[] {
 
     const map = new Map<string, ReadonlySet<string>>();
     for (const token of tokens) {
