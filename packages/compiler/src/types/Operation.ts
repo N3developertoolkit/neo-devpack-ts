@@ -382,27 +382,82 @@ export function getOperationSize(op: Operation) {
         }
         case 'pushdata': {
             const { value } = op as PushDataOperation;
-            if (value.length <= 255) /* byte.MaxValue */ {
-                return 2 + value.length;
-            }
-            if (value.length <= 65535) /* ushort.MaxValue */ {
-                return 3 + value.length;
-            }
-            if (value.length <= 4294967295) /* uint.MaxValue */ {
-                return 5 + value.length;
-            }
-            throw new Error(`pushData length ${value.length} too long`);
+            return pushDataOpSize(value);
         }
         case 'pushint': {
             const { value } = op as PushIntOperation;
-            if (value <= 16n && value >= -1n) return 1;
-
-            const {buffer} = convertBigInteger(value);
-            return 1 + buffer.length;
+            return pushIntOpSize(value);
+        }
+        case 'packmap': {
+            const { values } = op as PackMapOperation;
+            let size = 1 + pushIntOpSize(values.size);
+            for (const [key, value] of values) {
+                size += mapKeySize(key);
+                for (const op of value) {
+                    size += getOperationSize(op)
+                }
+            }
+            return size;
+        }
+        case 'packarray': {
+            const { values } = op as PackArrayOperation;
+            return arraySize(values);
+        }
+        case 'packstruct': {
+            const { values } = op as PackStructOperation;
+            return arraySize(values);
         }
         default:
-            throw new Error(`getOperationSize ${op.kind}`);
+            throw new Error(`getOperationSize ${(op as any).kind}`);
     }
+}
+
+function arraySize(values: ReadonlyArray<readonly Operation[]>): number {
+    let size = 1 + pushIntOpSize(values.length);
+    for (const value of values) {
+        for (const op of value) {
+            size += getOperationSize(op)
+        }
+    }
+    return size;
+
+
+}
+
+function mapKeySize(key: MapKey) {
+    if (typeof key === "string") {
+        const value = Buffer.from(key, 'utf8');
+        return pushDataOpSize(value);
+    }
+    if (typeof key === 'bigint') {
+        return pushIntOpSize(key);
+    }
+    if (typeof key === 'boolean') {
+        return 1;
+    }
+    return pushDataOpSize(key);
+}
+
+function pushDataOpSize(value: Uint8Array) {
+    if (value.length <= 255) /* byte.MaxValue */ {
+        return 2 + value.length;
+    }
+    if (value.length <= 65535) /* ushort.MaxValue */ {
+        return 3 + value.length;
+    }
+    if (value.length <= 4294967295) /* uint.MaxValue */ {
+        return 5 + value.length;
+    }
+    throw new Error(`pushData length ${value.length} too long`);
+}
+
+function pushIntOpSize(value: number | bigint) {
+    value = typeof value === "number" ? BigInt(value) : value;
+
+    if (value <= 16n && value >= -1n) return 1;
+
+    const {buffer} = convertBigInteger(value);
+    return 1 + buffer.length;
 }
 
 export const convertJumpTargetOps =
