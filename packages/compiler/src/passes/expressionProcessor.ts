@@ -40,13 +40,16 @@ export const parseArguments = (scope: Scope) => (node: tsm.CallExpression) => {
 export const parseArrayLiteral =
     (scope: Scope) =>
         (node: tsm.ArrayLiteralExpression): E.Either<ParseError, readonly Operation[]> => {
+            const elements = node.getElements();
             return pipe(
-                node.getElements(),
+                elements,
                 ROA.map(parseExpression(scope)),
                 ROA.sequence(E.Applicative),
-                E.map(values => {
-                    return ROA.of({ kind: 'packarray', values } as Operation)
-                })
+                E.map(ROA.flatten),
+                E.map(ROA.concat([
+                    { kind: "pushint", value: BigInt(elements.length) },
+                    { kind: 'packarray' },
+                ] as readonly Operation[])),
             )
         }
 
