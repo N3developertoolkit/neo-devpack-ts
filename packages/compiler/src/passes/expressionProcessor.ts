@@ -387,44 +387,45 @@ const parseObjectLiteralProperty =
 
 export const parseObjectLiteralExpression =
     (scope: Scope) => (node: tsm.ObjectLiteralExpression): E.Either<ParseError, readonly Operation[]> => {
+        const props = node.getProperties();
         return pipe(
-            node.getProperties(),
+            props,
             ROA.map(prop => {
                 return pipe(
                     prop,
                     parseObjectLiteralProperty(scope),
                     E.bindTo('value'),
-                    E.bind('key', () => pipe(prop, parseSymbol, E.map(s => s.getName()))),
+                    E.bind('key', () => pipe(
+                        prop, 
+                        parseSymbol, 
+                        E.map(s => parseString(s.getName()))
+                    )),
+                    E.map(({ key, value }) => ROA.append(key)(value))
                 );
             }),
             ROA.sequence(E.Applicative),
-            E.map(entities => {
-                const values = new Map(entities.map(v => [v.key, v.value]));
-                return ROA.of({ kind: 'packmap', values } as Operation)
-            })
-        )
+            E.map(ROA.flatten),
+            E.map(ROA.concat([
+                { kind: "pushint", value: BigInt(props.length) },
+                { kind: 'packmap' },
+            ] as readonly Operation[])),
+        );
     }
+
+function parseString(value: string): Operation {
+    const buffer = Buffer.from(value, 'utf8');
+    return { kind: 'pushdata', value: buffer };
+}
 
 export const parseStringLiteral =
     (node: tsm.StringLiteral): E.Either<ParseError, Operation> => {
         const literal = node.getLiteralValue();
-        const value = Buffer.from(literal, 'utf8');
-        return E.right({ kind: "pushdata", value });
+        return E.of(parseString(literal));
     }
 
 
 export function parseExpression(scope: Scope) {
     return (node: tsm.Expression): E.Either<ParseError, readonly Operation[]> => {
-
-        // I'm thinking this code could be cleaned up by treating *everything* 
-        // as an expression chain. As it currently stands, some expression kinds 
-        // have to be implemented twice - once for the singleton scenario and once 
-        // for being part of a chain. For example `{ hello: "world" }` is a singleton
-        // but `{ hello: "world" } as Greeting` is a chain.
-
-        // WIP updating reduceChainContext to handle all these node types.
-        // once that's done, can probably eliminate parseExpressionChain and put
-        // all that code here in parseExpression
 
         return pipe(
             node, 
@@ -443,41 +444,6 @@ export function parseExpression(scope: Scope) {
                     : context.operations;
             })
         );
-
-        // if (tsm.Node.hasExpression(node))
-        //     return parseExpressionChain(scope)(node);
-        // if (tsm.Node.isArrayLiteralExpression(node))
-        //     return parseArrayLiteral(scope)(node);
-        // if (tsm.Node.isBigIntLiteral(node))
-        //     return parseLiteral(parseBigIntLiteral)(node);
-        // if (tsm.Node.isBinaryExpression(node))
-        //     return parseBinaryExpression(scope)(node);
-        // if (tsm.Node.isConditionalExpression(node))
-        //     return parseConditionalExpression(scope)(node);
-        // if (tsm.Node.isFalseLiteral(node))
-        //     return parseLiteral(parseBooleanLiteral)(node);
-        // if (tsm.Node.isIdentifier(node))
-        //     return parseIdentifier(scope)(node);
-        // if (tsm.Node.isNullLiteral(node))
-        //     return parseLiteral(parseNullLiteral)(node);
-        // if (tsm.Node.isNumericLiteral(node))
-        //     return parseLiteral(parseNumericLiteral)(node);
-        // if (tsm.Node.isPrefixUnaryExpression(node))
-        //     return parsePrefixUnaryExpression(scope)(node);
-        // if (tsm.Node.isObjectLiteralExpression(node))
-        //     return parseObjectLiteralExpression(scope)(node);
-        // if (tsm.Node.isStringLiteral(node))
-        //     return parseLiteral(parseStringLiteral)(node);
-        // if (tsm.Node.isTrueLiteral(node))
-        //     return parseLiteral(parseBooleanLiteral)(node);
-        // if (tsm.Node.isUndefinedKeyword(node))
-        //     return parseLiteral(parseNullLiteral)(node);
-        // var kind = (node as tsm.Node).getKindName();
-        // return E.left(makeParseError(node)(`parseExpression ${kind} failed`));
-
-        // function parseLiteral<T>(func: (node: T) => E.Either<ParseError, Operation>) {
-        //     return flow(func, E.map(ROA.of));
-        // }
     };
 }
 

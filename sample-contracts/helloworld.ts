@@ -6,6 +6,7 @@
  */
 
 const VALUE_KEY = ByteString.fromHex("0x00");
+const DATA_KEY = ByteString.fromHex("0x01");
 const OWNER_KEY = ByteString.fromHex("0xFF");
 
 /** @safe */
@@ -33,5 +34,21 @@ export function update(nefFile: ByteString, manifest: string) {
         ContractManagement.update(nefFile, manifest);
     } else {
         throw Error("Only the contract owner can update the contract");
+    }
+}
+
+interface Data { name: string, owner: ByteString };
+
+export function save(name: string, owner: ByteString) {
+    const data: Data = { owner, name };
+    const serializedState = StdLib.serialize(data);
+    Storage.context.put(DATA_KEY, serializedState);
+}
+
+export function load() {
+    const serialzied = Storage.context.get(DATA_KEY);
+    if (serialzied) {
+        const data = StdLib.deserialize(serialzied) as Data;
+        return data;
     }
 }

@@ -77,6 +77,40 @@
             ]
         },
         {
+            "type": "neo-contract",
+            "name": "NEO: helloworld.save",
+            "request": "launch",
+            "program": "${workspaceFolder}/express/out/helloworld.nef",
+            "neo-express": "${workspaceFolder}/express/default.neo-express",
+            "invocation": {
+                "operation": "save",
+                "args": [
+                    "lorem ipsum",
+                    "@owen"
+                ]
+            },
+            "signers": [
+                "@owen"
+            ]
+        },
+        {
+            "type": "neo-contract",
+            "name": "NEO: helloworld.load",
+            "request": "launch",
+            "program": "${workspaceFolder}/express/out/helloworld.nef",
+            "neo-express": "${workspaceFolder}/express/default.neo-express",
+            "checkpoint": "${workspaceFolder}/express/out/helloworld.neoxp-checkpoint",
+            "invocation": {
+                "operation": "load",
+                "args": [
+                ]
+            },
+            "signers": [
+                "@owen"
+            ]
+        },
+        
+        {
             "args": [
                 "--timeout",
                 "999999",

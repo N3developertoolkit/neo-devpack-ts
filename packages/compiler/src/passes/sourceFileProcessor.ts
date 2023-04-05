@@ -255,6 +255,7 @@ function parseVariableStatement(context: ParseNodeContext, node: tsm.VariableSta
 
 function parseSourceNode(context: ParseNodeContext, node: tsm.Node): ParseNodeContext {
     switch (node.getKind()) {
+        case tsm.SyntaxKind.EmptyStatement:
         case tsm.SyntaxKind.EndOfFileToken:
         case tsm.SyntaxKind.InterfaceDeclaration:
             return context;
