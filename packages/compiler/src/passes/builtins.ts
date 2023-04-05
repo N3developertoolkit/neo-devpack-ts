@@ -146,7 +146,7 @@ export const invokeCallContract =
                         parseArgArray(scope),
                         E.map(ROA.concat([
                             { kind: "pushint", value: BigInt(targetArgs.length) },
-                            { kind: 'pack' },
+                            { kind: 'packarray' },
                         ] as readonly Operation[])),
                         E.bindTo("target"),
                         E.bind('call', () => pipe(

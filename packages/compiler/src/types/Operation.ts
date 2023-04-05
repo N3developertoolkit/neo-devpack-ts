@@ -44,7 +44,9 @@ export const simpleOperationKinds = [
     'greaterthanorequal',
 
     // Compound-type
-    'pack',
+    'packmap',
+    'packstruct',
+    'packarray',
     'newemptyarray',
     'size',
     'pickitem',
@@ -78,7 +80,9 @@ export function convertSimpleOperationKind(kind: SimpleOperationKind) {
         case "not": return sc.OpCode.NOT;
         case "notequal": return sc.OpCode.NOTEQUAL;
         case "or": return sc.OpCode.OR;
-        case "pack": return sc.OpCode.PACK;
+        case "packarray": return sc.OpCode.PACK;
+        case "packmap": return sc.OpCode.PACKMAP;
+        case "packstruct": return sc.OpCode.PACKSTRUCT;
         case "pickitem": return sc.OpCode.PICKITEM;
         case "power": return sc.OpCode.POW;
         case "pushnull": return sc.OpCode.PUSHNULL;
@@ -153,9 +157,6 @@ export type Operation =
     JumpOffsetOperation |
     JumpTargetOperation |
     LoadStoreOperation |
-    PackArrayOperation |
-    PackMapOperation |
-    PackStructOperation |
     PushBoolOperation |
     PushDataOperation |
     PushIntOperation |
@@ -242,31 +243,6 @@ export interface PushBoolOperation {
 }
 
 export const isPushBoolOp = (op: Operation): op is PushBoolOperation => op.kind === 'pushbool';
-
-type MapKey = boolean | bigint | string | Uint8Array;
-export interface PackMapOperation {
-    readonly kind: 'packmap';
-    readonly values: ReadonlyMap<MapKey, readonly Operation[]>;
-    location?: Location,
-}
-
-export const isObjectLiteralOp = (op: Operation): op is PackMapOperation => op.kind === 'packmap';
-
-export interface PackArrayOperation {
-    readonly kind: 'packarray';
-    readonly values: ReadonlyArray<readonly Operation[]>;
-    location?: Location,
-}
-
-export const isPackArrayOp = (op: Operation): op is PackArrayOperation => op.kind === 'packarray';
-
-export interface PackStructOperation {
-    readonly kind: 'packstruct';
-    readonly values: ReadonlyArray<readonly Operation[]>;
-    location?: Location,
-}
-
-export const isPackStructOp = (op: Operation): op is PackStructOperation => op.kind === 'packstruct';
 
 // during function parsing, it's typically easier to specify the jump target
 // via the target operation instead of via the index offset. However,
@@ -388,54 +364,9 @@ export function getOperationSize(op: Operation) {
             const { value } = op as PushIntOperation;
             return pushIntOpSize(value);
         }
-        case 'packmap': {
-            const { values } = op as PackMapOperation;
-            let size = 1 + pushIntOpSize(values.size);
-            for (const [key, value] of values) {
-                size += mapKeySize(key);
-                for (const op of value) {
-                    size += getOperationSize(op)
-                }
-            }
-            return size;
-        }
-        case 'packarray': {
-            const { values } = op as PackArrayOperation;
-            return arraySize(values);
-        }
-        case 'packstruct': {
-            const { values } = op as PackStructOperation;
-            return arraySize(values);
-        }
         default:
             throw new Error(`getOperationSize ${(op as any).kind}`);
     }
-}
-
-function arraySize(values: ReadonlyArray<readonly Operation[]>): number {
-    let size = 1 + pushIntOpSize(values.length);
-    for (const value of values) {
-        for (const op of value) {
-            size += getOperationSize(op)
-        }
-    }
-    return size;
-
-
-}
-
-function mapKeySize(key: MapKey) {
-    if (typeof key === "string") {
-        const value = Buffer.from(key, 'utf8');
-        return pushDataOpSize(value);
-    }
-    if (typeof key === 'bigint') {
-        return pushIntOpSize(key);
-    }
-    if (typeof key === 'boolean') {
-        return 1;
-    }
-    return pushDataOpSize(key);
 }
 
 function pushDataOpSize(value: Uint8Array) {

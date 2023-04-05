@@ -110,7 +110,7 @@ export class EventFunctionSymbolDef extends $SymbolDef implements CallableSymbol
             parseArguments(scope),
             E.map(ROA.concat([
                 { kind: "pushint", value: BigInt(node.getArguments().length) },
-                { kind: 'pack' },
+                { kind: 'packarray' },
                 { kind: 'pushdata', value: Buffer.from(this.name, 'utf8') }
             ] as readonly Operation[]))
         );
