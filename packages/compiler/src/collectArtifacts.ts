@@ -1,6 +1,6 @@
 import * as tsm from "ts-morph";
 import { sc, u } from "@cityofzion/neon-core";
-import { pipe } from "fp-ts/function";
+import { flow, pipe } from "fp-ts/function";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROS from 'fp-ts/ReadonlySet'
 import * as E from 'fp-ts/Either'
@@ -19,9 +19,7 @@ function collectMethodTokens(methods: ReadonlyArray<ContractMethod>): ReadonlyAr
         ROA.flatten,
         ROA.filter(isCallTokenOp),
         ROA.map(m => m.token),
-        ROS.fromReadonlyArray({
-            equals: (x, y) => x.hash === y.hash && x.method === y.method
-        }),
+        ROS.fromReadonlyArray({ equals: (x, y) => x.hash === y.hash && x.method === y.method }),
     )
     return [...set.values()];
 }
@@ -98,9 +96,9 @@ function convertPushData(
 }
 
 function convertJump(
-    index: number, 
-    address: number, 
-    op: JumpOffsetOperation, 
+    index: number,
+    address: number,
+    op: JumpOffsetOperation,
     contractOps: ReadonlyArray<{ address: number; op: Operation; }>
 ): Instruction {
     const targetIndex = index + op.offset;
@@ -113,14 +111,14 @@ function convertJump(
 }
 
 function convertCallToken(
-    { token }: CallTokenOperation, 
+    { token }: CallTokenOperation,
     tokens: ReadonlyArray<sc.MethodToken>
-): Instruction {
+): E.Either<string, Instruction> {
     const index = tokens.findIndex(t => t.hash === token.hash && t.method === token.method);
-    if (index < 0) throw new Error(`convertCallToken: ${token.hash} ${token.method}`);
+    if (index < 0) return E.left(`convertCallToken: ${token.hash} ${token.method}`);
     const buffer = new ArrayBuffer(2);
     new DataView(buffer).setUint16(0, index, true);
-    return { opCode: sc.OpCode.CALLT, operand: new Uint8Array(buffer) };
+    return E.of({ opCode: sc.OpCode.CALLT, operand: new Uint8Array(buffer) });
 }
 
 function convertLoadStore(
@@ -134,52 +132,59 @@ function convertLoadStore(
 
 
 function convertCall(
-    methodAddressMap: ReadonlyMap<tsm.Symbol, number>, 
-    op: CallOperation, 
+    methodAddressMap: ReadonlyMap<tsm.Symbol, number>,
+    op: CallOperation,
     address: number
-): Instruction {
+): E.Either<string, Instruction> {
     const targetAddress = methodAddressMap.get(op.method);
-    if (!targetAddress) throw new Error(`${op.method.getName()} invalid address`);
+    if (!targetAddress) return E.left(`${op.method.getName()} invalid address`);
     const addressOffset = targetAddress - address;
     const buffer = new ArrayBuffer(4);
     new DataView(buffer).setInt32(0, addressOffset, true);
-    return { opCode: sc.OpCode.CALL_L, operand: new Uint8Array(buffer) };
+    return E.of({ opCode: sc.OpCode.CALL_L, operand: new Uint8Array(buffer) });
 }
 
 // neon-js hasn't added the PUSHT (0x08) or PUSHF (0x09) opcodes yet
-const PUSHT = 0x08;
-const PUSHF = 0x09;
+const PUSHT = 0x08 as sc.OpCode;
+const PUSHF = 0x09 as sc.OpCode;
 
-// TODO: convert this to 
-// * not throw
-// * not be a generator
-// * handle multi instruction operations (such as packmap and packarray)
-
-function* genInstructions(
+function convertOperations(
     contractOps: ReadonlyArray<{ address: number; op: Operation; }>,
     tokens: ReadonlyArray<sc.MethodToken>,
     methodAddressMap: ReadonlyMap<tsm.Symbol, number>
-): Generator<number[], void, unknown> {
-    for (let index = 0; index < contractOps.length; index++) {
-        const { address, op } = contractOps[index];
-        // convertCall can throw
-        // if (isCallOp(op)) yield convertCall(methodAddressMap, op, address);
-        // // convertCallToken can throw
-        // else if (isCallTokenOp(op)) yield convertCallToken(op, tokens);
-        // else if (isConvertOp(op)) yield [sc.OpCode.CONVERT, op.type];
-        // else if (isInitSlotOp(op)) yield [sc.OpCode.INITSLOT, op.locals, op.params];
-        // else if (isInitStaticOperation(op)) yield [sc.OpCode.INITSSLOT, op.count];
-        // else if (isJumpOffsetOp(op)) yield convertJump(index, address, op, contractOps);
-        // else if (isJumpTargetOp(op)) throw new Error('JumpTargetOperation not supported');
-        // else if (isLoadStoreOp(op)) yield convertLoadStore(op);
-        // else if (isPushBoolOp(op)) yield [op.value ? PUSHT : PUSHF];
-        // // convertPushData can throw
-        // else if (isPushDataOp(op)) yield convertPushData(op);
-        // else if (isPushIntOp(op)) yield convertPushInt(op);
-        // else if (isSimpleOp(op)) yield [convertSimpleOperationKind(op.kind)];
-        // else if (isSysCallOp(op)) yield convertSysCall(op);
-        // else throw new Error(`Unknown operation`);
+): E.Either<readonly string[], readonly Instruction[]> {
+    function createIns(opCode: sc.OpCode, operand?: Uint8Array | number[]) {
+        operand = operand
+            ? operand instanceof Uint8Array
+                ? operand
+                : Uint8Array.from(operand)
+            : undefined;
+        return { opCode, operand };
     }
+
+    function convert(index: number, address: number, op: Operation): E.Either<string, Instruction> {
+        if (isCallOp(op)) return convertCall(methodAddressMap, op, address);
+        else if (isCallTokenOp(op)) return convertCallToken(op, tokens);
+        else if (isConvertOp(op)) return E.of(createIns(sc.OpCode.CONVERT, [op.type]));
+        else if (isInitSlotOp(op)) return E.of(createIns(sc.OpCode.INITSLOT, [op.locals, op.params]));
+        else if (isInitStaticOperation(op)) return E.of(createIns(sc.OpCode.INITSSLOT, [op.count]));
+        else if (isJumpOffsetOp(op)) return E.of(convertJump(index, address, op, contractOps));
+        else if (isLoadStoreOp(op)) return E.of(convertLoadStore(op));
+        else if (isPushBoolOp(op)) return E.of(createIns(op.value ? PUSHT : PUSHF));
+        else if (isPushDataOp(op)) return convertPushData(op);
+        else if (isPushIntOp(op)) return E.of(convertPushInt(op));
+        else if (isSimpleOp(op)) return E.of(createIns(convertSimpleOperationKind(op.kind)));
+        else if (isSysCallOp(op)) return E.of(convertSysCall(op));
+        else if (isJumpTargetOp(op)) return E.left('JumpTargetOperation not supported');
+        return E.left(`Unknown operation "${(op as Operation).kind}"`);
+    }
+
+    return pipe(
+        contractOps,
+        ROA.mapWithIndex((index, { address, op }) => convert(index, address, op)),
+        ROA.separate,
+        E_fromSeparated,
+    );
 }
 
 function collectManifestMethods(
@@ -284,7 +289,7 @@ function collectDebugMethods(
 
 
 function collectPermissions(
-    tokens: readonly sc.MethodToken[], 
+    tokens: readonly sc.MethodToken[],
     options: CompileOptions
 ): sc.ContractPermission[] {
 
@@ -313,7 +318,7 @@ function collectPermissions(
     })
 }
 
-const collectArtifactsThrows =
+export const collectArtifacts =
     (name: string, options: CompileOptions) =>
         (compiledProject: CompiledProject): CompilerState<Partial<CompiledProjectArtifacts>> =>
             diagnostics => {
@@ -321,55 +326,46 @@ const collectArtifactsThrows =
                 const contractOps = [...genOperationAddresses(methods)];
                 const tokens = collectMethodTokens(methods);
                 const methodAddressMap = new Map(genMethodAddresses(methods));
-                // genInstructions can throw
-                const instructions = [...genInstructions(contractOps, tokens, methodAddressMap)];
-
-                const nef = new sc.NEF({
-                    compiler: "neo-devpack-ts",
-                    script: Buffer.from(ROA.flatten(instructions)).toString("hex"),
-                    tokens: tokens.map(t => t.export()),
-                });
-                const hash = Buffer.from(u.hash160(nef.script), 'hex').reverse();
-
-                // generateManifestMethods can throw
-                const manifestMethods = collectManifestMethods(methods, methodAddressMap);
-                if (E.isLeft(manifestMethods)) {
-                    const diags = manifestMethods.left.map(v => createDiagnostic(v))
-                    diagnostics = ROA.concat(diags)(diagnostics);
-                    return [{}, diagnostics];
-                }
-                const manifestEvents = collectManifestEvents(compiledProject.events);
-                const manifest = new sc.ContractManifest({
-                    abi: new sc.ContractAbi({
-                        methods: ROA.toArray(manifestMethods.right),
-                        events: ROA.toArray(manifestEvents)
-                    }),
-                    name,
-                    permissions: collectPermissions(tokens, options),
-                    supportedStandards: [...options.standards],
-                    trusts: []
-                });
-
-                const debugMethods = [...collectDebugMethods(methods)];
-                const debugInfo = makeDebugInfo(nef, debugMethods);
-
-                return [{ nef, manifest, debugInfo }, diagnostics];
-            }
-
-// wrap collectArtifactsThrows in E.tryCatch
-// TODO: build a version of collectArtifactsThrows that doesn't throw
-export const collectArtifacts =
-    (name: string, options: CompileOptions) =>
-        (compiledProject: CompiledProject): CompilerState<Partial<CompiledProjectArtifacts>> =>
-            diagnostics => {
-                const result = E.tryCatch(
-                    () => collectArtifactsThrows(name, options)(compiledProject)(diagnostics),
-                    e => createDiagnostic(getErrorMessage(e)));
 
                 return pipe(
-                    result,
+                    convertOperations(contractOps, tokens, methodAddressMap),
+                    E.map(ROA.map(ins => ins.operand ? [ins.opCode, ...ins.operand] : [ins.opCode])),
+                    E.map(ROA.flatten),
+                    E.map(bytes => new sc.NEF({
+                        compiler: "neo-devpack-ts",
+                        script: Buffer.from(bytes).toString("hex"),
+                        tokens: tokens.map(t => t.export()),
+                    })),
+                    E.bindTo('nef'),
+                    E.bind('debugInfo', ({ nef }) => {
+                        const debugMethods = [...collectDebugMethods(methods)];
+                        return E.of(makeDebugInfo(nef, debugMethods));
+                    }),
+                    E.bind('manifest', () => {
+                        return pipe(
+                            collectManifestMethods(methods, methodAddressMap),
+                            E.map(methods => {
+                                const events = collectManifestEvents(compiledProject.events);
+                                return new sc.ContractManifest({
+                                    abi: new sc.ContractAbi({
+                                        methods: ROA.toArray(methods),
+                                        events: ROA.toArray(events)
+                                    }),
+                                    name,
+                                    permissions: collectPermissions(tokens, options),
+                                    supportedStandards: [...options.standards],
+                                    trusts: []
+                                });
+                            }
+                            )
+                        );
+                    }),
+                    E.mapLeft(flow(ROA.map(createDiagnostic), ROA.concat(diagnostics))),
                     E.match(
-                        diag => [{}, ROA.append(diag)(diagnostics) as readonly tsm.ts.Diagnostic[]],
-                        state => [state[0], state[1]]
-                    ))
+                        diagnostics => [{}, diagnostics] as [Partial<CompiledProjectArtifacts>, readonly tsm.ts.Diagnostic[]],
+                        artifacts => [artifacts, diagnostics] as [Partial<CompiledProjectArtifacts>, readonly tsm.ts.Diagnostic[]],
+                    )
+                );
             }
+
+
