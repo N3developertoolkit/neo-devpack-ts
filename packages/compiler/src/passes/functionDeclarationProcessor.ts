@@ -19,13 +19,13 @@ import { LocalVariableSymbolDef, ParameterSymbolDef } from "./sourceSymbolDefs";
 
 interface ParseFunctionContext {
     readonly scope: Scope;
-    readonly locals: readonly tsm.VariableDeclaration[];
+    readonly locals: readonly LocalVariableSymbolDef[];
     readonly errors: readonly ParseError[];
 }
 
 interface ParseBodyResult {
     readonly operations: readonly Operation[];
-    readonly locals: readonly tsm.VariableDeclaration[];
+    readonly locals: readonly LocalVariableSymbolDef[];
 }
 
 type ParseStatementState = S.State<ParseFunctionContext, readonly Operation[]>
@@ -85,99 +85,176 @@ const parseBlock =
             return [operations, { ...$state, scope: state.scope }];
         }
 
-const parseVariableDeclarationName = (node: tsm.BindingName)    => {
+function collectBindingElements(node: tsm.BindingName): readonly (tsm.Identifier | tsm.BindingElement)[] {
     if (node instanceof tsm.Identifier) {
-        console.log();
-
+        return ROA.of(node);
     }
-
-    
-
-    
-
     if (node instanceof tsm.ArrayBindingPattern) {
-        const elements = node.getElements();
-        console.log();
-
+        return pipe(
+            node.getElements(),
+            ROA.filter(tsm.Node.isBindingElement),
+        );
     }
-
     if (node instanceof tsm.ObjectBindingPattern) {
-        const elements = node.getElements();
-        console.log();
-
+        return ROA.fromArray(node.getElements());
     }
+    return ROA.empty;
+}
 
-    return E.left(makeParseError(node)("Unexpected binding name"));
-}   
+export const storeBindingName =
+    (scope: Scope) =>
+        (node: tsm.BindingName, vars: readonly SymbolDef[]) =>
+            (init: tsm.Expression): E.Either<ParseError, readonly Operation[]> => {
+
+                const $initOps = $parseExpression(scope)(init);
+                if (E.isLeft($initOps)) return $initOps;
+                const initOps = updateLocation(init)($initOps.right);
+
+                if (node instanceof tsm.Identifier) {
+                    return pipe(
+                        node,
+                        findVar,
+                        E.chain(parseStore(initOps)),
+                    );
+                }
+                if (node instanceof tsm.ArrayBindingPattern) {
+                    const elements = node.getElements();
+                    return pipe(
+                        elements,
+                        ROA.mapWithIndex((index, element) => [index, element] as const),
+                        ROA.filter(([_, element]) => tsm.Node.isBindingElement(element)),
+                        ROA.map(([index, element]) => [index, element as tsm.BindingElement] as const),
+                        ROA.map(([index, element]) => {
+                            return pipe(
+                                element,
+                                findVar,
+                                E.map(def => [index, def] as const)
+                            )
+                        }),
+                        ROA.sequence(E.Applicative),
+                        E.chain(ROA.matchRight(
+                            () => {
+                                // if there are no binding elements execute the init expression 
+                                // (if there is one) and drop the result
+                                return ROA.isNonEmpty(initOps)
+                                    ? E.of(ROA.append({ kind: "drop" })(initOps) as readonly Operation[])
+                                    : E.of(ROA.empty)
+                            },
+                            (init, last) => {
+                                return pipe(
+                                    init,
+                                    // for every binding element except the last one, 
+                                    // duplicate the init expression, pick the specified index
+                                    // from the array and store it in the variable
+                                    ROA.map(([i, def]) => parseStore(
+                                        [
+                                            { kind: "duplicate", location: elements[i] },
+                                            { kind: 'pushint', value: BigInt(i) },
+                                            { kind: 'pickitem' }
+                                        ])(def)),
+                                    // for the last binding element, pick the specified index
+                                    // withouth duplicating
+                                    ROA.append(parseStore(
+                                        [
+                                            { kind: 'pushint', value: BigInt(last[0]), location: elements[last[0]] },
+                                            { kind: 'pickitem' }
+                                        ])(last[1])),
+                                    ROA.sequence(E.Applicative),
+                                    E.map(ROA.flatten),
+                                    // prepend the init expression ops
+                                    E.map(ops => ROA.concat(ops)(initOps))
+                                )
+                            }
+                        ))
+                    )
+                }
+                if (node instanceof tsm.ObjectBindingPattern) {
+                    return E.left(makeParseError(node)("ObjectBindingPattern not implemented"));
+                }
+                return E.left(makeParseError(node)("Unexpected binding name"));
+
+                function parseStore(ops: readonly Operation[]) {
+                    return (def: SymbolDef) => {
+                        return def.parseStore
+                            ? def.parseStore(ROA.empty, ops)
+                            : E.left(makeParseError(node)(`${def.symbol.getName()} doesn't implement parseStore`));
+                    };
+                }
+
+                function findVar(node: tsm.Node) {
+                    return pipe(
+                        node,
+                        parseSymbol,
+                        E.chain(symbol => pipe(
+                            vars,
+                            ROA.findFirst(v => v.symbol === symbol),
+                            E.fromOption(() => makeParseError(node)(`Could not find "${symbol.getName()} symbol`))
+                        ))
+                    );
+                }
+            }
 
 const parseVariableDeclaration =
-    (context: ParseFunctionContext) =>
-        (index: number, decl: tsm.VariableDeclaration): E.Either<ParseError, {
-            def: LocalVariableSymbolDef;
-            operations: readonly Operation[];
-        }> => {
-            const q  = parseVariableDeclarationName(decl.getNameNode());
-            return pipe(
-                decl,
-                parseSymbol,
-                E.chain(symbol => {
-                    const def = new LocalVariableSymbolDef(decl, symbol, index + context.locals.length);
-                    return pipe(
-                        decl.getInitializer(),
-                        O.fromNullable,
-                        O.map(flow(
-                            $parseExpression(context.scope),
-                            E.map(ops => ROA.append({ kind: "storelocal", index: def.index } as Operation)(ops)),
-                            E.map(updateLocation(decl))
-                        )),
-                        O.match(
-                            () => E.of(ROA.empty),
-                            identity
-                        ),
-                        E.map(operations => ({ def, operations }))
+    (scope: Scope) =>
+        (vars: readonly LocalVariableSymbolDef[]) =>
+            (decl: tsm.VariableDeclaration): E.Either<ParseError, readonly Operation[]> => {
+                return pipe(
+                    decl.getInitializer(),
+                    O.fromNullable,
+                    O.match(
+                        () => E.of(ROA.empty),
+                        init => pipe(
+                            init,
+                            storeBindingName(scope)(decl.getNameNode(), vars),
+                        )
                     )
-                }),
-            )
-        }
+                )
+            }
+
 
 const parseVariableStatement =
     (node: tsm.VariableStatement): ParseStatementState =>
-        state => {
+        context => {
             const declarations = node.getDeclarations();
             return pipe(
                 declarations,
-                ROA.mapWithIndex((index, decl) => parseVariableDeclaration(state)(index, decl)),
+                ROA.map(decl => decl.getNameNode()),
+                ROA.chain(collectBindingElements),
+                ROA.mapWithIndex((index, name) => pipe(
+                    name,
+                    parseSymbol,
+                    E.map(symbol => new LocalVariableSymbolDef(name, symbol, index + context.locals.length))
+                )),
                 ROA.separate,
                 E_fromSeparated,
-                E.chain(results => {
-
-                    const operations = MONOID.concatAll(ROA.getMonoid<Operation>())(results.map(r => r.operations));
-                    const defs = results.map(r => r.def);
-                    const locals = ROA.concat(declarations)(state.locals);
+                E.bindTo('vars'),
+                E.bind("ops", ({ vars }) => {
                     return pipe(
-                        defs,
-                        updateScopeSymbols(state.scope),
-                        E.mapLeft(msg => ROA.of(makeParseError(node)(msg))),
-                        E.map(scope => {
-                            return [operations, {
-                                ...state,
-                                locals,
-                                scope,
-                            }] as [readonly Operation[], ParseFunctionContext]
-                        }),
+                        declarations,
+                        ROA.map(parseVariableDeclaration(context.scope)(vars)),
+                        ROA.separate,
+                        E_fromSeparated,
+                        E.map(ROA.flatten)
                     );
                 }),
+                E.bind('scope', ({ vars }) => pipe(
+                    vars,
+                    updateScopeSymbols(context.scope),
+                    E.mapLeft(msg => ROA.of(makeParseError(node)(msg)))
+                )),
                 E.match(
                     errors => {
-                        const context = {
-                            ...state,
-                            errors: ROA.concat(errors)(state.errors)
-                        }
-                        return [[], context] as [readonly Operation[], ParseFunctionContext]
+                        return [ROA.empty, {
+                            ...context,
+                            errors: ROA.concat(errors)(context.errors)
+                        }] as [readonly Operation[], ParseFunctionContext]
                     },
-                    identity
+                    ({ vars, ops, scope }) => {
+                        const locals = ROA.concat(vars)(context.locals);
+                        return [ops, { ...context, locals, scope }]
+                    }
                 )
-            )
+            );
         }
 
 const parseExpressionStatement =
@@ -319,26 +396,12 @@ const makeContractMethod =
                         )
                     ))
                 )),
-                E.bind('variables', () => pipe(
-                    result.locals,
-                    ROA.map(varDecl => {
-                        return pipe(
-                            varDecl,
-                            parseSymbol,
-                            E.map(s => ({
-                                name: s.getName(),
-                                type: varDecl.getType(),
-                            }))
-                        );
-                    }),
-                    ROA.sequence(E.Applicative),
-                )),
-                E.map(({ symbol, operations, variables }) => ({
+                E.map(({ symbol, operations }) => ({
                     name: symbol.getName(),
                     node,
                     symbol,
                     operations,
-                    variables
+                    variables: result.locals
                 } as ContractMethod))
             );
         }

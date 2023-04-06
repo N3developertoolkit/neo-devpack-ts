@@ -28,7 +28,7 @@ export class LocalVariableSymbolDef extends $SymbolDef {
     }
 
     constructor(
-        readonly decl: tsm.VariableDeclaration,
+        readonly decl: tsm.Identifier | tsm.BindingElement,
         symbol: tsm.Symbol,
         readonly index: number
     ) {
