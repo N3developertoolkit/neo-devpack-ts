@@ -38,9 +38,11 @@ export function update(nefFile: ByteString, manifest: string) {
 }
 
 interface Data { name: string, owner: ByteString };
+type Data2 = [string, ByteString];
+type Data3 = string[];
 
 export function save(name: string, owner: ByteString) {
-    const data: Data = { owner, name };
+    const data = [name, owner];
     const serializedState = StdLib.serialize(data);
     Storage.context.put(DATA_KEY, serializedState);
 }
@@ -48,7 +50,8 @@ export function save(name: string, owner: ByteString) {
 export function load() {
     const serialzied = Storage.context.get(DATA_KEY);
     if (serialzied) {
-        const data = StdLib.deserialize(serialzied) as Data;
-        return data;
+        // const [name, owner] = StdLib.deserialize(serialzied) as any;
+        const qqq = StdLib.deserialize(serialzied) as Data2;
+        return qqq;
     }
 }

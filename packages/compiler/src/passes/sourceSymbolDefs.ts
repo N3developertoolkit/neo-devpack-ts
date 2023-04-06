@@ -193,3 +193,15 @@ export class StructSymbolDef extends $SymbolDef implements ObjectSymbolDef {
         super(decl);
     }
 }
+
+
+export class TupleSymbolDef extends $SymbolDef implements ObjectSymbolDef {
+    readonly loadOps = [];
+
+    constructor(
+        readonly decl: tsm.TypeLiteralNode,
+        readonly props: readonly SymbolDef[]
+    ) {
+        super(decl);
+    }
+}

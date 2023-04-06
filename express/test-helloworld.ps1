@@ -20,13 +20,15 @@ if (-not $?) { break }
 dotnet neoxp contract deploy ./out/helloworld.nef genesis
 if (-not $?) { break }
 
-dotnet neoxp contract storage helloworld -j; echo ""
-dotnet neoxp contract run helloworld get -r -j
+dotnet neoxp contract run helloworld save "lorem ipsum" "@owen" -a genesis
+dotnet neoxp checkpoint create ./out/helloworld -f
+# dotnet neoxp contract storage helloworld -j; echo ""
+# dotnet neoxp contract run helloworld get -r -j
 
-dotnet neoxp contract run helloworld set "test"  -a genesis
-dotnet neoxp contract run helloworld get -r -j
-dotnet neoxp contract storage helloworld -j; echo ""
+# dotnet neoxp contract run helloworld set "test"  -a genesis
+# dotnet neoxp contract run helloworld get -r -j
+# dotnet neoxp contract storage helloworld -j; echo ""
 
-dotnet neoxp contract run helloworld remove -a genesis
-dotnet neoxp contract run helloworld get -r -j
-dotnet neoxp contract storage helloworld -j; echo ""
+# dotnet neoxp contract run helloworld remove -a genesis
+# dotnet neoxp contract run helloworld get -r -j
+# dotnet neoxp contract storage helloworld -j; echo ""

@@ -85,12 +85,38 @@ const parseBlock =
             return [operations, { ...$state, scope: state.scope }];
         }
 
+const parseVariableDeclarationName = (node: tsm.BindingName)    => {
+    if (node instanceof tsm.Identifier) {
+        console.log();
+
+    }
+
+    
+
+    
+
+    if (node instanceof tsm.ArrayBindingPattern) {
+        const elements = node.getElements();
+        console.log();
+
+    }
+
+    if (node instanceof tsm.ObjectBindingPattern) {
+        const elements = node.getElements();
+        console.log();
+
+    }
+
+    return E.left(makeParseError(node)("Unexpected binding name"));
+}   
+
 const parseVariableDeclaration =
     (context: ParseFunctionContext) =>
         (index: number, decl: tsm.VariableDeclaration): E.Either<ParseError, {
             def: LocalVariableSymbolDef;
             operations: readonly Operation[];
         }> => {
+            const q  = parseVariableDeclarationName(decl.getNameNode());
             return pipe(
                 decl,
                 parseSymbol,

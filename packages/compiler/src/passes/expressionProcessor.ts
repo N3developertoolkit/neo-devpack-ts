@@ -628,6 +628,28 @@ const reduceCallExpression =
             )
         }
 
+const reduceElementAccessExpression =
+    (node: tsm.ElementAccessExpression) =>
+        (ctx: ChainContext): E.Either<ParseError, ChainContext> => {
+            const makeError = makeParseError(node);
+
+            return pipe(
+                node.getArgumentExpression(),
+                E.fromNullable(makeError('no argument expression')),
+                E.chain(parseExpression(ctx.scope)),
+                E.map(ops => ROA.concat(ops)(ctx.operations)),
+                E.map(ops => ROA.append({ kind: 'pickitem' })(ops)),
+                E.map(operations => {
+                    return {
+                        ...ctx,
+                        current: undefined,
+                        currentType: node.getType(),
+                        operations
+                    } as ChainContext
+                })
+            )
+        }
+
 function reduceParseFunction<T extends tsm.Node>(node: T, ctx: ChainContext, func: (node: T) => E.Either<ParseError, readonly Operation[]>) {
     return pipe(
         node,
@@ -662,6 +684,8 @@ const reduceChainContext = (node: tsm.Expression) =>
             return reduceCallExpression(node)(ctx);
         if (tsm.Node.isConditionalExpression(node))
             return reduceParseFunction(node, ctx, parseConditionalExpression(ctx.scope));
+        if (tsm.Node.isElementAccessExpression(node))
+            return reduceElementAccessExpression(node)(ctx);
         if (tsm.Node.isFalseLiteral(node))
             return reduceLiteral(node, ctx, parseBooleanLiteral);
         if (tsm.Node.isIdentifier(node))
@@ -689,15 +713,6 @@ const reduceChainContext = (node: tsm.Expression) =>
 
         return E.left(makeParseError(node)(`reduceChainContext ${(node as any).getKindName()}`));
     }
-
-// remaining node types from parseExpression to handle in reduceChainContext
-    // if (tsm.Node.isArrayLiteralExpression(node)) return parseArrayLiteral(scope)(node);
-    // if (tsm.Node.isBinaryExpression(node)) return parseBinaryExpression(scope)(node);
-    // if (tsm.Node.isConditionalExpression(node)) return parseConditionalExpression(scope)(node);
-    // if (tsm.Node.isIdentifier(node)) return parseIdentifier(scope)(node);
-    // if (tsm.Node.isPrefixUnaryExpression(node)) return parsePrefixUnaryExpression(scope)(node);
-    // if (tsm.Node.isObjectLiteralExpression(node)) return parseObjectLiteralExpression(scope)(node);
-
 
 function reduceChain(scope: Scope) {
     return (chain: readonly tsm.Expression[]) => {

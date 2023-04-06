@@ -54,6 +54,14 @@ const hoistFunctionDeclaration =
 const hoistInterfaceDeclaration =
     (context: HoistContext, node: tsm.InterfaceDeclaration): HoistContext => {
         const updateScope = (d: TypeDef) => updateScopeTypes(context.scope)(d);
+        const type = node.getType();
+        
+
+        const typeProps = pipe(
+            node,
+            TS.getType,
+            TS.getTypeProperties,
+        );
         if (TS.hasTag("struct")(node)) {
             return pipe(
                 node,
@@ -82,6 +90,27 @@ const hoistInterfaceDeclaration =
         return context;
     }
 
+const hoistTypeAliasDeclaration =
+    (context: HoistContext, node: tsm.TypeAliasDeclaration): HoistContext => {
+        const updateScope = (d: TypeDef) => updateScopeTypes(context.scope)(d);
+
+        const type = node.getType();
+        const isArray = type.isArray();
+        const isTuple = type.isTuple();
+
+
+        const q = pipe(
+            node,
+            TS.getType,
+            TS.getTypeProperties,
+        )
+
+        const st = node.getStructure();
+
+        return context;
+
+    }
+
 interface HoistContext {
     readonly scope: Scope;
     readonly errors?: readonly ParseError[];
@@ -91,6 +120,7 @@ function hoistDeclaration(context: HoistContext, node: tsm.Node): HoistContext {
 
     if (tsm.Node.isFunctionDeclaration(node)) return hoistFunctionDeclaration(context, node);
     if (tsm.Node.isInterfaceDeclaration(node)) return hoistInterfaceDeclaration(context, node);
+    if (tsm.Node.isTypeAliasDeclaration(node)) return hoistTypeAliasDeclaration(context, node);
     return context;
 }
 
@@ -258,6 +288,7 @@ function parseSourceNode(context: ParseNodeContext, node: tsm.Node): ParseNodeCo
         case tsm.SyntaxKind.EmptyStatement:
         case tsm.SyntaxKind.EndOfFileToken:
         case tsm.SyntaxKind.InterfaceDeclaration:
+        case tsm.SyntaxKind.TypeAliasDeclaration:
             return context;
 
         case tsm.SyntaxKind.FunctionDeclaration:
