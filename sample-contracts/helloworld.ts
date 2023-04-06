@@ -37,22 +37,27 @@ const OWNER_KEY = ByteString.fromHex("0xFF");
 //     }
 // }
 
-interface Data { name: string, owner: ByteString };
-type Data2 = [string, ByteString, number];
-type Data3 = string[];
+// interface Data { name: string, owner: ByteString, count: number };
+// type Data2 = [string, ByteString, number];
+// type Data3 = string[];
 
 export function save(name: string, owner: ByteString, count: number) {
-    const data: Data2 = [name, owner, count];
+    const q = { name, owner, count};
+    const { name: name2 } = q;
+    // const data2: Data2 = [name, owner, count];
+    // const data1: Data = { name, owner, count};
+    // const {name: name2 } = data1;
 
-    const serializedState = StdLib.serialize(data);
-    Storage.context.put(DATA_KEY, serializedState);
+    // const q = name2;
+    // const serializedState = StdLib.serialize(data2);
+    // Storage.context.put(DATA_KEY, serializedState);
 }
 
-export function load() {
-    const serialzied = Storage.context.get(DATA_KEY);
-    if (serialzied) {
-        // const [name, owner] = StdLib.deserialize(serialzied) as any;
-        const qqq = StdLib.deserialize(serialzied) as Data2;
-        return qqq;
-    }
-}
+// export function load() {
+//     const serialzied = Storage.context.get(DATA_KEY);
+//     if (serialzied) {
+//         // const [name, owner] = StdLib.deserialize(serialzied) as any;
+//         const qqq = StdLib.deserialize(serialzied) as Data2;
+//         return qqq;
+//     }
+// }
