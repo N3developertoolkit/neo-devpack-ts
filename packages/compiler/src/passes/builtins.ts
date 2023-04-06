@@ -12,7 +12,7 @@ import { createEmptyScope, createScope } from "../scope";
 import { ParseError, Scope, SymbolDef } from "../types/ScopeType";
 import { makeParseError } from "../symbolDef";
 import { createDiagnostic, isVoidLike, single } from "../utils";
-import { Operation, parseOperation as $parseOperation } from "../types/Operation";
+import { Operation, parseOperation as $parseOperation, pushString } from "../types/Operation";
 
 import { getArguments, parseExpression } from "./expressionProcessor";
 import { makeByteStringConstructor, makeByteStringInterface } from "./builtins.ByteString";
@@ -240,7 +240,7 @@ function makeEnumObject(decl: tsm.EnumDeclaration) {
             if (value == undefined) return E.left(member.getName());
             const op: Operation = typeof value === 'number'
                 ? { kind: "pushint", value: BigInt(value) }
-                : { kind: "pushdata", value: Buffer.from(value, 'utf8') };
+                : pushString(value);
             return E.of(createBuiltInSymbol(member, [op]))
         }),
         checkErrors(`invalid EnumDeclaration ${decl.getSymbol()?.getName()}`)

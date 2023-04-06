@@ -38,14 +38,8 @@ export function tokensOf(account: ByteString) {
     return Storage.context.keys(prefix, true)
 }
 
-/** @struct */
-interface TokenState
-{
-    owner: ByteString,
-    name: string,
-    description: string,
-    image: string,
-}
+// TODO: support interface based structs
+type TokenState = [ByteString, string, string, string];
 
 export function transfer(to: ByteString, tokenId: ByteString, data: any) {
     if (!to || to.length != 20) throw Error("The argument \"to\" is invalid.");
@@ -55,15 +49,15 @@ export function transfer(to: ByteString, tokenId: ByteString, data: any) {
         log("invalid tokenId");
         return false;
     }
-    const token = StdLib.deserialize(serialzied) as TokenState;
-    const owner = token.owner;
+    let token = StdLib.deserialize(serialzied) as TokenState;
+    const [ owner ] = token;
     if (!checkWitness(owner)) {
         log("only token owner can transfer");
         return false;
     }
 
     if (owner !== to) {
-        token.owner = to;
+        token[0] = to;
         Storage.context.put(key, StdLib.serialize(token));
         updateBalance(owner, tokenId, -1n);
         updateBalance(to, tokenId, 1n);
@@ -87,8 +81,8 @@ export function ownerof(tokenId: ByteString) {
     const key = concat(TOKEN_PREFIX, tokenId);
     const serialzied = Storage.context.get(key);
     if (serialzied) {
-        const token = StdLib.deserialize(serialzied) as TokenState;
-        return token.owner;
+        const [owner] = StdLib.deserialize(serialzied) as TokenState;
+        return owner;
     } else {
         return null;
     }
@@ -109,12 +103,13 @@ export function mint(owner: ByteString, name: string, description: string, image
     const idString = concat(SYMBOL, ByteString.fromInteger(id));
     const tokenId = CryptoLib.sha256(idString);
 
-    const tokenState: TokenState = { owner, name, description, image, };
+    const tokenState: TokenState = [ owner, name, description, image ];
     const serializedState = StdLib.serialize(tokenState);
     const tokenKey = concat(TOKEN_PREFIX, tokenId);
-    updateBalance(tokenState.owner, tokenId, 1n);
+    Storage.context.put(tokenKey, serializedState);
+    updateBalance(owner, tokenId, 1n);
     updateTotalSupply(1n);
-    postTransfer(null, tokenState.owner, tokenId, null);
+    postTransfer(null, owner, tokenId, null);
     return tokenId;
 }
 

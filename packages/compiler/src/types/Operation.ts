@@ -228,6 +228,14 @@ export interface PushDataOperation {
 
 export const isPushDataOp = (op: Operation): op is PushDataOperation => op.kind === 'pushdata';
 
+export function pushString(value: string, location?: Location): PushDataOperation {
+    return {
+        kind: 'pushdata',
+        value: Buffer.from(value, 'utf8'),
+        location
+    }
+}
+
 export interface PushIntOperation {
     readonly kind: 'pushint';
     readonly value: bigint;

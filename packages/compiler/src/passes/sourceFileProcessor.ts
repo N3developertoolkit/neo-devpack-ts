@@ -14,7 +14,7 @@ import { updateScopeSymbols, updateScopeTypes, createEmptyScope } from "../scope
 import { ParseError, Scope, SymbolDef, TypeDef } from "../types/ScopeType";
 import { parseSymbol } from "./parseSymbol";
 import { createDiagnostic, E_fromSeparated, single } from "../utils";
-import { ConstantSymbolDef, EventFunctionSymbolDef as EventSymbolDef, LocalFunctionSymbolDef as FunctionSymbolDef, StaticVarSymbolDef, StructMemberSymbolDef, StructSymbolDef } from "./sourceSymbolDefs";
+import { ConstantSymbolDef, EventFunctionSymbolDef as EventSymbolDef, LocalFunctionSymbolDef as FunctionSymbolDef, StaticVarSymbolDef } from "./sourceSymbolDefs";
 
 const handleHoistResult =
     <T extends SymbolDef | TypeDef>(node: tsm.Node, context: HoistContext, func: (def: T) => E.Either<string, Scope>) =>
@@ -62,31 +62,31 @@ const hoistInterfaceDeclaration =
             TS.getType,
             TS.getTypeProperties,
         );
-        if (TS.hasTag("struct")(node)) {
-            return pipe(
-                node,
-                TS.getType,
-                TS.getTypeProperties,
-                ROA.mapWithIndex((index, symbol) => {
-                    return pipe(
-                        symbol.getDeclarations(),
-                        single,
-                        O.chain(O.fromPredicate(tsm.Node.isPropertySignature)),
-                        O.map(sig => new StructMemberSymbolDef(sig, index)),
-                        E.fromOption(() => `${symbol.getName()} invalid struct property`));
-                }),
-                ROA.separate,
-                ({ left: errors, right: members }) => {
-                    return errors.length > 0
-                        ? E.left<ParseError, readonly SymbolDef[]>(makeParseError(node)(errors.join(", ")))
-                        : E.of<ParseError, readonly SymbolDef[]>(members);
-                },
-                E.map(props => {
-                    return new StructSymbolDef(node, props);
-                }),
-                handleHoistResult(node, context, updateScope)
-            );
-        }
+        // if (TS.hasTag("struct")(node)) {
+        //     return pipe(
+        //         node,
+        //         TS.getType,
+        //         TS.getTypeProperties,
+        //         ROA.mapWithIndex((index, symbol) => {
+        //             return pipe(
+        //                 symbol.getDeclarations(),
+        //                 single,
+        //                 O.chain(O.fromPredicate(tsm.Node.isPropertySignature)),
+        //                 O.map(sig => new StructMemberSymbolDef(sig, index)),
+        //                 E.fromOption(() => `${symbol.getName()} invalid struct property`));
+        //         }),
+        //         ROA.separate,
+        //         ({ left: errors, right: members }) => {
+        //             return errors.length > 0
+        //                 ? E.left<ParseError, readonly SymbolDef[]>(makeParseError(node)(errors.join(", ")))
+        //                 : E.of<ParseError, readonly SymbolDef[]>(members);
+        //         },
+        //         E.map(props => {
+        //             return new StructSymbolDef(node, props);
+        //         }),
+        //         handleHoistResult(node, context, updateScope)
+        //     );
+        // }
         return context;
     }
 

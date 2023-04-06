@@ -110,12 +110,12 @@ const parseStoreSymbol = (node: tsm.Expression) => (context: ChainContext): E.Ei
             E.chain(resolve(node)(context.scope)),
             E.map(def => [context, def])
         );
-    if (tsm.Node.isPropertyAccessExpression(node))
-        return pipe(
-            node,
-            resolveProperty(context),
-            E.map(def => [context, def])
-        );
+    // if (tsm.Node.isPropertyAccessExpression(node))
+    //     return pipe(
+    //         node,
+    //         resolveProperty(context),
+    //         E.map(def => [context, def])
+    //     );
     return E.left(makeParseError(node)(`parseStore ${node.getKindName()} not impl`));
 }
 
@@ -139,6 +139,11 @@ const makeAssignment = (store: tsm.Expression, scope: Scope) => (operations: rea
     )
 }
 
+const makeAssignment2 = 
+
+{
+
+}
 const binaryOpTokenMap: ReadonlyMap<tsm.SyntaxKind, SimpleOperationKind> = new Map([
     [tsm.SyntaxKind.AmpersandToken, "and"],
     [tsm.SyntaxKind.AsteriskAsteriskToken, 'power'],
@@ -533,7 +538,6 @@ const reduceIdentifier = (node: tsm.Identifier) =>
             })
         );
     }
-
 
 function resolveProperty(ctx: ChainContext) {
     return (node: tsm.PropertyAccessExpression): E.Either<ParseError, SymbolDef> => {

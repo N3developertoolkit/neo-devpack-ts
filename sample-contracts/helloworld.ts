@@ -43,7 +43,7 @@ type Data3 = string[];
 
 export function save(name: string, owner: ByteString, count: number) {
     const data: Data2 = [name, owner, count];
-    const [name2, , count2] = data;
+
     const serializedState = StdLib.serialize(data);
     Storage.context.put(DATA_KEY, serializedState);
 }

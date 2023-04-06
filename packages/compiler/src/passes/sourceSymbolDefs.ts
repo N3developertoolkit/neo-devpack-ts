@@ -149,59 +149,59 @@ export class LocalFunctionSymbolDef extends $SymbolDef implements CallableSymbol
     }
 }
 
-export class StructMemberSymbolDef extends $SymbolDef {
-    readonly loadOps: readonly Operation[];
-    readonly storeOps: readonly Operation[];
+// export class StructMemberSymbolDef extends $SymbolDef {
+//     readonly loadOps: readonly Operation[];
+//     readonly storeOps: readonly Operation[];
 
-    parseStore(loadOps: readonly Operation[], valueOps: readonly Operation[]): E.Either<ParseError, readonly Operation[]> {
-        return pipe(
-            valueOps, 
-            ROA.append({ kind: "duplicate" } as Operation),
-            ROA.concat(loadOps),
-            ROA.concat([
-                { kind: "pushint", value: BigInt(this.index)},
-                { kind: 'rotate' },
-                { kind: "setitem" }
-            ] as Operation[]),
-            E.of)
-    }
+//     parseStore(loadOps: readonly Operation[], valueOps: readonly Operation[]): E.Either<ParseError, readonly Operation[]> {
+//         return pipe(
+//             valueOps, 
+//             ROA.append({ kind: "duplicate" } as Operation),
+//             ROA.concat(loadOps),
+//             ROA.concat([
+//                 { kind: "pushint", value: BigInt(this.index)},
+//                 { kind: 'rotate' },
+//                 { kind: "setitem" }
+//             ] as Operation[]),
+//             E.of)
+//     }
 
-    constructor(
-        readonly sig: tsm.PropertySignature,
-        readonly index: number
-    ) {
-        super(sig);
-        this.loadOps = [
-            { kind: 'pushint', value: BigInt(index) },
-            { kind: 'pickitem' }
-        ];
-        this.storeOps = [
-            { kind: 'pushint', value: BigInt(index) },
-            // { kind: 'setitem' }
-        ];
+//     constructor(
+//         readonly sig: tsm.PropertySignature,
+//         readonly index: number
+//     ) {
+//         super(sig);
+//         this.loadOps = [
+//             { kind: 'pushint', value: BigInt(index) },
+//             { kind: 'pickitem' }
+//         ];
+//         this.storeOps = [
+//             { kind: 'pushint', value: BigInt(index) },
+//             // { kind: 'setitem' }
+//         ];
         
-    }
-}
+//     }
+// }
 
-export class StructSymbolDef extends $SymbolDef implements ObjectSymbolDef {
-    readonly loadOps = [];
+// export class StructSymbolDef extends $SymbolDef implements ObjectSymbolDef {
+//     readonly loadOps = [];
 
-    constructor(
-        readonly decl: tsm.InterfaceDeclaration,
-        readonly props: readonly SymbolDef[]
-    ) {
-        super(decl);
-    }
-}
+//     constructor(
+//         readonly decl: tsm.InterfaceDeclaration,
+//         readonly props: readonly SymbolDef[]
+//     ) {
+//         super(decl);
+//     }
+// }
 
 
-export class TupleSymbolDef extends $SymbolDef implements ObjectSymbolDef {
-    readonly loadOps = [];
+// export class TupleSymbolDef extends $SymbolDef implements ObjectSymbolDef {
+//     readonly loadOps = [];
 
-    constructor(
-        readonly decl: tsm.TypeLiteralNode,
-        readonly props: readonly SymbolDef[]
-    ) {
-        super(decl);
-    }
-}
+//     constructor(
+//         readonly decl: tsm.TypeLiteralNode,
+//         readonly props: readonly SymbolDef[]
+//     ) {
+//         super(decl);
+//     }
+// }
