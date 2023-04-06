@@ -194,29 +194,12 @@ export const storeBindingName =
                 }
             }
 
-const parseVariableDeclaration =
-    (scope: Scope) =>
-        (vars: readonly LocalVariableSymbolDef[]) =>
-            (decl: tsm.VariableDeclaration): E.Either<ParseError, readonly Operation[]> => {
-                return pipe(
-                    decl.getInitializer(),
-                    O.fromNullable,
-                    O.match(
-                        () => E.of(ROA.empty),
-                        init => pipe(
-                            init,
-                            storeBindingName(scope)(decl.getNameNode(), vars),
-                        )
-                    )
-                )
-            }
-
-
 const parseVariableStatement =
     (node: tsm.VariableStatement): ParseStatementState =>
         context => {
             const declarations = node.getDeclarations();
             return pipe(
+                // first, create LocalVariableSymbolDef for each binding element
                 declarations,
                 ROA.map(decl => decl.getNameNode()),
                 ROA.chain(collectBindingElements),
@@ -228,15 +211,22 @@ const parseVariableStatement =
                 ROA.separate,
                 E_fromSeparated,
                 E.bindTo('vars'),
-                E.bind("ops", ({ vars }) => {
-                    return pipe(
-                        declarations,
-                        ROA.map(parseVariableDeclaration(context.scope)(vars)),
-                        ROA.separate,
-                        E_fromSeparated,
-                        E.map(ROA.flatten)
-                    );
-                }),
+                // then, parse the initializer expression for each declaration
+                E.bind("ops", ({ vars }) => pipe(
+                    declarations,
+                    ROA.map(decl => pipe(
+                        decl.getInitializer(),
+                        O.fromNullable,
+                        O.match(
+                            () => E.of(ROA.empty),
+                            flow(storeBindingName(context.scope)(decl.getNameNode(), vars))
+                        )
+                    )),
+                    ROA.separate,
+                    E_fromSeparated,
+                    E.map(ROA.flatten)
+                )),
+                // update the current scope to include the new local variables
                 E.bind('scope', ({ vars }) => pipe(
                     vars,
                     updateScopeSymbols(context.scope),
