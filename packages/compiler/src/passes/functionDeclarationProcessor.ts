@@ -100,7 +100,7 @@ function collectBindingElements(node: tsm.BindingName): readonly (tsm.Identifier
     return ROA.empty;
 }
 
-function storeArrayBindingPattern(node: tsm.ArrayBindingPattern, vars: readonly SymbolDef[], initOps: readonly Operation[]): E.Either<ParseError, readonly Operation[]> {
+function storeArrayBindingPattern(node: tsm.ArrayBindingPattern, vars: readonly LocalVariableSymbolDef[], initOps: readonly Operation[]): E.Either<ParseError, readonly Operation[]> {
 
     return pipe(
         node.getElements(),
@@ -115,35 +115,39 @@ function storeArrayBindingPattern(node: tsm.ArrayBindingPattern, vars: readonly 
             );
         }),
         ROA.sequence(E.Applicative),
-        E.chain(ROA.matchRight(
+        E.map(ROA.matchRight(
             // if there are no binding elements execute the init expression 
             // (if there is one) and drop the result
             () => ROA.isNonEmpty(initOps)
-                ? E.of(ROA.append({ kind: "drop" })(initOps) as readonly Operation[])
-                : E.of(ROA.empty),
-            (init, last) => pipe(
-                init,
-                // for every binding element except the last one, 
-                // duplicate the init expression, pick the specified index
-                // from the array and store it in the variable
-                ROA.map(([element, index, def]) => parseStore(node)(
-                    [
+                ? ROA.append({ kind: "drop" })(initOps) as readonly Operation[]
+                : ROA.empty,
+            (init, last) => {
+                return pipe(
+                    init,
+                    // for every binding element except the last one, 
+                    // duplicate the init expression, pick the specified index
+                    // from the array and store it in the variable
+                    ROA.map(([element, index, def]) => [
                         { kind: "duplicate", location: element },
                         { kind: 'pushint', value: BigInt(index) },
-                        { kind: 'pickitem' }
-                    ])(def)),
-                // for the last binding element, pick the specified index
-                // from the array without duplicating
-                ROA.append(parseStore(node)(
-                    [
-                        { kind: 'pushint', value: BigInt(last[1]), location: last[0] },
-                        { kind: 'pickitem' }
-                    ])(last[2])),
-                ROA.sequence(E.Applicative),
-                E.map(ROA.flatten),
-                // prepend the init expression ops
-                E.map(ops => ROA.concat(ops)(initOps))
-            )
+                        { kind: 'pickitem' },
+                        def.storeOp
+                    ] as readonly Operation[]),
+                    // for the last binding element, pick the specified index
+                    // from the array without duplicating
+                    ops => {
+                        const [element, index, def] = last;
+                        const lastOps: readonly Operation[] = [
+                            { kind: 'pushint', value: BigInt(index), location: element },
+                            { kind: 'pickitem' },
+                            def.storeOp
+                        ]
+                        return ROA.append(lastOps)(ops);
+                    },
+                    ROA.flatten,
+                    ops => ROA.concat(ops)(initOps)
+                );
+            }
         ))
     );
 }
@@ -156,8 +160,7 @@ function getPropertyName(element: tsm.BindingElement): O.Option<string> {
     return O.none;
 }
 
-function storeObjectBindingPattern(node: tsm.ObjectBindingPattern, vars: readonly SymbolDef[], initOps: readonly Operation[]): E.Either<ParseError, readonly Operation[]> {
-
+function storeObjectBindingPattern(node: tsm.ObjectBindingPattern, vars: readonly LocalVariableSymbolDef[], initOps: readonly Operation[]): E.Either<ParseError, readonly Operation[]> {
     return pipe(
         node.getElements(),
         ROA.map(element => pipe(
@@ -171,49 +174,53 @@ function storeObjectBindingPattern(node: tsm.ObjectBindingPattern, vars: readonl
             E.map(def => [element, name, def] as const)
         ))),
         ROA.sequence(E.Applicative),
-        E.chain(ROA.matchRight(
+        E.map(ROA.matchRight(
             // if there are no binding elements execute the init expression 
             // (if there is one) and drop the result
             () => ROA.isNonEmpty(initOps)
-                ? E.of(ROA.append({ kind: "drop" })(initOps) as readonly Operation[])
-                : E.of(ROA.empty),
-            (init, last) => pipe(
-                init,
-                // for every binding element except the last one, 
-                // duplicate the init expression, pick the specified key
-                // from the object and store it in the variable
-                ROA.map(([element, name, def]) => parseStore(node)(
-                    [
+                ? ROA.append({ kind: "drop" })(initOps) as readonly Operation[]
+                : ROA.empty,
+            (init, last) => {
+                return pipe(
+                    init,
+                    // for every binding element except the last one, 
+                    // duplicate the init expression, pick the specified key
+                    // from the object and store it in the variable
+                    ROA.map(([element, name, def]) => [
                         { kind: "duplicate", location: element },
                         pushString(name),
-                        { kind: 'pickitem' }
-                    ])(def)),
-                // for the last binding element, pick the specified key
-                // from the object without duplicating
-                ROA.append(parseStore(node)(
-                    [
-                        pushString(last[1], last[0]),
-                        { kind: 'pickitem' }
-                    ])(last[2])),
-                ROA.sequence(E.Applicative),
-                E.map(ROA.flatten),
-                // prepend the init expression ops
-                E.map(ops => ROA.concat(ops)(initOps))
-            ),
+                        { kind: 'pickitem' },
+                        def.storeOp
+                    ] as readonly Operation[]),
+                    // for the last binding element, pick the specified key
+                    // from the object without duplicating
+                    ops => {
+                        const [element, name, def] = last;
+                        const lastOps: readonly Operation[] = [
+                            pushString(name, element),
+                            { kind: 'pickitem' },
+                            def.storeOp
+                        ]
+                        return ROA.append(lastOps)(ops);
+                    },
+                    ROA.flatten,
+                    ops => ROA.concat(ops)(initOps)
+                );
+            },
         ))
     );
 }
 
-function storeIdentifier(node: tsm.Identifier, vars: readonly SymbolDef[], initOps: readonly Operation[]): E.Either<ParseError, readonly Operation[]> {
+function storeIdentifier(node: tsm.Identifier, vars: readonly LocalVariableSymbolDef[], initOps: readonly Operation[]): E.Either<ParseError, readonly Operation[]> {
     return pipe(
         node,
         findVar(vars),
-        E.chain(parseStore(node)(initOps)),
+        E.chain(local => local.parseStore(ROA.empty, initOps)),
     );
 }
 
 const storeBindingName =
-    (node: tsm.BindingName, vars: readonly SymbolDef[]) =>
+    (node: tsm.BindingName, vars: readonly LocalVariableSymbolDef[]) =>
         (initOps: readonly Operation[]): E.Either<ParseError, readonly Operation[]> => {
             if (node instanceof tsm.Identifier) return storeIdentifier(node, vars, initOps);
             if (node instanceof tsm.ArrayBindingPattern) return storeArrayBindingPattern(node, vars, initOps);
@@ -221,18 +228,7 @@ const storeBindingName =
             return E.left(makeParseError(node)(`Unexpected binding name ${(node as tsm.Node).getKindName()}`));
         }
 
-
-function parseStore(node: tsm.Node) {
-    return (ops: readonly Operation[]) => {
-        return (def: SymbolDef) => {
-            return def.parseStore
-                ? def.parseStore(ROA.empty, ops)
-                : E.left(makeParseError(node)(`${def.symbol.getName()} doesn't implement parseStore`));
-        };
-    };
-}
-
-function findVar(vars: readonly SymbolDef[]) {
+function findVar(vars: readonly LocalVariableSymbolDef[]) {
     return (node: tsm.Node) => {
         return pipe(
             node,

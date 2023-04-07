@@ -23,8 +23,12 @@ export class LocalVariableSymbolDef extends $SymbolDef {
         return [{ kind: "loadlocal", index: this.index }];
     }
 
+    get storeOp(): Operation {
+        return { kind: "storelocal", index: this.index }
+    }
+
     parseStore(loadOps: readonly Operation[], valueOps: readonly Operation[]): E.Either<ParseError, readonly Operation[]> {
-        return parseStore(loadOps, valueOps, { kind: "storelocal", index: this.index });
+        return parseStore(loadOps, valueOps, this.storeOp);
     }
 
     constructor(
@@ -44,8 +48,12 @@ export class ParameterSymbolDef extends $SymbolDef {
         return [{ kind: "loadarg", index: this.index }];
     }
 
+    get storeOp(): Operation {
+        return { kind: "storearg", index: this.index }
+    }
+
     parseStore(loadOps: readonly Operation[], valueOps: readonly Operation[]): E.Either<ParseError, readonly Operation[]> {
-        return parseStore(loadOps, valueOps, { kind: "storearg", index: this.index });
+        return parseStore(loadOps, valueOps, this.storeOp);
     }
 
     constructor(
@@ -63,8 +71,12 @@ export class StaticVarSymbolDef extends $SymbolDef {
         return [{ kind: "loadstatic", index: this.index }];
     }
 
+    get storeOp(): Operation {
+        return { kind: "storestatic", index: this.index }
+    }
+
     parseStore(loadOps: readonly Operation[], valueOps: readonly Operation[]): E.Either<ParseError, readonly Operation[]> {
-        return parseStore(loadOps, valueOps, { kind: "storestatic", index: this.index });
+        return parseStore(loadOps, valueOps, this.storeOp);
     }
 
     constructor(

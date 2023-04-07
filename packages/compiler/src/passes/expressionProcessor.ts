@@ -15,7 +15,7 @@ import { isBigIntLike, isBooleanLike, isNumberLike, isStringLike } from "../util
 export const getArguments = (node: tsm.CallExpression) =>
     ROA.fromArray(node.getArguments() as tsm.Expression[])
 
-export const resolve =
+const resolve =
     (node: tsm.Node) =>
         (scope: Scope) =>
             (symbol: tsm.Symbol): E.Either<ParseError, SymbolDef> => {
@@ -110,26 +110,52 @@ const parseStoreSymbol = (node: tsm.Expression) => (context: ChainContext): E.Ei
             E.chain(resolve(node)(context.scope)),
             E.map(def => [context, def])
         );
-    // if (tsm.Node.isPropertyAccessExpression(node))
-    //     return pipe(
-    //         node,
-    //         resolveProperty(context),
-    //         E.map(def => [context, def])
-    //     );
+
+    if (tsm.Node.isElementAccessExpression(node)) {
+        const q = pipe(
+            node.getArgumentExpression(),
+            E.fromNullable(makeParseError(node)('element access expression must have argument expression')),
+            E.chain(parseExpression(context.scope)),
+        )
+        const ops = parseExpression(context.scope)(node.getArgumentExpressionOrThrow());
+    }
+    if (tsm.Node.isPropertyAccessExpression(node))
+        return pipe(
+            node,
+            resolveProperty(context),
+            E.map(def => [context, def])
+        );
     return E.left(makeParseError(node)(`parseStore ${node.getKindName()} not impl`));
 }
 
-const makeAssignment = (store: tsm.Expression, scope: Scope) => (operations: readonly Operation[]) => {
+// need to think thru this a bit more for assignment
+// variable = something
+// obj.prop = something
+// obj.subObj.prop = something
+// obj.array[index] = something
+// array[index] = something
+// array[index].prop = something
+// [value1, value2] = someArray
+// { prop1, prop2 } = someObject
+// { prop1: value1, prop2: value2 } = someObject
+
+// currently, parseStore has two args:
+//  * loadOps (the ops needed to load the parent of the value being assigned)
+//  * valueOps (the ops of the value being assigned)
+// 
+
+const makeAssignment = (store: tsm.Expression, scope: Scope) => (valueOps: readonly Operation[]) => {
     return pipe(
         store,
         makeExpressionChain,
         RNEA.matchRight((init, last) => {
-            return pipe(init,
+            return pipe(
+                init,
                 reduceChain(scope),
                 E.chain(parseStoreSymbol(last)),
                 E.chain(([context, def]) => {
                     if (def.parseStore) {
-                        return def.parseStore(context.operations, operations);
+                        return def.parseStore(context.operations, valueOps);
                     } else {
                         return E.left(makeParseError(store)('parseStore not implemented'))
                     }
@@ -139,11 +165,6 @@ const makeAssignment = (store: tsm.Expression, scope: Scope) => (operations: rea
     )
 }
 
-const makeAssignment2 = 
-
-{
-
-}
 const binaryOpTokenMap: ReadonlyMap<tsm.SyntaxKind, SimpleOperationKind> = new Map([
     [tsm.SyntaxKind.AmpersandToken, "and"],
     [tsm.SyntaxKind.AsteriskAsteriskToken, 'power'],
@@ -274,26 +295,26 @@ export const parseConditionalExpression =
             )
         }
 
-export const parseIdentifier =
-    (scope: Scope) =>
-        (node: tsm.Identifier): E.Either<ParseError, readonly Operation[]> => {
+// export const parseIdentifier =
+//     (scope: Scope) =>
+//         (node: tsm.Identifier): E.Either<ParseError, readonly Operation[]> => {
 
-            // Not sure why, but 'undefined' gets parsed as an identifier rather
-            // than a keyword or literal. If an identifier's type is null or
-            // undefined, skip symbol resolution and simply push null.
+//             // Not sure why, but 'undefined' gets parsed as an identifier rather
+//             // than a keyword or literal. If an identifier's type is null or
+//             // undefined, skip symbol resolution and simply push null.
 
-            const type = node.getType();
-            if (type.isUndefined() || type.isNull()) {
-                return E.of(ROA.of({ kind: 'pushnull' }))
-            }
+//             const type = node.getType();
+//             if (type.isUndefined() || type.isNull()) {
+//                 return E.of(ROA.of({ kind: 'pushnull' }))
+//             }
 
-            return pipe(
-                node,
-                parseSymbol,
-                E.chain(resolve(node)(scope)),
-                E.chain(parseLoadOps(node))
-            );
-        }
+//             return pipe(
+//                 node,
+//                 parseSymbol,
+//                 E.chain(resolve(node)(scope)),
+//                 E.chain(parseLoadOps(node))
+//             );
+//         }
 
 export const parseNullLiteral =
     (_node: tsm.Node): E.Either<ParseError, Operation> =>
@@ -401,8 +422,8 @@ export const parseObjectLiteralExpression =
                     parseObjectLiteralProperty(scope),
                     E.bindTo('value'),
                     E.bind('key', () => pipe(
-                        prop, 
-                        parseSymbol, 
+                        prop,
+                        parseSymbol,
                         E.map(s => parseString(s.getName()))
                     )),
                     E.map(({ key, value }) => ROA.append(key)(value))
@@ -433,8 +454,8 @@ export function parseExpression(scope: Scope) {
     return (node: tsm.Expression): E.Either<ParseError, readonly Operation[]> => {
 
         return pipe(
-            node, 
-            makeExpressionChain, 
+            node,
+            makeExpressionChain,
             reduceChain(scope),
             E.map(context => {
                 // only add the endTarget operation if there is at least 
@@ -654,68 +675,69 @@ const reduceElementAccessExpression =
             )
         }
 
-function reduceParseFunction<T extends tsm.Node>(node: T, ctx: ChainContext, func: (node: T) => E.Either<ParseError, readonly Operation[]>) {
-    return pipe(
-        node,
-        func,
-        E.map(ops => {
-            return {
-                ...ctx,
-                current: undefined,
-                currentType: node.getType(),
-                operations: ROA.concat(ops)(ctx.operations)
-            };
-        })
-    );
-}
-
-function reduceLiteral<T extends tsm.Node>(node: T, ctx: ChainContext, func: (node: T) => E.Either<ParseError, Operation>) {
-    return reduceParseFunction(node, ctx, flow(func, E.map(ROA.of)));
-}
 
 const reduceChainContext = (node: tsm.Expression) =>
     (ctx: ChainContext): E.Either<ParseError, ChainContext> => {
 
-        if (tsm.Node.isArrayLiteralExpression(node)) 
-            return reduceParseFunction(node, ctx, parseArrayLiteral(ctx.scope));
+        if (tsm.Node.isArrayLiteralExpression(node))
+            return reduceParseFunction(node, parseArrayLiteral(ctx.scope));
         if (tsm.Node.isAsExpression(node))
             return E.of({ ...ctx, currentType: node.getType() });
         if (tsm.Node.isBigIntLiteral(node))
-            return reduceLiteral(node, ctx, parseBigIntLiteral);
+            return reduceLiteral(node, parseBigIntLiteral);
         if (tsm.Node.isBinaryExpression(node))
-            return reduceParseFunction(node, ctx, parseBinaryExpression(ctx.scope));
+            return reduceParseFunction(node, parseBinaryExpression(ctx.scope));
         if (tsm.Node.isCallExpression(node))
             return reduceCallExpression(node)(ctx);
         if (tsm.Node.isConditionalExpression(node))
-            return reduceParseFunction(node, ctx, parseConditionalExpression(ctx.scope));
+            return reduceParseFunction(node, parseConditionalExpression(ctx.scope));
         if (tsm.Node.isElementAccessExpression(node))
             return reduceElementAccessExpression(node)(ctx);
         if (tsm.Node.isFalseLiteral(node))
-            return reduceLiteral(node, ctx, parseBooleanLiteral);
+            return reduceLiteral(node, parseBooleanLiteral);
         if (tsm.Node.isIdentifier(node))
             return reduceIdentifier(node)(ctx);
         if (tsm.Node.isNonNullExpression(node))
             return E.of(ctx);
         if (tsm.Node.isNullLiteral(node))
-            return reduceLiteral(node, ctx, parseNullLiteral);
+            return reduceLiteral(node, parseNullLiteral);
         if (tsm.Node.isNumericLiteral(node))
-            return reduceLiteral(node, ctx, parseNumericLiteral);
-        if (tsm.Node.isObjectLiteralExpression(node)) 
-            return reduceParseFunction(node, ctx, parseObjectLiteralExpression(ctx.scope));
+            return reduceLiteral(node, parseNumericLiteral);
+        if (tsm.Node.isObjectLiteralExpression(node))
+            return reduceParseFunction(node, parseObjectLiteralExpression(ctx.scope));
         if (tsm.Node.isParenthesizedExpression(node))
             return E.of(ctx);
         if (tsm.Node.isPrefixUnaryExpression(node))
-            return reduceParseFunction(node, ctx, parsePrefixUnaryExpression(ctx.scope));
+            return reduceParseFunction(node, parsePrefixUnaryExpression(ctx.scope));
         if (tsm.Node.isPropertyAccessExpression(node))
             return reducePropertyAccessExpression(node)(ctx);
         if (tsm.Node.isTrueLiteral(node))
-            return reduceLiteral(node, ctx, parseBooleanLiteral);
+            return reduceLiteral(node, parseBooleanLiteral);
         if (tsm.Node.isStringLiteral(node))
-            return reduceLiteral(node, ctx, parseStringLiteral);
+            return reduceLiteral(node, parseStringLiteral);
         if (tsm.Node.isUndefinedKeyword(node))
-            return reduceLiteral(node, ctx, parseNullLiteral);
+            return reduceLiteral(node, parseNullLiteral);
 
         return E.left(makeParseError(node)(`reduceChainContext ${(node as any).getKindName()}`));
+
+        function reduceLiteral<T extends tsm.Node>(node: T, func: (node: T) => E.Either<ParseError, Operation>) {
+            return reduceParseFunction(node, flow(func, E.map(ROA.of)));
+        }
+
+        function reduceParseFunction<T extends tsm.Node>(node: T, func: (node: T) => E.Either<ParseError, readonly Operation[]>) {
+            return pipe(
+                node,
+                func,
+                E.map(ops => {
+                    return {
+                        ...ctx,
+                        current: undefined,
+                        currentType: node.getType(),
+                        operations: ROA.concat(ops)(ctx.operations)
+                    };
+                })
+            );
+        }
     }
 
 function reduceChain(scope: Scope) {
