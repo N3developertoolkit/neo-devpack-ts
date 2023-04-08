@@ -5,10 +5,10 @@ import { sc } from "@cityofzion/neon-core";
 import { createContractProject, hasErrors, toDiagnostic } from "./utils";
 import { compile } from "./compiler";
 import { CompileOptions, ContractMethod } from "./types/CompileOptions";
-import { CallOperation, CallTokenOperation, ConvertOperation, InitSlotOperation, JumpOffsetOperation, LoadStoreOperation, Location, Operation, PushBoolOperation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
+import { JumpOffsetOperation, Location, Operation } from "./types/Operation";
 
 const REPO_ROOT = join(__dirname, "../../..");
-const FILENAME = "./sample-contracts/nep11token.ts";
+const FILENAME = "./sample-contracts/nep17token.ts";
 const OUTPUT_DIR = "./express/out";
 
 enum AnsiEscapeSequences {
@@ -143,20 +143,19 @@ function dumpLocation(location: Location) {
 function dumpOperation(op: Operation, currentIndex: number) {
     switch (op.kind) {
         case 'convert': {
-            const { type } = op as ConvertOperation;
-            return `${op.kind} ${sc.StackItemType[type]}`
+            return `${op.kind} ${sc.StackItemType[op.type]}`
         }
         case 'calltoken': {
-            const { token } = op as CallTokenOperation;
-            return `${op.kind} ${token.hash} ${token.method}`
+            return `${op.kind} ${op.token.hash} ${op.token.method}`
         }
         case 'initslot': {
-            const { locals, params } = op as InitSlotOperation;
-            return `${op.kind} ${locals} locals ${params} params`
+            return `${op.kind} ${op.locals} locals ${op.params} params`
+        }
+        case 'initstatic': {
+            return `${op.kind} ${op.count} static vars`
         }
         case 'call': {
-            const { method } = op as CallOperation;
-            return `${op.kind} ${method.getName()}`
+            return `${op.kind} ${op.method.getName()}`
         }
         case 'jump':
         case 'jumpif':
@@ -171,8 +170,7 @@ function dumpOperation(op: Operation, currentIndex: number) {
             return `${op.kind} ${offset} (${offset + currentIndex})`
         }
         case 'syscall': {
-            const { name } = op as SysCallOperation;
-            return `${op.kind} ${name}`
+            return `${op.kind} ${op.name}`
         }
         case 'loadarg':
         case 'loadlocal':
@@ -180,21 +178,17 @@ function dumpOperation(op: Operation, currentIndex: number) {
         case 'storearg':
         case 'storelocal':
         case 'storestatic': {
-            const { index } = op as LoadStoreOperation
-            return `${op.kind} ${index}`
+            return `${op.kind} ${op.index}`
         }
         case 'pushbool': {
-            const { value } = op as PushBoolOperation;
-            return `${op.kind} ${value}`;
+            return `${op.kind} ${op.value}`;
         }
         case 'pushdata': {
-            const { value } = op as PushDataOperation;
-            const buffer = Buffer.from(value);
+            const buffer = Buffer.from(op.value);
             return `${op.kind} 0x${buffer.toString('hex')} "${buffer.toString('utf8')}"`;
         }
         case 'pushint': {
-            const { value } = op as PushIntOperation;
-            return `${op.kind} ${value}`
+            return `${op.kind} ${op.value}`
         }
         default:
             return `${op.kind}`

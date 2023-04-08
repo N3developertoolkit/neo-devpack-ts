@@ -1,7 +1,7 @@
 import * as tsm from "ts-morph";
-import { $SymbolDef, makeParseError } from "../symbolDef";
+import { $SymbolDef } from "../symbolDef";
 import { Operation } from "../types/Operation";
-import { CallableSymbolDef, ObjectSymbolDef, ParseArgumentsFunc, ParseError, Scope, SymbolDef } from "../types/ScopeType";
+import { CallableSymbolDef, ParseArgumentsFunc, ParseError, Scope } from "../types/ScopeType";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as E from "fp-ts/Either";
 import { pipe } from "fp-ts/function";
@@ -80,7 +80,7 @@ export class StaticVarSymbolDef extends $SymbolDef {
     }
 
     constructor(
-        readonly decl: tsm.VariableDeclaration,
+        readonly decl: tsm.Identifier | tsm.BindingElement | tsm.VariableDeclaration,
         symbol: tsm.Symbol,
         readonly index: number,
         readonly initOps?: readonly Operation[]
@@ -93,7 +93,7 @@ export class ConstantSymbolDef extends $SymbolDef {
     readonly loadOps: readonly Operation[];
 
     constructor(
-        readonly decl: tsm.VariableDeclaration,
+        readonly decl: tsm.Identifier | tsm.BindingElement | tsm.VariableDeclaration,
         symbol: tsm.Symbol,
         op: Operation
     ) {

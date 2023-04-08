@@ -26,7 +26,7 @@ export const simpleOperationKinds = [
     'concat',
 
     // bitwise logic
-    'and', 
+    'and',
     'equal',
     'notequal',
     'or',
@@ -168,7 +168,7 @@ export interface SimpleOperation {
     location?: Location,
 }
 
-export const isSimpleOp = (op: Operation): op is SimpleOperation => 
+export const isSimpleOp = (op: Operation): op is SimpleOperation =>
     simpleOperationKinds.includes(op.kind as SimpleOperationKind);
 
 export interface ConvertOperation {
@@ -244,6 +244,11 @@ export interface PushIntOperation {
 
 export const isPushIntOp = (op: Operation): op is PushIntOperation => op.kind === 'pushint';
 
+export function pushInt(value: number | bigint, location?: Location): PushIntOperation {
+    value = typeof value === 'number' ? BigInt(value) : value;
+    return { kind: 'pushint', value, location }
+}
+
 export interface PushBoolOperation {
     readonly kind: 'pushbool';
     readonly value: boolean;
@@ -286,7 +291,7 @@ export interface LoadStoreOperation {
     location?: Location,
 }
 
-export const isLoadStoreOp = (op: Operation): op is LoadStoreOperation => 
+export const isLoadStoreOp = (op: Operation): op is LoadStoreOperation =>
     loadStoreOperationKinds.includes(op.kind as LoadStoreOperationKind);
 
 export function parseOperation(kind: string, operand: string | undefined): Operation | undefined {
@@ -395,7 +400,7 @@ function pushIntOpSize(value: number | bigint) {
 
     if (value <= 16n && value >= -1n) return 1;
 
-    const {buffer} = convertBigInteger(value);
+    const { buffer } = convertBigInteger(value);
     return 1 + buffer.length;
 }
 
