@@ -106,7 +106,7 @@ const parseStoreSymbol = (node: tsm.Expression) => (context: ChainContext): E.Ei
     if (tsm.Node.isIdentifier(node))
         return pipe(
             node,
-            parseSymbol,
+            parseSymbol, 
             E.chain(resolve(node)(context.scope)),
             E.map(def => [context, def])
         );
@@ -144,9 +144,9 @@ const parseStoreSymbol = (node: tsm.Expression) => (context: ChainContext): E.Ei
 //  * valueOps (the ops of the value being assigned)
 // 
 
-const makeAssignment = (store: tsm.Expression, scope: Scope) => (valueOps: readonly Operation[]) => {
+const makeAssignment = (node: tsm.Expression, scope: Scope) => (valueOps: readonly Operation[]) => {
     return pipe(
-        store,
+        node,
         makeExpressionChain,
         RNEA.matchRight((init, last) => {
             return pipe(
@@ -157,7 +157,7 @@ const makeAssignment = (store: tsm.Expression, scope: Scope) => (valueOps: reado
                     if (def.parseStore) {
                         return def.parseStore(context.operations, valueOps);
                     } else {
-                        return E.left(makeParseError(store)('parseStore not implemented'))
+                        return E.left(makeParseError(node)('parseStore not implemented'))
                     }
                 })
             );
@@ -170,9 +170,9 @@ const binaryOpTokenMap: ReadonlyMap<tsm.SyntaxKind, SimpleOperationKind> = new M
     [tsm.SyntaxKind.AsteriskAsteriskToken, 'power'],
     [tsm.SyntaxKind.AsteriskToken, 'multiply'],
     [tsm.SyntaxKind.BarToken, 'or'],
-    [tsm.SyntaxKind.EqualsEqualsEqualsToken, 'equal'], // TODO: Should == and === be the same?
+    [tsm.SyntaxKind.EqualsEqualsEqualsToken, 'equal'], // TODO: Should == and === be different?
     [tsm.SyntaxKind.EqualsEqualsToken, 'equal'],
-    [tsm.SyntaxKind.ExclamationEqualsToken, 'notequal'], // TODO: Should != and !== be the same?
+    [tsm.SyntaxKind.ExclamationEqualsToken, 'notequal'], // TODO: Should != and !== be different?
     [tsm.SyntaxKind.ExclamationEqualsEqualsToken, 'notequal'],
     [tsm.SyntaxKind.GreaterThanEqualsToken, 'greaterthanorequal'],
     [tsm.SyntaxKind.GreaterThanToken, 'greaterthan'],
@@ -294,27 +294,6 @@ export const parseConditionalExpression =
                 E.map(makeConditionalExpression)
             )
         }
-
-// export const parseIdentifier =
-//     (scope: Scope) =>
-//         (node: tsm.Identifier): E.Either<ParseError, readonly Operation[]> => {
-
-//             // Not sure why, but 'undefined' gets parsed as an identifier rather
-//             // than a keyword or literal. If an identifier's type is null or
-//             // undefined, skip symbol resolution and simply push null.
-
-//             const type = node.getType();
-//             if (type.isUndefined() || type.isNull()) {
-//                 return E.of(ROA.of({ kind: 'pushnull' }))
-//             }
-
-//             return pipe(
-//                 node,
-//                 parseSymbol,
-//                 E.chain(resolve(node)(scope)),
-//                 E.chain(parseLoadOps(node))
-//             );
-//         }
 
 export const parseNullLiteral =
     (_node: tsm.Node): E.Either<ParseError, Operation> =>
@@ -675,50 +654,80 @@ const reduceElementAccessExpression =
             )
         }
 
+// case SyntaxKind.AnyKeyword:
+// case SyntaxKind.ArrowFunction:
+// case SyntaxKind.AwaitExpression:
+// case SyntaxKind.ClassExpression:
+// case SyntaxKind.CommaListExpression:
+// case SyntaxKind.DeleteExpression:
+// case SyntaxKind.FunctionExpression:
+// case SyntaxKind.ImportKeyword:
+// case SyntaxKind.MetaProperty:
+// case SyntaxKind.NewExpression:
+// case SyntaxKind.NoSubstitutionTemplateLiteral:
+// case SyntaxKind.OmittedExpression:
+// case SyntaxKind.PartiallyEmittedExpression:
+// case SyntaxKind.PostfixUnaryExpression:
+// case SyntaxKind.RegularExpressionLiteral:
+// case SyntaxKind.SatisfiesExpression:
+// case SyntaxKind.SpreadElement:
+// case SyntaxKind.SuperKeyword:
+// case SyntaxKind.SymbolKeyword:
+// case SyntaxKind.TaggedTemplateExpression:
+// case SyntaxKind.TemplateExpression:
+// case SyntaxKind.ThisKeyword:
+// case SyntaxKind.TypeAssertionExpression:
+// case SyntaxKind.TypeOfExpression:
+// case SyntaxKind.VoidExpression:
+// case SyntaxKind.YieldExpression:
+      
 
 const reduceChainContext = (node: tsm.Expression) =>
     (ctx: ChainContext): E.Either<ParseError, ChainContext> => {
+        const type = node.getType();
 
-        if (tsm.Node.isArrayLiteralExpression(node))
-            return reduceParseFunction(node, parseArrayLiteral(ctx.scope));
-        if (tsm.Node.isAsExpression(node))
-            return E.of({ ...ctx, currentType: node.getType() });
-        if (tsm.Node.isBigIntLiteral(node))
-            return reduceLiteral(node, parseBigIntLiteral);
-        if (tsm.Node.isBinaryExpression(node))
-            return reduceParseFunction(node, parseBinaryExpression(ctx.scope));
-        if (tsm.Node.isCallExpression(node))
-            return reduceCallExpression(node)(ctx);
-        if (tsm.Node.isConditionalExpression(node))
-            return reduceParseFunction(node, parseConditionalExpression(ctx.scope));
-        if (tsm.Node.isElementAccessExpression(node))
-            return reduceElementAccessExpression(node)(ctx);
-        if (tsm.Node.isFalseLiteral(node))
-            return reduceLiteral(node, parseBooleanLiteral);
-        if (tsm.Node.isIdentifier(node))
-            return reduceIdentifier(node)(ctx);
-        if (tsm.Node.isNonNullExpression(node))
-            return E.of(ctx);
-        if (tsm.Node.isNullLiteral(node))
-            return reduceLiteral(node, parseNullLiteral);
-        if (tsm.Node.isNumericLiteral(node))
-            return reduceLiteral(node, parseNumericLiteral);
-        if (tsm.Node.isObjectLiteralExpression(node))
-            return reduceParseFunction(node, parseObjectLiteralExpression(ctx.scope));
-        if (tsm.Node.isParenthesizedExpression(node))
-            return E.of(ctx);
-        if (tsm.Node.isPrefixUnaryExpression(node))
-            return reduceParseFunction(node, parsePrefixUnaryExpression(ctx.scope));
-        if (tsm.Node.isPropertyAccessExpression(node))
-            return reducePropertyAccessExpression(node)(ctx);
-        if (tsm.Node.isTrueLiteral(node))
-            return reduceLiteral(node, parseBooleanLiteral);
-        if (tsm.Node.isStringLiteral(node))
-            return reduceLiteral(node, parseStringLiteral);
-        if (tsm.Node.isUndefinedKeyword(node))
-            return reduceLiteral(node, parseNullLiteral);
-
-        return E.left(makeParseError(node)(`reduceChainContext ${(node as any).getKindName()}`));
+        switch (node.getKind()) {
+            case tsm.SyntaxKind.ArrayLiteralExpression: 
+                return reduceParseFunction(node as tsm.ArrayLiteralExpression, parseArrayLiteral(ctx.scope));
+            case tsm.SyntaxKind.AsExpression:
+                return E.of({ ...ctx, currentType: node.getType() });    
+            case tsm.SyntaxKind.BigIntLiteral:
+                return reduceLiteral(node as tsm.BigIntLiteral, parseBigIntLiteral);
+            case tsm.SyntaxKind.BinaryExpression:
+                return reduceParseFunction(node as tsm.BinaryExpression, parseBinaryExpression(ctx.scope));
+            case tsm.SyntaxKind.CallExpression:
+                return reduceCallExpression(node as tsm.CallExpression)(ctx);
+            case tsm.SyntaxKind.ConditionalExpression:
+                return reduceParseFunction(node as tsm.ConditionalExpression, parseConditionalExpression(ctx.scope));
+            case tsm.SyntaxKind.ElementAccessExpression:
+                return reduceElementAccessExpression(node as tsm.ElementAccessExpression)(ctx);
+            case tsm.SyntaxKind.FalseKeyword:
+                return reduceLiteral(node as tsm.FalseLiteral, parseBooleanLiteral);
+            case tsm.SyntaxKind.Identifier:
+                return reduceIdentifier(node as tsm.Identifier)(ctx);
+            case tsm.SyntaxKind.NonNullExpression:
+                return E.of(ctx);
+            case tsm.SyntaxKind.NullKeyword:
+                return reduceLiteral(node, parseNullLiteral);
+            case tsm.SyntaxKind.NumericLiteral:
+                return reduceLiteral(node as tsm.NumericLiteral, parseNumericLiteral);
+            case tsm.SyntaxKind.ObjectLiteralExpression:
+                return reduceParseFunction(node as tsm.ObjectLiteralExpression, parseObjectLiteralExpression(ctx.scope));
+            case tsm.SyntaxKind.ParenthesizedExpression:
+                return E.of(ctx);
+            case tsm.SyntaxKind.PrefixUnaryExpression:
+                return reduceParseFunction(node as tsm.PrefixUnaryExpression, parsePrefixUnaryExpression(ctx.scope));
+            case tsm.SyntaxKind.PropertyAccessExpression:
+                return reducePropertyAccessExpression(node as tsm.PropertyAccessExpression)(ctx);
+            case tsm.SyntaxKind.TrueKeyword:
+                return reduceLiteral(node as tsm.TrueLiteral, parseBooleanLiteral);
+            case tsm.SyntaxKind.StringLiteral:
+                return reduceLiteral(node as tsm.StringLiteral, parseStringLiteral);
+            case tsm.SyntaxKind.UndefinedKeyword:
+                return reduceLiteral(node, parseNullLiteral);
+            default:
+                return E.left(makeParseError(node)(`reduceChainContext ${(node as any).getKindName()}`));
+        }
 
         function reduceLiteral<T extends tsm.Node>(node: T, func: (node: T) => E.Either<ParseError, Operation>) {
             return reduceParseFunction(node, flow(func, E.map(ROA.of)));
@@ -757,29 +766,6 @@ function reduceChain(scope: Scope) {
 
     };
 }
-
-export function parseExpressionChain(scope: Scope) {
-    return (node: tsm.Expression): E.Either<ParseError, ReadonlyArray<Operation>> => {
-        return pipe(
-            node,
-            makeExpressionChain,
-            reduceChain(scope),
-            E.map(context => {
-                // only add the endTarget operation if there is at least 
-                // one jump op targeting it
-                const endJumps = pipe(
-                    context.operations,
-                    ROA.filter(isJumpTargetOp),
-                    ROA.filter(op => op.target === context.endTarget),
-                )
-                return endJumps.length > 0
-                    ? ROA.append(context.endTarget)(context.operations)
-                    : context.operations;
-            })
-        )
-    };
-}
-
 
 function makeExpressionChain(node: tsm.Expression): RNEA.ReadonlyNonEmptyArray<tsm.Expression> {
     return makeChain(RNEA.of<tsm.Expression>(node));

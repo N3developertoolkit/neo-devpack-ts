@@ -10,11 +10,13 @@ export interface Scope {
     readonly types: ReadonlyMap<tsm.Symbol, TypeDef>;
 }
 
+export type ParseStoreFunc = (loadOps: readonly Operation[], valueOps: readonly Operation[]) => E.Either<ParseError, readonly Operation[]>;
+
 export interface SymbolDef {
     readonly symbol: tsm.Symbol;
     readonly type: tsm.Type;
     readonly loadOps?: ReadonlyArray<Operation>;
-    readonly parseStore?: (loadOps: readonly Operation[], valueOps: readonly Operation[]) => E.Either<ParseError, readonly Operation[]>;
+    readonly parseStore?: ParseStoreFunc
 }
 
 export interface TypeDef {

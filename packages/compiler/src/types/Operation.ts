@@ -4,8 +4,16 @@ import { convertBigInteger } from "../utils";
 import { pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as E from "fp-ts/Either";
+import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 
 export type Location = tsm.Node | { start: tsm.Node, end: tsm.Node };
+
+export const updateLocation =
+    (location: Location) =>
+        (ops: readonly Operation[]) =>
+            ROA.isNonEmpty(ops)
+                ? pipe(ops, RNEA.modifyHead(op => ({ ...op, location })))
+                : ops;
 
 export const simpleOperationKinds = [
 

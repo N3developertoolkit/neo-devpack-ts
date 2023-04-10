@@ -4,8 +4,6 @@ import * as S from 'fp-ts/State';
 import { Operation } from "./Operation";
 import { DebugInfo } from "./DebugInfo";
 
-
-
 export interface CompileOptions {
     readonly addressVersion: number;
     readonly inline: boolean;

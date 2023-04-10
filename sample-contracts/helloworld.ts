@@ -37,27 +37,57 @@ const OWNER_KEY = ByteString.fromHex("0xFF");
 //     }
 // }
 
-// interface Data { name: string, owner: ByteString, count: number };
-// type Data2 = [string, ByteString, number];
-// type Data3 = string[];
+interface TestInterface { name: string, owner: ByteString, count: number };
 
-export function save(name: string, owner: ByteString, count: number) {
-    const q = { name, owner, count};
-    const { name: name2 } = q;
-    // const data2: Data2 = [name, owner, count];
-    // const data1: Data = { name, owner, count};
-    // const {name: name2 } = data1;
+/** @struct */
+interface TestStructInterface { name: string, owner: ByteString, count: number };
 
-    // const q = name2;
-    // const serializedState = StdLib.serialize(data2);
-    // Storage.context.put(DATA_KEY, serializedState);
+type TestStructTuple = [string, ByteString, number];
+
+export function test1(name: string, owner: ByteString, count: number) {
+    const data: TestInterface = { name, owner, count };
+    Storage.context.put(DATA_KEY, StdLib.serialize(data));
 }
 
-// export function load() {
-//     const serialzied = Storage.context.get(DATA_KEY);
-//     if (serialzied) {
-//         // const [name, owner] = StdLib.deserialize(serialzied) as any;
-//         const qqq = StdLib.deserialize(serialzied) as Data2;
-//         return qqq;
-//     }
-// }
+export function test1a(name: string, owner: ByteString, count: number) {
+    const data = { name, owner, count } as TestInterface;
+    Storage.context.put(DATA_KEY, StdLib.serialize(data));
+}
+
+export function test1b(name: string, owner: ByteString, count: number) {
+    let data: TestInterface;
+    data = { name, owner, count };
+    Storage.context.put(DATA_KEY, StdLib.serialize(data));
+}
+
+export function test2(name: string, owner: ByteString, count: number) {
+    const data: TestStructInterface = { name, owner, count };
+    Storage.context.put(DATA_KEY, StdLib.serialize(data));
+}
+
+export function test2a(name: string, owner: ByteString, count: number) {
+    const data = { name, owner, count } as TestStructInterface;
+    Storage.context.put(DATA_KEY, StdLib.serialize(data));
+}
+
+export function test2b(name: string, owner: ByteString, count: number) {
+    let data: TestStructInterface;
+    data = { name, owner, count };
+    Storage.context.put(DATA_KEY, StdLib.serialize(data));
+}
+
+export function test3(name: string, owner: ByteString, count: number) {
+    const data: TestStructTuple = [name, owner, count];
+    Storage.context.put(DATA_KEY, StdLib.serialize(data));
+}
+
+export function test3a(name: string, owner: ByteString, count: number) {
+    const data = [name, owner, count] as TestStructTuple;
+    Storage.context.put(DATA_KEY, StdLib.serialize(data));
+}
+
+export function test3b(name: string, owner: ByteString, count: number) {
+    let data: TestStructTuple;
+    data = [name, owner, count];
+    Storage.context.put(DATA_KEY, StdLib.serialize(data));
+}

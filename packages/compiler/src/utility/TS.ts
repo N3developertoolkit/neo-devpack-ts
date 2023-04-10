@@ -58,7 +58,8 @@ export const getExpression =
 export type MemberedNode = tsm.TypeElementMemberedNode & { getSymbol(): tsm.Symbol | undefined, getType(): tsm.Type };
 
 export function isMethodOrProp(node: tsm.Node): node is (tsm.MethodSignature | tsm.PropertySignature) {
-    return tsm.Node.isMethodSignature(node) || tsm.Node.isPropertySignature(node);
+    const kind = node.getKind();
+    return kind === tsm.SyntaxKind.MethodSignature || kind === tsm.SyntaxKind.PropertySignature;
 }
 
 export const getMember =

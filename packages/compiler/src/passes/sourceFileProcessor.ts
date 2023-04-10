@@ -6,7 +6,8 @@ import * as E from "fp-ts/Either";
 import { flow, identity, pipe } from "fp-ts/function";
 import { CompiledProject, CompilerState, ContractEvent, ContractMethod, ContractSlot } from "../types/CompileOptions";
 import { makeParseDiagnostic, makeParseError, } from "../symbolDef";
-import { parseContractMethod, reduceVariableStatement as $reduceVariableStatement } from "./functionDeclarationProcessor";
+import { parseContractMethod } from "./functionDeclarationProcessor";
+import { handleVariableStatement } from "./variableStatementProcessor";
 import { Operation } from "../types/Operation";
 import { updateScopeSymbols, createEmptyScope } from "../scope";
 import { ParseError, Scope, SymbolDef } from "../types/ScopeType";
@@ -46,72 +47,14 @@ const hoistFunctionDeclaration =
         }
     }
 
-// const hoistInterfaceDeclaration =
-//     (context: HoistContext, node: tsm.InterfaceDeclaration): HoistContext => {
-//         const updateScope = (d: TypeDef) => updateScopeTypes(context.scope)(d);
-//         const type = node.getType();
-
-
-//         const typeProps = pipe(
-//             node,
-//             TS.getType,
-//             TS.getTypeProperties,
-//         );
-// if (TS.hasTag("struct")(node)) {
-//     return pipe(
-//         node,
-//         TS.getType,
-//         TS.getTypeProperties,
-//         ROA.mapWithIndex((index, symbol) => {
-//             return pipe(
-//                 symbol.getDeclarations(),
-//                 single,
-//                 O.chain(O.fromPredicate(tsm.Node.isPropertySignature)),
-//                 O.map(sig => new StructMemberSymbolDef(sig, index)),
-//                 E.fromOption(() => `${symbol.getName()} invalid struct property`));
-//         }),
-//         ROA.separate,
-//         ({ left: errors, right: members }) => {
-//             return errors.length > 0
-//                 ? E.left<ParseError, readonly SymbolDef[]>(makeParseError(node)(errors.join(", ")))
-//                 : E.of<ParseError, readonly SymbolDef[]>(members);
-//         },
-//         E.map(props => {
-//             return new StructSymbolDef(node, props);
-//         }),
-//         handleHoistResult(node, context, updateScope)
-//     );
-// }
-//         return context;
-//     }
-
-// const hoistTypeAliasDeclaration =
-//     (context: HoistContext, node: tsm.TypeAliasDeclaration): HoistContext => {
-//         const updateScope = (d: TypeDef) => updateScopeTypes(context.scope)(d);
-
-//         const type = node.getType();
-//         const isArray = type.isArray();
-//         const isTuple = type.isTuple();
-
-
-//         const q = pipe(
-//             node,
-//             TS.getType,
-//             TS.getTypeProperties,
-//         )
-
-//         const st = node.getStructure();
-
-//         return context;
-
-//     }
-
 function hoistDeclaration(context: HoistContext, node: tsm.Node): HoistContext {
 
-    if (tsm.Node.isFunctionDeclaration(node)) return hoistFunctionDeclaration(context, node);
-    // if (tsm.Node.isInterfaceDeclaration(node)) return hoistInterfaceDeclaration(context, node);
-    // if (tsm.Node.isTypeAliasDeclaration(node)) return hoistTypeAliasDeclaration(context, node);
-    return context;
+    switch (node.getKind()) {
+        case tsm.SyntaxKind.FunctionDeclaration:
+            return hoistFunctionDeclaration(context, node as tsm.FunctionDeclaration);
+        default:
+            return context;
+    }
 }
 
 interface HoistContext {
@@ -168,7 +111,7 @@ function reduceVariableStatement(context: ParseDeclarationsContext, node: tsm.Va
 
     return pipe(
         node,
-        $reduceVariableStatement(context.scope)(factory),
+        handleVariableStatement(context.scope)(factory),
         E.match(
             errors => {
                 return { ...context, errors: ROA.concat(errors)(context.errors) };
