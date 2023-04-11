@@ -1,25 +1,77 @@
-// import 'mocha';
-// import { assert, expect } from 'chai';
+import 'mocha';
+import { assert, expect } from 'chai';
+import { createTestProject, makeTestScope } from '../src/utils.spec';
 
-// import * as tsm from "ts-morph";
-
-// import { identity, pipe } from 'fp-ts/function';
-// import * as E from "fp-ts/Either";
-// import * as O from 'fp-ts/Option';
-// import * as ROA from 'fp-ts/ReadonlyArray';
-
-// import { createTestProject } from '../src/utils.spec';
-// import { makeFunctionDeclScope } from '../src/passes/functionDeclarationProcessor'
-// import { Operation } from '../src/types/Operation';
-// import { parseExpression } from '../src/passes/expressionProcessor';
-// import { updateScope as $updateScope } from '../src/scope';
-// import { Scope, SymbolDef } from '../src/types/ScopeType';
-// import { makeParseError } from '../src/symbolDef';
-
-// const updateScope = (def: SymbolDef) => (scope: Scope) => $updateScope(scope)([def]);
+import * as tsm from "ts-morph";
+import { SymbolDef } from '../src/types/ScopeType';
+import { Operation } from '../src/types/Operation';
+import { parseExpressionStatement, parseFunctionDeclaration, parseVariableStatement } from '../src/passes/functionDeclarationProcessor';
+import { parseExpression } from '../src/passes/expressionProcessor';
 
 
+describe("interface", () => {
+    const contract = /*javascript*/`
+    interface TestInterface { name: string, owner: ByteString, count: number };
+    
+    export function test1(name: string, owner: ByteString, count: number) {
+        const data: TestInterface = { name, owner, count };
+    }
+    
+    export function test1a(name: string, owner: ByteString, count: number) {
+        const data = { name, owner, count } as TestInterface;
+    }
+    
+    export function test1b(name: string, owner: ByteString, count: number) {
+        let data: TestInterface;
+        data = { name, owner, count };
+    }`;
 
+    const { sourceFile, globalScope } = createTestProject(contract);
+
+    function makeFuncCtx(decl: tsm.FunctionDeclaration) {
+        const params = decl.getParameters().map((p, i) => ({
+            symbol: p.getSymbolOrThrow(),
+            type: p.getType(),
+            loadOps: [{ 
+                kind: "loadarg", 
+                index: i,
+                debug: p.getSymbolOrThrow().getName() 
+            } as Operation ],
+        }))
+        return {
+            scope: makeTestScope(globalScope)(params),
+            locals: [],
+            errors: []
+        }
+    }
+
+    it("var statement defined assignmnet", () => {
+        const func = sourceFile.getChildrenOfKind(tsm.SyntaxKind.FunctionDeclaration)[0];
+        const ctx = makeFuncCtx(func);
+        const body = func.getBodyOrThrow() as tsm.Block;
+        const stmt = body.getStatements()[0] as tsm.VariableStatement;
+        const result = parseVariableStatement(stmt)(ctx);
+    });
+
+    it("var statement as assignment", () => {
+        const func = sourceFile.getChildrenOfKind(tsm.SyntaxKind.FunctionDeclaration)[1];
+        const ctx = makeFuncCtx(func);
+        const body = func.getBodyOrThrow() as tsm.Block;
+        const stmt = body.getStatements()[0] as tsm.VariableStatement;
+        const result = parseVariableStatement(stmt)(ctx);
+    })
+
+    it("expression assignment", () => {
+        const func = sourceFile.getChildrenOfKind(tsm.SyntaxKind.FunctionDeclaration)[2];
+        const stmt = (func.getBodyOrThrow() as tsm.Block).getStatements()[1];
+        const t = stmt.getType();
+        const qqq = t.getText();
+        const result = parseFunctionDeclaration(globalScope)(func);
+
+
+    })
+
+});
 
 // describe("helloworld", () => {
 //     it("update", () => {

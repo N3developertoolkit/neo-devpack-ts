@@ -39,26 +39,24 @@ const OWNER_KEY = ByteString.fromHex("0xFF");
 
 interface TestInterface { name: string, owner: ByteString, count: number };
 
-/** @struct */
-interface TestStructInterface { name: string, owner: ByteString, count: number };
-
-type TestStructTuple = [string, ByteString, number];
-
 export function test1(name: string, owner: ByteString, count: number) {
     const data: TestInterface = { name, owner, count };
-    Storage.context.put(DATA_KEY, StdLib.serialize(data));
 }
 
 export function test1a(name: string, owner: ByteString, count: number) {
     const data = { name, owner, count } as TestInterface;
-    Storage.context.put(DATA_KEY, StdLib.serialize(data));
 }
 
 export function test1b(name: string, owner: ByteString, count: number) {
     let data: TestInterface;
     data = { name, owner, count };
-    Storage.context.put(DATA_KEY, StdLib.serialize(data));
 }
+
+/** @struct */
+interface TestStructInterface { name: string, owner: ByteString, count: number };
+
+type TestStructTuple = [string, ByteString, number];
+
 
 export function test2(name: string, owner: ByteString, count: number) {
     const data: TestStructInterface = { name, owner, count };
