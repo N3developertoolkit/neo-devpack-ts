@@ -4,12 +4,13 @@ import { pipe } from "fp-ts/lib/function";
 import * as E from "fp-ts/Either";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as O from 'fp-ts/Option'
+import * as TS from "../utility/TS";
 
 import { ParseError, Scope } from "../types/ScopeType";
 import { makeParseError } from "../symbolDef";
 import { single } from "../utils";
 import { isPushDataOp, Operation, PushDataOperation } from "../types/Operation";
-import { getArguments, parseExpression } from "./expressionProcessor";
+import { parseExpression } from "./expressionProcessor";
 import { BuiltInCallableOptions, createBuiltInObject, parseBuiltInCallables, parseBuiltInSymbols } from "./builtins.SymbolDefs";
 
 const fromEncoding =
@@ -47,7 +48,7 @@ export const byteStringFromHex =
             const makeError = makeParseError(node);
             return pipe(
                 node,
-                getArguments,
+                TS.getArguments,
                 ROA.head,
                 E.fromOption(() => makeError('invalid arguments')),
                 E.chain(expr => {
@@ -71,7 +72,7 @@ export const byteStringFromString =
         const makeError = makeParseError(node);
         return pipe(
             node,
-            getArguments,
+            TS.getArguments,
             ROA.head,
             E.fromOption(() => makeError('invalid arguments')),
             E.chain(expr => {
@@ -95,7 +96,7 @@ export const byteStringFromInteger =
 
         return pipe(
             node,
-            getArguments,
+            TS.getArguments,
             ROA.head,
             E.fromOption(() => makeError('invalid arguments')),
             E.chain(expr => {

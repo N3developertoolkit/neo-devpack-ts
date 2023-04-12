@@ -3,11 +3,12 @@ import { flow, pipe } from "fp-ts/lib/function";
 import * as E from "fp-ts/Either";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as O from 'fp-ts/Option'
+import * as TS from "../utility/TS";
 
 import { ParseError, Scope } from "../types/ScopeType";
 import { single } from "../utils";
 import { isPushBoolOp, Operation } from "../types/Operation";
-import { getArguments, makeConditionalExpression, parseExpression, parseExpressionAsBoolean } from "./expressionProcessor";
+import { makeConditionalExpression, parseExpression, parseExpressionAsBoolean } from "./expressionProcessor";
 import { BuiltInCallableOptions, createBuiltInObject, parseBuiltInCallables, parseBuiltInSymbols } from "./builtins.SymbolDefs";
 
 const enum FindOptions {
@@ -66,7 +67,7 @@ export const invokeFindRemovePrefix =
             node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
             return pipe(
                 node,
-                getArguments,
+                TS.getArguments,
                 args => {
                     return pipe(
                         args,
@@ -90,7 +91,7 @@ export const invokeFindValues =
         node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
         return pipe(
             node,
-            getArguments,
+            TS.getArguments,
             args => {
                 return pipe(
                     args,

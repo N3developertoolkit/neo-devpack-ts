@@ -14,7 +14,7 @@ import { makeParseError } from "../symbolDef";
 import { createDiagnostic, isVoidLike, single } from "../utils";
 import { Operation, parseOperation as $parseOperation, pushString } from "../types/Operation";
 
-import { getArguments, parseExpression } from "./expressionProcessor";
+import { parseExpression } from "./expressionProcessor";
 import { makeByteStringConstructor, makeByteStringInterface } from "./builtins.ByteString";
 import { checkErrors, createBuiltInCallable, createBuiltInObject, createBuiltInSymbol, rorValues } from "./builtins.SymbolDefs";
 import { makeReadonlyStorageContext, makeStorageConstructor, makeStorageContext } from "./builtins.Storage";
@@ -131,7 +131,7 @@ export const invokeCallContract =
         (node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
             return pipe(
                 node,
-                getArguments,
+                TS.getArguments,
                 args => {
                     const callArgs = args.slice(0, 3);
                     if (callArgs.length !== 3) return E.left(makeParseError(node)("invalid arg count"));
@@ -163,7 +163,7 @@ export const invokeCallContract =
 export const invokeError =
     (scope: Scope) =>
         (node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
-            const args = getArguments(node);
+            const args = TS.getArguments(node);
             return args.length === 0
                 ? E.right([{ kind: 'pushdata', value: Buffer.from("", "utf8") }])
                 : parseExpression(scope)(args[0]);
@@ -222,7 +222,7 @@ function makeOperationsFunction(decl: tsm.FunctionDeclaration) {
             (node: tsm.CallExpression) => {
                 return pipe(
                     node,
-                    getArguments,
+                    TS.getArguments,
                     ROA.map(parseExpression(scope)),
                     ROA.sequence(E.Applicative),
                     E.map(ROA.flatten),

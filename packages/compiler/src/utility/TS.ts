@@ -7,6 +7,10 @@ export function getSymbol(node: tsm.Node) { return O.fromNullable(node.getSymbol
 export function getType(node: tsm.Node) { return node.getType(); }
 export function getChildren(node: tsm.Node) { return node.forEachChildAsArray(); }
 
+export function getArguments(node: tsm.CallExpression) {
+    return ROA.fromArray(node.getArguments() as tsm.Expression[]);
+}
+
 export function getSymbolDeclarations(symbol: tsm.Symbol) {
     return symbol.getDeclarations();
 }

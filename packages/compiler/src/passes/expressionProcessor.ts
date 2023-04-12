@@ -12,9 +12,6 @@ import { isCallableDef, isObjectDef, makeParseError, parseLoadOps } from "../sym
 import { parseSymbol } from "./parseSymbol";
 import { isBigIntLike, isBooleanLike, isNumberLike, isStringLike } from "../utils";
 
-export const getArguments = (node: tsm.CallExpression) =>
-    ROA.fromArray(node.getArguments() as tsm.Expression[])
-
 const resolve =
     (node: tsm.Node) =>
         (scope: Scope) =>
@@ -29,7 +26,7 @@ const resolve =
 export const parseArguments = (scope: Scope) => (node: tsm.CallExpression) => {
     return pipe(
         node,
-        getArguments,
+        TS.getArguments, 
         ROA.map(parseExpression(scope)),
         ROA.sequence(E.Applicative),
         E.map(ROA.reverse),
