@@ -5,7 +5,7 @@ import * as E from "fp-ts/Either";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROR from 'fp-ts/ReadonlyRecord'
 import * as O from 'fp-ts/Option'
-import * as TS from "../utility/TS";
+import * as TS from "../TS";
 
 import { CompilerState } from "../types/CompileOptions";
 import { createEmptyScope, createScope } from "../scope";
@@ -18,8 +18,7 @@ import { parseExpression } from "./expressionProcessor";
 import { makeByteStringConstructor, makeByteStringInterface } from "./builtins.ByteString";
 import { checkErrors, createBuiltInCallable, createBuiltInObject, createBuiltInSymbol, rorValues } from "./builtins.SymbolDefs";
 import { makeReadonlyStorageContext, makeStorageConstructor, makeStorageContext } from "./builtins.Storage";
-import { LibraryDeclaration } from "../projectLib";
-import { type } from "os";
+import { LibraryDeclaration } from "../types/LibraryDeclaration";
 
 
 module REGEX {

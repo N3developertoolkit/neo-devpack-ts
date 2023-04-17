@@ -3,7 +3,7 @@ import { flow, pipe } from "fp-ts/lib/function";
 import * as E from "fp-ts/Either";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as O from 'fp-ts/Option'
-import * as TS from "../utility/TS";
+import * as TS from "../TS";
 
 import { ParseError, Scope } from "../types/ScopeType";
 import { single } from "../utils";

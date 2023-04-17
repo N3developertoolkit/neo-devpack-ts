@@ -1,38 +1,33 @@
+import { posix } from 'path';
+
 import * as tsm from "ts-morph";
+
 import { flow, identity, pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from 'fp-ts/Either';
 import * as O from 'fp-ts/Option';
-import * as TS from './utility/TS'
-import { State } from 'fp-ts/State';
-import { empty as ROS_empty, elem as ROS_elem, insert as ROS_insert } from 'fp-ts/ReadonlySet';
-import { Json, JsonRecord, parse } from "fp-ts/Json";
-import { lookup as ROR_lookup } from 'fp-ts/ReadonlyRecord';
-import { Eq as STR_Eq } from 'fp-ts/string';
-import { posix } from 'path';
+import * as S from 'fp-ts/State';
+import * as ROS from 'fp-ts/ReadonlySet';
+import * as JSON from "fp-ts/Json";
+import * as ROR from 'fp-ts/ReadonlyRecord';
+import * as STR from 'fp-ts/string';
 
-import { createDiagnostic } from "./utils";
-import { CompilerState } from "./types/CompileOptions";
+import { createDiagnostic } from "../utils";
+import { CompilerState } from "../types/CompileOptions";
+import { LibraryDeclaration } from "../types/LibraryDeclaration";
 
-function isJsonRecord(json: Json): json is JsonRecord {
+function isJsonRecord(json: JSON.Json): json is JSON.JsonRecord {
     return json !== null && typeof json === 'object' && !(json instanceof Array);
 }
 
-function isJsonString(json: Json): json is string {
+function isJsonString(json: JSON.Json): json is string {
     return typeof json === 'string';
 }
 
 function getFileReferenceName(file: tsm.FileReference) { 
     return file.getFileName(); 
 }
-
-export type LibraryDeclaration = 
-    tsm.EnumDeclaration | 
-    tsm.FunctionDeclaration | 
-    tsm.InterfaceDeclaration | 
-    tsm.TypeAliasDeclaration |
-    tsm.VariableStatement;
 
 const collectDeclarations =
     (resolver: Resolver) =>
@@ -78,7 +73,7 @@ const collectDeclarations =
 
 const collectSourceFileDeclarations =
     (resolver: Resolver) =>
-        (src: tsm.SourceFile): State<readonly LibraryDeclaration[], ReadonlyArray<E.Either<string, tsm.SourceFile>>> =>
+        (src: tsm.SourceFile): S.State<readonly LibraryDeclaration[], ReadonlyArray<E.Either<string, tsm.SourceFile>>> =>
             declarations => {
 
                 const libs = pipe(
@@ -107,7 +102,7 @@ export const collectProjectDeclarations =
                 opts => resolveReferences(resolver)(opts.lib ?? [], opts.types ?? []),
                 ROA.partitionMap(identity)
             )
-            let parsed: ReadonlySet<string> = ROS_empty;
+            let parsed: ReadonlySet<string> = ROS.empty;
             let declarations: readonly LibraryDeclaration[] = ROA.empty;
 
             while (ROA.isNonEmpty(sources)) {
@@ -116,8 +111,8 @@ export const collectProjectDeclarations =
                     RNEA.matchLeft((head, tail) => {
                         sources = tail;
                         const headPath = head.getFilePath();
-                        if (ROS_elem(STR_Eq)(headPath)(parsed)) return;
-                        parsed = ROS_insert(STR_Eq)(headPath)(parsed);
+                        if (ROS.elem(STR.Eq)(headPath)(parsed)) return;
+                        parsed = ROS.insert(STR.Eq)(headPath)(parsed);
 
                         let results;
                         [results, declarations] = $parseLibrarySourceFile(head)(declarations);
@@ -176,17 +171,17 @@ function makeResolver(project: tsm.Project): Resolver {
                 return pipe(
                     packagepath,
                     getFile,
-                    O.chain(flow(parse, O.fromEither)),
+                    O.chain(flow(JSON.parse, O.fromEither)),
                     O.chain(O.fromPredicate(isJsonRecord)),
                     O.bindTo('$package'),
                     // look in typings and types properties for relative path
                     // to declarations file
                     O.chain(({ $package }) => pipe(
                         $package,
-                        ROR_lookup('typings'),
+                        ROR.lookup('typings'),
                         O.alt(() => pipe(
                             $package,
-                            ROR_lookup('types')
+                            ROR.lookup('types')
                         ))
                     )),
                     // cast JSON value to string

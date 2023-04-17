@@ -1,7 +1,7 @@
 import { Node, Symbol } from "ts-morph";
 import { pipe } from "fp-ts/function";
 import * as E from "fp-ts/Either";
-import * as TS from '../utility/TS';
+import * as TS from '../TS';
 
 import { makeParseError } from "../symbolDef";
 import { ParseError } from "../types/ScopeType";

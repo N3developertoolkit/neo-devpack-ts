@@ -1,16 +1,15 @@
 import * as tsm from "ts-morph";
 import { sc, u } from "@cityofzion/neon-core";
+
 import { flow, pipe } from "fp-ts/function";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROS from 'fp-ts/ReadonlySet'
 import * as E from 'fp-ts/Either'
-import * as O from 'fp-ts/Option'
 
-import { CallOperation, CallTokenOperation, convertJumpOperationKind, convertLoadStoreKind, convertSimpleOperationKind, getOperationSize, isCallOp, isCallTokenOp, isConvertOp, isInitSlotOp, isInitStaticOperation, isJumpOffsetOp, isJumpTargetOp, isLoadStoreOp, isPushBoolOp, isPushDataOp, isPushIntOp, isSimpleOp, isSysCallOp, JumpOffsetOperation, LoadStoreOperation, Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
-import { convertBigInteger, createDiagnostic, E_fromSeparated, getErrorMessage } from "./utils";
-import { asContractParamType, asReturnType } from "./utility/asContractParamType";
-import { CompiledProject, CompiledProjectArtifacts, CompileOptions, CompilerState, ContractEvent, ContractMethod } from "./types/CompileOptions";
-import { DebugInfo, DebugInfoMethod, makeDebugInfo, SequencePoint } from "./types/DebugInfo";
+import { CallOperation, CallTokenOperation, convertJumpOperationKind, convertLoadStoreKind, convertSimpleOperationKind, getOperationSize, isCallOp, isCallTokenOp, isConvertOp, isInitSlotOp, isInitStaticOperation, isJumpOffsetOp, isJumpTargetOp, isLoadStoreOp, isPushBoolOp, isPushDataOp, isPushIntOp, isSimpleOp, isSysCallOp, JumpOffsetOperation, LoadStoreOperation, Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "../types/Operation";
+import { asContractParamType, asReturnType, convertBigInteger, createDiagnostic, E_fromSeparated } from "../utils";
+import { CompiledProject, CompiledProjectArtifacts, CompileOptions, CompilerState, ContractEvent, ContractMethod } from "../types/CompileOptions";
+import { DebugInfoMethod, makeDebugInfo, SequencePoint } from "../types/DebugInfo";
 
 function collectMethodTokens(methods: ReadonlyArray<ContractMethod>): ReadonlyArray<sc.MethodToken> {
     const set = pipe(

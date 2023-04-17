@@ -4,7 +4,7 @@ import * as ROA from 'fp-ts/ReadonlyArray';
 import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option'
-import * as TS from "../utility/TS";
+import * as TS from "../TS";
 import { isJumpTargetOp, Operation, SimpleOperationKind } from "../types/Operation";
 import { resolve as $resolve, resolveName, resolveType } from "../scope";
 import { ParseError, Scope, SymbolDef } from "../types/ScopeType";

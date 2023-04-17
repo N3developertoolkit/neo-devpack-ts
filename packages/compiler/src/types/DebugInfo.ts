@@ -5,8 +5,8 @@ import { pipe } from "fp-ts/function";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROS from 'fp-ts/ReadonlySet'
 import * as FP from 'fp-ts'
-import { asContractParamType, asReturnType } from "../utility/asContractParamType";
 import type { Location } from "./Operation";
+import { asContractParamType, asReturnType } from "../utils";
 
 export interface SlotVariable {
     name: string;

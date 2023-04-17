@@ -1,10 +1,11 @@
-import * as tsm from "ts-morph";
-import { sc, u } from "@cityofzion/neon-core";
 import { readdirSync, statSync, readFileSync } from "fs";
 import { dirname, join } from "path";
+
+import * as tsm from "ts-morph";
+import { sc, u } from "@cityofzion/neon-core";
+
 import * as O from 'fp-ts/Option';
 import * as E from "fp-ts/Either";
-import * as S from 'fp-ts/State';
 import * as SEP from 'fp-ts/Separated';
 import * as ROA from 'fp-ts/ReadonlyArray';
 
@@ -253,3 +254,33 @@ function toBigInt(buffer: Buffer): bigint {
 //         return buffer2.reverse();
 //     }
 // }
+
+export function asContractParamType(type: tsm.Type): sc.ContractParamType {
+
+    if (type.isAny())
+        return sc.ContractParamType.Any;
+    if (isStringLike(type))
+        return sc.ContractParamType.String;
+    if (isBigIntLike(type) || isNumberLike(type))
+        return sc.ContractParamType.Integer;
+    if (isBooleanLike(type))
+        return sc.ContractParamType.Boolean;
+
+    const typeSymbol = type.getAliasSymbol() ?? type.getSymbolOrThrow();
+    const typeFQN = typeSymbol.getFullyQualifiedName();
+    if (typeFQN === "global.ByteStringInstance") {
+        return sc.ContractParamType.ByteArray;
+    }
+
+    if (typeFQN === "Iterator") {
+        return sc.ContractParamType.InteropInterface;
+    }
+
+    return sc.ContractParamType.Any;
+}
+
+export function asReturnType(type: tsm.Type) {
+    return isVoidLike(type)
+        ? sc.ContractParamType.Void
+        : asContractParamType(type);
+}

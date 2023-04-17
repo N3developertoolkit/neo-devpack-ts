@@ -3,7 +3,7 @@ import { pipe } from "fp-ts/lib/function";
 import * as E from "fp-ts/Either";
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as ROR from 'fp-ts/ReadonlyRecord';
-import * as TS from "../utility/TS";
+import * as TS from "../TS";
 import { CallableSymbolDef, ObjectSymbolDef, ParseArgumentsFunc, SymbolDef } from "../types/ScopeType";
 import { Operation } from "../types/Operation";
 import { $SymbolDef } from "../symbolDef";

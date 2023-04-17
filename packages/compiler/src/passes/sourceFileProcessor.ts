@@ -1,6 +1,6 @@
 import * as tsm from "ts-morph";
 import * as ROA from 'fp-ts/ReadonlyArray'
-import * as TS from '../utility/TS';
+import * as TS from '../TS';
 import * as E from "fp-ts/Either";
 
 import { flow, identity, pipe } from "fp-ts/function";
