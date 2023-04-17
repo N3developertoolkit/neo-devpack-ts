@@ -6,11 +6,11 @@ import * as ROA from 'fp-ts/ReadonlyArray'
 import * as O from 'fp-ts/Option'
 import * as TS from "../TS";
 
-import { Scope } from "../types/Scope";
 import { makeParseError, ParseError, single } from "../utils";
 import { isPushDataOp, Operation, PushDataOperation } from "../types/Operation";
 import { parseExpression } from "./expressionProcessor";
 import { BuiltInCallableOptions, createBuiltInObject, parseBuiltInCallables, parseBuiltInSymbols } from "./builtins.SymbolDefs";
+import { Scope } from "../types/CompileTimeObject";
 
 const fromEncoding =
     (encoding: BufferEncoding) =>

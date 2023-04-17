@@ -8,8 +8,7 @@ import { CompiledProject, CompilerState, ContractEvent, ContractMethod, Contract
 import { parseContractMethod } from "./functionDeclarationProcessor";
 import { handleVariableStatement } from "./variableStatementProcessor";
 import { Operation } from "../types/Operation";
-import { CompileTimeObject } from "../types/CompileTimeObject";
-import { Scope, createEmptyScope, updateScope } from "../types/Scope";
+import { Scope, CompileTimeObject, createEmptyScope, updateScope } from "../types/CompileTimeObject";
 import { parseSymbol } from "./parseSymbol";
 import { EventFunctionSymbolDef as EventSymbolDef, LocalFunctionSymbolDef as FunctionSymbolDef, StaticVarSymbolDef } from "./sourceSymbolDefs";
 import { makeParseError, ParseError, makeParseDiagnostic } from "../utils";

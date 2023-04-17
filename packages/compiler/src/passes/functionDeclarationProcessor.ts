@@ -5,8 +5,7 @@ import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
 import * as S from 'fp-ts/State';
 
-import { CompileTimeObject } from "../types/CompileTimeObject";
-import { createEmptyScope, createScope, Scope } from "../types/Scope";
+import { Scope, CompileTimeObject, createEmptyScope, createScope } from "../types/CompileTimeObject";
 import { convertJumpTargetOps, JumpTargetOperation, Location, Operation, updateLocation } from "../types/Operation";
 import { E_fromSeparated, ParseError, isVoidLike, makeParseError } from "../utils";
 import { ContractMethod, ContractSlot } from "../types/CompileOptions";

@@ -6,8 +6,7 @@ import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option'
 import * as TS from "../TS";
 import { isJumpTargetOp, Operation, SimpleOperationKind } from "../types/Operation";
-import { CompileTimeObject } from "../types/CompileTimeObject";
-import { Scope, resolve, resolveName, resolveType } from "../types/Scope";
+import { CompileTimeObject, Scope, resolve, resolveName, resolveType } from "../types/CompileTimeObject";
 import { isCallableDef, isObjectDef, parseLoadOps } from "../symbolDef";
 import { parseSymbol } from "./parseSymbol";
 import { ParseError, isBigIntLike, isBooleanLike, isNumberLike, isStringLike, makeParseError } from "../utils";

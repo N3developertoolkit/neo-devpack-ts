@@ -8,8 +8,7 @@ import * as O from 'fp-ts/Option'
 import * as TS from "../TS";
 
 import { CompilerState } from "../types/CompileOptions";
-import { CompileTimeObject } from "../types/CompileTimeObject";
-import { Scope, createEmptyScope, createScope } from "../types/Scope";
+import { CompileTimeObject, Scope, createEmptyScope, createScope } from "../types/CompileTimeObject";
 import { ParseError, createDiagnostic, isVoidLike, makeParseError, single } from "../utils";
 import { Operation, parseOperation as $parseOperation, pushString } from "../types/Operation";
 
