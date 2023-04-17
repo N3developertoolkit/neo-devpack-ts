@@ -8,8 +8,8 @@ import * as O from 'fp-ts/Option'
 import * as TS from "../TS";
 
 import { CompilerState } from "../types/CompileOptions";
-import { createEmptyScope, createScope } from "../scope";
-import { Scope, SymbolDef } from "../types/ScopeType";
+import { CompileTimeObject } from "../types/CompileTimeObject";
+import { Scope, createEmptyScope, createScope } from "../types/Scope";
 import { ParseError, createDiagnostic, isVoidLike, makeParseError, single } from "../utils";
 import { Operation, parseOperation as $parseOperation, pushString } from "../types/Operation";
 
@@ -246,7 +246,7 @@ function makeEnumObject(decl: tsm.EnumDeclaration) {
     return createBuiltInObject(decl, { props });
 }
 
-function makeIteratorInterface(decl: tsm.InterfaceDeclaration): SymbolDef {
+function makeIteratorInterface(decl: tsm.InterfaceDeclaration): CompileTimeObject {
     return createBuiltInSymbol(decl);
 }
 
@@ -265,8 +265,8 @@ export const makeGlobalScope =
             const varStatements = pipe(decls, ROA.filterMap(isVariableStatement));
             const variables = pipe(varStatements, ROA.chain(s => s.getDeclarations()));
 
-            let typeDefs: ReadonlyArray<SymbolDef> = [];
-            let symbolDefs: ReadonlyArray<SymbolDef> = [];
+            let typeDefs: ReadonlyArray<CompileTimeObject> = [];
+            let symbolDefs: ReadonlyArray<CompileTimeObject> = [];
 
             typeDefs = pipe(
                 interfaces,
@@ -305,16 +305,16 @@ export const makeGlobalScope =
                 ROA.concat(symbolDefs)
             )
 
-            const builtInEnums: Record<string, (decl: tsm.EnumDeclaration) => SymbolDef> = {
+            const builtInEnums: Record<string, (decl: tsm.EnumDeclaration) => CompileTimeObject> = {
                 "CallFlags": makeEnumObject,
                 "FindOptions": makeEnumObject,
             }
 
-            const builtInFunctions: Record<string, (decl: tsm.FunctionDeclaration) => SymbolDef> = {
+            const builtInFunctions: Record<string, (decl: tsm.FunctionDeclaration) => CompileTimeObject> = {
                 "callContract": decl => createBuiltInCallable(decl, { parseArguments: invokeCallContract }),
             }
 
-            const builtInInterfaces: Record<string, (decl: tsm.InterfaceDeclaration) => SymbolDef> = {
+            const builtInInterfaces: Record<string, (decl: tsm.InterfaceDeclaration) => CompileTimeObject> = {
                 "ByteStringConstructor": makeByteStringConstructor,
                 "ByteString": makeByteStringInterface,
                 "Iterator": makeIteratorInterface,
@@ -324,7 +324,7 @@ export const makeGlobalScope =
                 "StorageContext": makeStorageContext,
             }
 
-            const builtInVars: Record<string, (decl: tsm.VariableDeclaration) => SymbolDef> = {
+            const builtInVars: Record<string, (decl: tsm.VariableDeclaration) => CompileTimeObject> = {
                 "ByteString": createBuiltInSymbol,
                 "Error": decl => createBuiltInCallable(decl, { parseArguments: invokeError }),
                 "Runtime": createBuiltInSymbol,
@@ -354,9 +354,9 @@ export const makeGlobalScope =
 export type BuiltinDeclaration = tsm.EnumDeclaration | tsm.FunctionDeclaration | tsm.InterfaceDeclaration | tsm.VariableDeclaration;
 
 const resolveBuiltins =
-    <T extends BuiltinDeclaration>(map: ROR.ReadonlyRecord<string, (decl: T) => SymbolDef>) =>
+    <T extends BuiltinDeclaration>(map: ROR.ReadonlyRecord<string, (decl: T) => CompileTimeObject>) =>
         (declarations: readonly T[]) =>
-            (symbolDefs: readonly SymbolDef[]) => {
+            (symbolDefs: readonly CompileTimeObject[]) => {
                 const defs = pipe(
                     map,
                     ROR.mapWithIndex((key, func) => pipe(

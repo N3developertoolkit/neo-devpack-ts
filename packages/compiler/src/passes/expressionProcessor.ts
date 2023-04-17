@@ -6,19 +6,19 @@ import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option'
 import * as TS from "../TS";
 import { isJumpTargetOp, Operation, SimpleOperationKind } from "../types/Operation";
-import { resolve as $resolve, resolveName, resolveType } from "../scope";
-import { Scope, SymbolDef } from "../types/ScopeType";
+import { CompileTimeObject } from "../types/CompileTimeObject";
+import { Scope, resolve, resolveName, resolveType } from "../types/Scope";
 import { isCallableDef, isObjectDef, parseLoadOps } from "../symbolDef";
 import { parseSymbol } from "./parseSymbol";
 import { ParseError, isBigIntLike, isBooleanLike, isNumberLike, isStringLike, makeParseError } from "../utils";
 
-const resolve =
+const $resolve =
     (node: tsm.Node) =>
         (scope: Scope) =>
-            (symbol: tsm.Symbol): E.Either<ParseError, SymbolDef> => {
+            (symbol: tsm.Symbol): E.Either<ParseError, CompileTimeObject> => {
                 return pipe(
                     symbol,
-                    $resolve(scope),
+                    resolve(scope),
                     E.fromOption(() => makeParseError(node)(`failed to resolve ${symbol.getName()} symbol`))
                 )
             }
@@ -99,12 +99,12 @@ function parseLogicalExpression(node: tsm.BinaryExpression, scope: Scope, isOrOp
     );
 }
 
-const parseStoreSymbol = (node: tsm.Expression) => (context: ChainContext): E.Either<ParseError, [ChainContext, SymbolDef]> => {
+const parseStoreSymbol = (node: tsm.Expression) => (context: ChainContext): E.Either<ParseError, [ChainContext, CompileTimeObject]> => {
     if (tsm.Node.isIdentifier(node))
         return pipe(
             node,
             parseSymbol, 
-            E.chain(resolve(node)(context.scope)),
+            E.chain($resolve(node)(context.scope)),
             E.map(def => [context, def])
         );
 
@@ -533,7 +533,7 @@ export function parseExpressionAsBoolean(scope: Scope) {
 interface ChainContext {
     readonly scope: Scope;
     readonly endTarget: Operation;
-    readonly current?: SymbolDef;
+    readonly current?: CompileTimeObject;
     readonly currentType?: tsm.Type;
     readonly operations: ReadonlyArray<Operation>;
 }
@@ -543,7 +543,7 @@ const reduceIdentifier = (node: tsm.Identifier) =>
         return pipe(
             node,
             parseSymbol,
-            E.chain(resolve(node)(ctx.scope)),
+            E.chain($resolve(node)(ctx.scope)),
             E.chain(current => {
                 if (!current.loadOps)
                     return E.left(makeParseError(node)(`${current.symbol.getName()} invalid load ops`));
@@ -555,7 +555,7 @@ const reduceIdentifier = (node: tsm.Identifier) =>
     }
 
 function resolveProperty(ctx: ChainContext) {
-    return (node: tsm.PropertyAccessExpression): E.Either<ParseError, SymbolDef> => {
+    return (node: tsm.PropertyAccessExpression): E.Either<ParseError, CompileTimeObject> => {
         return pipe(
             node,
             parseSymbol,
@@ -573,7 +573,7 @@ function resolveProperty(ctx: ChainContext) {
             }),
             E.chain(({ symbol, typeDef }) => {
                 const props = typeDef && "props" in typeDef
-                    ? typeDef.props as readonly SymbolDef[]
+                    ? typeDef.props as readonly CompileTimeObject[]
                     : ctx.current && isObjectDef(ctx.current)
                         ? ctx.current.props
                         : [];

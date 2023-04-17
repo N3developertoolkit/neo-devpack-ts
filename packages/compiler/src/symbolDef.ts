@@ -1,24 +1,24 @@
 import * as tsm from "ts-morph";
 import { pipe } from 'fp-ts/function';
 import * as E from "fp-ts/Either";
-import { CallableSymbolDef, ObjectSymbolDef, SymbolDef } from "./types/ScopeType";
+import { CallableSymbolDef, ObjectSymbolDef, CompileTimeObject } from "./types/CompileTimeObject";
 import { makeParseError } from "./utils";
 
-export function isObjectDef(def: SymbolDef): def is ObjectSymbolDef {
+export function isObjectDef(def: CompileTimeObject): def is ObjectSymbolDef {
     return 'props' in def;
 }
 
-export function isCallableDef(def: SymbolDef): def is CallableSymbolDef {
+export function isCallableDef(def: CompileTimeObject): def is CallableSymbolDef {
     return isObjectDef(def) && 'parseArguments' in def;
 }
 
 export const parseLoadOps =
-    (node: tsm.Node) => (def: SymbolDef) => pipe(
+    (node: tsm.Node) => (def: CompileTimeObject) => pipe(
         def.loadOps,
         E.fromNullable(makeParseError(node)(`${def.symbol.getName()} has no load ops`))
     );
 
-export class $SymbolDef implements SymbolDef {
+export class $SymbolDef implements CompileTimeObject {
     readonly symbol: tsm.Symbol;
     readonly type: tsm.Type;
 

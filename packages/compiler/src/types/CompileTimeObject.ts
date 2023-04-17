@@ -1,19 +1,13 @@
 import * as tsm from "ts-morph";
-import * as O from 'fp-ts/Option';
 import * as E from "fp-ts/Either";
 import { Operation } from "./Operation";
 import { ParseError } from "../utils";
-
-
-export interface Scope {
-    readonly parentScope: O.Option<Scope>;
-    readonly symbols: ReadonlyMap<tsm.Symbol, SymbolDef>;
-    readonly types: ReadonlyMap<tsm.Symbol, TypeDef>;
-}
+// madge reports this as a circular dependency, but I think it's ok since we're using `import type` here
+import type  { Scope } from "./Scope";
 
 export type ParseStoreFunc = (loadOps: readonly Operation[], valueOps: readonly Operation[]) => E.Either<ParseError, readonly Operation[]>;
 
-export interface SymbolDef {
+export interface CompileTimeObject {
     readonly symbol: tsm.Symbol;
     readonly type: tsm.Type;
     readonly loadOps?: ReadonlyArray<Operation>;
@@ -24,8 +18,8 @@ export interface TypeDef {
     readonly symbol: tsm.Symbol;
 }
 
-export interface ObjectSymbolDef extends SymbolDef {
-    readonly props: ReadonlyArray<SymbolDef>;
+export interface ObjectSymbolDef extends CompileTimeObject {
+    readonly props: ReadonlyArray<CompileTimeObject>;
 }
 
 

@@ -4,15 +4,15 @@ import * as ROA from 'fp-ts/ReadonlyArray';
 import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option';
-import { updateScopeSymbols } from "../scope";
-import { Scope, SymbolDef } from "../types/ScopeType";
+import { CompileTimeObject } from "../types/CompileTimeObject";
+import { Scope, updateScope } from "../types/Scope";
 import { Operation, pushInt, pushString, updateLocation } from "../types/Operation";
 import { E_fromSeparated, ParseError, makeParseError, single } from "../utils";
 import { parseSymbol } from "./parseSymbol";
 import { parseExpression as $parseExpression } from "./expressionProcessor";
 import { ConstantSymbolDef } from "./sourceSymbolDefs";
 
-type VariableSymbolDef = SymbolDef & { readonly decl: tsm.Node; readonly storeOp: Operation; };
+type VariableSymbolDef = CompileTimeObject & { readonly decl: tsm.Node; readonly storeOp: Operation; };
 type VariableFactory = (element: tsm.Identifier | tsm.BindingElement, symbol: tsm.Symbol, index: number) => VariableSymbolDef;
 
 function isPushOp(op: Operation) {
@@ -27,7 +27,7 @@ function handleIdentifierBinding(
     declKind: tsm.VariableDeclarationKind,
     factory: VariableFactory,
     initOps: readonly Operation[]
-): E.Either<ParseError, [readonly SymbolDef[], readonly Operation[]]> {
+): E.Either<ParseError, [readonly CompileTimeObject[], readonly Operation[]]> {
     return pipe(
         node,
         parseSymbol,
@@ -43,11 +43,11 @@ function handleIdentifierBinding(
                 () => {
                     const def = factory(node, symbol, 0);
                     const ops = ROA.append(def.storeOp)(initOps);
-                    return [[def], ops] as [readonly SymbolDef[], readonly Operation[]];
+                    return [[def], ops] as [readonly CompileTimeObject[], readonly Operation[]];
                 },
                 op => {
                     const def = new ConstantSymbolDef(node, symbol, op);
-                    return [[def], []] as [readonly SymbolDef[], readonly Operation[]];
+                    return [[def], []] as [readonly CompileTimeObject[], readonly Operation[]];
                 }
             ),
             v => E.of(v)
@@ -59,7 +59,7 @@ function handleArrayBindingPattern(
     node: tsm.ArrayBindingPattern,
     factory: VariableFactory,
     initOps: readonly Operation[]
-): E.Either<ParseError, [readonly SymbolDef[], readonly Operation[]]> {
+): E.Either<ParseError, [readonly CompileTimeObject[], readonly Operation[]]> {
     return pipe(
         node.getElements(),
         // associated index with each element
@@ -125,7 +125,7 @@ function handleObjectBindingPattern(
     node: tsm.ObjectBindingPattern,
     factory: VariableFactory,
     initOps: readonly Operation[]
-): E.Either<ParseError, [readonly SymbolDef[], readonly Operation[]]> {
+): E.Either<ParseError, [readonly CompileTimeObject[], readonly Operation[]]> {
     return pipe(
         node.getElements(),
         // create a VariableSymbolDef via the factory for each element
@@ -199,7 +199,7 @@ function handleObjectBindingPattern(
 
 const handleVariableDeclaration =
     (node: tsm.BindingName, declKind: tsm.VariableDeclarationKind, factory: VariableFactory) =>
-        (initOps: readonly Operation[]): E.Either<ParseError, [readonly SymbolDef[], readonly Operation[]]> => {
+        (initOps: readonly Operation[]): E.Either<ParseError, [readonly CompileTimeObject[], readonly Operation[]]> => {
             switch (node.getKind()) {
                 case tsm.SyntaxKind.Identifier:
                     return handleIdentifierBinding(node as tsm.Identifier, declKind, factory, initOps);
@@ -218,7 +218,7 @@ const handleVariableDeclaration =
 export const handleVariableStatement =
     (scope: Scope) =>
         (factory: (element: tsm.Identifier | tsm.BindingElement, symbol: tsm.Symbol, index: number) => VariableSymbolDef) =>
-            (node: tsm.VariableStatement): E.Either<readonly ParseError[], readonly [Scope, readonly SymbolDef[], readonly Operation[]]> => {
+            (node: tsm.VariableStatement): E.Either<readonly ParseError[], readonly [Scope, readonly CompileTimeObject[], readonly Operation[]]> => {
                 return pipe(
                     node.getDeclarations(),
                     ROA.map(decl => pipe(
@@ -243,7 +243,7 @@ export const handleVariableStatement =
                         return pipe(
                             defs,
                             // add all the symbol definitions to the scope
-                            updateScopeSymbols(scope),
+                            updateScope(scope),
                             E.mapLeft(flow(makeParseError(node), ROA.of)),
                             E.map(scope => pipe(
                                 defs,

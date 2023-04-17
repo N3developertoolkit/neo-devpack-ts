@@ -1,7 +1,8 @@
 import * as tsm from "ts-morph";
 import { $SymbolDef } from "../symbolDef";
 import { Operation } from "../types/Operation";
-import { CallableSymbolDef, ParseArgumentsFunc, Scope } from "../types/ScopeType";
+import { CallableSymbolDef, ParseArgumentsFunc } from "../types/CompileTimeObject";
+import { Scope } from "../types/Scope";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as E from "fp-ts/Either";
 import { pipe } from "fp-ts/function";

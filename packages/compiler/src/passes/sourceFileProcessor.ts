@@ -8,8 +8,8 @@ import { CompiledProject, CompilerState, ContractEvent, ContractMethod, Contract
 import { parseContractMethod } from "./functionDeclarationProcessor";
 import { handleVariableStatement } from "./variableStatementProcessor";
 import { Operation } from "../types/Operation";
-import { updateScopeSymbols, createEmptyScope } from "../scope";
-import { Scope, SymbolDef } from "../types/ScopeType";
+import { CompileTimeObject } from "../types/CompileTimeObject";
+import { Scope, createEmptyScope, updateScope } from "../types/Scope";
 import { parseSymbol } from "./parseSymbol";
 import { EventFunctionSymbolDef as EventSymbolDef, LocalFunctionSymbolDef as FunctionSymbolDef, StaticVarSymbolDef } from "./sourceSymbolDefs";
 import { makeParseError, ParseError, makeParseDiagnostic } from "../utils";
@@ -32,11 +32,11 @@ const hoistFunctionDeclaration =
             );
         }
 
-        function hoist(def: E.Either<ParseError, SymbolDef>): HoistContext {
+        function hoist(def: E.Either<ParseError, CompileTimeObject>): HoistContext {
             return pipe(
                 def,
                 E.chain(flow(
-                    updateScopeSymbols(context.scope),
+                    qqq => updateScope(context.scope)(qqq),
                     E.mapLeft(makeParseError(node))
                 )),
                 E.match(

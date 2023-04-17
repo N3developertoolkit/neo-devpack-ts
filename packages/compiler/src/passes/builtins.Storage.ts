@@ -5,7 +5,7 @@ import * as ROA from 'fp-ts/ReadonlyArray'
 import * as O from 'fp-ts/Option'
 import * as TS from "../TS";
 
-import { Scope } from "../types/ScopeType";
+import { Scope } from "../types/Scope";
 import { ParseError, single } from "../utils";
 import { isPushBoolOp, Operation } from "../types/Operation";
 import { makeConditionalExpression, parseExpression, parseExpressionAsBoolean } from "./expressionProcessor";

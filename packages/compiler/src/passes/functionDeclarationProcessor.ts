@@ -5,8 +5,8 @@ import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
 import * as S from 'fp-ts/State';
 
-import { createEmptyScope, createScope } from "../scope";
-import { Scope, SymbolDef } from "../types/ScopeType";
+import { CompileTimeObject } from "../types/CompileTimeObject";
+import { createEmptyScope, createScope, Scope } from "../types/Scope";
 import { convertJumpTargetOps, JumpTargetOperation, Location, Operation, updateLocation } from "../types/Operation";
 import { E_fromSeparated, ParseError, isVoidLike, makeParseError } from "../utils";
 import { ContractMethod, ContractSlot } from "../types/CompileOptions";
@@ -406,7 +406,7 @@ export const makeFunctionScope =
                 E_fromSeparated,
                 E.chain(defs => {
                     return pipe(
-                        defs as readonly SymbolDef[],
+                        defs as readonly CompileTimeObject[],
                         createScope(parentScope),
                         E.mapLeft(msg => ROA.of(makeParseError(node)(msg)))
                     );

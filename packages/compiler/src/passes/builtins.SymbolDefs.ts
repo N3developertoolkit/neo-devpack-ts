@@ -4,7 +4,7 @@ import * as E from "fp-ts/Either";
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as ROR from 'fp-ts/ReadonlyRecord';
 import * as TS from "../TS";
-import { CallableSymbolDef, ObjectSymbolDef, ParseArgumentsFunc, SymbolDef } from "../types/ScopeType";
+import { CallableSymbolDef, ObjectSymbolDef, ParseArgumentsFunc, CompileTimeObject } from "../types/CompileTimeObject";
 import { Operation } from "../types/Operation";
 import { $SymbolDef } from "../symbolDef";
 import { parseArguments } from "./expressionProcessor";
@@ -40,7 +40,7 @@ export function createBuiltInSymbol(node: tsm.Node, loadOps?: readonly Operation
 }
 
 export function parseBuiltInSymbols(decl: TS.MemberedNode) {
-    return (props: Record<string, ReadonlyArray<Operation>>): readonly SymbolDef[] => {
+    return (props: Record<string, ReadonlyArray<Operation>>): readonly CompileTimeObject[] => {
 
         return pipe(
             props,
@@ -63,7 +63,7 @@ export class BuiltInObjectDef extends $SymbolDef implements ObjectSymbolDef {
     constructor(
         node: tsm.Node,
         readonly loadOps: readonly Operation[],
-        readonly props: readonly SymbolDef[],
+        readonly props: readonly CompileTimeObject[],
     ) {
         super(node);
     }
@@ -71,7 +71,7 @@ export class BuiltInObjectDef extends $SymbolDef implements ObjectSymbolDef {
 
 export interface BuiltInObjectOptions {
     readonly loadOps?: readonly Operation[],
-    readonly props?: readonly SymbolDef[],
+    readonly props?: readonly CompileTimeObject[],
 }
 
 export function createBuiltInObject(node: tsm.Node, options: BuiltInObjectOptions) {
@@ -86,7 +86,7 @@ export class BuiltInCallableDef extends $SymbolDef implements CallableSymbolDef 
     constructor(
         node: tsm.Node,
         readonly loadOps: readonly Operation[],
-        readonly props: readonly SymbolDef[],
+        readonly props: readonly CompileTimeObject[],
         readonly parseArguments: ParseArgumentsFunc,
     ) {
         super(node);
@@ -107,7 +107,7 @@ export function createBuiltInCallable(node: tsm.Node, options: BuiltInCallableOp
 
 
 export function parseBuiltInCallables(decl: TS.MemberedNode) {
-    return (props: Record<string, BuiltInCallableOptions>): readonly SymbolDef[] => {
+    return (props: Record<string, BuiltInCallableOptions>): readonly CompileTimeObject[] => {
 
         return pipe(
             props,
