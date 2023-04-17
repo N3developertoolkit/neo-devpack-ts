@@ -62,6 +62,24 @@ export class CompileError extends Error {
     }
 }
 
+export interface ParseError { 
+    message: string, 
+    node?: tsm.Node 
+}
+
+export const makeParseError =
+    (node?: tsm.Node) =>
+        (e: string | unknown): ParseError => {
+            const message = typeof e === 'string'
+                ? e : e instanceof Error
+                    ? e.message : String(e);
+            return { message, node };
+        }
+
+export const makeParseDiagnostic = (e: ParseError) => createDiagnostic(e.message, { node: e.node });
+
+
+
 export function toDiagnostic(error: string | unknown): tsm.ts.Diagnostic {
     const message = getErrorMessage(error);
     const node = error instanceof CompileError ? error.node : undefined;

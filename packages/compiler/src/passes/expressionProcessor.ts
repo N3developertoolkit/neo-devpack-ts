@@ -7,10 +7,10 @@ import * as O from 'fp-ts/Option'
 import * as TS from "../TS";
 import { isJumpTargetOp, Operation, SimpleOperationKind } from "../types/Operation";
 import { resolve as $resolve, resolveName, resolveType } from "../scope";
-import { ParseError, Scope, SymbolDef } from "../types/ScopeType";
-import { isCallableDef, isObjectDef, makeParseError, parseLoadOps } from "../symbolDef";
+import { Scope, SymbolDef } from "../types/ScopeType";
+import { isCallableDef, isObjectDef, parseLoadOps } from "../symbolDef";
 import { parseSymbol } from "./parseSymbol";
-import { isBigIntLike, isBooleanLike, isNumberLike, isStringLike } from "../utils";
+import { ParseError, isBigIntLike, isBooleanLike, isNumberLike, isStringLike, makeParseError } from "../utils";
 
 const resolve =
     (node: tsm.Node) =>

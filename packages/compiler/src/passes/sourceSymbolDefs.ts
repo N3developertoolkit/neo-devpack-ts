@@ -1,12 +1,13 @@
 import * as tsm from "ts-morph";
 import { $SymbolDef } from "../symbolDef";
 import { Operation } from "../types/Operation";
-import { CallableSymbolDef, ParseArgumentsFunc, ParseError, Scope } from "../types/ScopeType";
+import { CallableSymbolDef, ParseArgumentsFunc, Scope } from "../types/ScopeType";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as E from "fp-ts/Either";
 import { pipe } from "fp-ts/function";
 import { parseArguments } from "./expressionProcessor";
 import { parseSymbol } from "./parseSymbol";
+import { ParseError } from "../utils";
 
 function parseStore(loadOps: readonly Operation[], valueOps: readonly Operation[], storeOp: Operation) {
     return pipe(

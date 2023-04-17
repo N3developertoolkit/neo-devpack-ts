@@ -5,11 +5,10 @@ import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
 import * as S from 'fp-ts/State';
 
-import { makeParseError } from "../symbolDef";
 import { createEmptyScope, createScope } from "../scope";
-import { ParseError, Scope, SymbolDef } from "../types/ScopeType";
+import { Scope, SymbolDef } from "../types/ScopeType";
 import { convertJumpTargetOps, JumpTargetOperation, Location, Operation, updateLocation } from "../types/Operation";
-import { E_fromSeparated, isVoidLike } from "../utils";
+import { E_fromSeparated, ParseError, isVoidLike, makeParseError } from "../utils";
 import { ContractMethod, ContractSlot } from "../types/CompileOptions";
 import { parseSymbol } from "./parseSymbol";
 import { parseExpression, parseExpressionAsBoolean } from "./expressionProcessor";

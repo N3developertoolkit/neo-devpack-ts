@@ -9,9 +9,8 @@ import * as TS from "../TS";
 
 import { CompilerState } from "../types/CompileOptions";
 import { createEmptyScope, createScope } from "../scope";
-import { ParseError, Scope, SymbolDef } from "../types/ScopeType";
-import { makeParseError } from "../symbolDef";
-import { createDiagnostic, isVoidLike, single } from "../utils";
+import { Scope, SymbolDef } from "../types/ScopeType";
+import { ParseError, createDiagnostic, isVoidLike, makeParseError, single } from "../utils";
 import { Operation, parseOperation as $parseOperation, pushString } from "../types/Operation";
 
 import { parseExpression } from "./expressionProcessor";

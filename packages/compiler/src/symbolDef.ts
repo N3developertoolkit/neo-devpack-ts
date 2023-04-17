@@ -1,19 +1,8 @@
 import * as tsm from "ts-morph";
 import { pipe } from 'fp-ts/function';
 import * as E from "fp-ts/Either";
-import { CallableSymbolDef, ObjectSymbolDef, ParseError, SymbolDef } from "./types/ScopeType";
-import { createDiagnostic as $createDiagnostic } from "./utils";
-
-export const makeParseError =
-    (node?: tsm.Node) =>
-        (e: string | unknown): ParseError => {
-            const message = typeof e === 'string'
-                ? e : e instanceof Error
-                    ? e.message : String(e);
-            return { message, node };
-        }
-
-export const makeParseDiagnostic = (e: ParseError) => $createDiagnostic(e.message, { node: e.node });
+import { CallableSymbolDef, ObjectSymbolDef, SymbolDef } from "./types/ScopeType";
+import { makeParseError } from "./utils";
 
 export function isObjectDef(def: SymbolDef): def is ObjectSymbolDef {
     return 'props' in def;

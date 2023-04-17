@@ -5,14 +5,14 @@ import * as E from "fp-ts/Either";
 
 import { flow, identity, pipe } from "fp-ts/function";
 import { CompiledProject, CompilerState, ContractEvent, ContractMethod, ContractSlot } from "../types/CompileOptions";
-import { makeParseDiagnostic, makeParseError, } from "../symbolDef";
 import { parseContractMethod } from "./functionDeclarationProcessor";
 import { handleVariableStatement } from "./variableStatementProcessor";
 import { Operation } from "../types/Operation";
 import { updateScopeSymbols, createEmptyScope } from "../scope";
-import { ParseError, Scope, SymbolDef } from "../types/ScopeType";
+import { Scope, SymbolDef } from "../types/ScopeType";
 import { parseSymbol } from "./parseSymbol";
 import { EventFunctionSymbolDef as EventSymbolDef, LocalFunctionSymbolDef as FunctionSymbolDef, StaticVarSymbolDef } from "./sourceSymbolDefs";
+import { makeParseError, ParseError, makeParseDiagnostic } from "../utils";
 
 const hoistFunctionDeclaration =
     (context: HoistContext, node: tsm.FunctionDeclaration): HoistContext => {

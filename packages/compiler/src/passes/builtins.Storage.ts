@@ -5,8 +5,8 @@ import * as ROA from 'fp-ts/ReadonlyArray'
 import * as O from 'fp-ts/Option'
 import * as TS from "../TS";
 
-import { ParseError, Scope } from "../types/ScopeType";
-import { single } from "../utils";
+import { Scope } from "../types/ScopeType";
+import { ParseError, single } from "../utils";
 import { isPushBoolOp, Operation } from "../types/Operation";
 import { makeConditionalExpression, parseExpression, parseExpressionAsBoolean } from "./expressionProcessor";
 import { BuiltInCallableOptions, createBuiltInObject, parseBuiltInCallables, parseBuiltInSymbols } from "./builtins.SymbolDefs";

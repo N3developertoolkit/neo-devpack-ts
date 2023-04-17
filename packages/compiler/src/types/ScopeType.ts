@@ -2,6 +2,7 @@ import * as tsm from "ts-morph";
 import * as O from 'fp-ts/Option';
 import * as E from "fp-ts/Either";
 import { Operation } from "./Operation";
+import { ParseError } from "../utils";
 
 
 export interface Scope {
@@ -27,7 +28,6 @@ export interface ObjectSymbolDef extends SymbolDef {
     readonly props: ReadonlyArray<SymbolDef>;
 }
 
-export interface ParseError { message: string, node?: tsm.Node }
 
 export type ParseArgumentsFunc = (scope: Scope) => (node: tsm.CallExpression) => E.Either<ParseError, ReadonlyArray<Operation>>;
 

@@ -2,10 +2,7 @@ import { Node, Symbol } from "ts-morph";
 import { pipe } from "fp-ts/function";
 import * as E from "fp-ts/Either";
 import * as TS from '../TS';
-
-import { makeParseError } from "../symbolDef";
-import { ParseError } from "../types/ScopeType";
-
+import { ParseError, makeParseError } from "../utils";
 
 export const parseSymbol = (node: Node): E.Either<ParseError, Symbol> => {
     return pipe(
