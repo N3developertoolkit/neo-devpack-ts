@@ -9,7 +9,6 @@ import { parseContractMethod } from "./functionDeclarationProcessor";
 import { handleVariableStatement } from "./variableStatementProcessor";
 import { Operation } from "../types/Operation";
 import { Scope, CompileTimeObject, createEmptyScope, updateScope } from "../types/CompileTimeObject";
-import { parseSymbol } from "./parseSymbol";
 import { EventFunctionSymbolDef as EventSymbolDef, LocalFunctionSymbolDef as FunctionSymbolDef, StaticVarSymbolDef } from "./sourceSymbolDefs";
 import { makeParseError, ParseError, makeParseDiagnostic } from "../utils";
 
@@ -84,7 +83,7 @@ function reduceFunctionDeclaration(context: ParseDeclarationsContext, node: tsm.
             node,
             TS.getTag("event"),
             E.fromOption(() => makeError('only @event declare functions supported')),
-            E.chain(() => pipe(node, parseSymbol)),
+            E.chain(() => pipe(node, TS.parseSymbol)),
             E.map(symbol => ({ symbol, node } as ContractEvent)),
             E.match(
                 error => ({ ...context, errors: ROA.append(error)(context.errors) } as ParseDeclarationsContext),
@@ -215,7 +214,7 @@ export const parseProject =
 
                     const { errors: $errors, methods: $methods } = pipe(
                         initFunc,
-                        parseSymbol,
+                        TS.parseSymbol,
                         E.map(symbol => {
                             return {
                                 name: symbol.getName(),

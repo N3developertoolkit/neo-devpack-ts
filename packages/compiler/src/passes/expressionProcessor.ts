@@ -8,7 +8,6 @@ import * as TS from "../TS";
 import { isJumpTargetOp, Operation, SimpleOperationKind } from "../types/Operation";
 import { CompileTimeObject, Scope, resolve, resolveName, resolveType } from "../types/CompileTimeObject";
 import { isCallableDef, isObjectDef, parseLoadOps } from "../symbolDef";
-import { parseSymbol } from "./parseSymbol";
 import { ParseError, isBigIntLike, isBooleanLike, isNumberLike, isStringLike, makeParseError } from "../utils";
 
 const $resolve =
@@ -102,7 +101,7 @@ const parseStoreSymbol = (node: tsm.Expression) => (context: ChainContext): E.Ei
     if (tsm.Node.isIdentifier(node))
         return pipe(
             node,
-            parseSymbol, 
+            TS.parseSymbol, 
             E.chain($resolve(node)(context.scope)),
             E.map(def => [context, def])
         );
@@ -384,7 +383,7 @@ const parseObjectLiteralProperty =
                     O.match(
                         () => pipe(
                             prop,
-                            parseSymbol,
+                            TS.parseSymbol,
                             E.map(s => s.getName()),
                             E.chain(name => pipe(
                                 name,
@@ -416,7 +415,7 @@ export const parseObjectLiteralExpression =
                     E.bindTo('value'),
                     E.bind('key', () => pipe(
                         prop,
-                        parseSymbol,
+                        TS.parseSymbol,
                         E.map(s => parseString(s.getName()))
                     )),
                     E.map(({ key, value }) => ROA.append(key)(value))
@@ -541,7 +540,7 @@ const reduceIdentifier = (node: tsm.Identifier) =>
     (ctx: ChainContext): E.Either<ParseError, ChainContext> => {
         return pipe(
             node,
-            parseSymbol,
+            TS.parseSymbol,
             E.chain($resolve(node)(ctx.scope)),
             E.chain(current => {
                 if (!current.loadOps)
@@ -557,7 +556,7 @@ function resolveProperty(ctx: ChainContext) {
     return (node: tsm.PropertyAccessExpression): E.Either<ParseError, CompileTimeObject> => {
         return pipe(
             node,
-            parseSymbol,
+            TS.parseSymbol,
             E.bindTo('symbol'),
             E.bind('typeDef', () => {
                 const typeDef = pipe(

@@ -1,7 +1,9 @@
 import * as tsm from "ts-morph";
+import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option';
 import * as ROA from 'fp-ts/ReadonlyArray'
 import { pipe } from "fp-ts/lib/function";
+import { ParseError, makeParseError } from "./utils";
 
 export function getSymbol(node: tsm.Node) { return O.fromNullable(node.getSymbol()); }
 export function getType(node: tsm.Node) { return node.getType(); }
@@ -58,7 +60,7 @@ export const getExpression =
         tsm.Node.hasExpression(node)
             ? O.of(node.getExpression())
             : O.none;
-            
+
 export type MemberedNode = tsm.TypeElementMemberedNode & { getSymbol(): tsm.Symbol | undefined, getType(): tsm.Type };
 
 export function isMethodOrProp(node: tsm.Node): node is (tsm.MethodSignature | tsm.PropertySignature) {
@@ -79,25 +81,33 @@ export const getMember =
             )
         }
 
-        const compoundAssignmentOperatorMap = new Map<tsm.SyntaxKind, tsm.ts.BinaryOperator>([
-            [tsm.SyntaxKind.PlusEqualsToken, tsm.ts.SyntaxKind.PlusToken],
-            [tsm.SyntaxKind.MinusEqualsToken, tsm.SyntaxKind.MinusToken],
-            [tsm.SyntaxKind.AsteriskAsteriskEqualsToken, tsm.SyntaxKind.AsteriskAsteriskToken],
-            [tsm.SyntaxKind.AsteriskEqualsToken, tsm.SyntaxKind.AsteriskToken],
-            [tsm.SyntaxKind.SlashEqualsToken, tsm.SyntaxKind.SlashToken],
-            [tsm.SyntaxKind.PercentEqualsToken, tsm.SyntaxKind.PercentToken],
-            [tsm.SyntaxKind.AmpersandEqualsToken, tsm.SyntaxKind.AmpersandToken],
-            [tsm.SyntaxKind.BarEqualsToken, tsm.SyntaxKind.BarToken],
-            [tsm.SyntaxKind.CaretEqualsToken, tsm.SyntaxKind.CaretToken],
-            [tsm.SyntaxKind.LessThanLessThanEqualsToken, tsm.SyntaxKind.LessThanLessThanToken],
-            [tsm.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken, tsm.SyntaxKind.GreaterThanGreaterThanGreaterThanToken],
-            [tsm.SyntaxKind.GreaterThanGreaterThanEqualsToken, tsm.SyntaxKind.GreaterThanGreaterThanToken],
-            [tsm.SyntaxKind.BarBarEqualsToken, tsm.SyntaxKind.BarBarToken],
-            [tsm.SyntaxKind.AmpersandAmpersandEqualsToken, tsm.SyntaxKind.AmpersandAmpersandToken],
-            [tsm.SyntaxKind.QuestionQuestionEqualsToken, tsm.SyntaxKind.QuestionQuestionToken],
-        ]) as ReadonlyMap<tsm.SyntaxKind, tsm.ts.BinaryOperator>;
+const compoundAssignmentOperatorMap = new Map<tsm.SyntaxKind, tsm.ts.BinaryOperator>([
+    [tsm.SyntaxKind.PlusEqualsToken, tsm.ts.SyntaxKind.PlusToken],
+    [tsm.SyntaxKind.MinusEqualsToken, tsm.SyntaxKind.MinusToken],
+    [tsm.SyntaxKind.AsteriskAsteriskEqualsToken, tsm.SyntaxKind.AsteriskAsteriskToken],
+    [tsm.SyntaxKind.AsteriskEqualsToken, tsm.SyntaxKind.AsteriskToken],
+    [tsm.SyntaxKind.SlashEqualsToken, tsm.SyntaxKind.SlashToken],
+    [tsm.SyntaxKind.PercentEqualsToken, tsm.SyntaxKind.PercentToken],
+    [tsm.SyntaxKind.AmpersandEqualsToken, tsm.SyntaxKind.AmpersandToken],
+    [tsm.SyntaxKind.BarEqualsToken, tsm.SyntaxKind.BarToken],
+    [tsm.SyntaxKind.CaretEqualsToken, tsm.SyntaxKind.CaretToken],
+    [tsm.SyntaxKind.LessThanLessThanEqualsToken, tsm.SyntaxKind.LessThanLessThanToken],
+    [tsm.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken, tsm.SyntaxKind.GreaterThanGreaterThanGreaterThanToken],
+    [tsm.SyntaxKind.GreaterThanGreaterThanEqualsToken, tsm.SyntaxKind.GreaterThanGreaterThanToken],
+    [tsm.SyntaxKind.BarBarEqualsToken, tsm.SyntaxKind.BarBarToken],
+    [tsm.SyntaxKind.AmpersandAmpersandEqualsToken, tsm.SyntaxKind.AmpersandAmpersandToken],
+    [tsm.SyntaxKind.QuestionQuestionEqualsToken, tsm.SyntaxKind.QuestionQuestionToken],
+]) as ReadonlyMap<tsm.SyntaxKind, tsm.ts.BinaryOperator>;
 
 export function isAssignmentExpression(node: tsm.BinaryExpression) {
     const opKind = node.getOperatorToken().getKind();
     return opKind === tsm.SyntaxKind.EqualsToken || compoundAssignmentOperatorMap.has(opKind);
 }
+
+export const parseSymbol = (node: tsm.Node): E.Either<ParseError, tsm.Symbol> => {
+    return pipe(
+        node,
+        getSymbol,
+        E.fromOption(() => makeParseError(node)('invalid symbol'))
+    );
+};

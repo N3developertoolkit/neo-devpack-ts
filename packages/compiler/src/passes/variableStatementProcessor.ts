@@ -4,10 +4,10 @@ import * as ROA from 'fp-ts/ReadonlyArray';
 import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option';
+import * as TS from '../TS';
 import { CompileTimeObject, Scope, updateScope } from "../types/CompileTimeObject";
 import { Operation, pushInt, pushString, updateLocation } from "../types/Operation";
 import { E_fromSeparated, ParseError, makeParseError, single } from "../utils";
-import { parseSymbol } from "./parseSymbol";
 import { parseExpression as $parseExpression } from "./expressionProcessor";
 import { ConstantSymbolDef } from "./sourceSymbolDefs";
 
@@ -29,7 +29,7 @@ function handleIdentifierBinding(
 ): E.Either<ParseError, [readonly CompileTimeObject[], readonly Operation[]]> {
     return pipe(
         node,
-        parseSymbol,
+        TS.parseSymbol,
         E.chain(symbol => pipe(
             // if declKind is const and initOps is a single push operation
             // create a ConstantSymbolDef for the constant value.
@@ -69,7 +69,7 @@ function handleArrayBindingPattern(
         // create a VariableSymbolDef via the factory for each element
         ROA.map(([element, index]) => pipe(
             element,
-            parseSymbol,
+            TS.parseSymbol,
             E.map(symbol => factory(element, symbol, index)),
             E.map(def => [def, index] as const)
         )),
@@ -132,7 +132,7 @@ function handleObjectBindingPattern(
             getPropertyName(element),
             E.fromOption(() => makeParseError(element)("Expected a property name")),
             E.bindTo('name'),
-            E.bind('symbol', () => pipe(element, parseSymbol)),
+            E.bind('symbol', () => pipe(element, TS.parseSymbol)),
             E.bind('def', ({ symbol }) => E.of(factory(element, symbol, index))),
             E.map(({ name, def }) => [def, name] as const)
         )),

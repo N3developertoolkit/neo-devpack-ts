@@ -4,12 +4,12 @@ import * as ROA from 'fp-ts/ReadonlyArray';
 import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
 import * as S from 'fp-ts/State';
+import * as TS from '../TS';
 
 import { Scope, CompileTimeObject, createEmptyScope, createScope } from "../types/CompileTimeObject";
 import { convertJumpTargetOps, JumpTargetOperation, Location, Operation, updateLocation } from "../types/Operation";
 import { E_fromSeparated, ParseError, isVoidLike, makeParseError } from "../utils";
 import { ContractMethod, ContractSlot } from "../types/CompileOptions";
-import { parseSymbol } from "./parseSymbol";
 import { parseExpression, parseExpressionAsBoolean } from "./expressionProcessor";
 import { LocalVariableSymbolDef, ParameterSymbolDef } from "./sourceSymbolDefs";
 import { handleVariableStatement } from "./variableStatementProcessor";
@@ -370,7 +370,7 @@ const makeContractMethod =
                 E.bindTo('operations'),
                 E.bind('symbol', () => pipe(
                     node,
-                    parseSymbol,
+                    TS.parseSymbol,
                     E.chain(flow(
                         // _initialize is a special function emitted by the compiler
                         // so block any function from having this name
@@ -398,7 +398,7 @@ export const makeFunctionScope =
                 node.getParameters(),
                 ROA.mapWithIndex((index, node) => pipe(
                     node,
-                    parseSymbol,
+                    TS.parseSymbol,
                     E.map(symbol => new ParameterSymbolDef(node, symbol, index))
                 )),
                 ROA.separate,

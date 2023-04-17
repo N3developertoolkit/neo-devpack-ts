@@ -4,9 +4,9 @@ import { Operation } from "../types/Operation";
 import { Scope, CallableSymbolDef, ParseArgumentsFunc } from "../types/CompileTimeObject";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as E from "fp-ts/Either";
+import * as TS from '../TS';
 import { pipe } from "fp-ts/function";
 import { parseArguments } from "./expressionProcessor";
-import { parseSymbol } from "./parseSymbol";
 import { ParseError } from "../utils";
 
 function parseStore(loadOps: readonly Operation[], valueOps: readonly Operation[], storeOp: Operation) {
@@ -132,7 +132,7 @@ export class EventFunctionSymbolDef extends $SymbolDef implements CallableSymbol
     static create(decl: tsm.FunctionDeclaration, tag: tsm.JSDocTag): E.Either<ParseError, EventFunctionSymbolDef> {
         return pipe(
             decl,
-            parseSymbol,
+            TS.parseSymbol,
             E.map(symbol => {
                 const eventName = tag.getCommentText() ?? symbol.getName();
                 return new EventFunctionSymbolDef(decl, symbol, eventName);
@@ -156,7 +156,7 @@ export class LocalFunctionSymbolDef extends $SymbolDef implements CallableSymbol
     static create(decl: tsm.FunctionDeclaration): E.Either<ParseError, LocalFunctionSymbolDef> {
         return pipe(
             decl,
-            parseSymbol,
+            TS.parseSymbol,
             E.map(symbol => new LocalFunctionSymbolDef(decl, symbol)),
         )
     }
