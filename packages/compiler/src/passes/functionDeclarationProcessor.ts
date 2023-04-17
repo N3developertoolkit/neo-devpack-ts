@@ -153,9 +153,7 @@ const parseExpressionStatement =
             let ops: readonly Operation[];
             [ops, state] = parseExpressionState(parseExpression)(expr)(state);
 
-            const type = expr.getType();
-            // The store command should be *here* not in the expression parser!
-            if (!isVoidLike(expr.getType())) {
+            if (!isVoidLike(expr.getType()) && !TS.isAssignmentExpression(expr)) {
                 ops = ROA.append<Operation>({ kind: 'drop' })(ops);
             }
             return [updateLocation(node)(ops), state]

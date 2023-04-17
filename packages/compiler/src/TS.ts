@@ -99,9 +99,13 @@ const compoundAssignmentOperatorMap = new Map<tsm.SyntaxKind, tsm.ts.BinaryOpera
     [tsm.SyntaxKind.QuestionQuestionEqualsToken, tsm.SyntaxKind.QuestionQuestionToken],
 ]) as ReadonlyMap<tsm.SyntaxKind, tsm.ts.BinaryOperator>;
 
-export function isAssignmentExpression(node: tsm.BinaryExpression) {
-    const opKind = node.getOperatorToken().getKind();
-    return opKind === tsm.SyntaxKind.EqualsToken || compoundAssignmentOperatorMap.has(opKind);
+export function isAssignmentExpression(node: tsm.Expression) {
+    if (tsm.Node.isBinaryExpression(node)) {
+        const opKind = node.getOperatorToken().getKind();
+        return opKind === tsm.SyntaxKind.EqualsToken || compoundAssignmentOperatorMap.has(opKind);
+    } else {
+        return false;
+    }
 }
 
 export const parseSymbol = (node: tsm.Node): E.Either<ParseError, tsm.Symbol> => {
