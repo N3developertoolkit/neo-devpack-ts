@@ -197,6 +197,24 @@ const compoundAssignmentTokenMap: ReadonlyMap<tsm.SyntaxKind, SimpleOperationKin
     [tsm.SyntaxKind.PlusEqualsToken, 'add']
 ]);
 
+const compoundAssignmentOperatorMap = new Map<tsm.SyntaxKind, tsm.ts.BinaryOperator>([
+    [tsm.SyntaxKind.PlusEqualsToken, tsm.ts.SyntaxKind.PlusToken],
+    [tsm.SyntaxKind.MinusEqualsToken, tsm.SyntaxKind.MinusToken],
+    [tsm.SyntaxKind.AsteriskAsteriskEqualsToken, tsm.SyntaxKind.AsteriskAsteriskToken],
+    [tsm.SyntaxKind.AsteriskEqualsToken, tsm.SyntaxKind.AsteriskToken],
+    [tsm.SyntaxKind.SlashEqualsToken, tsm.SyntaxKind.SlashToken],
+    [tsm.SyntaxKind.PercentEqualsToken, tsm.SyntaxKind.PercentToken],
+    [tsm.SyntaxKind.AmpersandEqualsToken, tsm.SyntaxKind.AmpersandToken],
+    [tsm.SyntaxKind.BarEqualsToken, tsm.SyntaxKind.BarToken],
+    [tsm.SyntaxKind.CaretEqualsToken, tsm.SyntaxKind.CaretToken],
+    [tsm.SyntaxKind.LessThanLessThanEqualsToken, tsm.SyntaxKind.LessThanLessThanToken],
+    [tsm.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken, tsm.SyntaxKind.GreaterThanGreaterThanGreaterThanToken],
+    [tsm.SyntaxKind.GreaterThanGreaterThanEqualsToken, tsm.SyntaxKind.GreaterThanGreaterThanToken],
+    [tsm.SyntaxKind.BarBarEqualsToken, tsm.SyntaxKind.BarBarToken],
+    [tsm.SyntaxKind.AmpersandAmpersandEqualsToken, tsm.SyntaxKind.AmpersandAmpersandToken],
+    [tsm.SyntaxKind.QuestionQuestionEqualsToken, tsm.SyntaxKind.QuestionQuestionToken],
+]) as ReadonlyMap<tsm.SyntaxKind, tsm.ts.BinaryOperator>;
+
 export const parseBinaryExpression =
     (scope: Scope) =>
         (node: tsm.BinaryExpression): E.Either<ParseError, readonly Operation[]> => {
