@@ -18,19 +18,16 @@ export interface CompileTimeObject {
     readonly parseStore?: ParseStoreFunc
 }
 
-export interface TypeDef {
-    readonly symbol: tsm.Symbol;
-}
-
 export interface ObjectSymbolDef extends CompileTimeObject {
     readonly props: ReadonlyArray<CompileTimeObject>;
 }
 
 
-export type ParseArgumentsFunc = (scope: Scope) => (node: tsm.CallExpression) => E.Either<ParseError, ReadonlyArray<Operation>>;
+export type ParseArgumentsFunc = (scope: Scope) => (node: tsm.CallExpression) => E.Either<ParseError, readonly Operation[]>;
 
 export interface CallableSymbolDef extends ObjectSymbolDef {
-    parseArguments: ParseArgumentsFunc;
+    parseCall: ParseArgumentsFunc;
+    parseConstructor?: ParseArgumentsFunc;
 }
 
 export interface Scope {

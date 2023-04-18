@@ -117,7 +117,7 @@ export class EventFunctionSymbolDef extends $SymbolDef implements CallableSymbol
         this.loadOps = ROA.of({ kind: 'syscall', name: "System.Runtime.Notify" })
     }
 
-    parseArguments = (scope: Scope) => (node: tsm.CallExpression): E.Either<ParseError, ReadonlyArray<Operation>> => {
+    parseCall = (scope: Scope) => (node: tsm.CallExpression): E.Either<ParseError, ReadonlyArray<Operation>> => {
         return pipe(
             node,
             parseArguments(scope),
@@ -145,12 +145,12 @@ export class LocalFunctionSymbolDef extends $SymbolDef implements CallableSymbol
 
     readonly loadOps: readonly Operation[];
     readonly props = [];
-    readonly parseArguments: ParseArgumentsFunc;
+    readonly parseCall: ParseArgumentsFunc;
 
     constructor(readonly decl: tsm.FunctionDeclaration, symbol: tsm.Symbol) {
         super(decl, symbol);
         this.loadOps = [{ kind: 'call', method: this.symbol }]
-        this.parseArguments = parseArguments;
+        this.parseCall = parseArguments;
     }
 
     static create(decl: tsm.FunctionDeclaration): E.Either<ParseError, LocalFunctionSymbolDef> {

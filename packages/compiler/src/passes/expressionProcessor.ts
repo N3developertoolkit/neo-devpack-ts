@@ -632,7 +632,7 @@ const reduceCallExpression =
                         isCallableDef,
                         () => makeParseError(node)(`${def.symbol.getName()} not callable`))
                 )),
-                E.chain(def => def.parseArguments(ctx.scope)(node)),
+                E.chain(def => def.parseCall(ctx.scope)(node)),
                 E.map(ops => ROA.concat(ctx.operations)(ops)),
                 E.map(operations => {
                     return {

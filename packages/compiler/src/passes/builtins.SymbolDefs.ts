@@ -87,7 +87,7 @@ export class BuiltInCallableDef extends $SymbolDef implements CallableSymbolDef 
         node: tsm.Node,
         readonly loadOps: readonly Operation[],
         readonly props: readonly CompileTimeObject[],
-        readonly parseArguments: ParseArgumentsFunc,
+        readonly parseCall: ParseArgumentsFunc,
     ) {
         super(node);
     }
