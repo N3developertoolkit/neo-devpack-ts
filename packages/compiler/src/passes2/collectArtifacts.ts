@@ -136,7 +136,7 @@ function convertCall(
     address: number
 ): E.Either<string, Instruction> {
     const targetAddress = methodAddressMap.get(op.method);
-    if (!targetAddress) return E.left(`${op.method.getName()} invalid address`);
+    if (targetAddress === undefined) return E.left(`${op.method.getName()} invalid address`);
     const addressOffset = targetAddress - address;
     const buffer = new ArrayBuffer(4);
     new DataView(buffer).setInt32(0, addressOffset, true);

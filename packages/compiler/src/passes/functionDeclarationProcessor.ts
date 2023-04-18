@@ -11,8 +11,8 @@ import { convertJumpTargetOps, JumpTargetOperation, Location, Operation, updateL
 import { E_fromSeparated, ParseError, isVoidLike, makeParseError } from "../utils";
 import { ContractMethod, ContractSlot } from "../types/CompileOptions";
 import { parseExpression, parseExpressionAsBoolean } from "./expressionProcessor";
-import { LocalVariableSymbolDef, ParameterSymbolDef } from "./sourceSymbolDefs";
 import { handleVariableStatement } from "./variableStatementProcessor";
+import { makeLocalVariable, makeParameter } from "./sourceSymbolDefs";
 
 interface BreakContext {
     readonly breakTarget: Operation;
@@ -226,18 +226,15 @@ const parseVariableStatement =
     (node: tsm.VariableStatement): ParseStatementState =>
         state => {
 
-            const factory = (element: tsm.Identifier | tsm.BindingElement, symbol: tsm.Symbol, index: number) =>
-                new LocalVariableSymbolDef(element, symbol, index + state.locals.length);
-
             return pipe(
                 node,
-                handleVariableStatement(state.scope)(factory),
+                handleVariableStatement(state.scope)(makeLocalVariable),
                 E.match(
                     errors => [ROA.empty, { ...state, errors: ROA.concat(errors)(state.errors) }],
                     ([scope, defs, ops]) => {
                         const locals = pipe(
                             defs,
-                            ROA.map(d => ({ name: d.symbol.getName(), type: d.type } as ContractSlot)),
+                            ROA.map(d => ({ name: d.symbol.getName(), type: d.node.getType() } as ContractSlot)),
                             vars => ROA.concat(vars)(state.locals)
                         )
                         return [ops, { ...state, locals, scope }];
@@ -397,7 +394,7 @@ export const makeFunctionScope =
                 ROA.mapWithIndex((index, node) => pipe(
                     node,
                     TS.parseSymbol,
-                    E.map(symbol => new ParameterSymbolDef(node, symbol, index))
+                    E.map(symbol => makeParameter(node, symbol, index))
                 )),
                 ROA.separate,
                 E_fromSeparated,

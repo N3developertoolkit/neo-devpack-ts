@@ -9,8 +9,8 @@ import { parseContractMethod } from "./functionDeclarationProcessor";
 import { handleVariableStatement } from "./variableStatementProcessor";
 import { Operation } from "../types/Operation";
 import { Scope, CompileTimeObject, createEmptyScope, updateScope } from "../types/CompileTimeObject";
-import { EventFunctionSymbolDef as EventSymbolDef, LocalFunctionSymbolDef as FunctionSymbolDef, StaticVarSymbolDef } from "./sourceSymbolDefs";
 import { makeParseError, ParseError, makeParseDiagnostic } from "../utils";
+import { makeEventFunction, makeStaticVariable, parseEventFunction, parseFunction } from "./sourceSymbolDefs";
 
 const hoistFunctionDeclaration =
     (context: HoistContext, node: tsm.FunctionDeclaration): HoistContext => {
@@ -19,13 +19,13 @@ const hoistFunctionDeclaration =
                 node,
                 TS.getTag("event"),
                 E.fromOption(() => makeParseError(node)('only @event declare functions supported')),
-                E.chain(tag => EventSymbolDef.create(node, tag)),
+                E.chain(tag => parseEventFunction(node, tag)),
                 hoist
             );
         } else {
             return pipe(
                 node,
-                FunctionSymbolDef.create,
+                parseFunction,
                 hoist
             );
         }
@@ -104,12 +104,9 @@ function reduceFunctionDeclaration(context: ParseDeclarationsContext, node: tsm.
 
 function reduceVariableStatement(context: ParseDeclarationsContext, node: tsm.VariableStatement): ParseDeclarationsContext {
 
-    const factory = (element: tsm.Identifier | tsm.BindingElement, symbol: tsm.Symbol, index: number) =>
-        new StaticVarSymbolDef(element, symbol, index + context.staticVars.length);
-
     return pipe(
         node,
-        handleVariableStatement(context.scope)(factory),
+        handleVariableStatement(context.scope)(makeStaticVariable),
         E.match(
             errors => {
                 return { ...context, errors: ROA.concat(errors)(context.errors) };
@@ -117,7 +114,7 @@ function reduceVariableStatement(context: ParseDeclarationsContext, node: tsm.Va
             ([scope, defs, ops]) => {
                 const staticVars = pipe(
                     defs,
-                    ROA.map(d => ({ name: d.symbol.getName(), type: d.type } as ContractSlot)),
+                    ROA.map(d => ({ name: d.symbol.getName(), type: d.node.getType() } as ContractSlot)),
                     vars => ROA.concat(vars)(context.staticVars)
                 )
                 const initializeOps = ROA.concat(context.initializeOps)(ops);

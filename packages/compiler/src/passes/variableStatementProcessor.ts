@@ -9,10 +9,9 @@ import { CompileTimeObject, Scope, updateScope } from "../types/CompileTimeObjec
 import { Operation, pushInt, pushString, updateLocation } from "../types/Operation";
 import { E_fromSeparated, ParseError, makeParseError, single } from "../utils";
 import { parseExpression as $parseExpression } from "./expressionProcessor";
-import { ConstantSymbolDef } from "./sourceSymbolDefs";
+import { makeConstant } from "./sourceSymbolDefs";
 
-type VariableSymbolDef = CompileTimeObject & { readonly decl: tsm.Node; readonly storeOp: Operation; };
-type VariableFactory = (element: tsm.Identifier | tsm.BindingElement, symbol: tsm.Symbol, index: number) => VariableSymbolDef;
+type VariableFactory = (element: tsm.Identifier | tsm.BindingElement, symbol: tsm.Symbol, index: number) => CompileTimeObject;
 
 function isPushOp(op: Operation) {
     return op.kind === "pushbool"
@@ -26,7 +25,7 @@ function handleIdentifierBinding(
     declKind: tsm.VariableDeclarationKind,
     factory: VariableFactory,
     initOps: readonly Operation[]
-): E.Either<ParseError, [readonly CompileTimeObject[], readonly Operation[]]> {
+): E.Either<ParseError, readonly [readonly CompileTimeObject[], readonly Operation[]]> {
     return pipe(
         node,
         TS.parseSymbol,
@@ -41,15 +40,14 @@ function handleIdentifierBinding(
             O.match(
                 () => {
                     const def = factory(node, symbol, 0);
-                    const ops = ROA.append(def.storeOp)(initOps);
-                    return [[def], ops] as [readonly CompileTimeObject[], readonly Operation[]];
+                    const ops = ROA.concat(def.storeOps ?? [])(initOps);
+                    return E.of([ROA.of(def), ops] as const)
                 },
                 op => {
-                    const def = new ConstantSymbolDef(node, symbol, op);
-                    return [[def], []] as [readonly CompileTimeObject[], readonly Operation[]];
+                    const def = makeConstant(node, symbol, op);
+                    return E.of([ROA.of(def), []] as const)
                 }
             ),
-            v => E.of(v)
         ))
     );
 }
@@ -85,19 +83,19 @@ function handleArrayBindingPattern(
                         // duplicate the init result, pick the specified index
                         // from the object and store it in the variable
                         ROA.map(([def, index]) => [
-                            { kind: "duplicate", location: def.decl },
+                            { kind: "duplicate", location: def.node },
                             pushInt(index),
                             { kind: 'pickitem' },
-                            def.storeOp
+                            ...def.storeOps ?? []
                         ] as readonly Operation[]),
                         // for the last binding element, pick the specified key
                         // from the object without duplicating
                         ops => {
                             const [def, index] = last;
                             const lastOps: readonly Operation[] = [
-                                pushInt(index, def.decl),
+                                pushInt(index, def.node),
                                 { kind: 'pickitem' },
-                                def.storeOp
+                                ...def.storeOps ?? []
                             ];
                             return ROA.append(lastOps)(ops);
                         },
@@ -148,19 +146,19 @@ function handleObjectBindingPattern(
                         // duplicate the init expression, pick the specified key
                         // from the object and store it in the variable
                         ROA.map(([def, name]) => [
-                            { kind: "duplicate", location: def.decl },
+                            { kind: "duplicate", location: def.node },
                             pushString(name),
                             { kind: 'pickitem' },
-                            def.storeOp
+                            ...def.storeOps ?? []
                         ] as readonly Operation[]),
                         // for the last binding element, pick the specified key
                         // from the object without duplicating
                         ops => {
                             const [def, name] = last;
                             const lastOps: readonly Operation[] = [
-                                pushString(name, def.decl),
+                                pushString(name, def.node),
                                 { kind: 'pickitem' },
-                                def.storeOp
+                                ...def.storeOps ?? []
                             ];
                             return ROA.append(lastOps)(ops);
                         },
@@ -198,7 +196,7 @@ function handleObjectBindingPattern(
 
 const handleVariableDeclaration =
     (node: tsm.BindingName, declKind: tsm.VariableDeclarationKind, factory: VariableFactory) =>
-        (initOps: readonly Operation[]): E.Either<ParseError, [readonly CompileTimeObject[], readonly Operation[]]> => {
+        (initOps: readonly Operation[]): E.Either<ParseError, readonly [readonly CompileTimeObject[], readonly Operation[]]> => {
             switch (node.getKind()) {
                 case tsm.SyntaxKind.Identifier:
                     return handleIdentifierBinding(node as tsm.Identifier, declKind, factory, initOps);
@@ -216,7 +214,7 @@ const handleVariableDeclaration =
 
 export const handleVariableStatement =
     (scope: Scope) =>
-        (factory: (element: tsm.Identifier | tsm.BindingElement, symbol: tsm.Symbol, index: number) => VariableSymbolDef) =>
+        (factory: VariableFactory) =>
             (node: tsm.VariableStatement): E.Either<readonly ParseError[], readonly [Scope, readonly CompileTimeObject[], readonly Operation[]]> => {
                 return pipe(
                     node.getDeclarations(),
@@ -248,8 +246,13 @@ export const handleVariableStatement =
                                 defs,
                                 // filter out all the constants from the array of symbol definitions
                                 // that get returned to the caller
-                                ROA.filter(def => !(def instanceof ConstantSymbolDef)),
-                                varDefs => [scope, varDefs, ops] as const
+                                // ROA.filter(def => !(def instanceof ConstantSymbolDef)),
+                                ROA.filter(def => 'isConstant' in def
+                                    ? !def.isConstant
+                                    : true),
+                                varDefs => {
+                                    return [scope, varDefs, ops] as const;
+                                }
                             ))
                         );
                     })

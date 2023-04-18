@@ -4,10 +4,10 @@ import * as E from "fp-ts/Either";
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as ROR from 'fp-ts/ReadonlyRecord';
 import * as TS from "../TS";
-import { CallableSymbolDef, ObjectSymbolDef, ParseArgumentsFunc, CompileTimeObject } from "../types/CompileTimeObject";
+import { ParseArgumentsFunc, CompileTimeObject, makeCompileTimeObject } from "../types/CompileTimeObject";
 import { Operation } from "../types/Operation";
-import { $SymbolDef } from "../symbolDef";
 import { parseArguments } from "./expressionProcessor";
+import { CompileError } from "../utils";
 
 
 export function checkErrors(errorMessage: string) {
@@ -24,19 +24,11 @@ export function rorValues<K extends string, A>(r: Readonly<Record<K, A>>) {
     return pipe(r, ROR.toEntries, ROA.map(t => t[1]));
 }
 
-export class BuiltInSymbolDef extends $SymbolDef {
-    constructor(
-        node: tsm.Node,
-        readonly loadOps: readonly Operation[]
-    ) {
-        super(node);
-    }
-}
-
 export function createBuiltInSymbol(node: tsm.Node, loadOps?: readonly Operation[]) {
-    return new BuiltInSymbolDef(
-        node,
-        loadOps ?? []);
+    const symbol = node.getSymbol();
+    if (!symbol) throw new CompileError('symbol not found', node);
+
+    return makeCompileTimeObject(node, symbol, { loadOps: loadOps ?? [] });
 }
 
 export function parseBuiltInSymbols(decl: TS.MemberedNode) {
@@ -58,53 +50,36 @@ export function parseBuiltInSymbols(decl: TS.MemberedNode) {
     };
 }
 
-export class BuiltInObjectDef extends $SymbolDef implements ObjectSymbolDef {
-
-    constructor(
-        node: tsm.Node,
-        readonly loadOps: readonly Operation[],
-        readonly props: readonly CompileTimeObject[],
-    ) {
-        super(node);
-    }
-}
-
 export interface BuiltInObjectOptions {
     readonly loadOps?: readonly Operation[],
     readonly props?: readonly CompileTimeObject[],
 }
 
 export function createBuiltInObject(node: tsm.Node, options: BuiltInObjectOptions) {
-    return new BuiltInObjectDef(
-        node,
-        options.loadOps ?? [],
-        options.props ?? []);
+    const symbol = node.getSymbol();
+    if (!symbol) throw new CompileError('symbol not found', node);
+
+    return makeCompileTimeObject(node, symbol, {
+        loadOps: options.loadOps ?? [],
+        getProperty: options.props ?? []
+    });
 }
 
-export class BuiltInCallableDef extends $SymbolDef implements CallableSymbolDef {
-
-    constructor(
-        node: tsm.Node,
-        readonly loadOps: readonly Operation[],
-        readonly props: readonly CompileTimeObject[],
-        readonly parseCall: ParseArgumentsFunc,
-    ) {
-        super(node);
-    }
-}
 
 export interface BuiltInCallableOptions extends BuiltInObjectOptions {
     readonly parseArguments?: ParseArgumentsFunc;
 }
 
 export function createBuiltInCallable(node: tsm.Node, options: BuiltInCallableOptions) {
-    return new BuiltInCallableDef(
-        node,
-        options.loadOps ?? [],
-        options.props ?? [],
-        options.parseArguments ?? parseArguments);
-}
+    const symbol = node.getSymbol();
+    if (!symbol) throw new CompileError('symbol not found', node);
 
+    return makeCompileTimeObject(node, symbol, {
+        loadOps: options.loadOps ?? [],
+        getProperty: options.props ?? [],
+        parseCall: options.parseArguments ?? parseArguments
+    });
+}
 
 export function parseBuiltInCallables(decl: TS.MemberedNode) {
     return (props: Record<string, BuiltInCallableOptions>): readonly CompileTimeObject[] => {
