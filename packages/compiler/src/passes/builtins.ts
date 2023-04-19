@@ -1,6 +1,6 @@
 import * as tsm from "ts-morph";
 import { sc, u } from "@cityofzion/neon-core";
-import { pipe } from "fp-ts/lib/function";
+import { identity, pipe } from "fp-ts/lib/function";
 import * as E from "fp-ts/Either";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROR from 'fp-ts/ReadonlyRecord'
@@ -9,7 +9,7 @@ import * as TS from "../TS";
 
 import { CompilerState } from "../types/CompileOptions";
 import { CompileTimeObject, Scope, createEmptyScope, createScope } from "../types/CompileTimeObject";
-import { ParseError, createDiagnostic, isVoidLike, makeParseError, single } from "../utils";
+import { CompileError, ParseError, createDiagnostic, isVoidLike, makeParseError, single } from "../utils";
 import { Operation, parseOperation as $parseOperation, pushString } from "../types/Operation";
 
 import { parseExpression } from "./expressionProcessor";
@@ -17,6 +17,7 @@ import { makeByteStringConstructor, makeByteStringInterface } from "./builtins.B
 import { checkErrors, createBuiltInCallable, createBuiltInObject, createBuiltInSymbol, rorValues } from "./builtins.SymbolDefs";
 import { makeReadonlyStorageContext, makeStorageConstructor, makeStorageContext } from "./builtins.Storage";
 import { LibraryDeclaration } from "../types/LibraryDeclaration";
+import { parseEnumDecl } from "./parseDeclarations";
 
 
 module REGEX {
@@ -230,19 +231,14 @@ function makeOperationsFunction(decl: tsm.FunctionDeclaration) {
 }
 
 function makeEnumObject(decl: tsm.EnumDeclaration) {
-    const props = pipe(
-        decl.getMembers(),
-        ROA.map(member => {
-            const value = member.getValue();
-            if (value == undefined) return E.left(member.getName());
-            const op: Operation = typeof value === 'number'
-                ? { kind: "pushint", value: BigInt(value) }
-                : pushString(value);
-            return E.of(createBuiltInSymbol(member, [op]))
-        }),
-        checkErrors(`invalid EnumDeclaration ${decl.getSymbol()?.getName()}`)
+    return pipe(
+        decl,
+        parseEnumDecl,
+        E.match(
+            err => { throw new CompileError(err.message, decl); },
+            identity
+        )
     )
-    return createBuiltInObject(decl, { props });
 }
 
 function makeIteratorInterface(decl: tsm.InterfaceDeclaration): CompileTimeObject {

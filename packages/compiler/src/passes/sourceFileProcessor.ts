@@ -10,46 +10,32 @@ import { handleVariableStatement } from "./variableStatementProcessor";
 import { Operation } from "../types/Operation";
 import { Scope, CompileTimeObject, createEmptyScope, updateScope } from "../types/CompileTimeObject";
 import { makeParseError, ParseError, makeParseDiagnostic } from "../utils";
-import { makeEventFunction, makeStaticVariable, parseEventFunction, parseFunction } from "./sourceSymbolDefs";
+import { makeStaticVariable, parseEnumDecl, parseFunctionDecl } from "./parseDeclarations";
 
-const hoistFunctionDeclaration =
-    (context: HoistContext, node: tsm.FunctionDeclaration): HoistContext => {
-        if (node.hasDeclareKeyword()) {
-            return pipe(
-                node,
-                TS.getTag("event"),
-                E.fromOption(() => makeParseError(node)('only @event declare functions supported')),
-                E.chain(tag => parseEventFunction(node, tag)),
-                hoist
-            );
-        } else {
-            return pipe(
-                node,
-                parseFunction,
-                hoist
-            );
-        }
-
-        function hoist(def: E.Either<ParseError, CompileTimeObject>): HoistContext {
-            return pipe(
-                def,
-                E.chain(flow(
-                    qqq => updateScope(context.scope)(qqq),
-                    E.mapLeft(makeParseError(node))
-                )),
-                E.match(
-                    error => ({ ...context, errors: ROA.append(makeParseError(node)(error))(context.errors) }),
-                    scope => ({ ...context, scope }),
-                )
-            );
-        }
+const hoist = (context: HoistContext, node: tsm.Node) =>
+    (def: E.Either<ParseError, CompileTimeObject>): HoistContext => {
+        return pipe(
+            def,
+            E.chain(flow(
+                cto => updateScope(context.scope)(cto),
+                E.mapLeft(makeParseError(node))
+            )),
+            E.match(
+                error => ({ ...context, errors: ROA.append(makeParseError(node)(error))(context.errors) }),
+                scope => ({ ...context, scope }),
+            )
+        );
     }
 
 function hoistDeclaration(context: HoistContext, node: tsm.Node): HoistContext {
 
     switch (node.getKind()) {
+        // TODO: hoist these
+        // case tsm.SyntaxKind.InterfaceDeclaration:
+        // case tsm.SyntaxKind.TypeAliasDeclaration:
+
         case tsm.SyntaxKind.FunctionDeclaration:
-            return hoistFunctionDeclaration(context, node as tsm.FunctionDeclaration);
+            return pipe(node as tsm.FunctionDeclaration, parseFunctionDecl, hoist(context, node));
         default:
             return context;
     }
@@ -124,6 +110,22 @@ function reduceVariableStatement(context: ParseDeclarationsContext, node: tsm.Va
     )
 }
 
+function reduceEnumDeclaration(context: ParseDeclarationsContext, node: tsm.EnumDeclaration): ParseDeclarationsContext {
+    return pipe(
+        node, 
+        parseEnumDecl,
+        E.chain(flow(
+            updateScope(context.scope), 
+            E.mapLeft(makeParseError(node))
+        )),
+        E.match(
+            error => ({ ...context, errors: ROA.append(error)(context.errors) }),
+            scope => ({ ...context, scope })
+        )
+    )
+}
+
+
 interface ParseSourceContext extends CompiledProject {
     readonly initializeOps: readonly Operation[];
     readonly errors: readonly ParseError[];
@@ -143,6 +145,8 @@ function reduceDeclaration(context: ParseDeclarationsContext, node: tsm.Node): P
         case tsm.SyntaxKind.InterfaceDeclaration:
         case tsm.SyntaxKind.TypeAliasDeclaration:
             return context;
+        case tsm.SyntaxKind.EnumDeclaration:
+            return reduceEnumDeclaration(context, node as tsm.EnumDeclaration);
         case tsm.SyntaxKind.FunctionDeclaration:
             return reduceFunctionDeclaration(context, node as tsm.FunctionDeclaration);
         case tsm.SyntaxKind.VariableStatement:

@@ -9,7 +9,7 @@ import { CompileTimeObject, Scope, updateScope } from "../types/CompileTimeObjec
 import { Operation, pushInt, pushString, updateLocation } from "../types/Operation";
 import { E_fromSeparated, ParseError, makeParseError, single } from "../utils";
 import { parseExpression as $parseExpression } from "./expressionProcessor";
-import { makeConstant } from "./sourceSymbolDefs";
+import { makeConstant } from "./parseDeclarations";
 
 type VariableFactory = (element: tsm.Identifier | tsm.BindingElement, symbol: tsm.Symbol, index: number) => CompileTimeObject;
 

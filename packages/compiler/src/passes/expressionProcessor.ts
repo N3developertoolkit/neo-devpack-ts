@@ -9,6 +9,17 @@ import { isJumpTargetOp, Operation, SimpleOperationKind } from "../types/Operati
 import { CompileTimeObject, Scope, resolve, resolveName, resolveType } from "../types/CompileTimeObject";
 import { ParseError, isBigIntLike, isBooleanLike, isNumberLike, isStringLike, makeParseError } from "../utils";
 
+type DispatchMap<T> = {
+    [TKind in tsm.SyntaxKind]?: (node: tsm.KindToNodeMappings[TKind]) => E.Either<ParseError, T>;
+};
+
+function dispatch<T>(node: tsm.Node, dispatchMap: DispatchMap<T>) {
+    const dispatchFunction = dispatchMap[node.getKind()];
+    return dispatchFunction
+        ? dispatchFunction(node as any)
+        : E.left(makeParseError(node)(`dispatch ${node.getKindName()} failed`));
+}
+
 const $resolve =
     (node: tsm.Node) =>
         (scope: Scope) =>
@@ -266,7 +277,7 @@ export const parseBinaryExpression =
                 )
             }
 
-            return E.left(makeParseError(node)(`parseBinaryOperatorToken ${node.getKindName()} not supported`))
+            return E.left(makeParseError(node)(`parseBinaryExpression ${node.getKindName()} not supported`))
         }
 
 export const parseBooleanLiteral =

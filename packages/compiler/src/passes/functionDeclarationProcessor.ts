@@ -12,7 +12,7 @@ import { E_fromSeparated, ParseError, isVoidLike, makeParseError } from "../util
 import { ContractMethod, ContractSlot } from "../types/CompileOptions";
 import { parseExpression, parseExpressionAsBoolean } from "./expressionProcessor";
 import { handleVariableStatement } from "./variableStatementProcessor";
-import { makeLocalVariable, makeParameter } from "./sourceSymbolDefs";
+import { makeLocalVariable, makeParameter } from "./parseDeclarations";
 
 interface BreakContext {
     readonly breakTarget: Operation;
@@ -284,6 +284,8 @@ const parseStatement =
                     return parseContinueStatement(node as tsm.ContinueStatement)(state);
                 case tsm.SyntaxKind.DoStatement:
                     return parseDoStatement(node as tsm.DoStatement)(state);
+                case tsm.SyntaxKind.EmptyStatement:
+                    return [[], state];
                 case tsm.SyntaxKind.ExpressionStatement:
                     return parseExpressionStatement(node as tsm.ExpressionStatement)(state);
                 case tsm.SyntaxKind.IfStatement:
@@ -305,7 +307,6 @@ const parseStatement =
 
 // case SyntaxKind.ClassDeclaration:
 // case SyntaxKind.DebuggerStatement:
-// case SyntaxKind.EmptyStatement:
 // case SyntaxKind.EnumDeclaration:
 // case SyntaxKind.ExportAssignment:
 // case SyntaxKind.ExportDeclaration:
@@ -400,7 +401,7 @@ export const makeFunctionScope =
                 E_fromSeparated,
                 E.chain(defs => {
                     return pipe(
-                        defs as readonly CompileTimeObject[],
+                        defs,
                         createScope(parentScope),
                         E.mapLeft(msg => ROA.of(makeParseError(node)(msg)))
                     );
