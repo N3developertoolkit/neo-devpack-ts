@@ -7,24 +7,36 @@ import * as S from 'fp-ts/State';
 import * as TS from '../TS';
 
 import { Scope, CompileTimeObject, createEmptyScope, createScope } from "../types/CompileTimeObject";
-import { convertJumpTargetOps, JumpTargetOperation, Location, Operation, updateLocation } from "../types/Operation";
-import { E_fromSeparated, ParseError, isVoidLike, makeParseError } from "../utils";
+import { convertJumpTargetOps, JumpTargetOperation, Location, Operation, TryTargetOperation, updateLocation } from "../types/Operation";
+import { CompileError, E_fromSeparated, ParseError, isVoidLike, makeParseError } from "../utils";
 import { ContractMethod, ContractSlot } from "../types/CompileOptions";
 import { parseExpression, parseExpressionAsBoolean } from "./expressionProcessor";
 import { handleVariableStatement } from "./variableStatementProcessor";
 import { makeLocalVariable, makeParameter } from "./parseDeclarations";
 
-interface BreakContext {
+interface LoopContext {
     readonly breakTarget: Operation;
     readonly continueTarget: Operation;
-
 }
+
 interface ParseFunctionContext {
     readonly scope: Scope;
     readonly locals: readonly ContractSlot[];
     readonly errors: readonly ParseError[];
     readonly returnTarget: Operation;
-    readonly breakContext: readonly BreakContext[];
+    readonly loopContext: readonly LoopContext[];
+}
+
+function pushLoopContext(context: ParseFunctionContext) {
+    const breakTarget = { kind: 'noop' } as Operation;
+    const continueTarget = { kind: 'noop' } as Operation;
+    const loopContext = ROA.prepend({ breakTarget, continueTarget })(context.loopContext);
+    const state: ParseFunctionContext = { ...context, loopContext };
+    return { state, breakTarget, continueTarget };
+}
+
+function resetLoopContext(context: ParseFunctionContext, originalContext: ParseFunctionContext) {
+    return { ...context, loopContext: originalContext.loopContext } as ParseFunctionContext;
 }
 
 interface ParseBodyResult {
@@ -91,7 +103,7 @@ const parseBreakStatement =
     (node: tsm.BreakStatement): ParseStatementState =>
         state => {
             return pipe(
-                state.breakContext,
+                state.loopContext,
                 ROA.head,
                 E.fromOption(() => makeParseError(node)('break statement not within a loop or switch')),
                 // TODO: if in try/catch block, use endtry instead of jump
@@ -106,7 +118,7 @@ const parseContinueStatement =
     (node: tsm.ContinueStatement): ParseStatementState =>
         state => {
             return pipe(
-                state.breakContext,
+                state.loopContext,
                 ROA.head,
                 E.fromOption(() => makeParseError(node)('coninue statement not within a loop or switch')),
                 // TODO: if in try/catch block, use endtry instead of jump
@@ -121,18 +133,12 @@ const parseDoStatement =
     (node: tsm.DoStatement): ParseStatementState =>
         state => {
             const startTarget = { kind: 'noop' } as Operation;
-            const breakTarget = { kind: 'noop' } as Operation;
-            const continueTarget = { kind: 'noop' } as Operation;
+            let { breakTarget, continueTarget, state: stmtState } = pushLoopContext(state);
 
             let stmtOps, exprOps;
-            let $state: ParseFunctionContext = {
-                ...state,
-                breakContext: ROA.prepend({ breakTarget, continueTarget })(state.breakContext),
-            }
-
+            [stmtOps, stmtState] = parseStatement(node.getStatement())(stmtState);
             const expr = node.getExpression();
-            [stmtOps, $state] = parseStatement(node.getStatement())($state);
-            [exprOps, $state] = parseExpressionState(parseExpressionAsBoolean)(expr)($state);
+            [exprOps, stmtState] = parseExpressionState(parseExpressionAsBoolean)(expr)(stmtState);
             const ops = pipe(
                 startTarget,
                 ROA.of,
@@ -143,7 +149,7 @@ const parseDoStatement =
                 ROA.append(breakTarget),
             )
 
-            return [ops, { ...$state, breakContext: state.breakContext }]
+            return [ops, resetLoopContext(stmtState, state)]
         }
 
 const parseExpressionStatement =
@@ -246,30 +252,24 @@ const parseVariableStatement =
 const parseWhileStatement =
     (node: tsm.WhileStatement): ParseStatementState =>
         state => {
-            const breakTarget = { kind: 'noop' } as Operation;
-            const continueTarget = { kind: 'noop' } as Operation;
+            let { breakTarget, continueTarget, state: stmtState } = pushLoopContext(state);
 
             let stmtOps, exprOps;
-            let $state: ParseFunctionContext = {
-                ...state,
-                breakContext: ROA.prepend({ breakTarget, continueTarget })(state.breakContext),
-            }
-
+            [stmtOps, stmtState] = parseStatement(node.getStatement())(stmtState);
             const expr = node.getExpression();
-            [stmtOps, $state] = parseStatement(node.getStatement())($state);
-            [exprOps, $state] = parseExpressionState(parseExpressionAsBoolean)(expr)($state);
+            [exprOps, stmtState] = parseExpressionState(parseExpressionAsBoolean)(expr)(stmtState);
 
             const ops = pipe(
                 continueTarget,
                 ROA.of,
                 ROA.concat(updateLocation(expr)(exprOps)),
-                ROA.append({kind: 'jumpifnot', target: breakTarget} as Operation),
+                ROA.append({ kind: 'jumpifnot', target: breakTarget } as Operation),
                 ROA.concat(stmtOps),
-                ROA.append({kind: 'jump', target: continueTarget} as Operation),
+                ROA.append({ kind: 'jump', target: continueTarget } as Operation),
                 ROA.append(breakTarget),
             )
 
-            return [ops, { ...$state, breakContext: state.breakContext }]
+            return [ops, resetLoopContext(stmtState, state)]
         }
 
 const parseStatement =
@@ -305,14 +305,17 @@ const parseStatement =
             }
         }
 
+// case SyntaxKind.ForInStatement:
+// case SyntaxKind.ForOfStatement:
+// case SyntaxKind.ForStatement:
+// case SyntaxKind.SwitchStatement:
+// case SyntaxKind.TryStatement:
+
 // case SyntaxKind.ClassDeclaration:
 // case SyntaxKind.DebuggerStatement:
 // case SyntaxKind.EnumDeclaration:
 // case SyntaxKind.ExportAssignment:
 // case SyntaxKind.ExportDeclaration:
-// case SyntaxKind.ForInStatement:
-// case SyntaxKind.ForOfStatement:
-// case SyntaxKind.ForStatement:
 // case SyntaxKind.FunctionDeclaration:
 // case SyntaxKind.ImportDeclaration:
 // case SyntaxKind.ImportEqualsDeclaration:
@@ -321,12 +324,8 @@ const parseStatement =
 // case SyntaxKind.ModuleBlock:
 // case SyntaxKind.ModuleDeclaration:
 // case SyntaxKind.NotEmittedStatement:
-// case SyntaxKind.SwitchStatement:
-// case SyntaxKind.TryStatement:
 // case SyntaxKind.TypeAliasDeclaration:
-// case SyntaxKind.WhileStatement:
 // case SyntaxKind.WithStatement:
-
 
 export const parseBody =
     (scope: Scope) =>
@@ -334,10 +333,10 @@ export const parseBody =
             if (tsm.Node.isStatement(body)) {
                 const ctx: ParseFunctionContext = {
                     scope,
-                    breakContext: [],
+                    loopContext: [],
                     returnTarget: { kind: 'return' },
                     errors: [],
-                    locals: []
+                    locals: [],
                 }
                 let [operations, state] = parseStatement(body)(ctx);
                 if (ROA.isNonEmpty(state.errors)) {

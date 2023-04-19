@@ -169,11 +169,13 @@ export type Operation =
     PushDataOperation |
     PushIntOperation |
     SimpleOperation |
-    SysCallOperation;
+    SysCallOperation | 
+    TryOffsetOperation |
+    TryTargetOperation;
 
 export interface SimpleOperation {
     readonly kind: SimpleOperationKind,
-    location?: Location,
+    readonly location?: Location,
 }
 
 export const isSimpleOp = (op: Operation): op is SimpleOperation =>
@@ -182,7 +184,7 @@ export const isSimpleOp = (op: Operation): op is SimpleOperation =>
 export interface ConvertOperation {
     readonly kind: 'convert',
     readonly type: sc.StackItemType
-    location?: Location,
+    readonly location?: Location,
 }
 
 export const isConvertOp = (op: Operation): op is ConvertOperation => op.kind === 'convert';
@@ -190,7 +192,7 @@ export const isConvertOp = (op: Operation): op is ConvertOperation => op.kind ==
 export interface SysCallOperation {
     readonly kind: 'syscall',
     readonly name: string
-    location?: Location,
+    readonly location?: Location,
 }
 
 export const isSysCallOp = (op: Operation): op is SysCallOperation => op.kind === 'syscall';
@@ -198,7 +200,7 @@ export const isSysCallOp = (op: Operation): op is SysCallOperation => op.kind ==
 export interface CallTokenOperation {
     readonly kind: 'calltoken',
     readonly token: sc.MethodToken
-    location?: Location,
+    readonly location?: Location,
 }
 
 export const isCallTokenOp = (op: Operation): op is CallTokenOperation => op.kind === 'calltoken';
@@ -206,7 +208,7 @@ export const isCallTokenOp = (op: Operation): op is CallTokenOperation => op.kin
 export interface CallOperation {
     readonly kind: 'call',
     readonly method: tsm.Symbol,
-    location?: Location,
+    readonly location?: Location,
 }
 
 export const isCallOp = (op: Operation): op is CallOperation => op.kind === 'call';
@@ -215,7 +217,7 @@ export interface InitSlotOperation {
     readonly kind: 'initslot',
     readonly locals: number,
     readonly params: number
-    location?: Location,
+    readonly location?: Location,
 }
 
 export const isInitSlotOp = (op: Operation): op is InitSlotOperation => op.kind === 'initslot';
@@ -223,7 +225,7 @@ export const isInitSlotOp = (op: Operation): op is InitSlotOperation => op.kind 
 export interface InitStaticOperation {
     readonly kind: 'initstatic',
     readonly count: number,
-    location?: Location,
+    readonly location?: Location,
 }
 
 export const isInitStaticOperation = (op: Operation): op is InitStaticOperation => op.kind === 'initstatic';
@@ -231,7 +233,7 @@ export const isInitStaticOperation = (op: Operation): op is InitStaticOperation 
 export interface PushDataOperation {
     readonly kind: 'pushdata';
     readonly value: Uint8Array
-    location?: Location,
+    readonly location?: Location,
 }
 
 export const isPushDataOp = (op: Operation): op is PushDataOperation => op.kind === 'pushdata';
@@ -247,7 +249,7 @@ export function pushString(value: string, location?: Location): PushDataOperatio
 export interface PushIntOperation {
     readonly kind: 'pushint';
     readonly value: bigint;
-    location?: Location,
+    readonly location?: Location,
 }
 
 export const isPushIntOp = (op: Operation): op is PushIntOperation => op.kind === 'pushint';
@@ -260,7 +262,7 @@ export function pushInt(value: number | bigint, location?: Location): PushIntOpe
 export interface PushBoolOperation {
     readonly kind: 'pushbool';
     readonly value: boolean;
-    location?: Location,
+    readonly location?: Location,
 }
 
 export const isPushBoolOp = (op: Operation): op is PushBoolOperation => op.kind === 'pushbool';
@@ -272,13 +274,13 @@ export const isPushBoolOp = (op: Operation): op is PushBoolOperation => op.kind 
 export interface JumpOffsetOperation {
     readonly kind: JumpOperationKind;
     readonly offset: number;
-    location?: Location,
+    readonly location?: Location,
 }
 
 export interface JumpTargetOperation {
     readonly kind: JumpOperationKind;
     readonly target: Operation;
-    location?: Location,
+    readonly location?: Location,
 }
 
 export function isJumpOffsetOp(op: Operation): op is JumpOffsetOperation {
@@ -293,10 +295,40 @@ export function isJumpTargetOp(op: Operation): op is JumpTargetOperation {
         && typeof op.target === 'object';
 }
 
+export interface TryOffsetOperation {
+    readonly kind: 'try';
+    readonly catchOffset: number;
+    readonly finallyOffset: number;
+    readonly location?: Location;
+}
+
+export interface TryTargetOperation {
+    readonly kind: 'try';
+    readonly catchTarget: Operation;
+    readonly finallyTarget: Operation;
+    readonly location?: Location;
+}
+
+export function isTryOffsetOp(op: Operation): op is TryOffsetOperation {
+    return op.kind === 'try'
+        && 'catchOffset' in op
+        && typeof op.catchOffset === 'number'
+        && 'finallyOffset' in op
+        && typeof op.finallyOffset === 'number';
+}
+
+export function isTryTargetOp(op: Operation): op is TryTargetOperation {
+    return op.kind === 'try'
+        && 'catchTarget' in op
+        && typeof op.catchTarget === 'object'
+        && 'finallyTarget' in op
+        && typeof op.finallyTarget === 'object';
+}
+
 export interface LoadStoreOperation {
     readonly kind: LoadStoreOperationKind
     readonly index: number
-    location?: Location,
+    readonly location?: Location,
 }
 
 export const isLoadStoreOp = (op: Operation): op is LoadStoreOperation =>
