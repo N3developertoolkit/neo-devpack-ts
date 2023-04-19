@@ -111,16 +111,10 @@ export const createScope = (parentScope?: Scope) => (defs: readonly CompileTimeO
 };
 
 export const updateScope = (scope: Scope) => (symbols?: CompileTimeObject | readonly CompileTimeObject[], types?: CompileTimeObject | readonly CompileTimeObject[]): E.Either<string, Scope> => {
-    symbols = symbols
-        ? isArray(symbols)
-            ? ROA.concat(symbols)([...scope.symbols.values()])
-            : ROA.append(symbols)([...scope.symbols.values()])
-        : ROA.empty;
-    types = types
-        ? isArray(types)
-            ? ROA.concat(types)([...scope.types.values()])
-            : ROA.append(types ?? [])([...scope.types.values()])
-        : ROA.empty;
+    symbols = symbols ? isArray(symbols) ? symbols : [symbols] : [];
+    symbols = ROA.concat(symbols)([...scope.symbols.values()]);
+    types = types ? isArray(types) ? types : [types] : [];
+    types = ROA.concat(types)([...scope.types.values()]);
     return $createScope(scope.parentScope)(symbols, types);
 };
 

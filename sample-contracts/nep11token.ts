@@ -38,8 +38,13 @@ export function tokensOf(account: ByteString) {
     return Storage.context.keys(prefix, true)
 }
 
-// TODO: support interface based structs
-type TokenState = [ByteString, string, string, string];
+/** @struct */
+interface TokenState {
+    owner: ByteString;
+    name: string;
+    description: string;
+    image: string;
+}
 
 export function transfer(to: ByteString, tokenId: ByteString, data: any) {
     if (!to || to.length != 20) throw Error("The argument \"to\" is invalid.");
@@ -49,15 +54,15 @@ export function transfer(to: ByteString, tokenId: ByteString, data: any) {
         log("invalid tokenId");
         return false;
     }
-    let token = StdLib.deserialize(serialzied) as TokenState;
-    const [ owner ] = token;
+    const token = StdLib.deserialize(serialzied) as TokenState;
+    const owner = token.owner;
     if (!checkWitness(owner)) {
         log("only token owner can transfer");
         return false;
     }
 
     if (owner !== to) {
-        token[0] = to;
+        token.owner = to;
         Storage.context.put(key, StdLib.serialize(token));
         updateBalance(owner, tokenId, -1n);
         updateBalance(to, tokenId, 1n);
@@ -81,8 +86,9 @@ export function ownerof(tokenId: ByteString) {
     const key = concat(TOKEN_PREFIX, tokenId);
     const serialzied = Storage.context.get(key);
     if (serialzied) {
-        const [owner] = StdLib.deserialize(serialzied) as TokenState;
-        return owner;
+        // const { owner } = StdLib.deserialize(serialzied) as TokenState;
+        const token = StdLib.deserialize(serialzied) as TokenState;
+        return token.owner;
     } else {
         return null;
     }
@@ -103,7 +109,7 @@ export function mint(owner: ByteString, name: string, description: string, image
     const idString = concat(SYMBOL, ByteString.fromInteger(id));
     const tokenId = CryptoLib.sha256(idString);
 
-    const tokenState: TokenState = [ owner, name, description, image ];
+    const tokenState: TokenState = { owner, name, description, image };
     const serializedState = StdLib.serialize(tokenState);
     const tokenKey = concat(TOKEN_PREFIX, tokenId);
     Storage.context.put(tokenKey, serializedState);

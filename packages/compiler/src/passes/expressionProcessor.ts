@@ -277,7 +277,7 @@ export const parseBinaryExpression =
                 )
             }
 
-            return E.left(makeParseError(node)(`parseBinaryExpression ${node.getKindName()} not supported`))
+            return E.left(makeParseError(node)(`parseBinaryExpression ${node.getOperatorToken().getKindName()} not supported`))
         }
 
 export const parseBooleanLiteral =
@@ -569,6 +569,10 @@ function resolveProperty(ctx: ChainContext) {
             TS.parseSymbol,
             E.bindTo('symbol'),
             E.bind('typeDef', () => {
+
+                const type = ctx.currentType ?? ctx.current?.node.getType();
+                const symbol = type?.getSymbol();
+                const resolved = symbol ? resolveType(ctx.scope)(symbol) : O.none;
                 return pipe(
                     ctx.currentType,
                     O.fromNullable,
