@@ -11,7 +11,7 @@ import { E_fromSeparated, ParseError, makeParseError, single } from "../utils";
 import { parseExpression as $parseExpression } from "./expressionProcessor";
 import { makeConstant } from "./parseDeclarations";
 
-type VariableFactory = (element: tsm.Identifier | tsm.BindingElement, symbol: tsm.Symbol, index: number) => CompileTimeObject;
+export type VariableFactory = (element: tsm.Identifier | tsm.BindingElement, symbol: tsm.Symbol, index: number) => CompileTimeObject;
 
 function isPushOp(op: Operation) {
     return op.kind === "pushbool"

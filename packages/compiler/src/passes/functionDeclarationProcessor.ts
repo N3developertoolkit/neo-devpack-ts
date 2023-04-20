@@ -1,18 +1,20 @@
 import * as tsm from "ts-morph";
-import { flow, pipe } from 'fp-ts/function';
+import { flow, identity, pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
+import * as O from 'fp-ts/Option';
 import * as S from 'fp-ts/State';
 import * as TS from '../TS';
 
-import { Scope, CompileTimeObject, createEmptyScope, createScope } from "../types/CompileTimeObject";
-import { convertJumpTargetOps, JumpTargetOperation, Location, Operation, TryTargetOperation, updateLocation } from "../types/Operation";
+import { Scope, createEmptyScope, createScope } from "../types/CompileTimeObject";
+import { convertJumpTargetOps, JumpTargetOperation, Operation, updateLocation } from "../types/Operation";
 import { CompileError, E_fromSeparated, ParseError, isVoidLike, makeParseError } from "../utils";
 import { ContractMethod, ContractSlot } from "../types/CompileOptions";
 import { parseExpression, parseExpressionAsBoolean } from "./expressionProcessor";
-import { handleVariableStatement } from "./variableStatementProcessor";
+import { VariableFactory, handleVariableStatement } from "./variableStatementProcessor";
 import { makeLocalVariable, makeParameter } from "./parseDeclarations";
+import { start } from "repl";
 
 interface LoopContext {
     readonly breakTarget: Operation;
@@ -21,22 +23,11 @@ interface LoopContext {
 
 interface ParseFunctionContext {
     readonly scope: Scope;
-    readonly locals: readonly ContractSlot[];
-    readonly errors: readonly ParseError[];
     readonly returnTarget: Operation;
     readonly loopContext: readonly LoopContext[];
-}
-
-function pushLoopContext(context: ParseFunctionContext) {
-    const breakTarget = { kind: 'noop' } as Operation;
-    const continueTarget = { kind: 'noop' } as Operation;
-    const loopContext = ROA.prepend({ breakTarget, continueTarget })(context.loopContext);
-    const state: ParseFunctionContext = { ...context, loopContext };
-    return { state, breakTarget, continueTarget };
-}
-
-function resetLoopContext(context: ParseFunctionContext, originalContext: ParseFunctionContext) {
-    return { ...context, loopContext: originalContext.loopContext } as ParseFunctionContext;
+    readonly errors: readonly ParseError[];
+    readonly locals: readonly ContractSlot[];
+    readonly operations: readonly Operation[];
 }
 
 interface ParseBodyResult {
@@ -44,270 +35,365 @@ interface ParseBodyResult {
     readonly locals: readonly ContractSlot[];
 }
 
-type ParseStatementState = S.State<ParseFunctionContext, readonly Operation[]>
+function parseStatement(context: ParseFunctionContext, node: tsm.Statement): E.Either<readonly ParseError[], ParseBodyResult> {
+    const $context: ParseFunctionContext = { ...context, errors: ROA.empty }
+    const { errors, operations, locals } = reduceStatement($context, node);
+    return ROA.isNonEmpty(errors) ? E.left(errors) : E.of({ operations, locals });
+}
 
-const matchParseError =
-    (state: ParseFunctionContext) =>
-        (either: E.Either<ParseError, readonly Operation[]>): [readonly Operation[], ParseFunctionContext] => {
-            return pipe(
-                either,
-                E.match(
-                    error => [[], {
-                        ...state,
-                        errors: ROA.append(error)(state.errors)
-                    }],
-                    ops => [ops, state]
-                )
-            );
-        }
+// function pushLoopContext(context: ParseFunctionContext) {
+//     const breakTarget = { kind: 'noop' } as Operation;
+//     const continueTarget = { kind: 'noop' } as Operation;
+//     const loopContext = ROA.prepend({ breakTarget, continueTarget })(context.loopContext);
+//     const state: ParseFunctionContext = { ...context, loopContext };
+//     return { state, breakTarget, continueTarget };
+// }
 
-const parseExpressionState =
-    (parseFunc: (scope: Scope) => (node: tsm.Expression) => E.Either<ParseError, readonly Operation[]>) =>
-        (node: tsm.Expression): ParseStatementState =>
-            state => {
-                return pipe(
-                    node,
-                    parseFunc(state.scope),
-                    matchParseError(state)
-                )
-            }
+// function resetLoopContext(context: ParseFunctionContext, originalContext: ParseFunctionContext) {
+//     return { ...context, loopContext: originalContext.loopContext } as ParseFunctionContext;
+// }
 
-const parseBlock =
-    (node: tsm.Block): ParseStatementState =>
-        state => {
-            // create a new scope for the statements within the block
-            let $state = { ...state, scope: createEmptyScope(state.scope) }
 
-            let operations: readonly Operation[] = ROA.empty;
-            for (const stmt of node.getStatements()) {
-                let ops;
-                [ops, $state] = parseStatement(stmt)($state);
-                operations = ROA.concat(ops)(operations);
-            }
+// const matchParseError =
+//     (state: ParseFunctionContext) =>
+//         (either: E.Either<ParseError, readonly Operation[]>): [readonly Operation[], ParseFunctionContext] => {
+//             return pipe(
+//                 either,
+//                 E.match(
+//                     error => [[], {
+//                         ...state,
+//                         errors: ROA.append(error)(state.errors)
+//                     }],
+//                     ops => [ops, state]
+//                 )
+//             );
+//         }
 
-            const open = node.getFirstChildByKind(tsm.SyntaxKind.OpenBraceToken);
-            if (open) {
-                operations = ROA.prepend({ kind: 'noop', location: open } as Operation)(operations);
-            }
-            const close = node.getLastChildByKind(tsm.SyntaxKind.CloseBraceToken);
-            if (close) {
-                operations = ROA.append({ kind: 'noop', location: close } as Operation)(operations);
-            }
+function reduceBlock(context: ParseFunctionContext, node: tsm.Block): ParseFunctionContext {
+    const $context = {
+        ...context,
+        // blocks get a new child scope
+        scope: createEmptyScope(context.scope),
+        // pass in an empty operations array so we can add open/close braces
+        operations: ROA.empty
+    };
 
-            //  keep the accumulated errors and locals, but swap the original state scope
-            //  back in on return
-            return [operations, { ...$state, scope: state.scope }];
-        }
+    // process the block statements
+    let { errors, locals, operations } = pipe(
+        node.getStatements(),
+        ROA.reduce($context, reduceStatement)
+    );
 
-const parseBreakStatement =
-    (node: tsm.BreakStatement): ParseStatementState =>
-        state => {
-            return pipe(
-                state.loopContext,
-                ROA.head,
-                E.fromOption(() => makeParseError(node)('break statement not within a loop or switch')),
-                // TODO: if in try/catch block, use endtry instead of jump
-                // from C#: if (_tryStack.TryPeek(out ExceptionHandling? result) && result.BreakTargetCount == 0)
-                E.map(ctx => ({ kind: 'jump', location: node, target: ctx.breakTarget } as JumpTargetOperation)),
-                E.map(ROA.of),
-                matchParseError(state)
-            )
-        }
+    // add open/close brace no-ops if they exist
+    const open = node.getFirstChildByKind(tsm.SyntaxKind.OpenBraceToken);
+    if (open) { operations = ROA.prepend<Operation>({ kind: 'noop', location: open })(operations); }
+    const close = node.getLastChildByKind(tsm.SyntaxKind.CloseBraceToken);
+    if (close) { operations = ROA.append<Operation>({ kind: 'noop', location: close })(operations); }
 
-const parseContinueStatement =
-    (node: tsm.ContinueStatement): ParseStatementState =>
-        state => {
-            return pipe(
-                state.loopContext,
-                ROA.head,
-                E.fromOption(() => makeParseError(node)('coninue statement not within a loop or switch')),
-                // TODO: if in try/catch block, use endtry instead of jump
-                // from C#: if (_tryStack.TryPeek(out ExceptionHandling? result) && result.BreakTargetCount == 0)
-                E.map(ctx => ({ kind: 'jump', location: node, target: ctx.continueTarget } as JumpTargetOperation)),
-                E.map(ROA.of),
-                matchParseError(state)
-            )
-        }
+    // append the block operations to the parent context operations
+    operations = ROA.concat(operations)(context.operations);
 
-const parseDoStatement =
-    (node: tsm.DoStatement): ParseStatementState =>
-        state => {
-            const startTarget = { kind: 'noop' } as Operation;
-            let { breakTarget, continueTarget, state: stmtState } = pushLoopContext(state);
+    return { ...context, errors, locals, operations };
+}
 
-            let stmtOps, exprOps;
-            [stmtOps, stmtState] = parseStatement(node.getStatement())(stmtState);
-            const expr = node.getExpression();
-            [exprOps, stmtState] = parseExpressionState(parseExpressionAsBoolean)(expr)(stmtState);
-            const ops = pipe(
-                startTarget,
-                ROA.of,
-                ROA.concat(stmtOps),
-                ROA.append(continueTarget),
-                ROA.concat(updateLocation(expr)(exprOps)),
-                ROA.append({ kind: 'jumpif', target: startTarget } as Operation),
-                ROA.append(breakTarget),
-            )
+function reduceEmptyStatement(context: ParseFunctionContext, node: tsm.EmptyStatement): ParseFunctionContext {
+    let { operations } = context;
+    operations = ROA.append<Operation>({ kind: 'noop', location: node })(operations);
+    return { ...context, operations };
+}
 
-            return [ops, resetLoopContext(stmtState, state)]
-        }
+function reduceReturnStatement(context: ParseFunctionContext, node: tsm.ReturnStatement): ParseFunctionContext {
+    return pipe(
+        node.getExpression(),
+        O.fromNullable,
+        O.map(parseExpression(context.scope)),
+        O.match(() => E.of(ROA.empty), identity),
+        E.map(ROA.append<Operation>({ kind: 'jump', target: context.returnTarget })),
+        E.map(updateLocation(node)),
+        E.match(
+            error => ({ ...context, errors: ROA.append(error)(context.errors) }),
+            ops => ({ ...context, operations: ROA.concat(ops)(context.operations) })
+        )
+    )
+}
 
-const parseExpressionStatement =
-    (node: tsm.ExpressionStatement): ParseStatementState =>
-        state => {
-            const expr = node.getExpression();
-            let ops: readonly Operation[];
-            [ops, state] = parseExpressionState(parseExpression)(expr)(state);
+function reduceThrowStatement(context: ParseFunctionContext, node: tsm.ThrowStatement): ParseFunctionContext {
+    return pipe(
+        node.getExpression(),
+        parseExpression(context.scope),
+        E.map(ROA.append<Operation>({ kind: 'throw' })),
+        E.map(updateLocation(node)),
+        E.match(
+            error => ({ ...context, errors: ROA.append(error)(context.errors) }),
+            ops => ({ ...context, operations: ROA.concat(ops)(context.operations) })
+        )
+    )
+}
 
-            if (!isVoidLike(expr.getType()) && !TS.isAssignmentExpression(expr)) {
-                ops = ROA.append<Operation>({ kind: 'drop' })(ops);
-            }
-            return [updateLocation(node)(ops), state]
-        }
+function reduceExpressionStatement(context: ParseFunctionContext, node: tsm.ExpressionStatement): ParseFunctionContext {
+    const expr = node.getExpression();
+    return pipe(
+        expr,
+        parseExpression(context.scope),
+        E.map(ops => isVoidLike(expr.getType()) || TS.isAssignmentExpression(expr)
+            ? ops
+            : ROA.append<Operation>({ kind: 'drop' })(ops)),
+        E.map(updateLocation(node)),
+        E.match(
+            error => ({ ...context, errors: ROA.append(error)(context.errors) }),
+            ops => ({ ...context, operations: ROA.concat(ops)(context.operations) })
+        )
+    )
+}
 
-const parseIfStatement =
-    (node: tsm.IfStatement): ParseStatementState =>
-        state => {
-            const expr = node.getExpression();
-            let operations: readonly Operation[];
-            [operations, state] = parseExpressionState(parseExpressionAsBoolean)(expr)(state);
+function reduceIfStatement(context: ParseFunctionContext, node: tsm.IfStatement): ParseFunctionContext {
+    const expr = node.getExpression();
+    const elseTarget = { kind: 'noop' } as Operation;
+    return pipe(
+        expr,
+        parseExpressionAsBoolean(context.scope),
+        E.map(ops => {
             const closeParen = node.getLastChildByKind(tsm.SyntaxKind.CloseParenToken);
-            operations = updateLocation(closeParen ? { start: node, end: closeParen } : expr)(operations);
-
-            let $thenOps: readonly Operation[];
-            [$thenOps, state] = parseStatement(node.getThenStatement())(state);
-            const thenOps = ROA.append({ kind: 'noop' } as Operation)($thenOps);
-
+            const location = closeParen ? { start: node, end: closeParen } : expr;
+            return updateLocation(location)(ops);
+        }),
+        E.map(ROA.append<Operation>({ kind: "jumpifnot", target: elseTarget })),
+        E.mapLeft(ROA.of),
+        E.chain(operations => parseStatement({ ...context, operations }, node.getThenStatement())),
+        E.chain(({ operations, locals }) => {
             const $else = node.getElseStatement();
             if ($else) {
-                let $elseOps: readonly Operation[];
-                [$elseOps, state] = parseStatement($else)(state);
-                const elseOps = ROA.append({ kind: 'noop' } as Operation)($elseOps);
-
-                const elseJumpOp: JumpTargetOperation = { 'kind': "jumpifnot", target: RNEA.head(elseOps) };
-                const endJumpOp: JumpTargetOperation = { 'kind': "jump", target: RNEA.last(elseOps) };
-
-                operations = pipe(
+                const endTarget = { kind: 'noop' } as Operation;
+                return pipe(
                     operations,
-                    ROA.append(elseJumpOp as Operation),
-                    ROA.concat(thenOps),
-                    ROA.append(endJumpOp as Operation),
-                    ROA.concat(elseOps)
+                    ROA.append<Operation>({ kind: "jump", target: endTarget }),
+                    ROA.append(elseTarget),
+                    operations => parseStatement({ ...context, operations, locals }, $else),
+                    E.map(({ operations, locals }) => ({ operations: ROA.append(endTarget)(operations), locals })),
                 )
             } else {
-                const jumpOp: JumpTargetOperation = { 'kind': "jumpifnot", target: RNEA.last(thenOps) };
-                operations = pipe(
-                    operations,
-                    ROA.append(jumpOp as Operation),
-                    ROA.concat(thenOps),
-                );
+                operations = ROA.append(elseTarget)(operations);
+                return E.of({ operations, locals });
             }
+        }),
+        E.match(
+            errors => ({ ...context, errors: ROA.concat(errors)(context.errors) }),
+            ({ operations, locals }) => ({ ...context, operations, locals })
+        )
+    )
+}
 
-            return [operations, state];
-        }
-
-const parseReturnStatement =
-    (node: tsm.ReturnStatement): ParseStatementState =>
-        state => {
-            let operations: readonly Operation[] = ROA.empty;
-            const expr = node.getExpression();
-            if (expr) {
-                [operations, state] = parseExpressionState(parseExpression)(expr)(state);
+function reduceVariableStatement(context: ParseFunctionContext, node: tsm.VariableStatement): ParseFunctionContext {
+    const factory: VariableFactory = (element, symbol, index) => makeLocalVariable(element, symbol, index + context.locals.length);
+    return pipe(
+        node,
+        handleVariableStatement(context.scope)(factory),
+        E.match(
+            errors => ({ ...context, errors: ROA.concat(errors)(context.errors) }),
+            ([scope, defs, ops]) => {
+                const operations = ROA.concat(ops)(context.operations);
+                const locals = pipe(
+                    defs,
+                    ROA.map(d => ({ name: d.symbol.getName(), type: d.node.getType() } as ContractSlot)),
+                    ROA.concat(context.locals)
+                )
+                return { ...context, operations, locals, scope };
             }
-            const op: JumpTargetOperation = { kind: 'jump', target: state.returnTarget };
-            operations = pipe(operations, ROA.append(op as Operation));
-            return [updateLocation(node)(operations), state]
-        }
+        )
+    );
+}
 
-const parseThrowStatement =
-    (node: tsm.ThrowStatement): ParseStatementState =>
-        state => {
-            let operations;
-            [operations, state] = parseExpressionState(parseExpression)(node.getExpression())(state)
-            operations = pipe(operations, ROA.append({ kind: 'throw' } as Operation));
-            return [updateLocation(node)(operations), state]
-        }
+function reduceBreakStatement(context: ParseFunctionContext, node: tsm.BreakStatement): ParseFunctionContext {
+    return pipe(
+        context.loopContext,
+        ROA.head,
+        E.fromOption(() => makeParseError(node)('break statement not within a loop or switch')),
+        // TODO: if in try/catch block, use endtry instead of jump
+        // from C#: if (_tryStack.TryPeek(out ExceptionHandling? result) && result.BreakTargetCount == 0)
+        E.map(ctx => ({ kind: 'jump', location: node, target: ctx.breakTarget } as Operation)),
+        E.match(
+            error => ({ ...context, errors: ROA.append(error)(context.errors) } as ParseFunctionContext),
+            op => ({ ...context, operations: ROA.append(op)(context.operations) } as ParseFunctionContext)
+        )
+    )
+}
 
-const parseVariableStatement =
-    (node: tsm.VariableStatement): ParseStatementState =>
-        state => {
+function reduceContinueStatement(context: ParseFunctionContext, node: tsm.ContinueStatement): ParseFunctionContext {
+    return pipe(
+        context.loopContext,
+        ROA.head,
+        E.fromOption(() => makeParseError(node)('break statement not within a loop or switch')),
+        // TODO: if in try/catch block, use endtry instead of jump
+        // from C#: if (_tryStack.TryPeek(out ExceptionHandling? result) && result.BreakTargetCount == 0)
+        E.map(ctx => ({ kind: 'jump', location: node, target: ctx.continueTarget } as Operation)),
+        E.match(
+            error => ({ ...context, errors: ROA.append(error)(context.errors) } as ParseFunctionContext),
+            op => ({ ...context, operations: ROA.append(op)(context.operations) } as ParseFunctionContext)
+        )
+    )
+}
+
+function reduceDoStatement(context: ParseFunctionContext, node: tsm.DoStatement): ParseFunctionContext {
+
+    const startTarget = { kind: 'noop' } as Operation;
+    const breakTarget = { kind: 'noop' } as Operation;
+    const continueTarget = { kind: 'noop' } as Operation;
+    const loopContext = ROA.prepend({ breakTarget, continueTarget })(context.loopContext);
+
+    return pipe(
+        node.getStatement(),
+        stmt => parseStatement({ ...context, loopContext }, stmt),
+        E.chain(({ operations: stmtOps, locals }) => {
+            // bookend the statment operations with the start and continue targets
+            stmtOps = pipe(
+                stmtOps, 
+                ROA.prepend(startTarget), 
+                ROA.append(continueTarget));
 
             return pipe(
-                node,
-                handleVariableStatement(state.scope)(makeLocalVariable),
-                E.match(
-                    errors => [ROA.empty, { ...state, errors: ROA.concat(errors)(state.errors) }],
-                    ([scope, defs, ops]) => {
-                        const locals = pipe(
-                            defs,
-                            ROA.map(d => ({ name: d.symbol.getName(), type: d.node.getType() } as ContractSlot)),
-                            vars => ROA.concat(vars)(state.locals)
-                        )
-                        return [ops, { ...state, locals, scope }];
-                    }
-                )
-            );
-        }
-
-const parseWhileStatement =
-    (node: tsm.WhileStatement): ParseStatementState =>
-        state => {
-            let { breakTarget, continueTarget, state: stmtState } = pushLoopContext(state);
-
-            let stmtOps, exprOps;
-            [stmtOps, stmtState] = parseStatement(node.getStatement())(stmtState);
-            const expr = node.getExpression();
-            [exprOps, stmtState] = parseExpressionState(parseExpressionAsBoolean)(expr)(stmtState);
-
-            const ops = pipe(
-                continueTarget,
-                ROA.of,
-                ROA.concat(updateLocation(expr)(exprOps)),
-                ROA.append({ kind: 'jumpifnot', target: breakTarget } as Operation),
-                ROA.concat(stmtOps),
-                ROA.append({ kind: 'jump', target: continueTarget } as Operation),
-                ROA.append(breakTarget),
+                node.getExpression(),
+                parseExpressionAsBoolean(context.scope),
+                E.map(updateLocation(node.getExpression())),
+                E.map(exprOps => ROA.concat(exprOps)(stmtOps)),
+                E.map(ROA.append<Operation>({kind: 'jumpif', target: startTarget})),
+                E.map(ROA.append(breakTarget)),
+                E.mapLeft(ROA.of),
+                E.map(operations => ({ operations: operations as readonly Operation[], locals }))
             )
-
-            return [ops, resetLoopContext(stmtState, state)]
-        }
-
-const parseStatement =
-    (node: tsm.Statement): ParseStatementState =>
-        state => {
-            switch (node.getKind()) {
-                case tsm.SyntaxKind.Block:
-                    return parseBlock(node as tsm.Block)(state);
-                case tsm.SyntaxKind.BreakStatement:
-                    return parseBreakStatement(node as tsm.BreakStatement)(state);
-                case tsm.SyntaxKind.ContinueStatement:
-                    return parseContinueStatement(node as tsm.ContinueStatement)(state);
-                case tsm.SyntaxKind.DoStatement:
-                    return parseDoStatement(node as tsm.DoStatement)(state);
-                case tsm.SyntaxKind.EmptyStatement:
-                    return [[], state];
-                case tsm.SyntaxKind.ExpressionStatement:
-                    return parseExpressionStatement(node as tsm.ExpressionStatement)(state);
-                case tsm.SyntaxKind.IfStatement:
-                    return parseIfStatement(node as tsm.IfStatement)(state);
-                case tsm.SyntaxKind.ReturnStatement:
-                    return parseReturnStatement(node as tsm.ReturnStatement)(state);
-                case tsm.SyntaxKind.ThrowStatement:
-                    return parseThrowStatement(node as tsm.ThrowStatement)(state);
-                case tsm.SyntaxKind.VariableStatement:
-                    return parseVariableStatement(node as tsm.VariableStatement)(state);
-                case tsm.SyntaxKind.WhileStatement:
-                    return parseWhileStatement(node as tsm.WhileStatement)(state);
-                default: {
-                    const error = makeParseError(node)(`parseStatement ${node.getKindName()} not implemented`);
-                    return [[], { ...state, errors: ROA.append(error)(state.errors) }];
-                }
+        }),
+        E.match(
+            errors => ({ ...context, errors: ROA.concat(errors)(context.errors) } as ParseFunctionContext),
+            ({operations, locals}) => {
+                operations = ROA.concat(operations)(context.operations);
+                locals = ROA.concat(locals)(context.locals);
+                return ({ ...context, operations, locals } as ParseFunctionContext);
             }
+        )
+
+    )
+}
+
+function reduceWhileStatement(context: ParseFunctionContext, node: tsm.WhileStatement): ParseFunctionContext {
+    const breakTarget = { kind: 'noop' } as Operation;
+    const continueTarget = { kind: 'noop' } as Operation;
+    const loopContext = ROA.prepend({ breakTarget, continueTarget })(context.loopContext);
+
+    return pipe(
+        node.getExpression(),
+        parseExpressionAsBoolean(context.scope),
+        E.map(updateLocation(node.getExpression())),
+        E.map(ROA.prepend(continueTarget)),
+        E.map(ROA.append<Operation>({kind: "jumpifnot", target: breakTarget})),
+        E.mapLeft(ROA.of),
+        E.chain(exprOps => pipe(
+            node.getStatement(),
+            stmt => parseStatement({ ...context, loopContext }, stmt),
+            E.map(({ operations: stmtOps, locals }) => {
+                stmtOps = pipe(
+                    stmtOps,
+                    ROA.append<Operation>({ kind: 'jump', target: continueTarget }),
+                    ROA.append<Operation>(breakTarget)
+                );
+                const operations = ROA.concat(stmtOps)(exprOps);
+                return { operations, locals };
+            })
+        )),
+        E.match(
+            errors => ({ ...context, errors: ROA.concat(errors)(context.errors) } as ParseFunctionContext),
+            ({locals, operations}) => {
+                operations = ROA.concat(operations)(context.operations);
+                locals = ROA.concat(locals)(context.locals);
+                return ({ ...context, operations, locals } as ParseFunctionContext);
+            }
+        )
+    )
+}
+
+// const parseInitializer = (node: tsm.VariableDeclarationList | tsm.Expression): ParseStatementState =>
+//     state => {
+//         throw new CompileError('parseForStatement not implemented', node);
+
+//     }
+
+// const parseForStatement =
+//     (node: tsm.ForStatement): ParseStatementState =>
+//         state => {
+
+//             const initializer = node.getInitializer();
+//             const condition = node.getCondition();
+//             const incrementor = node.getIncrementor();
+//             const statement = node.getStatement();
+
+
+//             const startTarget = { kind: 'noop' } as Operation;
+//             const conditionTarget = { kind: 'noop' } as Operation;
+//             let { breakTarget, continueTarget, state: stmtState } = pushLoopContext(state);
+
+//             const q = parseStatement(statement)(stmtState);
+
+//             throw new CompileError('parseForStatement not implemented', node);
+//         }
+
+// const parseForOfStatement =
+//     (node: tsm.ForOfStatement): ParseStatementState =>
+//         state => {
+//             const initializer = node.getInitializer();
+//             const expression = node.getExpression();
+//             const statement = node.getStatement();
+
+//             throw new CompileError('parseForOfStatement not implemented', node);
+//         }
+
+// const parseForInStatement =
+//     (node: tsm.ForInStatement): ParseStatementState =>
+//         state => {
+//             const initializer = node.getInitializer();
+//             const expression = node.getExpression();
+//             const statement = node.getStatement();
+
+//             throw new CompileError('parseForInStatement not implemented', node);
+//         }
+
+type StatementReduceDispatchMap = {
+    [TKind in tsm.SyntaxKind]?: (context: ParseFunctionContext, node: tsm.KindToNodeMappings[TKind]) => ParseFunctionContext;
+};
+
+const dispatchMap: StatementReduceDispatchMap = {
+    [tsm.SyntaxKind.Block]: reduceBlock,
+    [tsm.SyntaxKind.BreakStatement]: reduceBreakStatement,
+    [tsm.SyntaxKind.ContinueStatement]: reduceContinueStatement,
+    // [tsm.SyntaxKind.DoStatement]: reduceDoStatement,
+    [tsm.SyntaxKind.EmptyStatement]: reduceEmptyStatement,
+    [tsm.SyntaxKind.ExpressionStatement]: reduceExpressionStatement,
+    // [tsm.SyntaxKind.ForInStatement]: reduceForInStatement,
+    // [tsm.SyntaxKind.ForOfStatement]: reduceForOfStatement,
+    // [tsm.SyntaxKind.ForStatement]: reduceForStatement,
+    [tsm.SyntaxKind.IfStatement]: reduceIfStatement,
+    [tsm.SyntaxKind.ReturnStatement]: reduceReturnStatement,
+    [tsm.SyntaxKind.ThrowStatement]: reduceThrowStatement,
+    [tsm.SyntaxKind.VariableStatement]: reduceVariableStatement,
+    [tsm.SyntaxKind.WhileStatement]: reduceWhileStatement,
+}
+function reduceStatement(context: ParseFunctionContext, node: tsm.Statement): ParseFunctionContext {
+
+    return dispatch(dispatchMap);
+
+    function dispatch(dispatchMap: StatementReduceDispatchMap) {
+        const dispatchFunction = dispatchMap[node.getKind()];
+        if (dispatchFunction) {
+            return dispatchFunction(context, node as any);
+        } else {
+            const error = makeParseError(node)(`reduceStatement ${node.getKindName()} not implemented`);
+            return { ...context, errors: ROA.append(error)(context.errors) };
         }
+    }
+}
+
 
 // case SyntaxKind.ForInStatement:
 // case SyntaxKind.ForOfStatement:
 // case SyntaxKind.ForStatement:
+
 // case SyntaxKind.SwitchStatement:
 // case SyntaxKind.TryStatement:
 
@@ -327,26 +413,26 @@ const parseStatement =
 // case SyntaxKind.TypeAliasDeclaration:
 // case SyntaxKind.WithStatement:
 
+
+
 export const parseBody =
     (scope: Scope) =>
         (body: tsm.Node): E.Either<readonly ParseError[], ParseBodyResult> => {
             if (tsm.Node.isStatement(body)) {
-                const ctx: ParseFunctionContext = {
+                const context: ParseFunctionContext = {
+                    errors: [],
+                    returnTarget: { kind: 'return' },
+                    locals: [],
+                    operations: [],
                     scope,
                     loopContext: [],
-                    returnTarget: { kind: 'return' },
-                    errors: [],
-                    locals: [],
                 }
-                let [operations, state] = parseStatement(body)(ctx);
-                if (ROA.isNonEmpty(state.errors)) {
-                    return E.left(state.errors);
+                let { errors, locals, operations, returnTarget } = reduceStatement(context, body);
+                if (ROA.isNonEmpty(errors)) {
+                    return E.left(errors);
                 } else {
-                    return pipe(operations,
-                        // add return op at end of method
-                        ROA.append(state.returnTarget),
-                        operations => E.of({ operations, locals: state.locals })
-                    );
+                    operations = ROA.append(returnTarget)(operations);
+                    return E.of({ operations, locals });
                 }
             }
             const error = makeParseError(body)(`parseBody ${body.getKindName()} not implemented`)
