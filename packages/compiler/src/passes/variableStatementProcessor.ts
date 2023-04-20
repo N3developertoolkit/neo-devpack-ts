@@ -213,13 +213,9 @@ const handleVariableDeclaration =
 
 // helper method for parsing variable statements. This is used for parsing both top-level static variables
 // in sourceFileProcessor as well as for local variables in functionDeclarationProcessor
-// const locals = pipe(
-//     defs,
-//     ROA.map(d => ({ name: d.symbol.getName(), type: d.node.getType() } as ContractSlot)),
-//     ROA.concat(context.locals)
-// )
 
 export type VariableStatementResult = readonly [Scope, readonly ContractSlot[], readonly Operation[]];
+
 export const handleVariableStatement =
     (scope: Scope) =>
         (factory: VariableFactory) =>
@@ -255,9 +251,7 @@ export const handleVariableStatement =
                                 // filter out all the constants from the array of symbol definitions
                                 // that get returned to the caller
                                 // ROA.filter(def => !(def instanceof ConstantSymbolDef)),
-                                ROA.filter(def => 'isConstant' in def
-                                    ? !def.isConstant
-                                    : true),
+                                ROA.filter(def => 'isConstant' in def ? !def.isConstant : true),
                                 ROA.map(def => ({ name: def.symbol.getName(), type: def.node.getType() } as ContractSlot)),
                                 varDefs => {
                                     return [scope, varDefs, ops] as VariableStatementResult;

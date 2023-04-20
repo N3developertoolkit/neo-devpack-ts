@@ -9,8 +9,9 @@ import { parseContractMethod } from "./functionDeclarationProcessor";
 import { handleVariableStatement } from "./variableStatementProcessor";
 import { Operation } from "../types/Operation";
 import { Scope, CompileTimeObject, createEmptyScope, updateScope } from "../types/CompileTimeObject";
-import { makeParseError, ParseError, makeParseDiagnostic } from "../utils";
+import { makeParseError, ParseError, makeParseDiagnostic, ReduceDispatchMap, dispatchReduce, updateContextErrors } from "../utils";
 import { makeStaticVariable, parseEnumDecl, parseFunctionDecl, parseInterfaceDecl, parseTypeAliasDecl } from "./parseDeclarations";
+
 
 const hoist =
     (context: HoistContext, node: tsm.Node, func: (scope: Scope, cto: CompileTimeObject) => E.Either<string, Scope>) =>
@@ -22,7 +23,7 @@ const hoist =
                     E.mapLeft(makeParseError(node))
                 )),
                 E.match(
-                    error => ({ ...context, errors: ROA.append(makeParseError(node)(error))(context.errors) }),
+                    updateContextErrors(context),
                     scope => ({ ...context, scope }),
                 )
             );
@@ -31,7 +32,7 @@ const hoist =
 function hoistSymbol(scope: Scope, cto: CompileTimeObject): E.Either<string, Scope> {
     return updateScope(scope)(cto);
 }
-function hoistType(scope: Scope, cto: CompileTimeObject) {
+function hoistType(scope: Scope, cto: CompileTimeObject): E.Either<string, Scope> {
     return updateScope(scope)(undefined, cto);
 }
 
@@ -69,7 +70,6 @@ const hoistDeclarations =
             )
         }
 
-
 function reduceFunctionDeclaration(context: ParseDeclarationsContext, node: tsm.FunctionDeclaration): ParseDeclarationsContext {
     const makeError = makeParseError(node);
     if (node.hasDeclareKeyword()) {
@@ -80,7 +80,7 @@ function reduceFunctionDeclaration(context: ParseDeclarationsContext, node: tsm.
             E.chain(() => pipe(node, TS.parseSymbol)),
             E.map(symbol => ({ symbol, node } as ContractEvent)),
             E.match(
-                error => ({ ...context, errors: ROA.append(error)(context.errors) } as ParseDeclarationsContext),
+                updateContextErrors(context),
                 event => ({ ...context, events: ROA.append(event)(context.events) })
             )
         )
@@ -90,7 +90,7 @@ function reduceFunctionDeclaration(context: ParseDeclarationsContext, node: tsm.
         node,
         parseContractMethod(context.scope),
         E.match(
-            errors => ({ ...context, errors: ROA.concat(errors)(context.errors) } as ParseDeclarationsContext),
+            updateContextErrors(context),
             method => ({ ...context, methods: ROA.append(method)(context.methods) })
         )
     )
@@ -102,9 +102,7 @@ function reduceVariableStatement(context: ParseDeclarationsContext, node: tsm.Va
         node,
         handleVariableStatement(context.scope)(makeStaticVariable),
         E.match(
-            errors => {
-                return { ...context, errors: ROA.concat(errors)(context.errors) };
-            },
+            updateContextErrors(context),
             ([scope, vars, ops]) => {
                 const staticVars = ROA.concat(vars)(context.staticVars);
                 const initializeOps = ROA.concat(context.initializeOps)(ops);
@@ -123,7 +121,7 @@ function reduceEnumDeclaration(context: ParseDeclarationsContext, node: tsm.Enum
             E.mapLeft(makeParseError(node))
         )),
         E.match(
-            error => ({ ...context, errors: ROA.append(error)(context.errors) }),
+            updateContextErrors(context),
             scope => ({ ...context, scope })
         )
     )
@@ -138,44 +136,33 @@ interface ParseDeclarationsContext extends ParseSourceContext {
     readonly scope: Scope;
 }
 
-function reduceDeclaration(context: ParseDeclarationsContext, node: tsm.Node): ParseDeclarationsContext {
-
-    switch (node.getKind()) {
-        // ignore empty statements and the end of file token
-        case tsm.SyntaxKind.EmptyStatement:
-        case tsm.SyntaxKind.EndOfFileToken:
-            return context;
-        // type aliases and interfaces are processed during hoisting
-        case tsm.SyntaxKind.InterfaceDeclaration:
-        case tsm.SyntaxKind.TypeAliasDeclaration:
-            return context;
-        case tsm.SyntaxKind.EnumDeclaration:
-            return reduceEnumDeclaration(context, node as tsm.EnumDeclaration);
-        case tsm.SyntaxKind.FunctionDeclaration:
-            return reduceFunctionDeclaration(context, node as tsm.FunctionDeclaration);
-        case tsm.SyntaxKind.VariableStatement:
-            return reduceVariableStatement(context, node as tsm.VariableStatement);
-    }
-
-    const error = makeParseError(node)(`parseSourceNode ${node.getKindName()} not impl`);
-    return { ...context, errors: ROA.append(error)(context.errors) };
+const dispatchMap: ReduceDispatchMap<ParseDeclarationsContext> = {
+    [tsm.SyntaxKind.EmptyStatement]: (context, _node) => context,
+    [tsm.SyntaxKind.EndOfFileToken]: (context, _node) => context,
+    [tsm.SyntaxKind.EnumDeclaration]: reduceEnumDeclaration,
+    [tsm.SyntaxKind.FunctionDeclaration]: reduceFunctionDeclaration,
+    [tsm.SyntaxKind.InterfaceDeclaration]: (context, _node) => context,
+    [tsm.SyntaxKind.TypeAliasDeclaration]: (context, _node) => context,
+    [tsm.SyntaxKind.VariableStatement]: reduceVariableStatement,
 }
+
+const reduceDeclaration = dispatchReduce("reduceDeclaration", dispatchMap);
 
 const reduceSourceFile =
     (scope: Scope) =>
-        (ctx: ParseSourceContext, src: tsm.SourceFile): ParseSourceContext => {
+        (context: ParseSourceContext, node: tsm.SourceFile): ParseSourceContext => {
             return pipe(
-                src,
+                node,
                 hoistDeclarations(scope),
                 E.map(scope => {
                     return pipe(
-                        src,
+                        node,
                         TS.getChildren,
-                        ROA.reduce({ ...ctx, scope }, reduceDeclaration)
+                        ROA.reduce({ ...context, scope }, reduceDeclaration)
                     )
                 }),
                 E.match(
-                    errors => ({ ...ctx, errors: ROA.concat(errors)(ctx.errors) }),
+                    updateContextErrors(context),
                     identity
                 )
             )
@@ -183,7 +170,7 @@ const reduceSourceFile =
 
 export const parseProject =
     (project: tsm.Project) =>
-        (scope: Scope): CompilerState<CompiledProject> =>
+        (globalScope: Scope): CompilerState<CompiledProject> =>
             (diagnostics) => {
 
                 const ctx: ParseSourceContext = {
@@ -197,27 +184,31 @@ export const parseProject =
                 const result = pipe(
                     project.getSourceFiles(),
                     ROA.filter(src => !src.isDeclarationFile()),
-                    ROA.reduce(ctx, reduceSourceFile(scope))
+                    ROA.reduce(ctx, reduceSourceFile(globalScope))
                 );
-                const { events, initializeOps, staticVars } = result
+                const { events, initializeOps: initOps, staticVars } = result
                 let { errors, methods } = result;
+
                 if (ROA.isNonEmpty(staticVars)) {
 
                     const operations = pipe(
-                        initializeOps,
-                        ROA.prepend({ kind: "initstatic", count: staticVars.length } as Operation),
-                        ROA.append({ kind: "return" } as Operation)
+                        initOps,
+                        ROA.prepend<Operation>({ kind: "initstatic", count: staticVars.length }),
+                        ROA.append<Operation>({ kind: "return" })
                     );
 
                     const initSrc = project.createSourceFile("initialize.ts");
-                    const initFunc = initSrc.addFunction({
+                    const initFunc: tsm.FunctionDeclaration = initSrc.addFunction({
                         name: "_initialize",
                         parameters: [],
                         returnType: "void",
                         isExported: true
                     })
 
-                    const { errors: $errors, methods: $methods } = pipe(
+                    // using [errors, methods] as LHS of assignment creates a strange TS error that claims
+                    // we are using initFunc (below) before it is declared (above). Using a temp variable
+                    // to avoid this error
+                    const result = pipe(
                         initFunc,
                         TS.parseSymbol,
                         E.map(symbol => {
@@ -230,17 +221,16 @@ export const parseProject =
                             } as ContractMethod
                         }),
                         E.match(
-                            error => ({ errors: ROA.append(error)(errors) as readonly ParseError[], methods }),
-                            method => ({ methods: ROA.append(method)(methods), errors })
+                            error => ([ROA.append(error)(errors) as readonly ParseError[], methods] as const),
+                            method => ([errors, ROA.append(method)(methods)] as const)
                         )
                     );
-                    errors = $errors;
-                    methods = $methods;
+                    [errors, methods] = result;
                 }
 
                 return [
                     { events, methods, staticVars },
-                    ROA.concat(errors.map(makeParseDiagnostic))(diagnostics)
+                    ROA.concat(ROA.map(makeParseDiagnostic)(errors))(diagnostics)
                 ];
             }
 

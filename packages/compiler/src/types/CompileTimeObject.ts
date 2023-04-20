@@ -7,7 +7,7 @@ import * as ROA from 'fp-ts/ReadonlyArray';
 import * as STR from 'fp-ts/string';
 
 import { Operation } from "./Operation";
-import { ParseError } from "../utils";
+import { ParseError, isArray } from "../utils";
 
 export type ParseArgumentsFunc = (scope: Scope) => (node: tsm.CallExpression) => E.Either<ParseError, readonly Operation[]>;
 export type GetPropertyFunc = (symbol: tsm.Symbol) => O.Option<CompileTimeObject>;
@@ -85,9 +85,7 @@ function createSymbolMap(ctos: readonly CompileTimeObject[]): E.Either<string, R
         ? E.of(new Map(ctos.map(v => [v.symbol, v])) as ReadonlyMap<tsm.Symbol, CompileTimeObject>)
         : E.left(`validateDefs duplicate names: ${diff.join(', ')}`);
 }
-function isArray<T>(value: T | readonly T[]): value is readonly T[] {
-    return Array.isArray(value);
-}
+
 
 export const createEmptyScope = (parentScope?: Scope): Scope => {
     return {

@@ -9,6 +9,40 @@ import * as E from "fp-ts/Either";
 import * as SEP from 'fp-ts/Separated';
 import * as ROA from 'fp-ts/ReadonlyArray';
 
+export function isArray<T>(value: T | readonly T[]): value is readonly T[] {
+    return Array.isArray(value);
+}
+
+interface ReduceDispatchContext {
+    readonly errors: readonly ParseError[];
+}
+
+export type ReduceDispatchMap<T extends ReduceDispatchContext> = {
+    [TKind in tsm.SyntaxKind]?: (context: T, node: tsm.KindToNodeMappings[TKind]) => T;
+};
+
+export const dispatchReduce =
+    <T extends ReduceDispatchContext>(name: string, dispatchMap: ReduceDispatchMap<T>) =>
+        (context: T, node: tsm.Node) => {
+            const dispatchFunction = dispatchMap[node.getKind()];
+            if (dispatchFunction) {
+                return dispatchFunction(context, node as any);
+            } else {
+                const error = makeParseError(node)(`${name} ${node.getKindName()} not implemented`);
+                return updateContextErrors(context)(error);
+            }
+        }
+
+export const updateContextErrors =
+    <T extends ReduceDispatchContext>(context: T) =>
+        (errors: ParseError | readonly ParseError[]): T => {
+
+            const $errors = isArray(errors)
+                ? ROA.concat(errors)(context.errors)
+                : ROA.append(errors)(context.errors);
+            return { ...context, errors: $errors };
+        }
+
 export const E_fromSeparated = <E, A>(s: SEP.Separated<readonly E[], A>): E.Either<readonly E[], A> =>
     ROA.isNonEmpty(s.left) ? E.left(s.left) : E.of(s.right)
 
@@ -48,8 +82,8 @@ export function createDiagnostic(messageText: string, options?: DiagnosticOption
 export function getErrorMessage(error: string | unknown) {
     return typeof error === 'string'
         ? error
-        : error instanceof Error 
-            ? error.message 
+        : error instanceof Error
+            ? error.message
             : String(error);
 }
 
@@ -62,9 +96,9 @@ export class CompileError extends Error {
     }
 }
 
-export interface ParseError { 
-    message: string, 
-    node?: tsm.Node 
+export interface ParseError {
+    message: string,
+    node?: tsm.Node
 }
 
 export const makeParseError =
