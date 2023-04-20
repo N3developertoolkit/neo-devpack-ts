@@ -10,6 +10,8 @@ import { Operation, pushInt, pushString, updateLocation } from "../types/Operati
 import { E_fromSeparated, ParseError, makeParseError, single } from "../utils";
 import { parseExpression as $parseExpression } from "./expressionProcessor";
 import { makeConstant } from "./parseDeclarations";
+import { SlotVariable } from "../types/DebugInfo";
+import { ContractSlot } from "../types/CompileOptions";
 
 export type VariableFactory = (element: tsm.Identifier | tsm.BindingElement, symbol: tsm.Symbol, index: number) => CompileTimeObject;
 
@@ -211,11 +213,17 @@ const handleVariableDeclaration =
 
 // helper method for parsing variable statements. This is used for parsing both top-level static variables
 // in sourceFileProcessor as well as for local variables in functionDeclarationProcessor
+// const locals = pipe(
+//     defs,
+//     ROA.map(d => ({ name: d.symbol.getName(), type: d.node.getType() } as ContractSlot)),
+//     ROA.concat(context.locals)
+// )
 
+export type VariableStatementResult = readonly [Scope, readonly ContractSlot[], readonly Operation[]];
 export const handleVariableStatement =
     (scope: Scope) =>
         (factory: VariableFactory) =>
-            (node: tsm.VariableStatement): E.Either<readonly ParseError[], readonly [Scope, readonly CompileTimeObject[], readonly Operation[]]> => {
+            (node: tsm.VariableStatement | tsm.VariableDeclarationList): E.Either<readonly ParseError[], VariableStatementResult> => {
                 return pipe(
                     node.getDeclarations(),
                     ROA.map(decl => pipe(
@@ -250,8 +258,9 @@ export const handleVariableStatement =
                                 ROA.filter(def => 'isConstant' in def
                                     ? !def.isConstant
                                     : true),
+                                ROA.map(def => ({ name: def.symbol.getName(), type: def.node.getType() } as ContractSlot)),
                                 varDefs => {
-                                    return [scope, varDefs, ops] as const;
+                                    return [scope, varDefs, ops] as VariableStatementResult;
                                 }
                             ))
                         );

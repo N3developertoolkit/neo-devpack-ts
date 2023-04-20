@@ -105,12 +105,8 @@ function reduceVariableStatement(context: ParseDeclarationsContext, node: tsm.Va
             errors => {
                 return { ...context, errors: ROA.concat(errors)(context.errors) };
             },
-            ([scope, defs, ops]) => {
-                const staticVars = pipe(
-                    defs,
-                    ROA.map(d => ({ name: d.symbol.getName(), type: d.node.getType() } as ContractSlot)),
-                    vars => ROA.concat(vars)(context.staticVars)
-                )
+            ([scope, vars, ops]) => {
+                const staticVars = ROA.concat(vars)(context.staticVars);
                 const initializeOps = ROA.concat(context.initializeOps)(ops);
                 return { ...context, scope, staticVars, initializeOps } as ParseDeclarationsContext;
             }
