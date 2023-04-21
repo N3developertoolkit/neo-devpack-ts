@@ -23,7 +23,8 @@ export const simpleOperationKinds = [
     // flow control
     'noop',
     'throw',
-    'return', // The top three items on the stack are rotated to the left.
+    'return', 
+    'endfinally',
 
     // Stack Management
     'drop',
@@ -160,6 +161,8 @@ export type Operation =
     CallOperation |
     CallTokenOperation |
     ConvertOperation |
+    EndTryOffsetOperation |
+    EndTryTargetOperation |
     InitSlotOperation |
     InitStaticOperation |
     JumpOffsetOperation |
@@ -323,6 +326,30 @@ export function isTryTargetOp(op: Operation): op is TryTargetOperation {
         && typeof op.catchTarget === 'object'
         && 'finallyTarget' in op
         && typeof op.finallyTarget === 'object';
+}
+
+export interface EndTryOffsetOperation {
+    readonly kind: 'endtry';
+    readonly offset: number;
+    readonly location?: Location;
+}
+
+export interface EndTryTargetOperation {
+    readonly kind: 'endtry';
+    readonly target: Operation;
+    readonly location?: Location;
+}
+
+export function isEndTryOffsetOp(op: Operation): op is EndTryOffsetOperation {
+    return op.kind === 'endtry'
+        && 'offset' in op
+        && typeof op.offset === 'number';
+}
+
+export function isEndTryTargetOp(op: Operation): op is EndTryTargetOperation {
+    return op.kind === 'endtry'
+        && 'target' in op
+        && typeof op.target === 'object';
 }
 
 export interface LoadStoreOperation {

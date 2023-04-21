@@ -197,8 +197,8 @@ export const parseProject =
                         ROA.append<Operation>({ kind: "return" })
                     );
 
-                    const initSrc = project.createSourceFile("initialize.ts");
-                    const initFunc: tsm.FunctionDeclaration = initSrc.addFunction({
+                    const scratch = project.getSourceFile("scratch.ts") || project.createSourceFile("scratch.ts");
+                    const initFunc: tsm.FunctionDeclaration = scratch.addFunction({
                         name: "_initialize",
                         parameters: [],
                         returnType: "void",
