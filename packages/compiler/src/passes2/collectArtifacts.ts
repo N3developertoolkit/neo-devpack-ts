@@ -6,7 +6,7 @@ import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROS from 'fp-ts/ReadonlySet'
 import * as E from 'fp-ts/Either'
 
-import { CallOperation, CallTokenOperation, convertJumpOperationKind, convertLoadStoreKind, convertSimpleOperationKind, getOperationSize, isCallOp, isCallTokenOp, isConvertOp, isInitSlotOp, isInitStaticOperation, isJumpOffsetOp, isJumpTargetOp, isLoadStoreOp, isPushBoolOp, isPushDataOp, isPushIntOp, isSimpleOp, isSysCallOp, JumpOffsetOperation, LoadStoreOperation, Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "../types/Operation";
+import { CallOperation, CallTokenOperation, convertJumpOperationKind, convertJumpTargetOps, convertLoadStoreKind, convertSimpleOperationKind, getOperationSize, isCallOp, isCallTokenOp, isConvertOp, isInitSlotOp, isInitStaticOperation, isJumpOffsetOp, isJumpTargetOp, isLoadStoreOp, isPushBoolOp, isPushDataOp, isPushIntOp, isSimpleOp, isSysCallOp, JumpOffsetOperation, LoadStoreOperation, Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "../types/Operation";
 import { asContractParamType, asReturnType, convertBigInteger, createDiagnostic, E_fromSeparated } from "../utils";
 import { CompiledProject, CompiledProjectArtifacts, CompileOptions, CompilerState, ContractEvent, ContractMethod } from "../types/CompileOptions";
 import { DebugInfoMethod, makeDebugInfo, SequencePoint } from "../types/DebugInfo";
@@ -321,7 +321,21 @@ export const collectArtifacts =
     (name: string, options: CompileOptions) =>
         (compiledProject: CompiledProject): CompilerState<Partial<CompiledProjectArtifacts>> =>
             diagnostics => {
-                const methods = compiledProject.methods;
+                const { left:jumpConvertErrors, right: methods} = pipe(
+                    compiledProject.methods,
+                    ROA.map(method => pipe(
+                        method.operations,
+                        convertJumpTargetOps,
+                        E.map(operations => ({ ...method, operations } as ContractMethod))
+                    )),
+                    ROA.separate
+                );
+                
+                if (jumpConvertErrors.length > 0) {
+                    diagnostics = ROA.concat(jumpConvertErrors.map(e => createDiagnostic(e)))(diagnostics);
+                    return [{}, diagnostics];
+                }
+
                 const contractOps = [...genOperationAddresses(methods)];
                 const tokens = collectMethodTokens(methods);
                 const methodAddressMap = new Map(genMethodAddresses(methods));
