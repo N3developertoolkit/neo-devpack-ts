@@ -8,7 +8,7 @@ import { CompileOptions, ContractMethod } from "./types/CompileOptions";
 import { JumpOffsetOperation, Location, Operation } from "./types/Operation";
 
 const REPO_ROOT = join(__dirname, "../../..");
-const FILENAME = "./sample-contracts/nep11token.ts";
+const FILENAME = "./sample-contracts/nep17token.ts";
 const OUTPUT_DIR = "./express/out";
 
 enum AnsiEscapeSequences {
