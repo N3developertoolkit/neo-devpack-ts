@@ -8,15 +8,6 @@ const TOKEN_PREFIX = ByteString.fromHex("0x03");
 const ACCOUNT_TOKEN_PREFIX = ByteString.fromHex("0x04");
 const OWNER_KEY = ByteString.fromHex("0xFF");
 
-
-function test() {
-    const foo = [1,2,3,4,5];
-    let sum = 0;
-    for (const i of foo) {
-        sum += i;
-    }
-}
-
 /** @event */
 declare function Transfer(from: ByteString | null, to: ByteString | null, amount: bigint, tokenId: ByteString): void;
 
