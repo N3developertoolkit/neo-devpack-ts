@@ -8,9 +8,8 @@ import * as TS from '../TS';
 import { CompileTimeObject, Scope, updateScope } from "../types/CompileTimeObject";
 import { Operation, pushInt, pushString, updateLocation } from "../types/Operation";
 import { E_fromSeparated, ParseError, makeParseError, single } from "../utils";
-import { parseExpression as $parseExpression } from "./expressionProcessor";
+import { parseExpression  } from "./expressionProcessor";
 import { makeConstant } from "./parseDeclarations";
-import { SlotVariable } from "../types/DebugInfo";
 import { ContractSlot } from "../types/CompileOptions";
 
 export type VariableFactory = (element: tsm.Identifier | tsm.BindingElement, symbol: tsm.Symbol, index: number) => CompileTimeObject;
@@ -231,7 +230,7 @@ export const handleVariableStatement =
                                 : E.of(ROA.empty),
                             init => pipe(
                                 init,
-                                $parseExpression(scope),
+                                parseExpression(scope),
                                 E.map(updateLocation(init))
                             )),
                         E.chain(handleVariableDeclaration(decl.getNameNode(), node.getDeclarationKind(), factory))
