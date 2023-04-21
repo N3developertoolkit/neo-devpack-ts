@@ -9,7 +9,7 @@ export function getSymbol(node: tsm.Node) { return O.fromNullable(node.getSymbol
 export function getType(node: tsm.Node) { return node.getType(); }
 export function getChildren(node: tsm.Node) { return node.forEachChildAsArray(); }
 
-export function getArguments(node: tsm.CallExpression) {
+export function getArguments(node: tsm.CallExpression | tsm.NewExpression) {
     return ROA.fromArray(node.getArguments() as tsm.Expression[]);
 }
 

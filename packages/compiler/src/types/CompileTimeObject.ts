@@ -30,34 +30,34 @@ export interface CompileTimeObjectOptions {
     readonly parseConstructor?: ParseArgumentsFunc;
 }
 
+export function makeGetProperty(options: CompileTimeObjectOptions): GetPropertyFunc | undefined {
+    const getProperty = options.getProperty;
+    if (!getProperty) {
+        // a callable object also needs to implement getProperty
+        // Return a stub getProperty method if getProperty is not provided
+        return options.parseCall || options.parseConstructor
+            ? (_symbol) => O.none
+            : undefined;
+    }
+    // if getProperty is a function, return it as is
+    if (typeof getProperty === 'function') return getProperty;
+
+    // if getProperty is an array of CompileTimeObjects, create a map and
+    // return a method that looks up the provided symbol in the map
+    const map = new Map(getProperty.map(cto => [cto.symbol, cto] as const));
+    return (symbol) => O.fromNullable(map.get(symbol));
+}
+
 export function makeCompileTimeObject(node: tsm.Node, symbol: tsm.Symbol, options: CompileTimeObjectOptions): CompileTimeObject {
     return {
         node,
         symbol,
         loadOps: options.loadOps,
         storeOps: options.storeOps,
-        getProperty: makeGetProperty(),
+        getProperty: makeGetProperty(options),
         parseCall: options.parseCall,
         parseConstructor: options.parseConstructor,
     };
-
-    function makeGetProperty(): GetPropertyFunc | undefined {
-        const getProperty = options.getProperty;
-        if (!getProperty) {
-            // a callable object also needs to implement getProperty
-            // Return a stub getProperty method if getProperty is not provided
-            return options.parseCall || options.parseConstructor
-                ? (_symbol) => O.none
-                : undefined;
-        }
-        // if getProperty is a function, return it as is
-        if (typeof getProperty === 'function') return getProperty;
-
-        // if getProperty is an array of CompileTimeObjects, create a map and
-        // return a method that looks up the provided symbol in the map
-        const map = new Map(getProperty.map(cto => [cto.symbol, cto] as const));
-        return (symbol) => O.fromNullable(map.get(symbol));
-    }
 }
 
 
