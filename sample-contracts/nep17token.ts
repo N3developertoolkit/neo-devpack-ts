@@ -14,21 +14,6 @@ const TOTAL_SUPPLY_KEY = ByteString.fromHex("0xA0");
 const BALANCE_PREFIX = ByteString.fromHex("0xA1");
 const OWNER_KEY = ByteString.fromHex("0xFF");
 
-export function test1() {
-    try
-    {
-         throw Error("test");
-    }
-    catch
-    {
-        return 12;
-    }
-    finally
-    {
-        return 13;
-    }
-}
-
 /** @safe */
 export function symbol() { return SYMBOL; }
 

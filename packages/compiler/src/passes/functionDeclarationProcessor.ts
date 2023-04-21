@@ -1,22 +1,19 @@
 import * as tsm from "ts-morph";
 import { flow, identity, pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
-import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option';
 import * as S from 'fp-ts/State';
 import * as TS from '../TS';
 import * as MONOID from 'fp-ts/Monoid';
 
-import { CompileTimeObject, Scope, createEmptyScope, createScope, updateScope } from "../types/CompileTimeObject";
-import { convertJumpTargetOps, EndTryTargetOperation, JumpTargetOperation, Operation, TryTargetOperation, updateLocation } from "../types/Operation";
-import { CompileError, E_fromSeparated, ParseError, isVoidLike, makeParseError, updateContextErrors } from "../utils";
+import { Scope, createEmptyScope, createScope, updateScope } from "../types/CompileTimeObject";
+import { Operation, updateLocation } from "../types/Operation";
+import { E_fromSeparated, ParseError, isVoidLike, makeParseError, updateContextErrors } from "../utils";
 import { ContractMethod, ContractSlot } from "../types/CompileOptions";
 import { parseExpression, parseExpressionAsBoolean } from "./expressionProcessor";
-import { VariableFactory, VariableStatementResult, handleVariableDeclaration, handleVariableStatement } from "./variableStatementProcessor";
+import { VariableFactory, handleVariableStatement } from "./variableStatementProcessor";
 import { makeLocalVariable, makeParameter } from "./parseDeclarations";
-import { TryOffsetOperation } from "../types/Operation";
-import { Identifier } from "ts-morph";
 
 // interface LoopContext {
 //     readonly breakTarget: Operation;
