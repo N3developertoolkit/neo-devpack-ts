@@ -6,7 +6,7 @@ import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option'
 import * as TS from "../TS";
 import { isJumpTargetOp, Operation, SimpleOperationKind } from "../types/Operation";
-import { CompileTimeObject, Scope, resolve, resolveName, resolveType } from "../types/CompileTimeObject";
+import { CompileTimeObject, Scope, resolve, resolveType } from "../types/CompileTimeObject";
 import { ParseError, isBigIntLike, isBooleanLike, isNumberLike, isStringLike, makeParseError } from "../utils";
 
 type DispatchMap<T> = {
@@ -34,7 +34,7 @@ const $resolve =
 export const parseArguments = (scope: Scope) => (node: tsm.CallExpression) => {
     return pipe(
         node,
-        TS.getArguments, 
+        TS.getArguments,
         ROA.map(parseExpression(scope)),
         ROA.sequence(E.Applicative),
         E.map(ROA.reverse),
@@ -111,7 +111,7 @@ const parseStoreSymbol = (node: tsm.Expression) => (context: ChainContext): E.Ei
     if (tsm.Node.isIdentifier(node))
         return pipe(
             node,
-            TS.parseSymbol, 
+            TS.parseSymbol,
             E.chain($resolve(node)(context.scope)),
             E.map(def => [context, def])
         );
@@ -389,24 +389,16 @@ const parseObjectLiteralProperty =
             if (tsm.Node.isShorthandPropertyAssignment(prop)) {
                 return pipe(
                     prop.getObjectAssignmentInitializer(),
-                    O.fromNullable,
-                    O.match(
-                        () => pipe(
-                            prop,
-                            TS.parseSymbol,
-                            E.map(s => s.getName()),
-                            E.chain(name => pipe(
-                                name,
-                                resolveName(scope),
-                                E.fromOption(() => makeError(`failed to resolve ${name}`))
-                            )),
-                            E.chain(def => def.loadOps
-                                ? E.of(def.loadOps)
-                                : E.left(makeError(`${def.symbol.getName()} invalid load ops}`))
-                            )
-                        ),
-                        parseExpression(scope)
+                    E.fromPredicate(
+                        init => !init,
+                        () => makeParseError(prop)(`shorthand initializer not supported`)
                     ),
+                    E.chain(() => TS.parseSymbol(prop)),
+                    E.chain($resolve(prop)(scope)),
+                    E.chain(def => def.loadOps
+                        ? E.of(def.loadOps)
+                        : E.left(makeError(`${def.symbol.getName()} invalid load ops}`))
+                    )
                 )
             }
 
@@ -608,8 +600,8 @@ const reducePropertyAccessExpression =
                 E.bindTo('property'),
                 E.bind('loadOps', ({ property }) => {
                     return pipe(
-                        property.loadOps 
-                            ? E.of(property.loadOps) 
+                        property.loadOps
+                            ? E.of(property.loadOps)
                             : E.left(makeParseError(node)(`failed to resolve ${property.symbol.getName()} load ops`)),
                         E.map(ops => {
                             return node.hasQuestionDotToken()
@@ -703,17 +695,17 @@ const reduceElementAccessExpression =
 // case SyntaxKind.TypeOfExpression:
 // case SyntaxKind.VoidExpression:
 // case SyntaxKind.YieldExpression:
-      
+
 
 const reduceChainContext = (node: tsm.Expression) =>
     (ctx: ChainContext): E.Either<ParseError, ChainContext> => {
         const type = node.getType();
 
         switch (node.getKind()) {
-            case tsm.SyntaxKind.ArrayLiteralExpression: 
+            case tsm.SyntaxKind.ArrayLiteralExpression:
                 return reduceParseFunction(node as tsm.ArrayLiteralExpression, parseArrayLiteral(ctx.scope));
             case tsm.SyntaxKind.AsExpression:
-                return E.of({ ...ctx, currentType: node.getType() });    
+                return E.of({ ...ctx, currentType: node.getType() });
             case tsm.SyntaxKind.BigIntLiteral:
                 return reduceLiteral(node as tsm.BigIntLiteral, parseBigIntLiteral);
             case tsm.SyntaxKind.BinaryExpression:

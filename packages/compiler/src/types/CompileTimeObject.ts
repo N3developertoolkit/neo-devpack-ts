@@ -138,35 +138,3 @@ export const resolveType = (scope: Scope) => (symbol: tsm.Symbol): O.Option<Comp
     );
 };
 
-export const resolveName = (scope: Scope) => (name: string): O.Option<CompileTimeObject> => {
-    return pipe(
-        scope.symbols,
-        findFirst(name),
-        O.alt(() => pipe(
-            scope.parentScope,
-            O.chain(p => resolveName(p)(name))
-        ))
-    );
-};
-
-export const resolveTypeName = (scope: Scope) => (name: string): O.Option<CompileTimeObject> => {
-    return pipe(
-        scope.types,
-        findFirst(name),
-        O.alt(() => pipe(
-            scope.parentScope,
-            O.chain(p => resolveTypeName(p)(name))
-        ))
-    );
-};
-function findFirst(name: string) {
-    return (map: ReadonlyMap<tsm.Symbol, CompileTimeObject>): O.Option<CompileTimeObject> => {
-        for (const [key, value] of map.entries()) {
-            if (key.getName() === name) {
-                return O.some(value);
-            }
-        }
-        return O.none;
-    };
-}
-
