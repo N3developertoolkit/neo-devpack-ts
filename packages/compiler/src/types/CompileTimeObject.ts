@@ -9,7 +9,8 @@ import * as STR from 'fp-ts/string';
 import { Operation } from "./Operation";
 import { ParseError, isArray } from "../utils";
 
-export type ParseArgumentsFunc = (scope: Scope) => (node: tsm.CallExpression) => E.Either<ParseError, readonly Operation[]>;
+export type ParseCallArgsFunc = (scope: Scope) => (node: tsm.CallExpression) => E.Either<ParseError, readonly Operation[]>;
+export type ParseNewArgsFunc = (scope: Scope) => (node: tsm.NewExpression) => E.Either<ParseError, readonly Operation[]>;
 export type GetPropertyFunc = (symbol: tsm.Symbol) => O.Option<CompileTimeObject>;
 
 export interface CompileTimeObject {
@@ -18,27 +19,22 @@ export interface CompileTimeObject {
     readonly loadOps?: ReadonlyArray<Operation>;
     readonly storeOps?: ReadonlyArray<Operation>;
     readonly getProperty?: GetPropertyFunc;
-    readonly parseCall?: ParseArgumentsFunc;
-    readonly parseConstructor?: ParseArgumentsFunc;
+    readonly parseCall?: ParseCallArgsFunc;
+    readonly parseConstructor?: ParseNewArgsFunc;
 }
 
 export interface CompileTimeObjectOptions {
     readonly loadOps?: ReadonlyArray<Operation>;
     readonly storeOps?: ReadonlyArray<Operation>;
     readonly getProperty?: GetPropertyFunc | readonly CompileTimeObject[];
-    readonly parseCall?: ParseArgumentsFunc;
-    readonly parseConstructor?: ParseArgumentsFunc;
+    readonly parseCall?: ParseCallArgsFunc;
+    readonly parseConstructor?: ParseNewArgsFunc;
 }
 
 export function makeGetProperty(options: CompileTimeObjectOptions): GetPropertyFunc | undefined {
     const getProperty = options.getProperty;
-    if (!getProperty) {
-        // a callable object also needs to implement getProperty
-        // Return a stub getProperty method if getProperty is not provided
-        return options.parseCall || options.parseConstructor
-            ? (_symbol) => O.none
-            : undefined;
-    }
+    if (!getProperty) return undefined;
+
     // if getProperty is a function, return it as is
     if (typeof getProperty === 'function') return getProperty;
 
@@ -58,18 +54,6 @@ export function makeCompileTimeObject(node: tsm.Node, symbol: tsm.Symbol, option
         parseCall: options.parseCall,
         parseConstructor: options.parseConstructor,
     };
-}
-
-
-export interface ObjectSymbolDef extends CompileTimeObject {
-    readonly getProperty: GetPropertyFunc;
-}
-
-
-
-export interface CallableSymbolDef extends ObjectSymbolDef {
-    parseCall: ParseArgumentsFunc;
-    parseConstructor?: ParseArgumentsFunc;
 }
 
 export interface Scope {

@@ -4,7 +4,7 @@ import * as E from "fp-ts/Either";
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as ROR from 'fp-ts/ReadonlyRecord';
 import * as TS from "../TS";
-import { ParseArgumentsFunc, CompileTimeObject, makeCompileTimeObject } from "../types/CompileTimeObject";
+import { ParseCallArgsFunc, CompileTimeObject, makeCompileTimeObject } from "../types/CompileTimeObject";
 import { Operation } from "../types/Operation";
 import { parseArguments } from "./expressionProcessor";
 import { CompileError } from "../utils";
@@ -67,7 +67,7 @@ export function createBuiltInObject(node: tsm.Node, options: BuiltInObjectOption
 
 
 export interface BuiltInCallableOptions extends BuiltInObjectOptions {
-    readonly parseArguments?: ParseArgumentsFunc;
+    readonly parseArguments?: ParseCallArgsFunc;
 }
 
 export function createBuiltInCallable(node: tsm.Node, options: BuiltInCallableOptions) {
