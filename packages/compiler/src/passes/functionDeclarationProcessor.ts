@@ -96,12 +96,12 @@ function adaptExpressionStatement(node: tsm.ExpressionStatement): S.State<AdaptS
     const expr = node.getExpression();
     return context => {
 
+        const dropOps: readonly Operation[] = isVoidLike(node.getType()) ? ROA.empty : ROA.of({ kind: 'drop' });
         let [ops, $context] = adaptExpression(expr)(context);
-        if (!isVoidLike(node.getType()) && !TS.isAssignmentExpression(expr)) {
-            ops = ROA.append<Operation>({ kind: 'drop' })(ops);
-        }
-
-        ops = updateLocation(node)(ops);
+        ops = pipe(ops,
+            updateLocation(node),
+            ROA.concat(dropOps)
+        );
         return [ops, $context];
     }
 }
