@@ -103,11 +103,8 @@ export interface ParseError {
 
 export const makeParseError =
     (node?: tsm.Node) =>
-        (e: string | unknown): ParseError => {
-            const message = typeof e === 'string'
-                ? e : e instanceof Error
-                    ? e.message : String(e);
-            return { message, node };
+        (error: string | unknown): ParseError => {
+            return { message: getErrorMessage(error), node };
         }
 
 export const makeParseDiagnostic = (e: ParseError) => createDiagnostic(e.message, { node: e.node });
