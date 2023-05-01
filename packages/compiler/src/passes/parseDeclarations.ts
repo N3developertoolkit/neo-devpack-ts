@@ -115,7 +115,7 @@ function parseInterfaceMembers(node: tsm.Node, members: readonly tsm.TypeElement
 
     const props = pipe(members, ROA.filter(tsm.Node.isPropertySignature));
     if (props.length != members.length) {
-        return E.left(makeParseError(node)('interface members other that properties not supported'));
+        return E.left(makeParseError(node)('only property interface members supported'));
     }
 
     const propsE = TS.hasTag("struct")

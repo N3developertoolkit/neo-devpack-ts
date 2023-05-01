@@ -486,7 +486,7 @@ function adaptForStatement(node: tsm.ForStatement): S.State<AdaptStatementContex
 
 function adaptForInStatement(node: tsm.ForInStatement): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
-            
+
         const init = node.getInitializer();
         const expr = node.getExpression();
         const stmt = node.getStatement();
@@ -498,12 +498,19 @@ function adaptForInStatement(node: tsm.ForInStatement): S.State<AdaptStatementCo
 
 function adaptForOfStatement(node: tsm.ForOfStatement): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
-            
+
         const init = node.getInitializer();
         const expr = node.getExpression();
         const stmt = node.getStatement();
 
         const error = makeParseError(node)('for in statement not implemented');
+        return [ROA.empty, updateContextErrors(context)(error)];
+    }
+}
+
+function adaptSwitchStatement(node: tsm.SwitchStatement): S.State<AdaptStatementContext, readonly Operation[]> {
+    return context => {
+        const error = makeParseError(node)('switch statement not implemented');
         return [ROA.empty, updateContextErrors(context)(error)];
     }
 }
@@ -526,12 +533,12 @@ export type AdaptDispatchMap<A, T extends AdaptDispatchContext> = {
 };
 
 const adaptFutureWork =
-        (node: tsm.Node): S.State<AdaptStatementContext, readonly Operation[]> =>
-            context => {
-                const error = makeParseError(node)(`${node.getKindName()} support coming in future release`);
-                const errors = ROA.append(error)(context.errors);
-                return [ROA.empty, { ...context, errors }];
-            }
+    (node: tsm.Node): S.State<AdaptStatementContext, readonly Operation[]> =>
+        context => {
+            const error = makeParseError(node)(`${node.getKindName()} support coming in future release`);
+            const errors = ROA.append(error)(context.errors);
+            return [ROA.empty, { ...context, errors }];
+        }
 
 const adaptDispatchMap: AdaptDispatchMap<readonly Operation[], AdaptStatementContext> = {
     [tsm.SyntaxKind.Block]: adaptBlock,
@@ -592,29 +599,29 @@ interface ParseBodyResult {
 }
 
 function parseBody({ scope, body }: { scope: Scope, body: tsm.Node }): E.Either<readonly ParseError[], ParseBodyResult> {
-    if (tsm.Node.isStatement(body)) {
+    const context: AdaptStatementContext = {
+        scope,
+        errors: [],
+        locals: [],
+        returnTarget: { kind: 'return' },
+        breakTargets: [],
+        continueTargets: [],
+    };
 
-        const context: AdaptStatementContext = {
-            scope,
-            errors: [],
-            locals: [],
-            returnTarget: { kind: 'return' },
-            breakTargets: [],
-            continueTargets: [],
-        };
-        let [operations, { errors, locals }] = adaptStatement(body)(context);
+    const [operations, { errors, locals }] = adaptBody(context);
+    return ROA.isNonEmpty(errors)
+        ? E.left(errors)
+        : E.of({
+            operations: ROA.append<Operation>(context.returnTarget)(operations),
+            locals
+        });
 
-        if (ROA.isNonEmpty(errors)) return E.left(errors);
-        operations = ROA.append<Operation>(context.returnTarget)(operations);
-        return E.of({ operations, locals });
+    function adaptBody(context: AdaptStatementContext): [readonly Operation[], AdaptStatementContext] {
+        if (tsm.Node.isStatement(body)) return adaptStatement(body)(context);
+        if (tsm.Node.isExpression(body)) return adaptExpression(body)(context);
+        const error = makeParseError(body)(`unexpected body kind ${body.getKindName()}`);
+        return [ROA.empty, updateContextErrors(context)(error)];
     }
-
-    return pipe(
-        `parseBody ${body.getKindName()} not implemented`,
-        makeParseError(body),
-        ROA.of,
-        E.left
-    )
 }
 
 const adaptFunctionDeclaration = (parentScope: Scope, node: tsm.FunctionDeclaration): S.State<readonly ParseError[], ParseBodyResult> =>
@@ -634,7 +641,7 @@ const adaptFunctionDeclaration = (parentScope: Scope, node: tsm.FunctionDeclarat
                     return pipe(
                         defs,
                         createScope(parentScope),
-                        E.mapLeft(msg => ROA.of(makeParseError(node)(msg)))
+                        E.mapLeft(flow(makeParseError(node), ROA.of))
                     );
                 })
             )),
@@ -658,7 +665,7 @@ const adaptFunctionDeclaration = (parentScope: Scope, node: tsm.FunctionDeclarat
         )
     }
 
-const adaptContractMethod =
+const makeContractMethod =
     (node: tsm.FunctionDeclaration) =>
         ({ locals, operations }: ParseBodyResult): S.State<readonly ParseError[], O.Option<ContractMethod>> =>
             errors => pipe(
@@ -692,7 +699,7 @@ export const parseContractMethod =
                 ROA.empty,
                 pipe(
                     adaptFunctionDeclaration(parentScope, node),
-                    S.chain(adaptContractMethod(node)),
+                    S.chain(makeContractMethod(node)),
                 ),
                 ([optMethod, errors]) => pipe(
                     errors,
