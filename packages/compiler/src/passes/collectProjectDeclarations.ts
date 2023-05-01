@@ -13,7 +13,7 @@ import * as JSON from "fp-ts/Json";
 import * as ROR from 'fp-ts/ReadonlyRecord';
 import * as STR from 'fp-ts/string';
 
-import { createDiagnostic } from "../utils";
+import { CompileError, createDiagnostic } from "../utils";
 import { CompilerState } from "../types/CompileOptions";
 import { LibraryDeclaration } from "../types/LibraryDeclaration";
 
@@ -23,10 +23,6 @@ function isJsonRecord(json: JSON.Json): json is JSON.JsonRecord {
 
 function isJsonString(json: JSON.Json): json is string {
     return typeof json === 'string';
-}
-
-function getFileReferenceName(file: tsm.FileReference) { 
-    return file.getFileName(); 
 }
 
 const collectDeclarations =
@@ -64,7 +60,7 @@ const collectDeclarations =
                         break;
 
                     default:
-                        throw new Error(`collectDeclarations ${child.getKindName()}`)
+                        throw new CompileError(`collectDeclarations ${child.getKindName()}`, child)
                 }
             })
 
@@ -76,6 +72,7 @@ const collectSourceFileDeclarations =
         (src: tsm.SourceFile): S.State<readonly LibraryDeclaration[], ReadonlyArray<E.Either<string, tsm.SourceFile>>> =>
             declarations => {
 
+                const getFileReferenceName = (file: tsm.FileReference) => file.getFileName()
                 const libs = pipe(
                     src.getLibReferenceDirectives(),
                     ROA.map(getFileReferenceName));
@@ -158,42 +155,37 @@ function makeResolver(project: tsm.Project): Resolver {
             E.fromOption(() => `${lib} library`)
         )
 
-    function resolveTypes(types: string) {
-        return pipe(
+    const resolveTypes = (types: string) =>
+        pipe(
             // look in node_modules/@types for types package first
             `/node_modules/@types/${types}/package.json`,
             fileExists,
             // look in node_modules/ for types package if doesn't exist under @types 
             O.alt(() => pipe(`/node_modules/${types}/package.json`, fileExists)),
-            O.chain(packagepath => {
-                // load package.json file at packagepath, parse the JSON
-                // and cast it to a JsonRecord (aka an object)
-                return pipe(
-                    packagepath,
-                    getFile,
-                    O.chain(flow(JSON.parse, O.fromEither)),
-                    O.chain(O.fromPredicate(isJsonRecord)),
-                    O.bindTo('$package'),
-                    // look in typings and types properties for relative path
-                    // to declarations file
-                    O.chain(({ $package }) => pipe(
-                        $package,
-                        ROR.lookup('typings'),
-                        O.alt(() => pipe(
-                            $package,
-                            ROR.lookup('types')
-                        ))
-                    )),
-                    // cast JSON value to string
-                    O.chain(O.fromPredicate(isJsonString)),
-                    // resolve relative path to absolute path and load as source
-                    O.map(path => posix.resolve(posix.dirname(packagepath), path)),
-                    O.chain(getSourceFile)
-                );
-            }),
+            O.chain(pkgJsonPath => pipe(
+                pkgJsonPath,
+                // load package.json file, parse the JSON and cast it to a JsonRecord (aka an object)
+                getFile,
+                O.chain(flow(JSON.parse, O.fromEither)),
+                O.chain(O.fromPredicate(isJsonRecord)),
+                // look in typings and types properties for relative path
+                // to declarations file
+                O.chain(pkgJson => pipe(
+                    pkgJson,
+                    ROR.lookup('typings'),
+                    O.alt(() => pipe(
+                        pkgJson,
+                        ROR.lookup('types')
+                    ))
+                )),
+                // cast JSON value to string
+                O.chain(O.fromPredicate(isJsonString)),
+                // resolve relative path to absolute path and load as source
+                O.map(path => posix.resolve(posix.dirname(pkgJsonPath), path)),
+                O.chain(getSourceFile)
+            )),
             E.fromOption(() => `${types} types`)
-        );
-    }
+        )
 
     return {
         resolveLib,
