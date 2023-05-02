@@ -5,7 +5,7 @@ import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option'
 import * as TS from "../TS";
 import { ParseError, isBigIntLike, isBooleanLike, isNumberLike, isStringLike, isVoidLike, makeParseError } from "../utils";
-import { Operation, pushInt, pushString } from "../types/Operation";
+import { Operation, getBooleanConvertOps, getStringConvertOps, pushInt, pushString } from "../types/Operation";
 import { CompileTimeObject, Scope, resolve, resolveType } from "../types/CompileTimeObject";
 import { sc, u } from "@cityofzion/neon-core";
 
@@ -47,67 +47,14 @@ function loadTree(scope: Scope) {
     };
 }
 
-const byteStringToBooleanConvertOps = [
-    { kind: 'duplicate' },
-    { kind: 'isnull' },
-    { kind: "jumpifnot", offset: 3 },
-    { kind: 'pushbool', value: true },
-    { kind: "jump", offset: 4 },
-    { kind: 'size' },
-    { kind: 'pushint', value: 0n },
-    { kind: 'notequal' },
-    { kind: 'noop' }
-] as readonly Operation[];
-
 const loadTreeAsBoolean = (scope: Scope) => (tree: ExpressionTree): E.Either<ParseError, readonly Operation[]> => {
-
-    const convertOps = getConvertOps();
-    return pipe(
-        tree,
-        loadTree(scope),
-        E.map(ops => ROA.concat(ops)(convertOps))
-    );
-
-    function getConvertOps(): readonly Operation[] {
-        const type = tree.node.getType();
-        if (isBooleanLike(type)) return ROA.empty;
-        if (isStringLike(type)) return byteStringToBooleanConvertOps;
-        if (isBigIntLike(type) || isNumberLike(type)) {
-            return [{ kind: 'pushint', value: 0n }, { kind: 'equal' }]
-        }
-
-        return pipe(
-            type,
-            TS.getTypeSymbol,
-            O.chain(resolveType(scope)),
-            O.chain(typeCTO => {
-                // for byte strings, use stringToBoolConvertOps (i.e. compare to null and compare length to zero)
-                if (typeCTO.symbol.getName() === "ByteString") return O.of(byteStringToBooleanConvertOps);
-                // for any other object type, compare to null
-                if ('getProperty' in typeCTO) return O.of([{ kind: 'isnull' }, { kind: "not" }] as readonly Operation[])
-                return O.none
-            }),
-            // as a fallback, use a Neo VM convert operation
-            O.getOrElse(() => ROA.of(<Operation>{ kind: "convert", type: sc.StackItemType.Boolean }))
-        )
-    }
+    const convertOps = getBooleanConvertOps(tree.node.getType());
+    return pipe(tree, loadTree(scope), E.map(ROA.concat(convertOps)));
 }
 
 const loadTreeAsString = (scope: Scope) => (tree: ExpressionTree): E.Either<ParseError, readonly Operation[]> => {
-
-    const type = tree.node.getType();
-    const resolvedType = pipe(type, TS.getTypeSymbol, O.chain(resolveType(scope)))
-    const matchTypeName = (name: string) => pipe(
-        resolvedType,
-        O.map(s => s.symbol.getName() === name),
-        O.getOrElse(() => false)
-    )
-
-    const convertOps: readonly Operation[] = isStringLike(type) || matchTypeName("ByteString")
-        ? ROA.empty
-        : [{ kind: "convert", type: sc.StackItemType.ByteString }];
-
-    return pipe(tree, loadTree(scope), E.map(ROA.concat(convertOps)))
+    const convertOps = getStringConvertOps(tree.node.getType());
+    return pipe(tree, loadTree(scope), E.map(ROA.concat(convertOps)));
 }
 
 function storeTree(scope: Scope) {
@@ -117,7 +64,6 @@ function storeTree(scope: Scope) {
         return E.left(makeParseError(tree.node)(`storeTree unsupported expression tree ${tree.node.getKindName()}`));
     };
 }
-
 
 function getStoreOps(cto: CompileTimeObject) {
     return pipe(
