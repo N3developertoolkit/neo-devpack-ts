@@ -5,7 +5,9 @@ import { sc } from "@cityofzion/neon-core";
 import { createContractProject, hasErrors, toDiagnostic } from "./utils";
 import { compile } from "./compiler";
 import { CompileOptions, ContractMethod } from "./types/CompileOptions";
-import { JumpOffsetOperation, Location, Operation } from "./types/Operation";
+import { JumpOffsetOperation, Location, Operation, convertJumpTargetOps } from "./types/Operation";
+import * as E from 'fp-ts/lib/Either';
+import { pipe } from "fp-ts/lib/function";
 
 const REPO_ROOT = join(__dirname, "../../..");
 const FILENAME = "./sample-contracts/nep17token.ts";
@@ -124,11 +126,22 @@ function dumpContractMethod(method: ContractMethod) {
 
     const params = method.node.getParameters().map(p => p.getName()).join(", ");
     console.log(magenta, `${method.symbol.getName()}(${params})`);
-    method.operations.forEach((v, i) => {
-        if (v.location) { console.log(cyan, `  ${dumpLocation(v.location)}`); }
-        console.log(`    ${i}: ${dumpOperation(v, i)}`);
-    })
+
+    pipe(
+        method.operations,
+        convertJumpTargetOps,
+        E.match(
+            msg => { throw new Error(msg); },
+            operations => {
+                return operations.forEach((v, i) => {
+                    if (v.location) { console.log(cyan, `  ${dumpLocation(v.location)}`); }
+                    console.log(`    ${i}: ${dumpOperation(v, i)}`);
+                });
+            }
+        )
+    )
 }
+
 function dumpLocation(location: Location) {
     if (Node.isNode(location)) {
         return location.print();

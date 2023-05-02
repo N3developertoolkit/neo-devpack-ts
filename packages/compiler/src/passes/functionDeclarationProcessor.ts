@@ -8,20 +8,19 @@ import * as TS from '../TS';
 import * as MONOID from 'fp-ts/Monoid';
 
 import { Scope, createEmptyScope, createScope, updateScope } from "../types/CompileTimeObject";
-import { Operation, updateLocation } from "../types/Operation";
+import { Operation, getBooleanConvertOps, updateLocation } from "../types/Operation";
 import { E_fromSeparated, ParseError, isVoidLike, makeParseError, updateContextErrors } from "../utils";
 import { ContractMethod, ContractSlot } from "../types/CompileOptions";
-import { parseExpression, parseExpressionAsBoolean } from "./expressionProcessor";
+import { parseExpression } from "./expressionProcessor";
 import { VariableFactory, handleVariableStatement } from "./variableStatementProcessor";
 import { makeLocalVariable, makeParameter } from "./parseDeclarations";
 
-type ExpressionParser = (scope: Scope) => (node: tsm.Expression) => E.Either<ParseError, readonly Operation[]>;
-
-function adaptExpression(node: tsm.Expression, parser: ExpressionParser = parseExpression): S.State<AdaptStatementContext, readonly Operation[]> {
+function adaptExpression(node: tsm.Expression, convertOps: readonly Operation[] = []): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
         return pipe(
             node,
-            parser(context.scope),
+            parseExpression(context.scope),
+            E.map(ROA.concat(convertOps)),
             E.match(
                 error => [ROA.empty, updateContextErrors(context)(error)],
                 ops => [ops, context]
@@ -31,7 +30,7 @@ function adaptExpression(node: tsm.Expression, parser: ExpressionParser = parseE
 }
 
 function adaptExpressionAsBoolean(node: tsm.Expression): S.State<AdaptStatementContext, readonly Operation[]> {
-    return adaptExpression(node, parseExpressionAsBoolean);
+    return adaptExpression(node, getBooleanConvertOps(node.getType()));
 }
 
 function adaptBlock(node: tsm.Block): S.State<AdaptStatementContext, readonly Operation[]> {
@@ -42,7 +41,7 @@ function adaptBlock(node: tsm.Block): S.State<AdaptStatementContext, readonly Op
         for (const stmt of node.getStatements()) {
             let $ops;
             [$ops, $context] = adaptStatement(stmt)($context);
-            ops = ROA.concat(ops)($ops);
+            ops = ROA.concat($ops)(ops);
         }
 
         const open = node.getFirstChildByKind(tsm.SyntaxKind.OpenBraceToken);
@@ -121,7 +120,7 @@ function adaptIfStatement(node: tsm.IfStatement): S.State<AdaptStatementContext,
 
         let $thenOps: readonly Operation[];
         [$thenOps, $context] = adaptStatement(node.getThenStatement())($context);
-        ops = ROA.concat(ops)($thenOps);
+        ops = ROA.concat($thenOps)(ops);
 
         const $else = node.getElseStatement();
         if ($else) {
