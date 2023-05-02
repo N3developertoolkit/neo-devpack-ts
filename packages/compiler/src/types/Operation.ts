@@ -1,5 +1,5 @@
 import * as tsm from "ts-morph";
-import { sc } from '@cityofzion/neon-core';
+import { sc, CONST } from '@cityofzion/neon-core';
 import { convertBigInteger, isBigIntLike, isBooleanLike, isNumberLike, isStringLike } from "../utils";
 import { pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
@@ -543,39 +543,71 @@ export const convertJumpOffsetOps =
     }
 
 export function getStringConvertOps(type: tsm.Type): readonly Operation[] {
+
+    if (isStringLike(type)) return [];
+    if (isBooleanLike(type)) {
+        return [
+            { kind: 'jumpifnot', offset: 3 },
+            pushString('true'),
+            { kind: "jump", offset: 2 },
+            pushString('false'),
+            { kind: 'noop' }
+        ];
+    }
+    if (isBigIntLike(type) || isNumberLike(type)) {
+        return [
+            {
+                kind: "calltoken", token: new sc.MethodToken({
+                    hash: CONST.NATIVE_CONTRACT_HASH.StdLib,
+                    method: "Itoa",
+                    hasReturnValue: true,
+                    parametersCount: 1,
+                })
+            }
+        ];
+    }
+
     const typeName = type.getSymbol()?.getName();
-    if (isStringLike(type) || typeName === "ByteString") return [];
+    if (typeName === "ByteString") return [];
+
+    // The convert operation costs 1 << 13, making it one of the most expensive operations. 
+    // Fallback to convert only if there's not a type specific conversion available.
     return [{ kind: "convert", type: sc.StackItemType.ByteString }];
 }
 
 export function getBooleanConvertOps(type: tsm.Type): readonly Operation[] {
+
     // boolean experessions don't need to be converted
     if (isBooleanLike(type)) return [];
 
     // numeric expressions are converted by comparing value to zero
     if (isBigIntLike(type) || isNumberLike(type)) {
-        return [
+        [
             { kind: 'pushint', value: 0n },
             { kind: 'equal' },
-        ];
+        ] as readonly Operation[];
     }
+
+    // convert ByteString to boolean by comparing to null and comparing length to zero
+    // this set of operations is much cheaper than a single convert operation
+    const byteStringToBooleanConvertOps = [
+        { kind: 'duplicate' },
+        { kind: 'isnull' },
+        { kind: "jumpifnot", offset: 3 },
+        { kind: 'pushbool', value: true },
+        { kind: "jump", offset: 4 },
+        { kind: 'size' },
+        { kind: 'pushint', value: 0n },
+        { kind: 'notequal' },
+        { kind: 'noop' }
+    ] as readonly Operation[];
+
+    if (isStringLike(type)) return byteStringToBooleanConvertOps;
 
     const typeName = type.getSymbol()?.getName();
-    // convert ByteString to boolean by comparing to null and comparing length to zero
-    if (isStringLike(type) || typeName === "ByteString") {
-        return [
-            { kind: 'duplicate' },
-            { kind: 'isnull' },
-            { kind: "jumpifnot", offset: 3 },
-            { kind: 'pushbool', value: true },
-            { kind: "jump", offset: 4 },
-            { kind: 'size' },
-            { kind: 'pushint', value: 0n },
-            { kind: 'notequal' },
-            { kind: 'noop' }
-        ];
-    }
+    if (typeName === "ByteString") return byteStringToBooleanConvertOps;
 
+    // objects are converted by checking against null
     if (type.isObject()) {
         return [
             { kind: 'isnull' },
@@ -583,5 +615,7 @@ export function getBooleanConvertOps(type: tsm.Type): readonly Operation[] {
         ];
     }
 
+    // The convert operation costs 1 << 13, making it one of the most expensive operations. 
+    // Fallback to convert only if there's not a type specific conversion available.
     return [{ kind: "convert", type: sc.StackItemType.Boolean }];
 }
