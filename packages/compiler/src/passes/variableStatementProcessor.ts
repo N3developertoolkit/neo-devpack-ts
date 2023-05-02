@@ -231,7 +231,7 @@ export const handleVariableStatement =
                             init => pipe(
                                 init,
                                 parseExpression(scope),
-                                E.map(updateLocation(init))
+                                E.map(updateLocation(decl))
                             )),
                         E.chain(handleVariableDeclaration(decl.getNameNode(), node.getDeclarationKind(), factory))
                     )),
