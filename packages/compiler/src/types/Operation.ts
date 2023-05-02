@@ -1,6 +1,6 @@
 import * as tsm from "ts-morph";
 import { sc } from '@cityofzion/neon-core';
-import { convertBigInteger } from "../utils";
+import { convertBigInteger, isBigIntLike, isBooleanLike, isNumberLike, isStringLike } from "../utils";
 import { pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as E from "fp-ts/Either";
@@ -23,7 +23,7 @@ export const simpleOperationKinds = [
     // flow control
     'noop',
     'throw',
-    'return', 
+    'return',
     'endfinally',
 
     // Stack Management
@@ -181,7 +181,7 @@ export type Operation =
     PushDataOperation |
     PushIntOperation |
     SimpleOperation |
-    SysCallOperation | 
+    SysCallOperation |
     TryOffsetOperation |
     TryTargetOperation;
 
@@ -541,3 +541,47 @@ export const convertJumpOffsetOps =
             ROA.sequence(E.Applicative)
         )
     }
+
+export function getStringConvertOps(type: tsm.Type): readonly Operation[] {
+    const typeName = type.getSymbol()?.getName();
+    if (isStringLike(type) || typeName === "ByteString") return [];
+    return [{ kind: "convert", type: sc.StackItemType.ByteString }];
+}
+
+export function getBooleanConvertOps(type: tsm.Type): readonly Operation[] {
+    // boolean experessions don't need to be converted
+    if (isBooleanLike(type)) return [];
+
+    // numeric expressions are converted by comparing value to zero
+    if (isBigIntLike(type) || isNumberLike(type)) {
+        return [
+            { kind: 'pushint', value: 0n },
+            { kind: 'equal' },
+        ];
+    }
+
+    const typeName = type.getSymbol()?.getName();
+    // convert ByteString to boolean by comparing to null and comparing length to zero
+    if (isStringLike(type) || typeName === "ByteString") {
+        return [
+            { kind: 'duplicate' },
+            { kind: 'isnull' },
+            { kind: "jumpifnot", offset: 3 },
+            { kind: 'pushbool', value: true },
+            { kind: "jump", offset: 4 },
+            { kind: 'size' },
+            { kind: 'pushint', value: 0n },
+            { kind: 'notequal' },
+            { kind: 'noop' }
+        ];
+    }
+
+    if (type.isObject()) {
+        return [
+            { kind: 'isnull' },
+            { kind: "not" },
+        ];
+    }
+
+    return [{ kind: "convert", type: sc.StackItemType.Boolean }];
+}
