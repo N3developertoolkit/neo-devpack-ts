@@ -4,10 +4,9 @@ import * as ROA from 'fp-ts/ReadonlyArray';
 import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option'
 import * as TS from "../TS";
-import { ParseError, isBigIntLike, isBooleanLike, isNumberLike, isStringLike, isVoidLike, makeParseError } from "../utils";
+import { CompileError, ParseError, isStringLike, isVoidLike, makeParseError } from "../utils";
 import { Operation, getBooleanConvertOps, getStringConvertOps, pushInt, pushString } from "../types/Operation";
 import { CompileTimeObject, Scope, resolve, resolveType } from "../types/CompileTimeObject";
-import { sc, u } from "@cityofzion/neon-core";
 
 export interface ExpressionTree {
     readonly node: tsm.Node;
@@ -125,10 +124,16 @@ export class LiteralExpressionTree implements ExpressionTree {
     constructor(
         readonly node: tsm.StringLiteral | tsm.NumericLiteral | tsm.BigIntLiteral | tsm.BooleanLiteral | tsm.NullLiteral,
         readonly literal: string | bigint | boolean | null,
-        readonly loadOp: Operation,
-    ) { }
+    ) { 
+        if (typeof literal === 'string') this.loadOp = pushString(literal);
+        else if (typeof literal === 'bigint') this.loadOp = pushInt(literal);
+        else if (typeof literal === 'boolean') this.loadOp = { kind: 'pushbool', value: literal };
+        else if (literal === null) this.loadOp = { kind: 'pushnull' };
+        else throw new CompileError("invalid literal type", this.node);
+    }
 
-    readonly load = (_scope: Scope) => E.right([this.loadOp])
+    private readonly loadOp: Operation;
+    readonly load = (_scope: Scope) => E.of([this.loadOp])
 }
 
 export class ArrayExpressionTree implements ExpressionTree {
@@ -524,28 +529,28 @@ export class PropertyAccessExpressionTree implements ExpressionTree {
 
 function parseBigIntLiteralTree(node: tsm.BigIntLiteral): E.Either<ParseError, LiteralExpressionTree> {
     const literal = node.getLiteralValue() as bigint;
-    return E.of(new LiteralExpressionTree(node, literal, pushInt(literal)));
+    return E.of(new LiteralExpressionTree(node, literal));
 }
 
 function parseBooleanLiteralTree(node: tsm.BooleanLiteral): E.Either<ParseError, LiteralExpressionTree> {
     const literal = node.getLiteralValue();
-    return E.of(new LiteralExpressionTree(node, literal, { kind: 'pushbool', value: literal }));
+    return E.of(new LiteralExpressionTree(node, literal));
 }
 
 function parseNullLiteralTree(node: tsm.NullLiteral): E.Either<ParseError, LiteralExpressionTree> {
-    return E.of(new LiteralExpressionTree(node, null, { kind: 'pushnull' }));
+    return E.of(new LiteralExpressionTree(node, null));
 }
 
 function parseNumericLiteralTree(node: tsm.NumericLiteral): E.Either<ParseError, LiteralExpressionTree> {
     const literal = node.getLiteralValue();
     return Number.isInteger(literal)
-        ? E.of(new LiteralExpressionTree(node, BigInt(literal), pushInt(literal)))
+        ? E.of(new LiteralExpressionTree(node, BigInt(literal)))
         : E.left(makeParseError(node)(`invalid non-integer numeric literal ${literal}`));
 }
 
 function parseStringLiteralTree(node: tsm.StringLiteral): E.Either<ParseError, LiteralExpressionTree> {
     const literal = node.getLiteralValue();
-    return E.of(new LiteralExpressionTree(node, literal, pushString(literal)));
+    return E.of(new LiteralExpressionTree(node, literal));
 }
 
 const parseIdentifierTree =

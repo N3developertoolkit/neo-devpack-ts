@@ -117,8 +117,8 @@ export function toDiagnostic(error: string | unknown): tsm.ts.Diagnostic {
     return createDiagnostic(message, { node });
 }
 
-export function createProject() {
-    return new tsm.Project({
+export function createContractProject() {
+    const project = new tsm.Project({
         compilerOptions: {
             // specify lib file directly to avoid bringing in web apis like DOM and WebWorker
             lib: ["lib.es2020.d.ts"],
@@ -128,10 +128,6 @@ export function createProject() {
         },
         useInMemoryFileSystem: true,
     });
-}
-
-export function createContractProject() {
-    const project = createProject();
     const projFS = project.getFileSystem();
 
     const scfxPackage = require.resolve("@neo-project/neo-contract-framework/package.json");

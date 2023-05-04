@@ -1,32 +1,32 @@
-// import 'mocha';
-// import { assert, expect } from 'chai';
+import 'mocha';
+import { expect } from 'chai';
 
-// import * as tsm from 'ts-morph'
-// import { identity, pipe } from 'fp-ts/lib/function';
-// import * as ROA from 'fp-ts/ReadonlyArray';
-// import * as E from "fp-ts/Either";
-// import * as S from 'fp-ts/State';
-// import * as O from 'fp-ts/Option';
+import * as tsm from 'ts-morph'
+import { identity, pipe } from 'fp-ts/function';
+import * as ROA from 'fp-ts/ReadonlyArray';
+import * as E from "fp-ts/Either";
+import * as O from 'fp-ts/Option'
 
-// import { ParseError, createContractProject } from '../src/utils';
+import { createContractProject } from '../src/utils';
 // import { collectProjectDeclarations } from '../src/passes/collectProjectDeclarations';
 // import { makeGlobalScope, makeStackItemType } from '../src/passes/builtins';
-// import { loadTree, parseExpressionTree, resolveTree } from '../src/passes/expressionResolver';
+import { LiteralExpressionTree, parseExpressionTree } from '../src/passes/expressionResolver';
+import { createEmptyScope } from '../src/types/CompileTimeObject';
 // import { CompileTimeObject, createEmptyScope, makeCompileTimeObject, updateScope } from '../src/types/CompileTimeObject';
 // import { Operation } from '../src/types/Operation';
 
-// export function createTestProject(contract: string) {
-//     const project = createContractProject();
-//     const sourceFile = project.createSourceFile("contract.ts", contract);
-//     project.resolveSourceFileDependencies();
+export function createTestProject(contract: string) {
+    const project = createContractProject();
+    const sourceFile = project.createSourceFile("contract.ts", contract);
+    project.resolveSourceFileDependencies();
 
-//     const errors = project.getPreEmitDiagnostics()
-//         .map(d => d.compilerObject)
-//         .filter(d => d.category === tsm.ts.DiagnosticCategory.Error);
-//     if (errors.length > 0) { expect.fail(errors.map(d => d.messageText).join(", ")); }
+    const errors = project.getPreEmitDiagnostics()
+        .map(d => d.compilerObject)
+        .filter(d => d.category === tsm.ts.DiagnosticCategory.Error);
+    if (errors.length > 0) { expect.fail(errors.map(d => d.messageText).join(", ")); }
 
-//     return { project, sourceFile };
-// }
+    return { project, sourceFile };
+}
 
 // export function createTestScope(symbols?: CompileTimeObject | readonly CompileTimeObject[], types?: CompileTimeObject | readonly CompileTimeObject[]) {
 //     return pipe(
@@ -86,105 +86,115 @@
 //                 E.chain(loadTree(scope)),
 //                 E.match(error => expect.fail(error.message), identity)
 //             )
-    
+
 //     })
 // });
 
-// describe("expression trees", () => {
+describe("expression trees", () => {
+    describe("literals", () => {
+        it("string literal", () => {
+            const contract = /*javascript*/`function testFunc() { const value = "Hello, World!" }`;
+            const { sourceFile } = createTestProject(contract);
+            const func = sourceFile.getFunctionOrThrow('testFunc');
+            const init = func.getDescendantsOfKind(tsm.SyntaxKind.VariableDeclaration)[0].getInitializerOrThrow();
 
-    
-//     it("load identifier", () => {
-//         const contract = /*javascript*/`function testFunc() { const runtime = Runtime }`;
+            const tree = pipe(init, parseExpressionTree, E.match(error => expect.fail(error.message), identity));
+            expect(tree).instanceOf(LiteralExpressionTree);
+            expect((tree as LiteralExpressionTree).literal).eq("Hello, World!");
 
-//         const { sourceFile } = createTestProject(contract);
+            expect(tree.load).is.not.null;
+            const scope = createEmptyScope();
+            const ops = pipe(scope, tree.load!, E.match(error => expect.fail(error.message), identity));
+            expect(ops).lengthOf(1);
+            expect(ops[0]).to.have.property('kind', 'pushdata')
+            expect(ops[0]).to.have.deep.property('value', Buffer.from("Hello, World!", 'utf8'))
+        })
 
-//         const runtime = findSymbol("Runtime", sourceFile, tsm.ts.SymbolFlags.Variable);
-//         const cto: CompileTimeObject = {
-//             node: runtime.getValueDeclarationOrThrow(),
-//             symbol: runtime,
-//             loadOps: [ { kind: 'noop', debug: 'Runtime' } as Operation],
-//         }
-//         const scope = createTestScope(cto);
+        it("boolean literal", () => {
+            const contract = /*javascript*/`function testFunc() { const value = true }`;
+            const { sourceFile } = createTestProject(contract);
+            const func = sourceFile.getFunctionOrThrow('testFunc');
+            const init = func.getDescendantsOfKind(tsm.SyntaxKind.VariableDeclaration)[0].getInitializerOrThrow();
 
-//         const func = sourceFile.getFunctionOrThrow('testFunc');
-//         const decl = func.getDescendantsOfKind(tsm.SyntaxKind.VariableDeclaration)[0];
-//         const init = decl.getInitializerIfKindOrThrow(tsm.SyntaxKind.Identifier);
+            const tree = pipe(init, parseExpressionTree, E.match(error => expect.fail(error.message), identity));
+            expect(tree).instanceOf(LiteralExpressionTree);
+            expect((tree as LiteralExpressionTree).literal).eq(true);
 
-//         const resolved = pipe(
-//             init,
-//             parseExpressionTree,
-//             E.chain(loadTree(scope)),
-//             E_fail
-//         )
+            expect(tree.load).is.not.null;
+            const scope = createEmptyScope();
+            const ops = pipe(scope, tree.load!, E.match(error => expect.fail(error.message), identity));
+            expect(ops).lengthOf(1);
+            expect(ops[0]).to.have.property('kind', 'pushbool')
+            expect(ops[0]).to.have.deep.property('value', true)
+        })
 
-//         expect(resolved).to.equal(cto.loadOps!);
-//     });
+        it("null literal", () => {
+            const contract = /*javascript*/`function testFunc() { const value = null }`;
+            const { sourceFile } = createTestProject(contract);
+            const func = sourceFile.getFunctionOrThrow('testFunc');
+            const init = func.getDescendantsOfKind(tsm.SyntaxKind.VariableDeclaration)[0].getInitializerOrThrow();
 
-//     it("load identifier.property", () => {
-//         const contract = /*javascript*/`function testFunc() { const platform = Runtime.platform }`;
+            const tree = pipe(init, parseExpressionTree, E.match(error => expect.fail(error.message), identity));
+            expect(tree).instanceOf(LiteralExpressionTree);
+            expect((tree as LiteralExpressionTree).literal).is.null;
 
-//         const { sourceFile } = createTestProject(contract);
+            expect(tree.load).is.not.null;
+            const scope = createEmptyScope();
+            const ops = pipe(scope, tree.load!, E.match(error => expect.fail(error.message), identity));
+            expect(ops).lengthOf(1);
+            expect(ops[0]).to.have.property('kind', 'pushnull')
+        })
 
-//         const runtimeCtor = findSymbol("RuntimeConstructor", sourceFile, tsm.ts.SymbolFlags.Interface);
-//         const platform = findProperty("platform", runtimeCtor);
-//         const platformCTO: CompileTimeObject = {
-//             node: platform.getValueDeclarationOrThrow(),
-//             symbol: platform,
-//             loadOps: [ { kind: 'noop', debug: 'RuntimeConstructor.platform' } as Operation],
-//         }
+        it("numeric literal", () => {
+            const contract = /*javascript*/`function testFunc() { const value = 42; }`;
+            const { sourceFile } = createTestProject(contract);
+            const func = sourceFile.getFunctionOrThrow('testFunc');
+            const init = func.getDescendantsOfKind(tsm.SyntaxKind.VariableDeclaration)[0].getInitializerOrThrow();
 
-//         const runtimeCtorCTO: CompileTimeObject = {
-//             node: runtimeCtor.getDeclarations()[0],
-//             symbol: runtimeCtor,
-//             loadOps: [ { kind: 'noop', debug: 'RuntimeConstructor' } as Operation],
-//             getProperty: (symbol: tsm.Symbol) => {
-//                 return symbol.getName() === "platform" ? O.some(platformCTO) : O.none;
-//             }
-//         }
+            const tree = pipe(init, parseExpressionTree, E.match(error => expect.fail(error.message), identity));
+            expect(tree).instanceOf(LiteralExpressionTree);
+            expect((tree as LiteralExpressionTree).literal).eq(42n);
 
-//         const runtime = findSymbol("Runtime", sourceFile, tsm.ts.SymbolFlags.Variable);
-//         const runtimeCTO: CompileTimeObject = {
-//             node: runtime.getValueDeclarationOrThrow(),
-//             symbol: runtime,
-//             loadOps: [ { kind: 'noop', debug: 'Runtime' } as Operation],
-//         };
+            expect(tree.load).is.not.null;
+            const scope = createEmptyScope();
+            const ops = pipe(scope, tree.load!, E.match(error => expect.fail(error.message), identity));
+            expect(ops).lengthOf(1);
+            expect(ops[0]).to.have.property('kind', 'pushint')
+            expect(ops[0]).to.have.deep.property('value', 42n)
+        })
 
-//         const scope = createTestScope(runtimeCTO, runtimeCtorCTO);
-//         const func = sourceFile.getFunctionOrThrow('testFunc');
-//         const decl = func.getDescendantsOfKind(tsm.SyntaxKind.VariableDeclaration)[0];
-//         const init = decl.getInitializerOrThrow();
+        it("bigint literal", () => {
+            const contract = /*javascript*/`function testFunc() { const value = 108446744073709551616n; }`;
+            const { sourceFile } = createTestProject(contract);
+            const func = sourceFile.getFunctionOrThrow('testFunc');
+            const init = func.getDescendantsOfKind(tsm.SyntaxKind.VariableDeclaration)[0].getInitializerOrThrow();
 
-//         const resolved = pipe(
-//             init,
-//             parseExpressionTree,
-//             E.chain(loadTree(scope)),
-//             E_fail
-//         )
+            const tree = pipe(init, parseExpressionTree, E.match(error => expect.fail(error.message), identity));
+            expect(tree).instanceOf(LiteralExpressionTree);
+            expect((tree as LiteralExpressionTree).literal).eq(108446744073709551616n);
 
+            expect(tree.load).is.not.null;
+            const scope = createEmptyScope();
+            const ops = pipe(scope, tree.load!, E.match(error => expect.fail(error.message), identity));
+            expect(ops).lengthOf(1);
+            expect(ops[0]).to.have.property('kind', 'pushint')
+            expect(ops[0]).to.have.deep.property('value', 108446744073709551616n)
+        })
 
+        it("invalid numeric literal", () => {
+            const contract = /*javascript*/`function testFunc() { const value = 1.234; }`;
+            const { sourceFile } = createTestProject(contract);
+            const func = sourceFile.getFunctionOrThrow('testFunc');
+            const init = func.getDescendantsOfKind(tsm.SyntaxKind.VariableDeclaration)[0].getInitializerOrThrow();
 
-//         // const cto: CompileTimeObject = {
-//         //     node: runtime.getValueDeclarationOrThrow(),
-//         //     symbol: runtime,
-//         //     loadOps: [ { kind: 'noop', debug: 'Runtime' } as Operation];,
-//         //     getProperty: (name: string) => {
-//         //         if (name === "platform") return 
-//         //     }
-//         // }
-//         // const scope = createTestScope(cto);
+            pipe(
+                init,
+                parseExpressionTree,
+                E.match(
+                    error => expect(error.node).equal(init),
+                    () => expect.fail("Expected parse error"))
+            );
+        })
+    })
 
-//         // const func = sourceFile.getFunctionOrThrow('testFunc');
-//         // const decl = func.getDescendantsOfKind(tsm.SyntaxKind.VariableDeclaration)[0];
-//         // const init = decl.getInitializerIfKindOrThrow(tsm.SyntaxKind.Identifier);
-
-//         // const resolved = pipe(
-//         //     init,
-//         //     parseExpressionTree,
-//         //     E.chain(loadTree(scope)),
-//         //     E_fail
-//         // )
-
-//         // expect(resolved).to.equal(expectedLoadOps);
-//     });
-
-// });
+});
