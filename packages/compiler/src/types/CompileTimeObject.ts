@@ -92,13 +92,18 @@ export const createScope = (parentScope?: Scope) => (defs: readonly CompileTimeO
     return $createScope(O.fromNullable(parentScope))(defs, types);
 };
 
-export const updateScope = (scope: Scope) => (symbols?: CompileTimeObject | readonly CompileTimeObject[], types?: CompileTimeObject | readonly CompileTimeObject[]): E.Either<string, Scope> => {
-    symbols = symbols ? isArray(symbols) ? symbols : [symbols] : [];
-    symbols = ROA.concat(symbols)([...scope.symbols.values()]);
-    types = types ? isArray(types) ? types : [types] : [];
-    types = ROA.concat(types)([...scope.types.values()]);
-    return $createScope(scope.parentScope)(symbols, types);
-};
+export const updateScope =
+    (scope: Scope) =>
+        (
+            symbols?: CompileTimeObject | readonly CompileTimeObject[],
+            types?: CompileTimeObject | readonly CompileTimeObject[]
+        ): E.Either<string, Scope> => {
+            symbols = symbols ? isArray(symbols) ? symbols : [symbols] : [];
+            symbols = ROA.concat(symbols)([...scope.symbols.values()]);
+            types = types ? isArray(types) ? types : [types] : [];
+            types = ROA.concat(types)([...scope.types.values()]);
+            return $createScope(scope.parentScope)(symbols, types);
+        };
 
 export const resolve = (scope: Scope) => (symbol: tsm.Symbol): O.Option<CompileTimeObject> => {
     return pipe(

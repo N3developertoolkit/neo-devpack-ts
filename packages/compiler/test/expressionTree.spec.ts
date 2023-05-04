@@ -10,8 +10,9 @@ import * as O from 'fp-ts/Option'
 import { createContractProject } from '../src/utils';
 // import { collectProjectDeclarations } from '../src/passes/collectProjectDeclarations';
 // import { makeGlobalScope, makeStackItemType } from '../src/passes/builtins';
-import { LiteralExpressionTree, parseExpressionTree } from '../src/passes/expressionResolver';
-import { createEmptyScope } from '../src/types/CompileTimeObject';
+import { IdentifierExpressionTree, LiteralExpressionTree, parseExpressionTree } from '../src/passes/expressionResolver';
+import { CompileTimeObject, createEmptyScope, updateScope } from '../src/types/CompileTimeObject';
+import { Operation } from '../src/types/Operation';
 // import { CompileTimeObject, createEmptyScope, makeCompileTimeObject, updateScope } from '../src/types/CompileTimeObject';
 // import { Operation } from '../src/types/Operation';
 
@@ -102,7 +103,9 @@ describe("expression trees", () => {
             expect(tree).instanceOf(LiteralExpressionTree);
             expect((tree as LiteralExpressionTree).literal).eq("Hello, World!");
 
-            expect(tree.load).is.not.null;
+            expect(tree.load).to.exist;
+            expect(tree.store).to.not.exist;
+            expect(tree.resolve).to.not.exist;
             const scope = createEmptyScope();
             const ops = pipe(scope, tree.load!, E.match(error => expect.fail(error.message), identity));
             expect(ops).lengthOf(1);
@@ -120,7 +123,9 @@ describe("expression trees", () => {
             expect(tree).instanceOf(LiteralExpressionTree);
             expect((tree as LiteralExpressionTree).literal).eq(true);
 
-            expect(tree.load).is.not.null;
+            expect(tree.load).to.exist;
+            expect(tree.store).to.not.exist;
+            expect(tree.resolve).to.not.exist;
             const scope = createEmptyScope();
             const ops = pipe(scope, tree.load!, E.match(error => expect.fail(error.message), identity));
             expect(ops).lengthOf(1);
@@ -138,7 +143,9 @@ describe("expression trees", () => {
             expect(tree).instanceOf(LiteralExpressionTree);
             expect((tree as LiteralExpressionTree).literal).is.null;
 
-            expect(tree.load).is.not.null;
+            expect(tree.load).to.exist;
+            expect(tree.store).to.not.exist;
+            expect(tree.resolve).to.not.exist;
             const scope = createEmptyScope();
             const ops = pipe(scope, tree.load!, E.match(error => expect.fail(error.message), identity));
             expect(ops).lengthOf(1);
@@ -155,7 +162,9 @@ describe("expression trees", () => {
             expect(tree).instanceOf(LiteralExpressionTree);
             expect((tree as LiteralExpressionTree).literal).eq(42n);
 
-            expect(tree.load).is.not.null;
+            expect(tree.load).to.exist;
+            expect(tree.store).to.not.exist;
+            expect(tree.resolve).to.not.exist;
             const scope = createEmptyScope();
             const ops = pipe(scope, tree.load!, E.match(error => expect.fail(error.message), identity));
             expect(ops).lengthOf(1);
@@ -171,9 +180,12 @@ describe("expression trees", () => {
 
             const tree = pipe(init, parseExpressionTree, E.match(error => expect.fail(error.message), identity));
             expect(tree).instanceOf(LiteralExpressionTree);
-            expect((tree as LiteralExpressionTree).literal).eq(108446744073709551616n);
+            const $tree = tree as LiteralExpressionTree;
+            expect($tree.literal).eq(108446744073709551616n);
 
-            expect(tree.load).is.not.null;
+            expect(tree.load).to.exist;
+            expect(tree.store).to.not.exist;
+            expect(tree.resolve).to.not.exist;
             const scope = createEmptyScope();
             const ops = pipe(scope, tree.load!, E.match(error => expect.fail(error.message), identity));
             expect(ops).lengthOf(1);
@@ -197,4 +209,59 @@ describe("expression trees", () => {
         })
     })
 
+    describe("identifiers", () => {
+
+        const contract = /*javascript*/`function testFunc(someParam: string) { const value = someParam; }`;
+        const { sourceFile } = createTestProject(contract);
+        const func = sourceFile.getFunctionOrThrow('testFunc');
+        const param = func.getParameters()[0];
+        const cto: CompileTimeObject = {
+            node: param,
+            symbol: param.getSymbolOrThrow(),
+            loadOps: [{ kind: 'noop', debug: 'someParam.load' } as Operation],
+            storeOps: [{ kind: 'noop', debug: 'someParam.store' } as Operation]            
+        }
+        const scope = pipe(
+            updateScope(createEmptyScope())(cto, undefined),
+            E.match(expect.fail, identity)
+        )
+        const init = func.getDescendantsOfKind(tsm.SyntaxKind.VariableDeclaration)[0].getInitializerOrThrow();
+        const tree = pipe(init, parseExpressionTree, E.match(error => expect.fail(error.message), identity));
+
+        it("load", () => {
+
+            expect(tree).instanceOf(IdentifierExpressionTree);
+            expect(tree.load).to.exist;
+            const $tree = tree as IdentifierExpressionTree;
+            expect($tree.symbol.getName()).eq("someParam");
+
+            const ops = pipe(scope, tree.load!, E.match(error => expect.fail(error.message), identity));
+            expect(ops).eq(cto.loadOps);
+        });
+
+        it("store", () => {
+
+            expect(tree).instanceOf(IdentifierExpressionTree);
+            expect(tree.store).to.exist;
+            const $tree = tree as IdentifierExpressionTree;
+            expect($tree.symbol.getName()).eq("someParam");
+
+            const ops = pipe(scope, tree.store!, E.match(error => expect.fail(error.message), identity));
+            expect(ops).eq(cto.storeOps);
+        })
+
+        it("resolve", () => {
+
+            expect(tree).instanceOf(IdentifierExpressionTree);
+            expect(tree.resolve).to.exist;
+            const $tree = tree as IdentifierExpressionTree;
+            expect($tree.symbol.getName()).eq("someParam");
+
+            const obj = pipe(scope, tree.resolve!, E.match(error => expect.fail(error.message), identity));
+            expect(obj).eq(cto);
+        })
+
+        
+
+    });
 });
