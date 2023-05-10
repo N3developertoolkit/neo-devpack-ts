@@ -1,4 +1,6 @@
-import { expect } from 'chai';
+import 'mocha';
+import { assert, expect } from 'chai';
+
 import { identity, pipe } from 'fp-ts/function';
 import * as E from 'fp-ts/Either';
 import { parseExpression } from '../src/passes/expressionProcessor';

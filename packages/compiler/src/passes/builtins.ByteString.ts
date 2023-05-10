@@ -1,123 +1,91 @@
-// import * as tsm from "ts-morph";
-// import { sc } from "@cityofzion/neon-core";
-// import { pipe } from "fp-ts/lib/function";
-// import * as E from "fp-ts/Either";
-// import * as ROA from 'fp-ts/ReadonlyArray'
-// import * as O from 'fp-ts/Option'
-// import * as TS from "../TS";
+import * as tsm from "ts-morph";
+import { sc } from "@cityofzion/neon-core";
+import { flow, pipe } from "fp-ts/lib/function";
+import * as E from "fp-ts/Either";
+import * as ROA from 'fp-ts/ReadonlyArray'
+import * as O from 'fp-ts/Option'
+import * as TS from "../TS";
+import * as ROR from 'fp-ts/ReadonlyRecord';
+import { Ord as StringOrd } from 'fp-ts/string';
 
-// import { makeParseError, ParseError, single } from "../utils";
-// import { isPushDataOp, Operation, PushDataOperation } from "../types/Operation";
-// import { parseExpression } from "./expressionProcessor";
-// import { BuiltInCallableOptions, createBuiltInObject, parseBuiltInCallables, parseBuiltInSymbols } from "./builtins.SymbolDefs";
-// import { Scope } from "../types/CompileTimeObject";
+import { CompileError, getErrorMessage, makeParseError, ParseError, single } from "../utils";
+import { isPushDataOp, Operation, PushDataOperation } from "../types/Operation";
+import { parseExpression } from "./expressionProcessor";
+import { BuiltInCallableOptions, checkErrors, createBuiltInObject, parseBuiltInCallables, parseBuiltInSymbols } from "./builtins.SymbolDefs";
+import { ParseCallArgsFunc, Scope } from "../types/CompileTimeObject";
+import { makeCompileTimeObject } from "../types/CompileTimeObject";
 
-// const fromEncoding =
-//     (encoding: BufferEncoding) =>
-//         (value: string): O.Option<Uint8Array> => {
-//             return O.tryCatch(() => Buffer.from(value, encoding))
-//         }
+export const byteStringFromHex =
+    (_scope: Scope) =>
+        (node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
+            return pipe(
+                node,
+                TS.getArguments,
+                ROA.head,
+                O.chain(O.fromPredicate(tsm.Node.isStringLiteral)),
+                E.fromOption(() => 'invalid argument'),
+                E.map(expr => expr.getLiteralValue()),
+                E.map(value => value.startsWith('0x') || value.startsWith('0X') ? value.substring(2) : value),
+                E.chain(value => E.tryCatch(
+                    () => Buffer.from(value, "hex"),
+                    e => getErrorMessage(e)
+                )),
+                E.map(value => [<Operation>{ kind: 'pushdata', value }]),
+                E.mapLeft(makeParseError(node))
+            )
+        }
 
-// const fromHex =
-//     (value: string): O.Option<Uint8Array> => {
-//         value = value.startsWith('0x') || value.startsWith('0X')
-//             ? value.substring(2)
-//             : value;
-//         return pipe(
-//             value,
-//             fromEncoding('hex'),
-//             O.chain(buffer => buffer.length * 2 === value.length ? O.some(buffer) : O.none)
-//         );
-//     }
+export const byteStringFromString =
+    (scope: Scope) => (
+        node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
+        return pipe(
+            node,
+            TS.getArguments,
+            ROA.head,
+            E.fromOption(() => makeParseError(node)('invalid arguments')),
+            E.chain(parseExpression(scope))
+        )
+    }
 
-// const exprAsString = (scope: Scope) => (expr: tsm.Expression): O.Option<string> => {
-//     return pipe(
-//         expr,
-//         parseExpression(scope),
-//         O.fromEither,
-//         O.chain(single),
-//         O.chain(O.fromPredicate(isPushDataOp)),
-//         O.chain(op => O.tryCatch(() => Buffer.from(op.value).toString()))
-//     )
-// }
+export const byteStringFromInteger =
+    (scope: Scope) => (
+        node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
+        return pipe(
+            node,
+            TS.getArguments,
+            ROA.head,
+            E.fromOption(() => makeParseError(node)('invalid arguments')),
+            E.chain(flow(
+                parseExpression(scope),
+                E.map(ROA.append({ kind: "convert", type: sc.StackItemType.ByteString } as Operation))
+            ))
+        )
+    }
 
-// export const byteStringFromHex =
-//     (scope: Scope) =>
-//         (node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
-//             const makeError = makeParseError(node);
-//             return pipe(
-//                 node,
-//                 TS.getArguments,
-//                 ROA.head,
-//                 E.fromOption(() => makeError('invalid arguments')),
-//                 E.chain(expr => {
-//                     return pipe(
-//                         expr,
-//                         exprAsString(scope),
-//                         O.chain(fromHex),
-//                         O.map(value => {
-//                             return ({ kind: 'pushdata', value } as PushDataOperation);
-//                         }),
-//                         O.map(ROA.of),
-//                         E.fromOption(() => makeError('invalid hex string'))
-//                     );
-//                 })
-//             )
-//         }
+export function makeByteStringConstructor(decl: tsm.InterfaceDeclaration) {
 
-// export const byteStringFromString =
-//     (scope: Scope) => (
-//         node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
-//         const makeError = makeParseError(node);
-//         return pipe(
-//             node,
-//             TS.getArguments,
-//             ROA.head,
-//             E.fromOption(() => makeError('invalid arguments')),
-//             E.chain(expr => {
-//                 return pipe(
-//                     expr,
-//                     parseExpression(scope),
-//                     O.fromEither,
-//                     O.chain(single),
-//                     O.chain(O.fromPredicate(isPushDataOp)),
-//                     O.map(ROA.of),
-//                     E.fromOption(() => makeError('invalid string argument'))
-//                 )
-//             })
-//         )
-//     }
+    const methods: Record<string, ParseCallArgsFunc> = {
+        "fromHex": byteStringFromHex,
+        "fromString": byteStringFromString,
+        "fromInteger": byteStringFromInteger,
+    }
 
-// export const byteStringFromInteger =
-//     (scope: Scope) => (
-//         node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
-//         const makeError = makeParseError(node);
+    const props = pipe(
+        methods,
+        ROR.collect(StringOrd)((key, value) => pipe(
+            decl,
+            TS.getMember(key),
+            O.map(sig => makeCompileTimeObject(sig, sig.getSymbolOrThrow(), { loadOps: [], parseCall: value })),
+            E.fromOption(() => key)
+        )),
+        checkErrors(`unresolved ${decl.getName()} functions`)
+    );
 
-//         return pipe(
-//             node,
-//             TS.getArguments,
-//             ROA.head,
-//             E.fromOption(() => makeError('invalid arguments')),
-//             E.chain(expr => {
-//                 return pipe(
-//                     expr,
-//                     parseExpression(scope),
-//                     E.map(ROA.append({ kind: "convert", type: sc.StackItemType.ByteString } as Operation))
-//                 )
-//             })
-//         )
-//     }
+    const symbol = decl.getSymbol();
+    if (!symbol) throw new CompileError(`no symbol for ${decl.getName()}`, decl);
 
-// const byteStringCtorMethods: Record<string, BuiltInCallableOptions> = {
-//     "fromHex": { parseArguments: byteStringFromHex },
-//     "fromString": { parseArguments: byteStringFromString },
-//     "fromInteger": { parseArguments: byteStringFromInteger },
-// };
-
-// export function makeByteStringConstructor(decl: tsm.InterfaceDeclaration) {
-//     const props = parseBuiltInCallables(decl)(byteStringCtorMethods);
-//     return createBuiltInObject(decl, { props });
-// }
+    return makeCompileTimeObject(decl, symbol, { loadOps: [], getProperty: props})
+}
 
 // const byteStringInstanceMethods: Record<string, BuiltInCallableOptions> = {
 //     "asInteger": {

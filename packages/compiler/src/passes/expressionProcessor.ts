@@ -40,11 +40,26 @@ export const parseStringLiteral =
         return pipe(literal, pushString, ROA.of, E.of);
     }
 
+export const parseCallExpression =
+    (scope: Scope) => (node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
+        return E.left(makeParseError(node)(`parseCallExpression not impl`));
+        // return pipe(
+        //     node.getExpression(), 
+        //     resolveExpression(scope),
+        //     E.chain(cto => pipe(
+        //         cto.parseCall, 
+        //         E.fromNullable(makeParseError(node)(`parseCall not available for ${cto.symbol.getName()}`))
+        //     )),
+        //     E.chain(parseCall => parseCall(scope)(node))
+        // )
+    }
+
 export function parseExpression(scope: Scope) {
     return (node: tsm.Expression): E.Either<ParseError, readonly Operation[]> => {
 
         switch (node.getKind()) {
             case tsm.SyntaxKind.BigIntLiteral: return parseBigIntLiteral(node as tsm.BigIntLiteral);
+            case tsm.SyntaxKind.CallExpression: return parseCallExpression(scope)(node as tsm.CallExpression);
             case tsm.SyntaxKind.FalseKeyword: return parseBooleanLiteral(node as tsm.FalseLiteral);
             case tsm.SyntaxKind.NullKeyword: return parseNullLiteral(node);
             case tsm.SyntaxKind.NumericLiteral: return parseNumericLiteral(node as tsm.NumericLiteral);
@@ -56,6 +71,97 @@ export function parseExpression(scope: Scope) {
         };
     }
 }
+
+function resolveIdentifier(scope: Scope) {
+    return (node: tsm.Identifier): O.Option<CompileTimeObject> => {
+        return pipe(
+            node,
+            TS.getSymbol,
+            O.chain(resolve(scope))
+        );
+    };
+}
+
+function resolvePropertyAccessExpression(scope: Scope) {
+    return (node: tsm.PropertyAccessExpression): O.Option<CompileTimeObject> => {
+        
+        const expr = node.getExpression();
+        const q = pipe(
+            node, 
+            TS.getSymbol,
+            O.bindTo('symbol'),
+            O.bind('cto', () => resolveExpression(scope)(expr) )
+            // E.chain(symbol => {
+            //     const qq = pipe(
+            //         expr,
+            //         resolveExpression(scope),
+                    
+            //     )
+            // })
+            // E.bindTo('symbol'),
+
+            // E.bind('exprCTO', () => resolveExpression(scope)(expr)),
+            // E.bind('exprTypeCTO', () => pipe(
+            //     expr.getType(),
+            //     TS.getTypeSymbol,
+            //     O.chain(resolveType(scope)),
+            //     E.of<ParseError, O.Option<CompileTimeObject>>
+            // ))
+        )
+
+            return O.none;
+        // return E.left(makeParseError(node)(`resolvePropertyAccessExpression not impl`));
+    }
+}
+
+// function resolveProperty(ctx: ChainContext) {
+//     return (node: tsm.PropertyAccessExpression): E.Either<ParseError, CompileTimeObject> => {
+//         return pipe(
+//             node,
+//             TS.parseSymbol,
+//             E.bindTo('symbol'),
+//             E.bind('typeDef', () => {
+
+//                 const type = ctx.currentType ?? ctx.current?.node.getType();
+//                 const symbol = type?.getSymbol();
+//                 const resolved = symbol ? resolveType(ctx.scope)(symbol) : O.none;
+//                 return pipe(
+//                     ctx.currentType,
+//                     O.fromNullable,
+//                     O.alt(() => pipe(ctx.current?.node.getType(), O.fromNullable)),
+//                     O.chain(TS.getTypeSymbol),
+//                     O.chain(resolveType(ctx.scope)),
+//                     O.toUndefined,
+//                     E.of<ParseError, CompileTimeObject | undefined>
+//                 );
+//             }),
+//             E.chain(({ symbol, typeDef }) => {
+//                 return pipe(
+//                     getProp(ctx.current, symbol),
+//                     O.alt(() => getProp(typeDef, symbol)),
+//                     E.fromOption(() => makeParseError(node)(`failed to resolve ${symbol.getName()} property`))
+//                 )
+//             })
+//         );
+//     };
+
+//     function getProp(cto: CompileTimeObject | undefined, symbol: tsm.Symbol): O.Option<CompileTimeObject> {
+//         return cto && cto.getProperty ? cto.getProperty(symbol) : O.none;
+//     }
+// }
+
+export function resolveExpression(scope: Scope) {
+    return (node: tsm.Expression): O.Option<CompileTimeObject> => {
+
+        switch (node.getKind()) {
+            case tsm.SyntaxKind.Identifier: return resolveIdentifier(scope)(node as tsm.Identifier);
+            case tsm.SyntaxKind.PropertyAccessExpression: return resolvePropertyAccessExpression(scope)(node as tsm.PropertyAccessExpression);
+        };
+
+        return O.none;
+    };
+}
+
 
 // type DispatchMap<T> = {
 //     [TKind in tsm.SyntaxKind]?: (node: tsm.KindToNodeMappings[TKind]) => E.Either<ParseError, T>;

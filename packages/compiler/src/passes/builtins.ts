@@ -17,6 +17,7 @@ import { checkErrors, createBuiltInCallable, rorValues } from "./builtins.Symbol
 import { LibraryDeclaration } from "../types/LibraryDeclaration";
 import { parseArguments, parseCallExpression, parseEnumDecl } from "./parseDeclarations";
 import { ParseNewArgsFunc } from "../types/CompileTimeObject";
+import { makeByteStringConstructor } from "./builtins.ByteString";
 
 module REGEX {
     export const match = (regex: RegExp) => (value: string) => O.fromNullable(value.match(regex));
@@ -279,44 +280,69 @@ export const makeGlobalScope =
 
             const functions = pipe(decls, ROA.filterMap(isFunctionDeclaration));
             const interfaces = pipe(decls, ROA.filterMap(isInterfaceDeclaration));
+            const varStmts = pipe(decls, ROA.filterMap(isVariableStatement));
+            const varDecls = pipe(varStmts, ROA.chain(s => s.getDeclarations()));
 
-            const enumObjects = pipe(
-                decls, 
-                ROA.filterMap(isEnumDeclaration), 
-                ROA.map(makeEnumObject)
-            );
-
-            const nativeContractObjects = pipe(
-                decls,
-                ROA.filterMap(isVariableStatement),
-                ROA.filter(TS.hasTag("nativeContract")),
-                ROA.chain(s => s.getDeclarations()),
-                ROA.map(makeNativeContractObject)
-            );
-
-            const sysCallFunctionObjects = pipe(
-                functions,
-                ROA.filter(TS.hasTag("syscall")),
-                ROA.map(makeSysCallFunctionObject)
+            const byteStringVar = pipe(
+                varDecls,
+                ROA.findFirst(d => d.getName() === "ByteString"),
+                O.map(decl => {
+                    const symbol = decl.getSymbolOrThrow();
+                    return makeCompileTimeObject(decl, symbol, { loadOps: [] })
+                }),
+                O.match(
+                    () => { throw new Error("ByteString not found") },
+                    identity
+                )
             )
 
-            const operationFunctionObjects = pipe(
-                functions,
-                ROA.filter(TS.hasTag("operation")),
-                ROA.map(makeOperationsFunctionObject)
-            )
-
-            const stackItemTypes = pipe(
+            const byteStringCtorType = pipe(
                 interfaces,
-                ROA.filter(TS.hasTag("stackitem")),
-                ROA.map(makeStackItemType),
+                ROA.findFirst(i => i.getName() === "ByteStringConstructor"),
+                O.map(makeByteStringConstructor),
+                O.match(
+                    () => { throw new Error("ByteStringConstructor not found") },
+                    identity
+                )
             )
 
-            const nativeContractTypes = pipe(
-                interfaces,
-                ROA.filter(TS.hasTag("nativeContract")),
-                ROA.map(makeNativeContractType),
-            )
+            // const enumObjects = pipe(
+            //     decls, 
+            //     ROA.filterMap(isEnumDeclaration), 
+            //     ROA.map(makeEnumObject)
+            // );
+
+            // const nativeContractObjects = pipe(
+            //     decls,
+            //     ROA.filterMap(isVariableStatement),
+            //     ROA.filter(TS.hasTag("nativeContract")),
+            //     ROA.chain(s => s.getDeclarations()),
+            //     ROA.map(makeNativeContractObject)
+            // );
+
+            // const sysCallFunctionObjects = pipe(
+            //     functions,
+            //     ROA.filter(TS.hasTag("syscall")),
+            //     ROA.map(makeSysCallFunctionObject)
+            // )
+
+            // const operationFunctionObjects = pipe(
+            //     functions,
+            //     ROA.filter(TS.hasTag("operation")),
+            //     ROA.map(makeOperationsFunctionObject)
+            // )
+
+            // const stackItemTypes = pipe(
+            //     interfaces,
+            //     ROA.filter(TS.hasTag("stackitem")),
+            //     ROA.map(makeStackItemType),
+            // )
+
+            // const nativeContractTypes = pipe(
+            //     interfaces,
+            //     ROA.filter(TS.hasTag("nativeContract")),
+            //     ROA.map(makeNativeContractType),
+            // )
 
 
             // interface Error {
@@ -373,38 +399,42 @@ export const makeGlobalScope =
 
             let typeDefs: ReadonlyArray<CompileTimeObject> = ROA.empty;
             let symbolDefs: ReadonlyArray<CompileTimeObject> = ROA.empty;
+            symbolDefs = ROA.append(byteStringVar)(symbolDefs);
+            typeDefs = ROA.append(byteStringCtorType)(typeDefs);
 
 
-            const builtInFunctions: Record<string, (decl: tsm.FunctionDeclaration) => CompileTimeObject> = {
-                "callContract": makeCallContractFunctionObject,
-            }
-
-
-
-            const builtInInterfaces: Record<string, (decl: tsm.InterfaceDeclaration) => CompileTimeObject> = {
-            //     "RuntimeConstructor": makeRuntimeConstructorType,
+            // const builtInFunctions: Record<string, (decl: tsm.FunctionDeclaration) => CompileTimeObject> = {
+            //     "callContract": makeCallContractFunctionObject,
+            // }
 
 
 
-            //     // "ByteStringConstructor": makeByteStringConstructor,
-            //     // "ByteString": makeByteStringInterface,
-            //     // "Iterator": makeIteratorInterface,
-            //     // "ReadonlyStorageContext": makeReadonlyStorageContext,
-            //     // "StorageConstructor": makeStorageConstructor,
-            //     // "StorageContext": makeStorageContext,
-            }
+            // const builtInInterfaces: Record<string, (decl: tsm.InterfaceDeclaration) => CompileTimeObject> = {
+            // //     "RuntimeConstructor": makeRuntimeConstructorType,
 
-            const builtInVars: Record<string, (decl: tsm.VariableDeclaration) => CompileTimeObject> = {
-                "Error": makeErrorObject,
 
-                // "Runtime": createBuiltInSymbol,
+
+            // //     // "ByteStringConstructor": makeByteStringConstructor,
+            // //     // "ByteString": makeByteStringInterface,
+            // //     // "Iterator": makeIteratorInterface,
+            // //     // "ReadonlyStorageContext": makeReadonlyStorageContext,
+            // //     // "StorageConstructor": makeStorageConstructor,
+            // //     // "StorageContext": makeStorageContext,
+            // }
+
+            // const builtInVars: Record<string, (decl: tsm.VariableDeclaration) => CompileTimeObject> = {
+            //     "Error": makeErrorObject,
+
+            //     // "Runtime": createBuiltInSymbol,
                 
                 
                 
                 
-                // "ByteString": createBuiltInSymbol,
-                // "Storage": createBuiltInSymbol,
-            }
+            //     // "ByteString": createBuiltInSymbol,
+            //     // "Storage": createBuiltInSymbol,
+            // }
+
+
 
 
             return pipe(

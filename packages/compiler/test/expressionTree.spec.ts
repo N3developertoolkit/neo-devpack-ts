@@ -1,9 +1,12 @@
 import 'mocha';
+import { assert, expect } from 'chai';
+
+import * as tsm from "ts-morph";
 
 
 import { parseExpression } from '../src/passes/expressionProcessor';
 import { parse } from 'path';
-import { createTestProject, createTestGlobalScope } from './testUtils.spec';
+import { createTestProject, createTestGlobalScope, testParseExpression } from './testUtils.spec';
 // export function createTestScope(symbols?: CompileTimeObject | readonly CompileTimeObject[], types?: CompileTimeObject | readonly CompileTimeObject[]) {
 //     return pipe(
 //         updateScope(createEmptyScope())(symbols, types),
@@ -69,14 +72,15 @@ import { createTestProject, createTestGlobalScope } from './testUtils.spec';
 describe("builts-ins", () => {
     describe("ByteString", () => {
         it("fromHex", () => {
-            const contract = /*javascript*/`const VALUE_KEY = ByteString.fromHex("0x00");`;
+            const contract = /*javascript*/`const $VAR = ByteString.fromHex("0x00");`;
             const { project, sourceFile } = createTestProject(contract);
             const scope = createTestGlobalScope(project);
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerIfKindOrThrow(tsm.SyntaxKind.CallExpression);
 
-            const decl = sourceFile.getVariableDeclarationOrThrow('VALUE_KEY');
-            const init = decl.getInitializerOrThrow();
+            const type1 = init.getType().getText();
+            const type2 = init.getExpression().getType().getText();
 
-            const q = parseExpression(scope)(init);
+            const q = testParseExpression(init, scope);
 
         })
     })
