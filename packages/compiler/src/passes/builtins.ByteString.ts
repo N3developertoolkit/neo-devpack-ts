@@ -8,10 +8,10 @@ import * as TS from "../TS";
 import * as ROR from 'fp-ts/ReadonlyRecord';
 import { Ord as StringOrd } from 'fp-ts/string';
 
-import { CompileError, getErrorMessage, makeParseError, ParseError, single } from "../utils";
-import { isPushDataOp, Operation, PushDataOperation } from "../types/Operation";
+import { CompileError, getErrorMessage, makeParseError, ParseError } from "../utils";
+import { Operation } from "../types/Operation";
 import { parseExpression } from "./expressionProcessor";
-import { BuiltInCallableOptions, checkErrors, createBuiltInObject, parseBuiltInCallables, parseBuiltInSymbols } from "./builtins.SymbolDefs";
+import { checkErrors } from "./builtins.SymbolDefs";
 import { ParseCallArgsFunc, Scope } from "../types/CompileTimeObject";
 import { makeCompileTimeObject } from "../types/CompileTimeObject";
 
