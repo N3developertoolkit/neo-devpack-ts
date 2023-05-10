@@ -13,11 +13,11 @@ import { CompileError, createDiagnostic, isArray, isVoidLike, makeParseError, si
 import { Operation, parseOperation } from "../types/Operation";
 
 import { parseExpression } from "./expressionProcessor";
-import { checkErrors, createBuiltInCallable, rorValues } from "./builtins.SymbolDefs";
 import { LibraryDeclaration } from "../types/LibraryDeclaration";
 import { parseArguments, parseCallExpression, parseEnumDecl } from "./parseDeclarations";
 import { ParseNewArgsFunc } from "../types/CompileTimeObject";
 import { makeByteStringConstructor } from "./builtins.ByteString";
+import { makeStorageConstructor } from "./builtins.Storage";
 
 module REGEX {
     export const match = (regex: RegExp) => (value: string) => O.fromNullable(value.match(regex));
@@ -274,6 +274,17 @@ const isInterfaceDeclaration = O.fromPredicate(tsm.Node.isInterfaceDeclaration);
 const isVariableStatement = O.fromPredicate(tsm.Node.isVariableStatement);
 const isEnumDeclaration = O.fromPredicate(tsm.Node.isEnumDeclaration);
 
+
+function makeStaticVariable(name: string, variables: readonly tsm.VariableDeclaration[]) {
+    return pipe(
+        variables,
+        ROA.findFirst(v => v.getName() === name),
+        O.bindTo("decl"),
+        O.bind("symbol", ({ decl }) => pipe(decl, TS.getSymbol)),
+        O.map(({ decl, symbol }) => makeCompileTimeObject(decl, symbol, { loadOps: [] })),
+        O.match(() => { throw new Error(`${name} built-in not found`); }, identity)
+    )
+}
 export const makeGlobalScope =
     (decls: readonly LibraryDeclaration[]): CompilerState<Scope> =>
         diagnostics => {
@@ -283,19 +294,14 @@ export const makeGlobalScope =
             const varStmts = pipe(decls, ROA.filterMap(isVariableStatement));
             const varDecls = pipe(varStmts, ROA.chain(s => s.getDeclarations()));
 
-            const byteStringVar = pipe(
-                varDecls,
-                ROA.findFirst(d => d.getName() === "ByteString"),
-                O.map(decl => {
-                    const symbol = decl.getSymbolOrThrow();
-                    return makeCompileTimeObject(decl, symbol, { loadOps: [] })
-                }),
-                O.match(
-                    () => { throw new Error("ByteString not found") },
-                    identity
-                )
-            )
+            const q =varDecls.map(d => d.getName());
 
+            varDecls.find(d => d.getName() === "ByteString")
+
+            const byteStringVar = makeStaticVariable("ByteString", varDecls);
+            const storageVar = makeStaticVariable("Storage", varDecls);
+            // const runtimeVar = makeStaticVariable("Runtime", varDecls);
+            
             const byteStringCtorType = pipe(
                 interfaces,
                 ROA.findFirst(i => i.getName() === "ByteStringConstructor"),
@@ -305,6 +311,20 @@ export const makeGlobalScope =
                     identity
                 )
             )
+
+            const storageCtorType = pipe(
+                interfaces,
+                ROA.findFirst(i => i.getName() === "StorageConstructor"),
+                O.map(makeStorageConstructor),
+                O.match(
+                    () => { throw new Error("StorageConstructor not found") },
+                    identity
+                ),
+            )
+
+            let typeDefs: ReadonlyArray<CompileTimeObject> = [byteStringCtorType, storageCtorType];
+            let symbolDefs: ReadonlyArray<CompileTimeObject> = [byteStringVar, storageVar]
+
 
             // const enumObjects = pipe(
             //     decls, 
@@ -397,10 +417,6 @@ export const makeGlobalScope =
             // );
 
 
-            let typeDefs: ReadonlyArray<CompileTimeObject> = ROA.empty;
-            let symbolDefs: ReadonlyArray<CompileTimeObject> = ROA.empty;
-            symbolDefs = ROA.append(byteStringVar)(symbolDefs);
-            typeDefs = ROA.append(byteStringCtorType)(typeDefs);
 
 
             // const builtInFunctions: Record<string, (decl: tsm.FunctionDeclaration) => CompileTimeObject> = {
@@ -470,21 +486,21 @@ export const makeGlobalScope =
 
 export type BuiltinDeclaration = tsm.EnumDeclaration | tsm.FunctionDeclaration | tsm.InterfaceDeclaration | tsm.VariableDeclaration ;
 
-const resolveBuiltins =
-    <T extends BuiltinDeclaration>(map: ROR.ReadonlyRecord<string, (decl: T) => CompileTimeObject>) =>
-        (declarations: readonly T[]) =>
-            (symbolDefs: readonly CompileTimeObject[]) => {
-                const defs = pipe(
-                    map,
-                    ROR.mapWithIndex((key, func) => pipe(
-                        declarations,
-                        ROA.filter(d => d.getName() === key),
-                        single,
-                        O.map(func),
-                        E.fromOption(() => key),
-                    )),
-                    rorValues,
-                    checkErrors('unresolved built in variables'),
-                )
-                return ROA.concat(defs)(symbolDefs);
-            }
+// const resolveBuiltins =
+//     <T extends BuiltinDeclaration>(map: ROR.ReadonlyRecord<string, (decl: T) => CompileTimeObject>) =>
+//         (declarations: readonly T[]) =>
+//             (symbolDefs: readonly CompileTimeObject[]) => {
+//                 const defs = pipe(
+//                     map,
+//                     ROR.mapWithIndex((key, func) => pipe(
+//                         declarations,
+//                         ROA.filter(d => d.getName() === key),
+//                         single,
+//                         O.map(func),
+//                         E.fromOption(() => key),
+//                     )),
+//                     rorValues,
+//                     checkErrors('unresolved built in variables'),
+//                 )
+//                 return ROA.concat(defs)(symbolDefs);
+//             }

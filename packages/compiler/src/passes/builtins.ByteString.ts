@@ -11,7 +11,6 @@ import { Ord as StringOrd } from 'fp-ts/string';
 import { CompileError, getErrorMessage, makeParseError, ParseError } from "../utils";
 import { Operation } from "../types/Operation";
 import { parseExpression } from "./expressionProcessor";
-import { checkErrors } from "./builtins.SymbolDefs";
 import { ParseCallArgsFunc, Scope } from "../types/CompileTimeObject";
 import { makeCompileTimeObject } from "../types/CompileTimeObject";
 
@@ -70,7 +69,7 @@ export function makeByteStringConstructor(decl: tsm.InterfaceDeclaration) {
         "fromInteger": byteStringFromInteger,
     }
 
-    const props = pipe(
+    const { left: errors, right: props} = pipe(
         methods,
         ROR.collect(StringOrd)((key, value) => pipe(
             decl,
@@ -78,14 +77,16 @@ export function makeByteStringConstructor(decl: tsm.InterfaceDeclaration) {
             O.map(sig => makeCompileTimeObject(sig, sig.getSymbolOrThrow(), { loadOps: [], parseCall: value })),
             E.fromOption(() => key)
         )),
-        checkErrors(`unresolved ${decl.getName()} functions`)
+        ROA.separate
     );
 
+    if (errors.length > 0) throw new CompileError(`unresolved ByteStringConstructor members: ${errors.join(', ')}`, decl);
     const symbol = decl.getSymbol();
     if (!symbol) throw new CompileError(`no symbol for ${decl.getName()}`, decl);
 
     return makeCompileTimeObject(decl, symbol, { loadOps: [], getProperty: props})
 }
+
 
 // const byteStringInstanceMethods: Record<string, BuiltInCallableOptions> = {
 //     "asInteger": {

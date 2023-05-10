@@ -42,7 +42,6 @@ export const parseStringLiteral =
 
 export const parseCallExpression =
     (scope: Scope) => (node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
-
         return pipe(
             node.getExpression(),
             resolveExpression(scope),
@@ -52,6 +51,17 @@ export const parseCallExpression =
         )
     }
 
+export const parsePropertyAccessExpression =
+    (scope: Scope) => (node: tsm.PropertyAccessExpression): E.Either<ParseError, readonly Operation[]> => {
+        return pipe(
+            node, 
+            resolvePropertyAccessExpression(scope),
+            O.chain(cto => {
+                return O.fromNullable(cto.loadOps);
+            }),
+            E.fromOption(() => makeParseError(node)(`loadOps not available for ${node.getExpression().print()}`)),
+        );
+    }
 export function parseExpression(scope: Scope) {
     return (node: tsm.Expression): E.Either<ParseError, readonly Operation[]> => {
 
@@ -61,6 +71,7 @@ export function parseExpression(scope: Scope) {
             case tsm.SyntaxKind.FalseKeyword: return parseBooleanLiteral(node as tsm.FalseLiteral);
             case tsm.SyntaxKind.NullKeyword: return parseNullLiteral(node);
             case tsm.SyntaxKind.NumericLiteral: return parseNumericLiteral(node as tsm.NumericLiteral);
+            case tsm.SyntaxKind.PropertyAccessExpression: return parsePropertyAccessExpression(scope)(node as tsm.PropertyAccessExpression);
             case tsm.SyntaxKind.StringLiteral: return parseStringLiteral(node as tsm.StringLiteral);
             case tsm.SyntaxKind.TrueKeyword: return parseBooleanLiteral(node as tsm.TrueLiteral);
 
@@ -97,7 +108,9 @@ function resolvePropertyAccessExpression(scope: Scope) {
                 O.alt(() => pipe(
                     expr.getType(),
                     TS.getTypeSymbol,
-                    O.chain(resolveType(scope)),
+                    O.chain(q => {
+                        return resolveType(scope)(q);
+                    }),
                     O.chain(getProperty(symbol))
                 ))
             )),

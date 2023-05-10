@@ -1,15 +1,40 @@
-// import * as tsm from "ts-morph";
-// import { flow, pipe } from "fp-ts/lib/function";
-// import * as E from "fp-ts/Either";
-// import * as ROA from 'fp-ts/ReadonlyArray'
-// import * as O from 'fp-ts/Option'
-// import * as TS from "../TS";
+import * as tsm from "ts-morph";
+import { sc } from "@cityofzion/neon-core";
+import { flow, pipe } from "fp-ts/lib/function";
+import * as E from "fp-ts/Either";
+import * as ROA from 'fp-ts/ReadonlyArray'
+import * as O from 'fp-ts/Option'
+import * as TS from "../TS";
+import * as ROR from 'fp-ts/ReadonlyRecord';
+import { Ord as StringOrd } from 'fp-ts/string';
+import { Operation } from "../types/Operation";
+import { makeCompileTimeObject } from "../types/CompileTimeObject";
+import { CompileError } from "../utils";
 
 // import { ParseError, single } from "../utils";
 // import { isPushBoolOp, Operation } from "../types/Operation";
 // import { makeConditionalExpression, parseExpression, parseExpressionAsBoolean } from "./expressionProcessor";
 // import { BuiltInCallableOptions, createBuiltInObject, parseBuiltInCallables, parseBuiltInSymbols } from "./builtins.SymbolDefs";
 // import { Scope } from "../types/CompileTimeObject";
+
+// export interface StorageConstructor {
+//     readonly context: StorageContext;
+//     readonly readonlyContext: ReadonlyStorageContext;
+// }
+
+// export interface ReadonlyStorageContext {
+//     get(key: StorageType): ByteString | undefined;
+//     find(prefix: ByteString, options: FindOptions): Iterator<unknown>;
+//     entries(prefix?: ByteString, removePrefix?: boolean): Iterator<[ByteString, ByteString]>;
+//     keys(prefix?: ByteString, removePrefix?: boolean): Iterator<ByteString>;
+//     values(prefix?: ByteString): Iterator<ByteString>;
+// }        
+
+// export interface StorageContext extends ReadonlyStorageContext {
+//     readonly asReadonly: ReadonlyStorageContext;
+//     put(key: StorageType, value: StorageType): void;
+//     delete(key: StorageType): void;
+// }
 
 // const enum FindOptions {
 //     None = 0,
@@ -155,7 +180,27 @@
 //     "readonlyContext": [{ kind: "syscall", name: "System.Storage.GetReadOnlyContext" } as Operation],
 // }
 
-// export function makeStorageConstructor(decl: tsm.InterfaceDeclaration) {
-//     const props = parseBuiltInSymbols(decl)(storageConstructorProperties);
-//     return createBuiltInObject(decl, { props });
-// }
+export function makeStorageConstructor(decl: tsm.InterfaceDeclaration) {
+
+    const members: ROR.ReadonlyRecord<string, Operation> = {
+        "context": { kind: "syscall", name: "System.Storage.GetContext" },
+        "readonlyContext": { kind: "syscall", name: "System.Storage.GetReadOnlyContext" },
+    }
+
+    const { left: errors, right: props} = pipe(
+        members,
+        ROR.collect(StringOrd)((key, value) => pipe(
+            decl,
+            TS.getMember(key),
+            O.chain(O.fromPredicate(tsm.Node.isPropertySignature)),
+            O.map(sig => makeCompileTimeObject(sig, sig.getSymbolOrThrow(), { loadOps: [value] })),
+            E.fromOption(() => key)
+        )),
+        ROA.separate
+    );
+    if (errors.length > 0) throw new CompileError(`unresolved ByteStringConstructor members: ${errors.join(', ')}`, decl);
+    const symbol = decl.getSymbol();
+    if (!symbol) throw new CompileError(`no symbol for ${decl.getName()}`, decl);
+
+    return makeCompileTimeObject(decl, symbol, { loadOps: [], getProperty: props})
+}
