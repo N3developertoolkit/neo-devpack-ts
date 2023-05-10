@@ -6,8 +6,8 @@ import * as ROR from 'fp-ts/ReadonlyRecord';
 import * as TS from "../TS";
 import { ParseCallArgsFunc, CompileTimeObject, makeCompileTimeObject } from "../types/CompileTimeObject";
 import { Operation } from "../types/Operation";
-import { parseArguments } from "./expressionProcessor";
 import { CompileError } from "../utils";
+import { parseArguments, parseCallExpression } from "./parseDeclarations";
 
 
 export function checkErrors(errorMessage: string) {
@@ -77,7 +77,7 @@ export function createBuiltInCallable(node: tsm.Node, options: BuiltInCallableOp
     return makeCompileTimeObject(node, symbol, {
         loadOps: options.loadOps ?? [],
         getProperty: options.props ?? [],
-        parseCall: options.parseArguments ?? parseArguments
+        parseCall: options.parseArguments ?? parseCallExpression
     });
 }
 

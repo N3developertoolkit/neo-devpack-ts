@@ -10,7 +10,7 @@ import * as E from 'fp-ts/lib/Either';
 import { pipe } from "fp-ts/lib/function";
 
 const REPO_ROOT = join(__dirname, "../../..");
-const FILENAME = "./sample-contracts/nep17token.ts";
+const FILENAME = "./sample-contracts/helloworld.ts";
 const OUTPUT_DIR = "./express/out";
 
 enum AnsiEscapeSequences {

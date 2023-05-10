@@ -31,7 +31,7 @@ const $resolve =
                 )
             }
 
-export const parseArguments = (scope: Scope) => (node: tsm.CallExpression) => {
+const parseArguments = (scope: Scope) => (node: tsm.CallExpression) => {
     return pipe(
         node,
         TS.getArguments,

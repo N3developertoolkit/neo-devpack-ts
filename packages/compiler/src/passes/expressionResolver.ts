@@ -11,32 +11,44 @@ import { CompileTimeObject, Scope, resolve, resolveType } from "../types/Compile
 export interface ExpressionTree {
     readonly node: tsm.Node;
 
-    readonly resolve?: (scope: Scope) => E.Either<ParseError, CompileTimeObject>;
+    // readonly resolve?: (scope: Scope) => E.Either<ParseError, ExpressionTree>;
     readonly load?: (scope: Scope) => E.Either<ParseError, readonly Operation[]>;
     readonly store?: (scope: Scope) => E.Either<ParseError, readonly Operation[]>;
 }
 
-function resolveTree(scope: Scope) {
-    return (tree: ExpressionTree): E.Either<ParseError, CompileTimeObject> => {
-        if (tree.resolve)
-            return tree.resolve(scope);
-        return E.left(makeParseError(tree.node)(`resolveTree unsupported expression tree ${tree.node.getKindName()}`));
-    };
+// function hasResolve(tree: ExpressionTree): tree is ExpressionTree & { readonly resolve: (scope: Scope) => E.Either<ParseError, CompileTimeObject> } {
+//     return "resolve" in tree;
+// }
+
+function hasLoad(tree: ExpressionTree): tree is ExpressionTree & { readonly load: (scope: Scope) => E.Either<ParseError, readonly Operation[]> } {
+    return "load" in tree;
 }
 
-const resolveTypeOrSymbol =
-    (scope: Scope) =>
-        (tree: ExpressionTree) => {
-            return pipe(
-                tree.node.getType(),
-                TS.getTypeSymbol,
-                O.chain(resolveType(scope)),
-                O.match(
-                    () => pipe(tree, resolveTree(scope)),
-                    E.of
-                )
-            );
-        }
+function hasStore(tree: ExpressionTree): tree is ExpressionTree & { readonly store: (scope: Scope) => E.Either<ParseError, readonly Operation[]> } {
+    return "store" in tree;
+}
+
+// function resolveTree(scope: Scope) {
+//     return (tree: ExpressionTree): E.Either<ParseError, ExpressionTree> => {
+//         if (tree.resolve)
+//             return tree.resolve(scope);
+//         return E.left(makeParseError(tree.node)(`resolveTree unsupported expression tree ${tree.node.getKindName()}`));
+//     };
+// }
+
+// const resolveTypeOrSymbol =
+//     (scope: Scope) =>
+//         (tree: ExpressionTree) => {
+//             return pipe(
+//                 tree.node.getType(),
+//                 TS.getTypeSymbol,
+//                 O.chain(resolveType(scope)),
+//                 O.match(
+//                     () => pipe(tree, resolveTree(scope)),
+//                     E.of
+//                 )
+//             );
+//         }
 
 function loadTree(scope: Scope) {
     return (tree: ExpressionTree): E.Either<ParseError, readonly Operation[]> => {
@@ -92,21 +104,21 @@ export class IdentifierExpressionTree implements ExpressionTree {
         readonly node: tsm.Identifier | tsm.ShorthandPropertyAssignment,
         readonly symbol: tsm.Symbol) { }
 
-    readonly resolve = (scope: Scope) => pipe(
-        this.symbol,
-        resolve(scope),
-        E.fromOption(() => makeParseError(this.node)(`Could not resolve symbol ${this.symbol.getName()}`))
-    );
+    // readonly resolve = (scope: Scope) => pipe(
+    //     this.symbol,
+    //     resolve(scope),
+    //     E.fromOption(() => makeParseError(this.node)(`Could not resolve symbol ${this.symbol.getName()}`))
+    // );
 
-    readonly load = (scope: Scope) => pipe(
-        this.resolve(scope),
-        E.chain(getLoadOps)
-    )
+    // readonly load = (scope: Scope) => pipe(
+    //     this.resolve(scope),
+    //     E.chain(getLoadOps)
+    // )
 
-    readonly store = (scope: Scope) => pipe(
-        this.resolve(scope),
-        E.chain(getStoreOps)
-    )
+    // readonly store = (scope: Scope) => pipe(
+    //     this.resolve(scope),
+    //     E.chain(getStoreOps)
+    // )
 }
 
 export class ParentExpressionTree implements ExpressionTree {
@@ -115,7 +127,7 @@ export class ParentExpressionTree implements ExpressionTree {
         readonly child: ExpressionTree
     ) { }
 
-    readonly resolve = (scope: Scope) => resolveTree(scope)(this.child);
+    // readonly resolve = (scope: Scope) => resolveTree(scope)(this.child);
     readonly load = (scope: Scope) => loadTree(scope)(this.child);
     readonly store = (scope: Scope) => storeTree(scope)(this.child);
 }
@@ -360,16 +372,16 @@ export class AssignmentExpressionTree implements ExpressionTree {
         readonly value: ExpressionTree // right side of the assignment
     ) { }
 
-    readonly load = (scope: Scope) => pipe(
-        E.Do,
-        E.bind('valueOps', () => pipe(this.value, loadTree(scope))),
-        E.bind('storeOps', () => pipe(
-            this.location,
-            resolveTree(scope),
-            E.chain(storeTree(scope))
-        )),
-        E.map(({ valueOps, storeOps }) => ROA.concat(storeOps)(valueOps))
-    )
+    // readonly load = (scope: Scope) => pipe(
+    //     E.Do,
+    //     E.bind('valueOps', () => pipe(this.value, loadTree(scope))),
+    //     E.bind('storeOps', () => pipe(
+    //         this.location,
+    //         resolveTree(scope),
+    //         E.chain(storeTree(scope))
+    //     )),
+    //     E.map(({ valueOps, storeOps }) => ROA.concat(storeOps)(valueOps))
+    // )
 }
 
 export class ConditionalExpressionTree implements ExpressionTree {
@@ -408,48 +420,48 @@ export class PrefixUnaryExpressionTree implements ExpressionTree {
         readonly operator: tsm.ts.PrefixUnaryOperator
     ) { }
 
-    readonly load = (scope: Scope) => {
-        switch (this.operator) {
-            case tsm.SyntaxKind.PlusToken:
-                return pipe(this.operand, loadTree(scope));
-            case tsm.SyntaxKind.MinusToken:
-                return pipe(
-                    this.operand,
-                    loadTree(scope),
-                    E.map(ROA.append<Operation>({ kind: "negate" }))
-                );
-            case tsm.SyntaxKind.TildeToken:
-                return pipe(
-                    this.operand,
-                    loadTree(scope),
-                    E.map(ROA.append<Operation>({ kind: "invert" }))
-                );
-            case tsm.SyntaxKind.ExclamationToken:
-                return pipe(
-                    this.operand,
-                    loadTreeAsBoolean(scope),
-                    E.map(ROA.append<Operation>({ kind: "not" }))
-                );
-            case tsm.SyntaxKind.PlusPlusToken:
-            case tsm.SyntaxKind.MinusMinusToken: {
-                const kind = this.operator === tsm.SyntaxKind.PlusPlusToken ? "increment" : "decrement";
-                return pipe(
-                    this.operand,
-                    resolveTree(scope),
-                    E.bindTo('operand'),
-                    E.bind('loadOps', ({ operand }) => getLoadOps(operand)),
-                    E.bind('storeOps', ({ operand }) => getStoreOps(operand)),
-                    E.map(({ loadOps, storeOps }) => pipe(
-                        loadOps,
-                        ROA.append<Operation>({ kind }),
-                        ROA.append<Operation>({ kind: "duplicate" }),
-                        ROA.concat(storeOps)
-                    ))
-                )
-            }
-        }
-        return E.left(makeParseError(this.node)(`Invalid prefix unary operator ${tsm.SyntaxKind[this.operator]}`));
-    }
+    // readonly load = (scope: Scope) => {
+    //     switch (this.operator) {
+    //         case tsm.SyntaxKind.PlusToken:
+    //             return pipe(this.operand, loadTree(scope));
+    //         case tsm.SyntaxKind.MinusToken:
+    //             return pipe(
+    //                 this.operand,
+    //                 loadTree(scope),
+    //                 E.map(ROA.append<Operation>({ kind: "negate" }))
+    //             );
+    //         case tsm.SyntaxKind.TildeToken:
+    //             return pipe(
+    //                 this.operand,
+    //                 loadTree(scope),
+    //                 E.map(ROA.append<Operation>({ kind: "invert" }))
+    //             );
+    //         case tsm.SyntaxKind.ExclamationToken:
+    //             return pipe(
+    //                 this.operand,
+    //                 loadTreeAsBoolean(scope),
+    //                 E.map(ROA.append<Operation>({ kind: "not" }))
+    //             );
+    //         case tsm.SyntaxKind.PlusPlusToken:
+    //         case tsm.SyntaxKind.MinusMinusToken: {
+    //             const kind = this.operator === tsm.SyntaxKind.PlusPlusToken ? "increment" : "decrement";
+    //             return pipe(
+    //                 this.operand,
+    //                 resolveTree(scope),
+    //                 E.bindTo('operand'),
+    //                 E.bind('loadOps', ({ operand }) => getLoadOps(operand)),
+    //                 E.bind('storeOps', ({ operand }) => getStoreOps(operand)),
+    //                 E.map(({ loadOps, storeOps }) => pipe(
+    //                     loadOps,
+    //                     ROA.append<Operation>({ kind }),
+    //                     ROA.append<Operation>({ kind: "duplicate" }),
+    //                     ROA.concat(storeOps)
+    //                 ))
+    //             )
+    //         }
+    //     }
+    //     return E.left(makeParseError(this.node)(`Invalid prefix unary operator ${tsm.SyntaxKind[this.operator]}`));
+    // }
 }
 
 export class PostfixUnaryExpressionTree implements ExpressionTree {
@@ -467,20 +479,20 @@ export class PostfixUnaryExpressionTree implements ExpressionTree {
         return E.left(makeParseError(this.node)(`Invalid postfix unary operator ${tsm.SyntaxKind[this.operator]}`));
     }
 
-    readonly load = (scope: Scope) => pipe(
-        this.operand,
-        resolveTree(scope),
-        E.bindTo('operand'),
-        E.bind('postfix', () => pipe(this.getOperationKind(), E.map(kind => (<Operation>{ kind })))),
-        E.bind('loadOps', ({ operand }) => getLoadOps(operand)),
-        E.bind('storeOps', ({ operand }) => getStoreOps(operand)),
-        E.map(({ loadOps, storeOps, postfix }) => pipe(
-            loadOps,
-            ROA.append<Operation>({ kind: "duplicate" }),
-            ROA.append(postfix),
-            ROA.concat(storeOps)
-        ))
-    )
+    // readonly load = (scope: Scope) => pipe(
+    //     this.operand,
+    //     resolveTree(scope),
+    //     E.bindTo('operand'),
+    //     E.bind('postfix', () => pipe(this.getOperationKind(), E.map(kind => (<Operation>{ kind })))),
+    //     E.bind('loadOps', ({ operand }) => getLoadOps(operand)),
+    //     E.bind('storeOps', ({ operand }) => getStoreOps(operand)),
+    //     E.map(({ loadOps, storeOps, postfix }) => pipe(
+    //         loadOps,
+    //         ROA.append<Operation>({ kind: "duplicate" }),
+    //         ROA.append(postfix),
+    //         ROA.concat(storeOps)
+    //     ))
+    // )
 }
 
 export class CallExpressionTree implements ExpressionTree {
@@ -488,7 +500,25 @@ export class CallExpressionTree implements ExpressionTree {
         readonly node: tsm.CallExpression,
         readonly expression: ExpressionTree,
         readonly callArgs: readonly ExpressionTree[],
-    ) { }  
+    ) { }
+
+    // readonly load = (scope: Scope) => {
+
+    //     // for call expressions., we need 
+    //     //  1. the load operations for the expression
+    //     //  2. the call operations
+    //     //  3. the load operations for each argument (in reverse order)
+    //     //      - argument handling is done by the 
+
+
+    //     // const q = pipe(
+    //     //     this.expression, 
+    //     //     resolveTree(scope),
+    //     //     E.chain(getLoadOps)
+            
+    //     //     );
+    //     return E.left(makeParseError(this.node)(`CallExpressionTree.load not implemented`));
+    // }
 }
 
 export class ConstructorExpressionTree implements ExpressionTree {

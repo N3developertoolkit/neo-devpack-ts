@@ -1,6 +1,6 @@
 import * as tsm from "ts-morph";
 import { sc, u } from "@cityofzion/neon-core";
-import { identity, pipe } from "fp-ts/lib/function";
+import { flow, identity, pipe } from "fp-ts/lib/function";
 import * as E from "fp-ts/Either";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROR from 'fp-ts/ReadonlyRecord'
@@ -8,241 +8,264 @@ import * as O from 'fp-ts/Option'
 import * as TS from "../TS";
 
 import { CompilerState } from "../types/CompileOptions";
-import { CompileTimeObject, Scope, createEmptyScope, createScope } from "../types/CompileTimeObject";
-import { CompileError, ParseError, createDiagnostic, isVoidLike, makeParseError, single } from "../utils";
-import { Operation, parseOperation as $parseOperation, pushString } from "../types/Operation";
+import { CompileTimeObject, CompileTimeObjectOptions, ParseCallArgsFunc, Scope, createEmptyScope, createScope, makeCompileTimeObject } from "../types/CompileTimeObject";
+import { CompileError, createDiagnostic, isArray, isVoidLike, makeParseError, single, ParseError } from "../utils";
+import { Operation, parseOperation } from "../types/Operation";
 
 import { parseExpression } from "./expressionProcessor";
-import { makeByteStringConstructor, makeByteStringInterface } from "./builtins.ByteString";
-import { checkErrors, createBuiltInCallable, createBuiltInObject, createBuiltInSymbol, rorValues } from "./builtins.SymbolDefs";
-import { makeReadonlyStorageContext, makeStorageConstructor, makeStorageContext } from "./builtins.Storage";
+import { checkErrors, createBuiltInCallable, rorValues } from "./builtins.SymbolDefs";
 import { LibraryDeclaration } from "../types/LibraryDeclaration";
-import { parseEnumDecl } from "./parseDeclarations";
-
+import { parseArguments, parseCallExpression, parseEnumDecl } from "./parseDeclarations";
+import { ParseNewArgsFunc } from "../types/CompileTimeObject";
 
 module REGEX {
     export const match = (regex: RegExp) => (value: string) => O.fromNullable(value.match(regex));
 }
 
-function sigToSymbolDef(sig: tsm.MethodSignature | tsm.PropertySignature, loadOps: readonly Operation[]) {
-    return tsm.Node.isMethodSignature(sig)
-        ? createBuiltInCallable(sig, { loadOps })
-        : createBuiltInSymbol(sig, loadOps);
-}
-
-function makeSysCallInterface(decl: tsm.InterfaceDeclaration) {
-
-    const props = pipe(
-        decl.getType().getProperties(),
-        ROA.chain(s => s.getDeclarations()),
-        ROA.filter(TS.isMethodOrProp),
-        ROA.map(member => {
-            const name = pipe(
-                member,
-                TS.getTagComment('syscall'),
-                O.toUndefined
-            )
-            if (!name) {
-                throw new Error(`${decl.getSymbol()?.getName()} invalid syscall jsdoc tag`)
-            }
-            const loadOps = [{ kind: "syscall", name } as Operation];
-
-            return sigToSymbolDef(member, loadOps);
-        }),
-    );
-    return createBuiltInObject(decl, { props })
-}
-
-
-
-
-
-
-
-
-const regexMethodToken = /\{((?:0x)?[0-9a-fA-F]{40})\}/;
-function makeNativeContractTypeDef(decl: tsm.VariableDeclaration) {
-    const hash = pipe(
-        decl.getVariableStatement(),
-        O.fromNullable,
-        O.chain(TS.getTagComment("nativeContract")),
-        O.chain(REGEX.match(regexMethodToken)),
-        O.chain(ROA.lookup(1)),
-        O.map(v => u.HexString.fromHex(v, true)),
-        O.toUndefined,
+function makeParseCall(callOps: Operation | readonly Operation[]): ParseCallArgsFunc {
+    return (scope: Scope) => (node: tsm.CallExpression) => pipe(
+        node,
+        parseCallExpression(scope),
+        E.map(ROA.concat(isArray(callOps) ? callOps : [callOps]))
     )
-
-    if (!hash) {
-        throw new Error(`invalid hash for ${decl.getSymbol()?.getName()} native contract declaration`);
-    }
-
-    const props = pipe(
-        decl.getType().getProperties(),
-        ROA.chain(s => s.getDeclarations()),
-        ROA.filter(TS.isMethodOrProp),
-        ROA.map(member => {
-            const method = pipe(
-                member,
-                TS.getTagComment("nativeContract"),
-                O.getOrElse(() => member.getSymbolOrThrow().getName())
-            );
-            const [parametersCount, returnType] = tsm.Node.isPropertySignature(member)
-                ? [0, member.getType()]
-                : [member.getParameters().length, member.getReturnType()];
-            const token = new sc.MethodToken({
-                hash: hash.toString(),
-                method,
-                parametersCount: parametersCount,
-                hasReturnValue: !isVoidLike(returnType),
-                callFlags: sc.CallFlags.All
-            })
-            const loadOps = [{ kind: "calltoken", token } as Operation];
-            return sigToSymbolDef(member, loadOps);
-        })
-    );
-
-    const typeDecl = pipe(
-        decl.getType().getSymbol(),
-        O.fromNullable,
-        ROA.fromOption,
-        ROA.chain(s => s.getDeclarations()),
-        ROA.head,
-        O.toUndefined
-    );
-    if (!typeDecl) throw new Error(`${decl.getName()} invalid type decl`)
-    return createBuiltInObject(typeDecl, { props })
 }
 
+function makeStackItemType(decl: tsm.InterfaceDeclaration) {
+    const symbol = decl.getSymbol();
+    if (!symbol) throw new CompileError("symbol not found", decl);
 
-const parseArgArray = (scope: Scope) => (args: readonly tsm.Expression[]) => {
     return pipe(
-        args,
-        ROA.map(parseExpression(scope)),
-        ROA.sequence(E.Applicative),
-        E.map(ROA.reverse),
-        E.map(ROA.flatten),
-    );
-}
-
-export const invokeCallContract =
-    (scope: Scope) =>
-        (node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
-            return pipe(
-                node,
-                TS.getArguments,
-                args => {
-                    const callArgs = args.slice(0, 3);
-                    if (callArgs.length !== 3) return E.left(makeParseError(node)("invalid arg count"));
-                    return E.of({
-                        callArgs,
-                        targetArgs: args.slice(3)
-                    })
-                },
-                E.chain(({ callArgs, targetArgs }) => {
-                    return pipe(
-                        targetArgs,
-                        parseArgArray(scope),
-                        E.map(ROA.concat([
-                            { kind: "pushint", value: BigInt(targetArgs.length) },
-                            { kind: 'packarray' },
-                        ] as readonly Operation[])),
-                        E.bindTo("target"),
-                        E.bind('call', () => pipe(
-                            callArgs,
-                            parseArgArray(scope),
-                            E.map(ROA.append({ kind: "syscall", name: "System.Contract.Call" } as Operation))
-                        )),
-                        E.map(({ call, target }) => ROA.concat(call)(target))
-                    );
-                })
-            );
-        }
-
-export const invokeError =
-    (scope: Scope) =>
-        (node: tsm.CallExpression): E.Either<ParseError, readonly Operation[]> => {
-            const args = TS.getArguments(node);
-            return args.length === 0
-                ? E.right([{ kind: 'pushdata', value: Buffer.from("", "utf8") }])
-                : parseExpression(scope)(args[0]);
-        }
-
-function makeSysCallFunction(decl: tsm.FunctionDeclaration) {
-    const serviceName = pipe(decl, TS.getTagComment('syscall'), O.toUndefined);
-    if (!serviceName) throw new Error(`Invalid @syscall function ${decl.getSymbol()?.getName()}`)
-    const loadOps = [{ kind: "syscall", name: serviceName } as Operation];
-    return createBuiltInCallable(decl, { loadOps });
-}
-
-function makeStackItemObject(decl: tsm.InterfaceDeclaration) {
-    const props = pipe(
+        // stack items interfaces don't extend other interfaces, so use getMembers instead of type.getProperties
         decl.getMembers(),
         ROA.mapWithIndex((index, member) => pipe(
             member,
+            // stack itemn interface members are exclusively properties
             E.fromPredicate(tsm.Node.isPropertySignature, () => member.getSymbol()?.getName() ?? "<unknown>"),
-            E.map(node => createBuiltInSymbol(node, [
-                { kind: 'pushint', value: BigInt(index) },
-                { kind: 'pickitem' }
-            ]))
+            E.chain(flow(TS.getSymbol, E.fromOption(() => "symbol not found"))),
+            // for each property, create a CTO that picks item by index
+            E.map(symbol => {
+                return makeCompileTimeObject(member, symbol, {
+                    loadOps: [
+                        { kind: 'pushint', value: BigInt(index) },
+                        { kind: 'pickitem' }
+                    ]
+                });
+            })
         )),
-        checkErrors(`invalid @stackitem interface ${decl.getSymbol()?.getName()}`)
+        ROA.sequence(E.Applicative),
+        E.map(props => makeCompileTimeObject(decl, symbol, { getProperty: props })),
+        E.match(e => { throw new CompileError(e, decl) }, identity)
     )
-    return createBuiltInObject(decl, { props });
-}
-
-const regexOperation = /(\S+)\s?(\S+)?/
-const parseOperation =
-    (comment: string): E.Either<string, Operation> => {
-        const matches = comment.match(regexOperation) ?? [];
-        return matches.length === 3
-            ? pipe(
-                $parseOperation(matches[1], matches[2]),
-                E.fromNullable(comment)
-            )
-            : E.left(comment);
-    }
-
-function makeOperationsFunction(decl: tsm.FunctionDeclaration) {
-    const loadOps = pipe(
-        decl.getJsDocs(),
-        ROA.chain(d => d.getTags()),
-        ROA.filter(t => t.getTagName() === 'operation'),
-        ROA.map(t => t.getCommentText() ?? ""),
-        ROA.map(parseOperation),
-        checkErrors(`invalid @operation function ${decl.getSymbol()?.getName()}`)
-    )
-
-    // like standard parseArguments in ExpressionProcessor.ts, but without the argument reverse
-    // Right now (nep11 spike) there is only one @operation function (concat). It probably makes 
-    // sense to move this to ByteArrayInstance instead of a free function
-    const parseArguments =
-        (scope: Scope) =>
-            (node: tsm.CallExpression) => {
-                return pipe(
-                    node,
-                    TS.getArguments,
-                    ROA.map(parseExpression(scope)),
-                    ROA.sequence(E.Applicative),
-                    E.map(ROA.flatten),
-                );
-            }
-
-    return createBuiltInCallable(decl, { loadOps, parseArguments });
 }
 
 function makeEnumObject(decl: tsm.EnumDeclaration) {
     return pipe(
         decl,
         parseEnumDecl,
-        E.match(
-            err => { throw new CompileError(err.message, decl); },
-            identity
-        )
+        E.match(e => { throw new CompileError(e.message, decl); }, identity)
     )
 }
 
-function makeIteratorInterface(decl: tsm.InterfaceDeclaration): CompileTimeObject {
-    return createBuiltInSymbol(decl);
+const regexMethodToken = /\{((?:0x)?[0-9a-fA-F]{40})\}/;
+function makeNativeContractType(decl: tsm.InterfaceDeclaration) {
+    const symbol = decl.getSymbol();
+    if (!symbol) throw new CompileError("symbol not found", decl);
+
+    return pipe(
+        decl,
+        TS.getTagComment("nativeContract"),
+        O.chain(REGEX.match(regexMethodToken)),
+        O.chain(ROA.lookup(1)),
+        O.map(v => u.HexString.fromHex(v, true)),
+        E.fromOption(() => `invalid hash for ${decl.getSymbol()?.getName()} native contract declaration`),
+        E.map(hash => {
+            return pipe(
+                // native contract interfaces can extend other native contract interfaces
+                // (NeoToken extends FungibleToken), so use type.getProperties instead of getMembers
+                decl.getType().getProperties(),
+                ROA.chain(s => s.getDeclarations()),
+                ROA.filter(TS.isMethodOrProp),
+                ROA.map(makeMember(hash)),
+            );
+        }),
+        E.map(props => makeCompileTimeObject(decl, symbol, { getProperty: props })),
+        E.match(e => { throw new CompileError(e, decl) }, identity)
+    )
+
+    function makeMember(hash: u.HexString) {
+        return (member: tsm.MethodSignature | tsm.PropertySignature) => {
+            const memberSymbol = member.getSymbol();
+            if (!memberSymbol) throw new CompileError("symbol not found", member);
+            const memberName = pipe(
+                member,
+                TS.getTagComment("nativeContract"),
+                O.getOrElse(() => memberSymbol.getName())
+            );
+            const [parametersCount, returnType] = tsm.Node.isPropertySignature(member)
+                ? [0, member.getType()]
+                : [member.getParameters().length, member.getReturnType()];
+            const token = new sc.MethodToken({
+                hash: hash.toString(),
+                method: memberName,
+                parametersCount: parametersCount,
+                hasReturnValue: !isVoidLike(returnType),
+                callFlags: sc.CallFlags.All
+            });
+            const callTokenOp = <Operation>{ kind: "calltoken", token };
+            let options: CompileTimeObjectOptions = {};
+            if (tsm.Node.isMethodSignature(member)) {
+                options = { parseCall: makeParseCall(callTokenOp) };
+            } else {
+                options = { loadOps: [callTokenOp] };
+            }
+            return makeCompileTimeObject(member, memberSymbol, options);
+        };
+    }
+}
+
+function makeNativeContractObject(decl: tsm.VariableDeclaration) {
+    return pipe(
+        decl,
+        TS.getSymbol,
+        O.match(
+            () => { throw new CompileError("symbol not found", decl); },
+            symbol => makeCompileTimeObject(decl, symbol, {})
+        ),
+    )
+}
+
+function makeSysCallFunctionObject(decl: tsm.FunctionDeclaration) {
+    const symbol = decl.getSymbol();
+    if (!symbol) throw new CompileError("symbol not found", decl);
+
+    return pipe(
+        decl,
+        TS.getTagComment('syscall'),
+        E.fromOption(() => `Invalid @syscall tag for ${decl.getSymbol()?.getName()}`),
+        E.map(serviceName => {
+            const parseCall = makeParseCall({ kind: "syscall", name: serviceName });
+            return makeCompileTimeObject(decl, symbol, { parseCall });
+        }),
+        E.match(e => { throw new CompileError(e, decl) }, identity)
+    )
+}
+
+const regexOperationTagComment = /(\S+)\s?(\S+)?/
+function makeOperationsFunctionObject(decl: tsm.FunctionDeclaration) {
+
+    const symbol = decl.getSymbol();
+    if (!symbol) throw new CompileError("symbol not found", decl);
+
+    return pipe(
+        decl.getJsDocs(),
+        ROA.chain(d => d.getTags()),
+        ROA.filter(t => t.getTagName() === 'operation'),
+        ROA.map(t => t.getCommentText() ?? ""),
+        ROA.map(parseOperationTagComment),
+        ROA.sequence(E.Applicative),
+        E.map(ops => makeCompileTimeObject(decl, symbol, { parseCall: makeParseCall(ops) })),
+        E.match(e => { throw new CompileError(e, decl) }, identity)
+    )
+
+    // like standard parseArguments in ExpressionProcessor.ts, but without the argument reverse
+    // Right now (nep11 spike) there is only one @operation function (concat). It probably makes 
+    // sense to move this to ByteArray or ByteArrayConstructor instead of a free function
+    function makeParseCall(callOps: readonly Operation[]): ParseCallArgsFunc {
+        return (scope: Scope) => (node: tsm.CallExpression) => pipe(
+            node,
+            TS.getArguments,
+            ROA.map(parseExpression(scope)),
+            ROA.sequence(E.Applicative),
+            E.map(ROA.flatten),
+            E.map(ROA.concat(callOps))
+        )
+    }
+
+    function parseOperationTagComment(comment: string): E.Either<string, Operation> {
+        const matches = comment.match(regexOperationTagComment) ?? [];
+        return matches.length === 3
+            ? pipe(
+                parseOperation(matches[1], matches[2]),
+                E.fromNullable(comment)
+            )
+            : E.left(comment);
+    }
+}
+
+function makeCallContractFunctionObject(decl: tsm.FunctionDeclaration) {
+    const symbol = decl.getSymbol();
+    if (!symbol) throw new CompileError("symbol not found", decl);
+
+    const parseCall: ParseCallArgsFunc = (scope: Scope) => (node: tsm.CallExpression) => {
+        const args = TS.getArguments(node);
+        const callArgs = args.slice(0, 3);
+        const targetArgs = args.slice(3);
+
+        if (callArgs.length !== 3) return E.left(makeParseError(node)(`invalid arg count ${args.length}`));
+
+        return pipe(
+            targetArgs,
+            parseArguments(scope),
+            E.map(ROA.concat([
+                { kind: "pushint", value: BigInt(targetArgs.length) },
+                { kind: 'packarray' },
+            ] as readonly Operation[])),
+            E.bindTo("target"),
+            E.bind('call', () => pipe(
+                callArgs,
+                parseArguments(scope),
+                E.map(ROA.append({ kind: "syscall", name: "System.Contract.Call" } as Operation))
+            )),
+            E.map(({ call, target }) => ROA.concat(call)(target))
+
+        );
+    }
+
+    return makeCompileTimeObject(decl, symbol, { parseCall });
+}
+
+function makeRuntimeConstructorType(decl: tsm.InterfaceDeclaration) {
+    const symbol = decl.getSymbol();
+    if (!symbol) throw new CompileError("symbol not found", decl);
+    return pipe(
+        // RuntimeConstructor doesn't extend another interface, so use getMembers instead of type.getProperties
+        decl.getMembers(),
+        ROA.map(member => pipe(
+            member,
+            // RuntimeConstructor members are exclusively properties
+            E.fromPredicate(tsm.Node.isPropertySignature, () => member.getSymbol()?.getName() ?? "<unknown>"),
+            E.chain(flow(TS.getSymbol, E.fromOption(() => "symbol not found"))),
+            E.bindTo('symbol'),
+            // each runtime ctor property has a @syscall tag
+            E.bind('syscall', () => pipe(
+                member,
+                TS.getTagComment('syscall'),
+                E.fromOption(() => "syscall tag not found")
+            )),
+            E.map(({ symbol, syscall }) => {
+                const loadOp = <Operation>{ kind: "syscall", name: syscall };
+                return makeCompileTimeObject(member, symbol, { loadOps: [loadOp] });
+            })
+        )),
+        ROA.sequence(E.Applicative),
+        E.map(props => makeCompileTimeObject(decl, symbol, { getProperty: props })),
+        E.match(e => { throw new CompileError(e, decl) }, identity)
+    )
+}
+
+const invokeError = (scope: Scope) => (args: readonly tsm.Expression[]): E.Either<ParseError, readonly Operation[]> => {
+    return args.length === 0
+        ? E.of([{ kind: 'pushdata', value: Buffer.from("", "utf8") } as Operation])
+        : parseExpression(scope)(args[0]);
+}
+
+const makeErrorObject = (decl: tsm.VariableDeclaration) => {
+    const parseCall: ParseCallArgsFunc = scope => node => invokeError(scope)(TS.getArguments(node))
+    const parseConstructor: ParseNewArgsFunc = scope => node => invokeError(scope)(TS.getArguments(node))
+
+    const symbol = decl.getSymbol();
+    if (!symbol) throw new CompileError("symbol not found", decl);
+    return makeCompileTimeObject(decl, symbol, { parseCall, parseConstructor });
 }
 
 const isFunctionDeclaration = O.fromPredicate(tsm.Node.isFunctionDeclaration);
@@ -254,83 +277,135 @@ export const makeGlobalScope =
     (decls: readonly LibraryDeclaration[]): CompilerState<Scope> =>
         diagnostics => {
 
-            const enums = pipe(decls, ROA.filterMap(isEnumDeclaration));
             const functions = pipe(decls, ROA.filterMap(isFunctionDeclaration));
             const interfaces = pipe(decls, ROA.filterMap(isInterfaceDeclaration));
-            const varStatements = pipe(decls, ROA.filterMap(isVariableStatement));
-            const variables = pipe(varStatements, ROA.chain(s => s.getDeclarations()));
 
-            let typeDefs: ReadonlyArray<CompileTimeObject> = [];
-            let symbolDefs: ReadonlyArray<CompileTimeObject> = [];
+            const enumObjects = pipe(
+                decls, 
+                ROA.filterMap(isEnumDeclaration), 
+                ROA.map(makeEnumObject)
+            );
 
-            typeDefs = pipe(
+            const nativeContractObjects = pipe(
+                decls,
+                ROA.filterMap(isVariableStatement),
+                ROA.filter(TS.hasTag("nativeContract")),
+                ROA.chain(s => s.getDeclarations()),
+                ROA.map(makeNativeContractObject)
+            );
+
+            const sysCallFunctionObjects = pipe(
+                functions,
+                ROA.filter(TS.hasTag("syscall")),
+                ROA.map(makeSysCallFunctionObject)
+            )
+
+            const operationFunctionObjects = pipe(
+                functions,
+                ROA.filter(TS.hasTag("operation")),
+                ROA.map(makeOperationsFunctionObject)
+            )
+
+            const stackItemTypes = pipe(
                 interfaces,
                 ROA.filter(TS.hasTag("stackitem")),
-                ROA.map(makeStackItemObject),
-                ROA.concat(typeDefs)
+                ROA.map(makeStackItemType),
             )
 
-            typeDefs = pipe(
-                varStatements,
-                ROA.filter(TS.hasTag('nativeContract')),
-                ROA.chain(s => s.getDeclarations()),
-                ROA.map(makeNativeContractTypeDef),
-                ROA.concat(typeDefs)
+            const nativeContractTypes = pipe(
+                interfaces,
+                ROA.filter(TS.hasTag("nativeContract")),
+                ROA.map(makeNativeContractType),
             )
 
-            symbolDefs = pipe(
-                varStatements,
-                ROA.filter(TS.hasTag('nativeContract')),
-                ROA.chain(s => s.getDeclarations()),
-                ROA.map(createBuiltInSymbol),
-                ROA.concat(symbolDefs)
-            )
 
-            symbolDefs = pipe(
-                functions,
-                ROA.filter(TS.hasTag('syscall')),
-                ROA.map(makeSysCallFunction),
-                ROA.concat(symbolDefs)
-            )
+            // interface Error {
+            //     name: string;
+            //     message: string;
+            //     stack?: string;
+            // }
+            
+            // interface ErrorConstructor {
+            //     new(message?: string): Error;
+            //     (message?: string): Error;
+            //     readonly prototype: Error;
+            // }
+            
+            // declare var Error: ErrorConstructor;
+            
+            
 
-            symbolDefs = pipe(
-                functions,
-                ROA.filter(TS.hasTag('operation')),
-                ROA.map(makeOperationsFunction),
-                ROA.concat(symbolDefs)
-            )
 
-            const builtInEnums: Record<string, (decl: tsm.EnumDeclaration) => CompileTimeObject> = {
-                "CallFlags": makeEnumObject,
-                "FindOptions": makeEnumObject,
-            }
+            // const callContractFuncObject = makeDeclaration("callContract", makeCallContractFunctionObject);
+            
+            // pipe(
+            //     "callContract",
+            //     getDeclaration,
+            //     O.map(decl => makeCallContractFunctionObject(decl as tsm.FunctionDeclaration)),
+            //     O.match(() => { throw new Error("callContract function not found") }, identity)
+            // );
+
+            // const runtimeCtorType = pipe(
+            //     "RuntimeConstructor",
+            //     getDeclaration,
+            //     O.map(decl => makeRuntimeConstructorType(decl as tsm.InterfaceDeclaration)),
+            //     O.match(() => { throw new Error("RuntimeConstructor interface not found") }, identity)
+            // );
+
+            // const runtimeObj = pipe(
+            //     "Runtime",
+            //     getDeclaration,
+            //     O.map(decl => {
+            //         const symbol = decl.getSymbol();
+            //         if (!symbol) throw new CompileError("symbol not found", decl);
+            //         return makeCompileTimeObject(decl, symbol, {});
+            //     }),
+            //     O.match(() => { throw new Error("Runtime variable declaration not found") }, identity)
+            // );
+
+            // const errorObj = pipe(
+            //     "ErrorConstructor",
+            //     getDeclaration,
+            //     O.map(decl => makeErrorObject(decl as tsm.VariableDeclaration)),
+            //     O.match(() => { throw new Error("Error variable declaration not found") }, identity)
+            // );
+
+
+            let typeDefs: ReadonlyArray<CompileTimeObject> = ROA.empty;
+            let symbolDefs: ReadonlyArray<CompileTimeObject> = ROA.empty;
+
 
             const builtInFunctions: Record<string, (decl: tsm.FunctionDeclaration) => CompileTimeObject> = {
-                "callContract": decl => createBuiltInCallable(decl, { parseArguments: invokeCallContract }),
+                "callContract": makeCallContractFunctionObject,
             }
 
+
+
             const builtInInterfaces: Record<string, (decl: tsm.InterfaceDeclaration) => CompileTimeObject> = {
-                "ByteStringConstructor": makeByteStringConstructor,
-                "ByteString": makeByteStringInterface,
-                "Iterator": makeIteratorInterface,
-                "ReadonlyStorageContext": makeReadonlyStorageContext,
-                "RuntimeConstructor": makeSysCallInterface,
-                "StorageConstructor": makeStorageConstructor,
-                "StorageContext": makeStorageContext,
+            //     "RuntimeConstructor": makeRuntimeConstructorType,
+
+
+
+            //     // "ByteStringConstructor": makeByteStringConstructor,
+            //     // "ByteString": makeByteStringInterface,
+            //     // "Iterator": makeIteratorInterface,
+            //     // "ReadonlyStorageContext": makeReadonlyStorageContext,
+            //     // "StorageConstructor": makeStorageConstructor,
+            //     // "StorageContext": makeStorageContext,
             }
 
             const builtInVars: Record<string, (decl: tsm.VariableDeclaration) => CompileTimeObject> = {
-                "ByteString": createBuiltInSymbol,
-                "Error": decl => createBuiltInCallable(decl, { parseArguments: invokeError }),
-                "Runtime": createBuiltInSymbol,
-                "Storage": createBuiltInSymbol,
+                "Error": makeErrorObject,
+
+                // "Runtime": createBuiltInSymbol,
+                
+                
+                
+                
+                // "ByteString": createBuiltInSymbol,
+                // "Storage": createBuiltInSymbol,
             }
 
-            symbolDefs = resolveBuiltins(builtInEnums)(enums)(symbolDefs);
-            symbolDefs = resolveBuiltins(builtInFunctions)(functions)(symbolDefs);
-            symbolDefs = resolveBuiltins(builtInVars)(variables)(symbolDefs);
-
-            typeDefs = resolveBuiltins(builtInInterfaces)(interfaces)(typeDefs);
 
             return pipe(
                 createScope()(symbolDefs, typeDefs),
@@ -344,9 +419,26 @@ export const makeGlobalScope =
                     }
                 )
             );
+
+
+            // function makeDeclaration(name: string, func: (decl: BuiltinDeclaration) => CompileTimeObject): CompileTimeObject {
+
+            //     for (const decl of decls) {
+            //         if (tsm.Node.isVariableStatement(decl)) {
+            //             const varDecl = decl.getDeclarations().find(decl => decl.getSymbol()?.getName() === name)
+            //             if (varDecl) return func(varDecl);
+            //         }
+            //         else {
+            //             if (decl.getSymbol()?.getName() === name) return func(decl);
+            //         }
+            //     }
+
+            //     throw new Error(`${name} declaration not found`) 
+            // }
+
         }
 
-export type BuiltinDeclaration = tsm.EnumDeclaration | tsm.FunctionDeclaration | tsm.InterfaceDeclaration | tsm.VariableDeclaration;
+export type BuiltinDeclaration = tsm.EnumDeclaration | tsm.FunctionDeclaration | tsm.InterfaceDeclaration | tsm.VariableDeclaration ;
 
 const resolveBuiltins =
     <T extends BuiltinDeclaration>(map: ROR.ReadonlyRecord<string, (decl: T) => CompileTimeObject>) =>

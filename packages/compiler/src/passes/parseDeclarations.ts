@@ -8,8 +8,8 @@ import * as TS from '../TS';
 
 import { makeParseError } from "../utils";
 import { Operation, pushInt, pushString } from "../types/Operation";
-import { ParseCallArgsFunc, makeCompileTimeObject } from "../types/CompileTimeObject";
-import { parseArguments } from "./expressionProcessor";
+import { ParseCallArgsFunc, Scope, makeCompileTimeObject } from "../types/CompileTimeObject";
+import {  parseExpression } from "./expressionProcessor";
 
 export function makeLocalVariable(node: tsm.Identifier | tsm.BindingElement, symbol: tsm.Symbol, index: number) {
     const loadOps = [{ kind: "loadlocal", index } as Operation];
@@ -35,18 +35,35 @@ export function makeConstant(node: tsm.Identifier | tsm.BindingElement, symbol: 
     return cto;
 }
 
+export function parseArguments(scope: Scope) {
+    return (args: readonly tsm.Expression[]) => {
+        return pipe(
+            args,
+            ROA.map(parseExpression(scope)),
+            ROA.sequence(E.Applicative),
+            E.map(ROA.reverse),
+            E.map(ROA.flatten)
+        );
+    };
+}
+
+export const parseCallExpression = (scope: Scope) => (node: tsm.CallExpression) => {
+    return pipe(
+        node,
+        TS.getArguments,
+        parseArguments(scope),
+    );
+}
+
 export function parseEnumDecl(decl: tsm.EnumDeclaration) {
     return pipe(
         decl.getMembers(),
-        ROA.map(member => {
-            return pipe(
-                E.Do,
-                E.bind('op', () => pipe(member, getValue, E.mapLeft(e => makeParseError(member)(e)))),
-                E.bind('symbol', () => pipe(member, TS.parseSymbol)),
-                E.map(({ op, symbol }) => makeCompileTimeObject(decl, symbol, { loadOps: [op] }))
-
-            );
-        }),
+        ROA.map(member => pipe(
+            E.Do,
+            E.bind('op', () => pipe(member, getValue, E.mapLeft(e => makeParseError(member)(e)))),
+            E.bind('symbol', () => pipe(member, TS.parseSymbol)),
+            E.map(({ op, symbol }) => makeCompileTimeObject(member, symbol, { loadOps: [op] }))
+        )),
         ROA.sequence(E.Applicative),
         E.bindTo('props'),
         E.bind('symbol', () => pipe(decl, TS.parseSymbol)),
@@ -56,13 +73,13 @@ export function parseEnumDecl(decl: tsm.EnumDeclaration) {
     function getValue(member: tsm.EnumMember): E.Either<string, Operation> {
         const value = member.getValue();
         if (value === undefined)
-            return E.left(member.getName());
+            return E.left(`${decl.getName()}.${member.getName()} undefined value`);
         if (typeof value === 'number') {
             return Number.isInteger(value)
-                ? E.of(pushInt(value) as Operation)
+                ? E.of(pushInt(value))
                 : E.left(`${decl.getName()}.${member.getName()} invalid non-integer numeric literal ${value}`);
         }
-        return E.of(pushString(value) as Operation);
+        return E.of(pushString(value));
     }
 }
 
@@ -81,7 +98,7 @@ function parseEventFunctionDecl(node: tsm.FunctionDeclaration) {
             const parseCall: ParseCallArgsFunc = (scope) => (node) => {
                 return pipe(
                     node,
-                    parseArguments(scope),
+                    parseCallExpression(scope),
                     E.map(ROA.concat([
                         { kind: "pushint", value: BigInt(node.getArguments().length) },
                         { kind: 'packarray' },
@@ -106,7 +123,7 @@ export function parseFunctionDecl(node: tsm.FunctionDeclaration) {
         TS.parseSymbol,
         E.map(symbol => makeCompileTimeObject(node, symbol, {
             loadOps: [{ kind: 'call', method: symbol }],
-            parseCall: parseArguments
+            parseCall: parseCallExpression
         }))
     )
 }

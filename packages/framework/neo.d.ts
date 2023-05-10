@@ -149,22 +149,25 @@ declare global {
     export function notify(eventName: string, state: ReadonlyArray<any>): void;
     /** @syscall System.Runtime.LoadScript*/
     export function loadScript(script: ByteString, callFlags: CallFlags, args: ReadonlyArray<any>): void;
-
-    export function callContract(scriptHash: ByteString, method: string, callFlags: CallFlags, ...args: any[]): any;
     /** @syscall System.Contract.CreateStandardAccount */
     export function createStandardAccount(pubKey: ByteString /*ecpoint*/): ByteString; // hash160
     /** @syscall System.Contract.CreateMultisigAccount */
     export function createMultisigAccount(count: number, pubKeys: ByteString[] /*ecpoint*/): ByteString; // hash160
-
     /** @syscall System.Crypto.CheckSig */
     export function checkSignature(pubKey: ByteString, signature: ByteString): boolean;
     /** @syscall System.Crypto.CheckMultisig */
     export function checkMultiSignature(pubKey: ByteString[], signature: ByteString[]): boolean;
 
-    /** @nativeContract {0xfffdc93764dbaddd97c48f252a53ea4643faa3fd} */
+    // callContract has special argument handling, so it doesn't use the same built-in infrastructure 
+    // as other @syscall functions 
+    export function callContract(scriptHash: ByteString, method: string, callFlags: CallFlags, ...args: any[]): any;
+
+
+    /** @nativeContract */
     export const ContractManagement: ContractManagementConstructor;
 
     // TODO: @nativeContract safe methods 
+    /** @nativeContract {0xfffdc93764dbaddd97c48f252a53ea4643faa3fd} */
     export interface ContractManagementConstructor {
         /** @nativeContract getMinimumDeploymentFee */
         readonly minimumDeploymentFee: bigint;
@@ -178,9 +181,10 @@ declare global {
         destroy(): void;
     }
 
-    /** @nativeContract {0xacce6fd80d44e1796aa0c2c625e9e4e0ce39efc0} */
+    /** @nativeContract  */
     export const StdLib: StdLibConstructor;
 
+    /** @nativeContract {0xacce6fd80d44e1796aa0c2c625e9e4e0ce39efc0} */
     export interface StdLibConstructor {
         atoi(value: string, base?: number): bigint;
         itoa(value: bigint, base?: bigint): string;
@@ -199,24 +203,33 @@ declare global {
         stringSplit(str: string, separator: string, removeEmptyEntries?: boolean): string[];
     }
 
-    /** @nativeContract {0x726cb6e0cd8628a1350a611384688911ab75f51b} */
+    /** @nativeContract */
     export const CryptoLib: CryptoLibConstructor;
 
+    export const enum ECDsaCurve {
+        secp256k1 = 22,
+        secp256r1 = 23,
+    }
+
+    /** @nativeContract {0x726cb6e0cd8628a1350a611384688911ab75f51b} */
     export interface CryptoLibConstructor {
         murmur32(data: ByteString, seed: number): ByteString;
         ripemd160(data: ByteString): ByteString;
         sha256(data: ByteString): ByteString;
-        verifyWithECDsa(message: ByteString, pubkey: ByteString, signature: ByteString, curve: number): boolean;
+        verifyWithECDsa(message: ByteString, pubkey: ByteString, signature: ByteString, curve: ECDsaCurve): boolean;
     }
 
-    // for verifyWithECDsa curve param
-    export const secp256k1 = 22;
-    export const secp256r1 = 23;
-
-
-    /** @nativeContract {0xda65b600f7124ce6c79950c1772a36403104f2be} */
+    /** @nativeContract */
     export const Ledger: LedgerConstructor;
 
+    export const enum VMState {
+        NONE = 0,
+        HALT = 1,
+        FAULT = 2,
+        BREAK = 4,
+    }
+
+    /** @nativeContract {0xda65b600f7124ce6c79950c1772a36403104f2be} */
     export interface LedgerConstructor {
         readonly currentHash: ByteString;
         readonly currentIndex: number;
@@ -225,19 +238,13 @@ declare global {
         getTransactionFromBlock(blockIndexOrHash: number | ByteString, txIndex: number): Transaction;
         getTransactionHeight(hash: ByteString): number;
         getTransactionSigners(hash: ByteString): Signer[];
-        getTransactionVMState(hash: ByteString): number;
+        getTransactionVMState(hash: ByteString): VMState;
     }
 
-    // for getTransactionVMState return value
-    export const NONE = 0;
-    export const HALT = 1;
-    export const FAULT = 2;
-    export const BREAK = 4;
-
-
-    /** @nativeContract {0xef4073a0f2b305a38ec4050e4d3d28bc40ea63f5} */
+    /** @nativeContract */
     export const NeoToken: NeoTokenConstructor;
 
+    /** @nativeContract {0xef4073a0f2b305a38ec4050e4d3d28bc40ea63f5} */
     export interface NeoTokenConstructor extends FungibleTokenConstructor {
         /** @nativeContract getGasPerBlock */
         readonly gasPerBlock: bigint;
@@ -262,9 +269,10 @@ declare global {
         getAccountState(account: ByteString): NeoAccountState[];
     }
 
-    /** @nativeContract {0xd2a4cff31913016155e38e474a2c06d08be276cf} */
+    /** @nativeContract */
     export const GasToken: FungibleTokenConstructor;
 
+    /** @nativeContract {0xd2a4cff31913016155e38e474a2c06d08be276cf} */
     export interface FungibleTokenConstructor {
         readonly decimals: number;
         readonly symbol: string;
@@ -273,9 +281,10 @@ declare global {
         transfer(from: ByteString, to: ByteString, amount: bigint, data?: any): boolean;
     }
 
-    /** @nativeContract {0xcc5e4edd9f5f8dba8bb65734541df7a1c081c67b} */
+    /** @nativeContract */
     export const Policy: PolicyConstructor;
 
+    /** @nativeContract {0xcc5e4edd9f5f8dba8bb65734541df7a1c081c67b} */
     export interface PolicyConstructor {
         /** @nativeContract getFeePerByte */
         readonly feePerByte: number;
@@ -286,20 +295,24 @@ declare global {
         isBlocked(account: ByteString): boolean;
     }
 
-    /** @nativeContract {0x49cf4e5378ffcd4dec034fd98a174c5491e395e2} */
+    /** @nativeContract */
     export const RoleManagement: RoleManagementConstructor;
 
-    export interface RoleManagementConstructor {
-        getDesignatedByRole(role: number, index: number): ByteString[];
+    export const enum Role {
+        StateValidator = 4,
+        Oracle = 8,
+        NeoFSAlphabetNode = 16,
     }
 
-    // for getDesignatedByRole role param
-    export const stateValidator = 4;
-    export const oracle = 8;
+    /** @nativeContract {0x49cf4e5378ffcd4dec034fd98a174c5491e395e2} */
+    export interface RoleManagementConstructor {
+        getDesignatedByRole(role: Role, index: number): ByteString[];
+    }
 
-    /** @nativeContract {0xfe924b7cfe89ddd271abaf7210a80a7e11178758} */
+    /** @nativeContract */
     export const Oracle: OracleConstructor;
 
+    /** @nativeContract {0xfe924b7cfe89ddd271abaf7210a80a7e11178758} */
     export interface OracleConstructor {
         /** @nativeContract getPrice */
         readonly price: bigint;
