@@ -11,7 +11,7 @@ import { Ord as StringOrd } from 'fp-ts/string';
 import { CompileError, getErrorMessage, makeParseError, ParseError } from "../utils";
 import { Operation } from "../types/Operation";
 import { parseExpression } from "./expressionProcessor";
-import { ParseCallArgsFunc, Scope } from "../types/CompileTimeObject";
+import { CompileTimeObject, GetPropertyFunc, Scope, ScopedNodeFunc } from "../types/CompileTimeObject";
 import { makeCompileTimeObject } from "../types/CompileTimeObject";
 import { parseCallExpression, parseMethodCallExpression } from "./parseDeclarations";
 
@@ -64,7 +64,7 @@ export const byteStringFromInteger =
 
 export function makeByteStringConstructor(node: tsm.InterfaceDeclaration) {
 
-    const methods: Record<string, ParseCallArgsFunc> = {
+    const methods: Record<string, ScopedNodeFunc<tsm.CallExpression>> = {
         "fromHex": byteStringFromHex,
         "fromString": byteStringFromString,
         "fromInteger": byteStringFromInteger,
@@ -90,7 +90,27 @@ export function makeByteStringConstructor(node: tsm.InterfaceDeclaration) {
 
 export function makeByteStringInterface(node: tsm.InterfaceDeclaration) {
 
-    // const lengthSig = pipe(node, TS.getMember('length'), O.chain(O.fromPredicate(tsm.Node.isPropertySignature)));
+    const lengthCTO = pipe(
+        node,
+        TS.getMember('length'),
+        O.chain(O.fromPredicate(tsm.Node.isPropertySignature)),
+        O.bindTo('sig'),
+        O.bind('symbol', ({ sig }) => TS.getSymbol(sig)),
+        O.map(({ sig, symbol }) => {
+            // length is an instance property, so we need access to the parent CTO's load ops
+            const getLoadOps: ScopedNodeFunc<tsm.Expression> = scope => node => {
+                if (tsm.Node.hasExpression(node)) {
+                    return pipe(
+                        node.getExpression(), 
+                        parseExpression(scope),
+                        E.map(ROA.append({ kind: "size" } as Operation))
+                    );
+                }
+                return E.left(makeParseError(node)(`invalid ByteString.length expression`));
+            }
+            return <CompileTimeObject>{node: sig, symbol, getLoadOps, }
+        })
+    );
 
     const asIntCTO = pipe(
         node,
@@ -99,9 +119,9 @@ export function makeByteStringInterface(node: tsm.InterfaceDeclaration) {
         O.bindTo('sig'),
         O.bind('symbol', ({ sig }) => TS.getSymbol(sig)),
         O.map(({ sig, symbol }) => {
-            const parseCall: ParseCallArgsFunc = (scope) => (node) => {
+            const parseCall: ScopedNodeFunc<tsm.CallExpression> = (scope) => (node) => {
                 return pipe(
-                    node, 
+                    node,
                     parseMethodCallExpression(scope),
                     E.map(ROA.append({ kind: "convert", type: sc.StackItemType.Integer } as Operation))
                 )
@@ -115,8 +135,9 @@ export function makeByteStringInterface(node: tsm.InterfaceDeclaration) {
 
     return pipe(
         O.Do,
+        O.bind('length', () => lengthCTO),
         O.bind("asInteger", () => asIntCTO),
-        O.map(({ asInteger }) => makeCompileTimeObject(node, symbol, { getProperty: [asInteger] })),
+        O.map(({ length, asInteger }) => makeCompileTimeObject(node, symbol, { getProperty: [length, asInteger] })),
         O.match(
             () => { throw new CompileError('invalid ByteString interface', node) },
             identity

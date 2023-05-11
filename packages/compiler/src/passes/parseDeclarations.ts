@@ -8,7 +8,7 @@ import * as TS from '../TS';
 
 import { makeParseError } from "../utils";
 import { Operation, pushInt, pushString } from "../types/Operation";
-import { ParseCallArgsFunc, Scope, makeCompileTimeObject } from "../types/CompileTimeObject";
+import { Scope, ScopedNodeFunc, makeCompileTimeObject } from "../types/CompileTimeObject";
 import {  parseExpression } from "./expressionProcessor";
 
 export function makeLocalVariable(node: tsm.Identifier | tsm.BindingElement, symbol: tsm.Symbol, index: number) {
@@ -109,7 +109,7 @@ function parseEventFunctionDecl(node: tsm.FunctionDeclaration) {
         )),
         E.map(({ symbol, eventName }) => {
             const loadOps = [{ kind: 'syscall', name: "System.Runtime.Notify" } as Operation];
-            const parseCall: ParseCallArgsFunc = (scope) => (node) => {
+            const parseCall: ScopedNodeFunc<tsm.CallExpression> = (scope) => (node) => {
                 return pipe(
                     node,
                     parseCallExpression(scope),

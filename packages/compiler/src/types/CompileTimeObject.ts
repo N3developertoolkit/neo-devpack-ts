@@ -9,26 +9,29 @@ import * as STR from 'fp-ts/string';
 import { Operation } from "./Operation";
 import { ParseError, isArray } from "../utils";
 
-export type ParseCallArgsFunc = (scope: Scope) => (node: tsm.CallExpression) => E.Either<ParseError, readonly Operation[]>;
-export type ParseNewArgsFunc = (scope: Scope) => (node: tsm.NewExpression) => E.Either<ParseError, readonly Operation[]>;
+
+export type ScopedNodeFunc<T extends tsm.Node> = (scope: Scope) => (node: T) => E.Either<ParseError, readonly Operation[]>;
+// export type ParseCallArgsFunc = ScopedNodeFunc<tsm.CallExpression>;
+// export type ParseNewArgsFunc = ScopedNodeFunc<tsm.NewExpression>;
 export type GetPropertyFunc = (symbol: tsm.Symbol) => O.Option<CompileTimeObject>;
 
 export interface CompileTimeObject {
     readonly node: tsm.Node;
     readonly symbol: tsm.Symbol;
-    readonly loadOps?: ReadonlyArray<Operation>;
+    // readonly loadOps?: ReadonlyArray<Operation>;
     readonly storeOps?: ReadonlyArray<Operation>;
     readonly getProperty?: GetPropertyFunc;
-    readonly parseCall?: ParseCallArgsFunc;
-    readonly parseConstructor?: ParseNewArgsFunc;
+    readonly parseCall?: ScopedNodeFunc<tsm.CallExpression>;
+    readonly parseConstructor?: ScopedNodeFunc<tsm.NewExpression>;
+    readonly getLoadOps?: ScopedNodeFunc<tsm.Expression>;
 }
 
 export interface CompileTimeObjectOptions {
     readonly loadOps?: ReadonlyArray<Operation>;
     readonly storeOps?: ReadonlyArray<Operation>;
     readonly getProperty?: GetPropertyFunc | readonly CompileTimeObject[];
-    readonly parseCall?: ParseCallArgsFunc;
-    readonly parseConstructor?: ParseNewArgsFunc;
+    readonly parseCall?: ScopedNodeFunc<tsm.CallExpression>;
+    readonly parseConstructor?: ScopedNodeFunc<tsm.NewExpression>;
 }
 
 export function makeGetProperty(options: CompileTimeObjectOptions): GetPropertyFunc | undefined {
@@ -45,11 +48,12 @@ export function makeGetProperty(options: CompileTimeObjectOptions): GetPropertyF
 }
 
 export function makeCompileTimeObject(node: tsm.Node, symbol: tsm.Symbol, options: CompileTimeObjectOptions): CompileTimeObject {
+    const getLoadOps = options.loadOps ? <ScopedNodeFunc<tsm.Expression>>((scope) => (node) => E.of(options.loadOps)) : undefined;
     return {
         node,
         symbol,
-        loadOps: options.loadOps,
         storeOps: options.storeOps,
+        getLoadOps,
         getProperty: makeGetProperty(options),
         parseCall: options.parseCall,
         parseConstructor: options.parseConstructor,

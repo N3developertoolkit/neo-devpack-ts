@@ -54,14 +54,15 @@ export const parseCallExpression =
 export const parsePropertyAccessExpression =
     (scope: Scope) => (node: tsm.PropertyAccessExpression): E.Either<ParseError, readonly Operation[]> => {
         return pipe(
-            node, 
+            node,
             resolvePropertyAccessExpression(scope),
             E.fromOption(() => makeParseError(node)(`failed to resolve ${node.getName()} property`)),
             E.chain(cto => pipe(
-                cto.loadOps,
+                cto.getLoadOps,
                 E.fromNullable(makeParseError(node)(`can't load ${node.getName()} property`))
-            ))
-            );
+            )),
+            E.chain(getLoadOps => getLoadOps(scope)(node))
+        );
     }
 
 export const parseIdentifier =
@@ -71,9 +72,10 @@ export const parseIdentifier =
             resolveIdentifier(scope),
             E.fromOption(() => makeParseError(node)(`failed to resolve ${node.getText()} identifier`)),
             E.chain(cto => pipe(
-                cto.loadOps,
+                cto.getLoadOps,
                 E.fromNullable(makeParseError(node)(`can't load ${node.getText()} identifier`))
-            ))
+            )),
+            E.chain(getLoadOps => getLoadOps(scope)(node))
         );
     }
 
@@ -144,53 +146,53 @@ function resolvePropertyAccessExpression(scope: Scope) {
     }
 }
 
-    // function resolveProperty(ctx: ChainContext) {
-    //     return (node: tsm.PropertyAccessExpression): E.Either<ParseError, CompileTimeObject> => {
-    //         return pipe(
-    //             node,
-    //             TS.parseSymbol,
-    //             E.bindTo('symbol'),
-    //             E.bind('typeDef', () => {
+// function resolveProperty(ctx: ChainContext) {
+//     return (node: tsm.PropertyAccessExpression): E.Either<ParseError, CompileTimeObject> => {
+//         return pipe(
+//             node,
+//             TS.parseSymbol,
+//             E.bindTo('symbol'),
+//             E.bind('typeDef', () => {
 
-    //                 const type = ctx.currentType ?? ctx.current?.node.getType();
-    //                 const symbol = type?.getSymbol();
-    //                 const resolved = symbol ? resolveType(ctx.scope)(symbol) : O.none;
-    //                 return pipe(
-    //                     ctx.currentType,
-    //                     O.fromNullable,
-    //                     O.alt(() => pipe(ctx.current?.node.getType(), O.fromNullable)),
-    //                     O.chain(TS.getTypeSymbol),
-    //                     O.chain(resolveType(ctx.scope)),
-    //                     O.toUndefined,
-    //                     E.of<ParseError, CompileTimeObject | undefined>
-    //                 );
-    //             }),
-    //             E.chain(({ symbol, typeDef }) => {
-    //                 return pipe(
-    //                     getProp(ctx.current, symbol),
-    //                     O.alt(() => getProp(typeDef, symbol)),
-    //                     E.fromOption(() => makeParseError(node)(`failed to resolve ${symbol.getName()} property`))
-    //                 )
-    //             })
-    //         );
-    //     };
+//                 const type = ctx.currentType ?? ctx.current?.node.getType();
+//                 const symbol = type?.getSymbol();
+//                 const resolved = symbol ? resolveType(ctx.scope)(symbol) : O.none;
+//                 return pipe(
+//                     ctx.currentType,
+//                     O.fromNullable,
+//                     O.alt(() => pipe(ctx.current?.node.getType(), O.fromNullable)),
+//                     O.chain(TS.getTypeSymbol),
+//                     O.chain(resolveType(ctx.scope)),
+//                     O.toUndefined,
+//                     E.of<ParseError, CompileTimeObject | undefined>
+//                 );
+//             }),
+//             E.chain(({ symbol, typeDef }) => {
+//                 return pipe(
+//                     getProp(ctx.current, symbol),
+//                     O.alt(() => getProp(typeDef, symbol)),
+//                     E.fromOption(() => makeParseError(node)(`failed to resolve ${symbol.getName()} property`))
+//                 )
+//             })
+//         );
+//     };
 
-    //     function getProp(cto: CompileTimeObject | undefined, symbol: tsm.Symbol): O.Option<CompileTimeObject> {
-    //         return cto && cto.getProperty ? cto.getProperty(symbol) : O.none;
-    //     }
-    // }
+//     function getProp(cto: CompileTimeObject | undefined, symbol: tsm.Symbol): O.Option<CompileTimeObject> {
+//         return cto && cto.getProperty ? cto.getProperty(symbol) : O.none;
+//     }
+// }
 
-    export function resolveExpression(scope: Scope) {
-        return (node: tsm.Expression): O.Option<CompileTimeObject> => {
+export function resolveExpression(scope: Scope) {
+    return (node: tsm.Expression): O.Option<CompileTimeObject> => {
 
-            switch (node.getKind()) {
-                case tsm.SyntaxKind.Identifier: return resolveIdentifier(scope)(node as tsm.Identifier);
-                case tsm.SyntaxKind.PropertyAccessExpression: return resolvePropertyAccessExpression(scope)(node as tsm.PropertyAccessExpression);
-            };
-
-            return O.none;
+        switch (node.getKind()) {
+            case tsm.SyntaxKind.Identifier: return resolveIdentifier(scope)(node as tsm.Identifier);
+            case tsm.SyntaxKind.PropertyAccessExpression: return resolvePropertyAccessExpression(scope)(node as tsm.PropertyAccessExpression);
         };
-    }
+
+        return O.none;
+    };
+}
 
 
 // type DispatchMap<T> = {

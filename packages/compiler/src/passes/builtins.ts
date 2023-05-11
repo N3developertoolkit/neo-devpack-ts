@@ -8,14 +8,13 @@ import * as O from 'fp-ts/Option'
 import * as TS from "../TS";
 
 import { CompilerState } from "../types/CompileOptions";
-import { CompileTimeObject, CompileTimeObjectOptions, ParseCallArgsFunc, Scope, createEmptyScope, createScope, makeCompileTimeObject } from "../types/CompileTimeObject";
+import { CompileTimeObject, CompileTimeObjectOptions, Scope, ScopedNodeFunc, createEmptyScope, createScope, makeCompileTimeObject } from "../types/CompileTimeObject";
 import { CompileError, createDiagnostic, isArray, isVoidLike, makeParseError, single, ParseError } from "../utils";
 import { Operation, parseOperation } from "../types/Operation";
 
 import { parseExpression } from "./expressionProcessor";
 import { LibraryDeclaration } from "../types/LibraryDeclaration";
 import { parseArguments, parseCallExpression, parseEnumDecl } from "./parseDeclarations";
-import { ParseNewArgsFunc } from "../types/CompileTimeObject";
 import { makeByteStringConstructor, makeByteStringInterface } from "./builtins.ByteString";
 import { makeStorageConstructor } from "./builtins.Storage";
 
@@ -23,7 +22,7 @@ module REGEX {
     export const match = (regex: RegExp) => (value: string) => O.fromNullable(value.match(regex));
 }
 
-function makeParseCall(callOps: Operation | readonly Operation[]): ParseCallArgsFunc {
+function makeParseCall(callOps: Operation | readonly Operation[]): ScopedNodeFunc<tsm.CallExpression> {
     return (scope: Scope) => (node: tsm.CallExpression) => pipe(
         node,
         parseCallExpression(scope),
@@ -171,7 +170,7 @@ function makeOperationsFunctionObject(decl: tsm.FunctionDeclaration) {
     // like standard parseArguments in ExpressionProcessor.ts, but without the argument reverse
     // Right now (nep11 spike) there is only one @operation function (concat). It probably makes 
     // sense to move this to ByteArray or ByteArrayConstructor instead of a free function
-    function makeParseCall(callOps: readonly Operation[]): ParseCallArgsFunc {
+    function makeParseCall(callOps: readonly Operation[]): ScopedNodeFunc<tsm.CallExpression> {
         return (scope: Scope) => (node: tsm.CallExpression) => pipe(
             node,
             TS.getArguments,
@@ -197,7 +196,7 @@ function makeCallContractFunctionObject(decl: tsm.FunctionDeclaration) {
     const symbol = decl.getSymbol();
     if (!symbol) throw new CompileError("symbol not found", decl);
 
-    const parseCall: ParseCallArgsFunc = (scope: Scope) => (node: tsm.CallExpression) => {
+    const parseCall: ScopedNodeFunc<tsm.CallExpression> = (scope: Scope) => (node: tsm.CallExpression) => {
         const args = TS.getArguments(node);
         const callArgs = args.slice(0, 3);
         const targetArgs = args.slice(3);
@@ -261,8 +260,8 @@ const invokeError = (scope: Scope) => (args: readonly tsm.Expression[]): E.Eithe
 }
 
 const makeErrorObject = (decl: tsm.VariableDeclaration) => {
-    const parseCall: ParseCallArgsFunc = scope => node => invokeError(scope)(TS.getArguments(node))
-    const parseConstructor: ParseNewArgsFunc = scope => node => invokeError(scope)(TS.getArguments(node))
+    const parseCall: ScopedNodeFunc<tsm.CallExpression> = scope => node => invokeError(scope)(TS.getArguments(node))
+    const parseConstructor: ScopedNodeFunc<tsm.NewExpression> = scope => node => invokeError(scope)(TS.getArguments(node))
 
     const symbol = decl.getSymbol();
     if (!symbol) throw new CompileError("symbol not found", decl);
@@ -306,20 +305,20 @@ export const makeGlobalScope =
                 )
             }
 
-            const q =varDecls.map(d => d.getName());
+            const q = varDecls.map(d => d.getName());
 
             varDecls.find(d => d.getName() === "ByteString")
 
             const byteStringVar = makeStaticVariable("ByteString", varDecls);
-            // const storageVar = makeStaticVariable("Storage", varDecls);
+            const storageVar = makeStaticVariable("Storage", varDecls);
             // const runtimeVar = makeStaticVariable("Runtime", varDecls);
-            
+
             const byteStringCtorType = makeInterface("ByteStringConstructor", makeByteStringConstructor);
             const byteStringType = makeInterface("ByteString", makeByteStringInterface);
-            // const storageCtorType = makeInterface("StorageConstructor", makeStorageConstructor);
-            
-            let typeDefs: ReadonlyArray<CompileTimeObject> = [byteStringCtorType, byteStringType];
-            let symbolDefs: ReadonlyArray<CompileTimeObject> = [byteStringVar ]
+            const storageCtorType = makeInterface("StorageConstructor", makeStorageConstructor);
+
+            let typeDefs: ReadonlyArray<CompileTimeObject> = [byteStringCtorType, byteStringType, storageCtorType];
+            let symbolDefs: ReadonlyArray<CompileTimeObject> = [byteStringVar, storageVar]
 
 
             // const enumObjects = pipe(
@@ -366,20 +365,20 @@ export const makeGlobalScope =
             //     message: string;
             //     stack?: string;
             // }
-            
+
             // interface ErrorConstructor {
             //     new(message?: string): Error;
             //     (message?: string): Error;
             //     readonly prototype: Error;
             // }
-            
+
             // declare var Error: ErrorConstructor;
-            
-            
+
+
 
 
             // const callContractFuncObject = makeDeclaration("callContract", makeCallContractFunctionObject);
-            
+
             // pipe(
             //     "callContract",
             //     getDeclaration,
@@ -438,10 +437,10 @@ export const makeGlobalScope =
             //     "Error": makeErrorObject,
 
             //     // "Runtime": createBuiltInSymbol,
-                
-                
-                
-                
+
+
+
+
             //     // "ByteString": createBuiltInSymbol,
             //     // "Storage": createBuiltInSymbol,
             // }
@@ -480,7 +479,7 @@ export const makeGlobalScope =
 
         }
 
-export type BuiltinDeclaration = tsm.EnumDeclaration | tsm.FunctionDeclaration | tsm.InterfaceDeclaration | tsm.VariableDeclaration ;
+export type BuiltinDeclaration = tsm.EnumDeclaration | tsm.FunctionDeclaration | tsm.InterfaceDeclaration | tsm.VariableDeclaration;
 
 // const resolveBuiltins =
 //     <T extends BuiltinDeclaration>(map: ROR.ReadonlyRecord<string, (decl: T) => CompileTimeObject>) =>

@@ -8,7 +8,7 @@ import { createContractProject } from '../src/utils';
 import { collectProjectDeclarations } from '../src/passes/collectProjectDeclarations';
 import { makeGlobalScope } from '../src/passes/builtins';
 import { parseExpression } from '../src/passes/expressionProcessor';
-import { CompileTimeObject, Scope, createEmptyScope, createScope, updateScope } from '../src/types/CompileTimeObject';
+import { CompileTimeObject, Scope, ScopedNodeFunc, createEmptyScope, createScope, updateScope } from '../src/types/CompileTimeObject';
 import { Operation } from '../src/types/Operation';
 
 // import { CompileTimeObject, createEmptyScope, makeCompileTimeObject, updateScope } from '../src/types/CompileTimeObject';
@@ -52,7 +52,7 @@ export function createTestScope(
     const scope = createEmptyScope(parentScope);
     return pipe(
         updateScope(scope)(symbols, types),
-        E.match(e => expect.fail(e), identity )
+        E.match(e => expect.fail(e), identity)
     );
 }
 
@@ -69,12 +69,10 @@ export function testParseExpression(node: tsm.Expression, scope?: Scope) {
     );
 }
 
-
-export function createTestCTO(node: tsm.Node) {
+export function createTestVariable(node: tsm.VariableDeclaration) {
     const symbol = node.getSymbolOrThrow();
-    return <CompileTimeObject>{
-        node, 
-        symbol,
-        loadOps: [ { kind: 'noop', debug: `${symbol.getName()}.load` } as Operation ],
-    }
+    const loadOp = { kind: 'noop', debug: `${node.getName()}.load` } as Operation;
+    const getLoadOps: ScopedNodeFunc<tsm.Expression> = (_scope) => (_node) => E.of(ROA.of(loadOp));
+    return { node, symbol, loadOp, getLoadOps  }
 }
+
