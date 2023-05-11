@@ -8,8 +8,10 @@ import * as TS from "../TS";
 import * as ROR from 'fp-ts/ReadonlyRecord';
 import { Ord as StringOrd } from 'fp-ts/string';
 import { Operation } from "../types/Operation";
-import { makeCompileTimeObject } from "../types/CompileTimeObject";
-import { CompileError } from "../utils";
+import { CompileTimeObject, ScopedNodeFunc, makeCompileTimeObject } from "../types/CompileTimeObject";
+import { CompileError, makeParseError } from "../utils";
+import { parseMethodCallExpression } from "./parseDeclarations";
+import { parseExpression } from "./expressionProcessor";
 
 // import { ParseError, single } from "../utils";
 // import { isPushBoolOp, Operation } from "../types/Operation";
@@ -180,7 +182,7 @@ import { CompileError } from "../utils";
 //     "readonlyContext": [{ kind: "syscall", name: "System.Storage.GetReadOnlyContext" } as Operation],
 // }
 
-export function makeStorageConstructor(decl: tsm.InterfaceDeclaration) {
+export function makeStorageConstructor(nod: tsm.InterfaceDeclaration) {
 
     const members: ROR.ReadonlyRecord<string, Operation> = {
         "context": { kind: "syscall", name: "System.Storage.GetContext" },
@@ -190,7 +192,7 @@ export function makeStorageConstructor(decl: tsm.InterfaceDeclaration) {
     const { left: errors, right: props} = pipe(
         members,
         ROR.collect(StringOrd)((key, value) => pipe(
-            decl,
+            nod,
             TS.getMember(key),
             O.chain(O.fromPredicate(tsm.Node.isPropertySignature)),
             O.map(sig => makeCompileTimeObject(sig, sig.getSymbolOrThrow(), { loadOps: [value] })),
@@ -198,16 +200,149 @@ export function makeStorageConstructor(decl: tsm.InterfaceDeclaration) {
         )),
         ROA.separate
     );
-    if (errors.length > 0) throw new CompileError(`unresolved ByteStringConstructor members: ${errors.join(', ')}`, decl);
-    const symbol = decl.getSymbol();
-    if (!symbol) throw new CompileError(`no symbol for ${decl.getName()}`, decl);
+    if (errors.length > 0) throw new CompileError(`unresolved ByteStringConstructor members: ${errors.join(', ')}`, nod);
+    const symbol = nod.getSymbol();
+    if (!symbol) throw new CompileError(`no symbol for ${nod.getName()}`, nod);
 
-    return makeCompileTimeObject(decl, symbol, { loadOps: [], getProperty: props})
+    return makeCompileTimeObject(nod, symbol, { loadOps: [], getProperty: props})
 }
 
-export function makeReadonlyStorageContext(decl: tsm.InterfaceDeclaration) {
-
+function makeParseMethodCall(callOp: Operation): ScopedNodeFunc<tsm.CallExpression> {
+    return (scope) => (node) => {
+        return pipe(
+            node,
+            parseMethodCallExpression(scope),
+            E.map(ROA.append(callOp))
+        )
+    }
 }
+
+function makeMembers(node: tsm.InterfaceDeclaration, members: Record<string, (sig: tsm.PropertySignature | tsm.MethodSignature, symbol: tsm.Symbol) => CompileTimeObject>) {
+    const { left: errors, right: props } = pipe(
+        members,
+        ROR.collect(StringOrd)((key, value) => {
+            return pipe(
+                node, 
+                TS.getMember(key),
+                O.bindTo('sig'),
+                O.bind('symbol', ({ sig }) => TS.getSymbol(sig)),
+                O.map(({ sig, symbol }) => value(sig, symbol)),
+                E.fromOption(() => key)
+            );
+        }),
+        ROA.separate
+    );
+
+    if (errors.length > 0) throw new CompileError(`unresolved ReadonlyStorageContext interface members: ${errors.join(', ')}`, node);
+    return props;
+}
+
+function makeReadonlyStorageContextMembers(node: tsm.InterfaceDeclaration) {
+    const members: Record<string, (sig: tsm.PropertySignature | tsm.MethodSignature, symbol: tsm.Symbol) => CompileTimeObject> = {
+        get: (sig, symbol) => {
+            const parseCall = makeParseMethodCall({ kind: "syscall", name: "System.Storage.Get" });
+            return makeCompileTimeObject(sig, symbol, { loadOps: [], parseCall });
+        },
+        find: (sig, symbol) => {
+            const parseCall = makeParseMethodCall({ kind: "syscall", name: "System.Storage.Find" });
+            return makeCompileTimeObject(sig, symbol, { loadOps: [], parseCall });
+        },
+        entries: (sig, symbol) => {
+            const parseCall: ScopedNodeFunc<tsm.CallExpression> = (scope) => (node) => {
+                return E.left(makeParseError(node)("entries not implemented"));
+            }
+            return makeCompileTimeObject(sig, symbol, { loadOps: [], parseCall });
+        },
+        keys: (sig, symbol) => {
+            const parseCall: ScopedNodeFunc<tsm.CallExpression> = (scope) => (node) => {
+                return E.left(makeParseError(node)("keys not implemented"));
+            }
+            return makeCompileTimeObject(sig, symbol, { loadOps: [], parseCall });
+        },
+        values: (sig, symbol) => {
+            const parseCall: ScopedNodeFunc<tsm.CallExpression> = (scope) => (node) => {
+                return E.left(makeParseError(node)("values not implemented"));
+            }
+            return makeCompileTimeObject(sig, symbol, { loadOps: [], parseCall });
+        },
+    }
+
+    return makeMembers(node, members);
+}
+
+
+export function makeReadonlyStorageContext(node: tsm.InterfaceDeclaration) {
+
+    const props = makeReadonlyStorageContextMembers(node);
+    const symbol = node.getSymbol();
+    if (!symbol) throw new CompileError(`no symbol for ${node.getName()}`, node);
+
+    return makeCompileTimeObject(node, symbol, { loadOps: [], getProperty: props })
+}
+
+export function makeStorageContext(node: tsm.InterfaceDeclaration) {
+    const members: Record<string, (sig: tsm.PropertySignature | tsm.MethodSignature, symbol: tsm.Symbol) => CompileTimeObject> = {
+        asReadonly: (sig, symbol) => {
+            const getLoadOps: ScopedNodeFunc<tsm.Expression> = scope => node => {
+                if (tsm.Node.hasExpression(node)) {
+                    return pipe(
+                        node.getExpression(), 
+                        parseExpression(scope),
+                        E.map(ROA.append({ kind: "syscall", name: "System.Storage.AsReadOnly" } as Operation))
+                    );
+                }
+                return E.left(makeParseError(node)(`invalid ByteString.length expression`));
+            }
+            return <CompileTimeObject>{node: sig, symbol, getLoadOps }
+        },
+        put: (sig, symbol) => {
+            const parseCall = makeParseMethodCall({ kind: "syscall", name: "System.Storage.Put" });
+            return makeCompileTimeObject(sig, symbol, { loadOps: [], parseCall });
+        },
+        delete: (sig, symbol) => {
+            const parseCall = makeParseMethodCall({ kind: "syscall", name: "System.Storage.Delete" });
+            return makeCompileTimeObject(sig, symbol, { loadOps: [], parseCall });
+        },
+    }
+
+    let props = makeReadonlyStorageContextMembers(node);
+    props = ROA.concat(makeMembers(node, members))(props);
+    const symbol = node.getSymbol();
+    if (!symbol) throw new CompileError(`no symbol for ${node.getName()}`, node);
+
+    return makeCompileTimeObject(node, symbol, { loadOps: [], getProperty: props })
+}
+
+
+// export function makeReadonlyStorageContext(node: tsm.InterfaceDeclaration) {
+
+//     const getCTO = pipe(
+//         node,
+//         TS.getMethodMember('get'),
+//         O.map(([sig, symbol]) => {
+//             const parseCall: ScopedNodeFunc<tsm.CallExpression> = (scope) => (node) => {
+//                 return pipe(
+//                     node,
+//                     parseMethodCallExpression(scope),
+//                     E.map(ROA.append({ kind: "syscall", name: "System.Storage.Get" } as Operation))
+//                 )
+//             }
+//             return makeCompileTimeObject(sig, symbol, { loadOps: [], parseCall });
+
+
+//             // // const parseCall: ScopedNodeFunc<tsm.CallExpression> = (scope) => (node) => {
+//             // //     return pipe(
+//             // //         node,
+//             // //         parseMethodCallExpression(scope),
+//             // //         E.map(ROA.append({ kind: "convert", type: sc.StackItemType.Integer } as Operation))
+//             // //     )
+//             // // }
+//             // return makeCompileTimeObject(sig, symbol, { loadOps: [], parseCall });
+//         })
+//     );
+
+
+// }
 
 // export interface ReadonlyStorageContext {
 //     get(key: StorageType): ByteString | undefined;

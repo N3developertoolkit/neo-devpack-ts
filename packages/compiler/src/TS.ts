@@ -81,6 +81,28 @@ export const getMember =
             )
         }
 
+export const getPropertyMember = (name: string) => (node: MemberedNode) => {
+    return pipe(
+        node,
+        getMember(name),
+        O.chain(O.fromPredicate(tsm.Node.isPropertySignature)),
+        O.bindTo('sig'),
+        O.bind('symbol', ({ sig }) => getSymbol(sig)),
+        O.map(({ sig, symbol }) => [sig, symbol] as const)
+    );
+}
+
+export const getMethodMember = (name: string) => (node: MemberedNode) => {
+    return pipe(
+        node,
+        getMember(name),
+        O.chain(O.fromPredicate(tsm.Node.isPropertySignature)),
+        O.bindTo('sig'),
+        O.bind('symbol', ({ sig }) => getSymbol(sig)),
+        O.map(({ sig, symbol }) => [sig, symbol] as const)
+    );
+}
+
 const compoundAssignmentOperatorMap = new Map<tsm.SyntaxKind, tsm.ts.BinaryOperator>([
     [tsm.SyntaxKind.PlusEqualsToken, tsm.ts.SyntaxKind.PlusToken],
     [tsm.SyntaxKind.MinusEqualsToken, tsm.SyntaxKind.MinusToken],

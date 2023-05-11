@@ -16,7 +16,7 @@ import { parseExpression } from "./expressionProcessor";
 import { LibraryDeclaration } from "../types/LibraryDeclaration";
 import { parseArguments, parseCallExpression, parseEnumDecl } from "./parseDeclarations";
 import { makeByteStringConstructor, makeByteStringInterface } from "./builtins.ByteString";
-import { makeStorageConstructor } from "./builtins.Storage";
+import { makeReadonlyStorageContext, makeStorageConstructor, makeStorageContext } from "./builtins.Storage";
 
 module REGEX {
     export const match = (regex: RegExp) => (value: string) => O.fromNullable(value.match(regex));
@@ -316,16 +316,20 @@ export const makeGlobalScope =
             const byteStringCtorType = makeInterface("ByteStringConstructor", makeByteStringConstructor);
             const byteStringType = makeInterface("ByteString", makeByteStringInterface);
             const storageCtorType = makeInterface("StorageConstructor", makeStorageConstructor);
+            const storageCtxType = makeInterface("StorageContext", makeStorageContext);
+            const roStorageCtxType = makeInterface("ReadonlyStorageContext", makeReadonlyStorageContext);
 
-            let typeDefs: ReadonlyArray<CompileTimeObject> = [byteStringCtorType, byteStringType, storageCtorType];
+            let typeDefs: ReadonlyArray<CompileTimeObject> = [byteStringCtorType, byteStringType, storageCtorType, storageCtxType, roStorageCtxType];
             let symbolDefs: ReadonlyArray<CompileTimeObject> = [byteStringVar, storageVar]
 
 
-            // const enumObjects = pipe(
-            //     decls, 
-            //     ROA.filterMap(isEnumDeclaration), 
-            //     ROA.map(makeEnumObject)
-            // );
+            const enumObjects = pipe(
+                decls, 
+                ROA.filterMap(isEnumDeclaration), 
+                ROA.map(makeEnumObject)
+            );
+
+            symbolDefs = ROA.concat(enumObjects)(symbolDefs);
 
             // const nativeContractObjects = pipe(
             //     decls,

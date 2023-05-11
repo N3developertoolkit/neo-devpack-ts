@@ -251,11 +251,8 @@ export interface PushDataOperation {
 export const isPushDataOp = (op: Operation): op is PushDataOperation => op.kind === 'pushdata';
 
 export function pushString(value: string, location?: Location): PushDataOperation {
-    return {
-        kind: 'pushdata',
-        value: Buffer.from(value, 'utf8'),
-        location
-    }
+    const op = { kind: 'pushdata', value: Buffer.from(value, 'utf8')  } as PushDataOperation;
+    return location ? { ...op, location } : op;
 }
 
 export interface PushIntOperation {
@@ -268,7 +265,8 @@ export const isPushIntOp = (op: Operation): op is PushIntOperation => op.kind ==
 
 export function pushInt(value: number | bigint, location?: Location): PushIntOperation {
     value = typeof value === 'number' ? BigInt(value) : value;
-    return { kind: 'pushint', value, location }
+    const op = { kind: 'pushint', value } as PushIntOperation;
+    return location ? { ...op, location } : op;
 }
 
 export interface PushBoolOperation {
