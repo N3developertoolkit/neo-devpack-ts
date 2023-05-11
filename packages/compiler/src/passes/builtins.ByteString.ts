@@ -1,6 +1,6 @@
 import * as tsm from "ts-morph";
 import { sc } from "@cityofzion/neon-core";
-import { flow, pipe } from "fp-ts/lib/function";
+import { flow, identity, pipe } from "fp-ts/lib/function";
 import * as E from "fp-ts/Either";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as O from 'fp-ts/Option'
@@ -13,6 +13,7 @@ import { Operation } from "../types/Operation";
 import { parseExpression } from "./expressionProcessor";
 import { ParseCallArgsFunc, Scope } from "../types/CompileTimeObject";
 import { makeCompileTimeObject } from "../types/CompileTimeObject";
+import { parseCallExpression, parseMethodCallExpression } from "./parseDeclarations";
 
 export const byteStringFromHex =
     (_scope: Scope) =>
@@ -61,7 +62,7 @@ export const byteStringFromInteger =
         )
     }
 
-export function makeByteStringConstructor(decl: tsm.InterfaceDeclaration) {
+export function makeByteStringConstructor(node: tsm.InterfaceDeclaration) {
 
     const methods: Record<string, ParseCallArgsFunc> = {
         "fromHex": byteStringFromHex,
@@ -69,10 +70,10 @@ export function makeByteStringConstructor(decl: tsm.InterfaceDeclaration) {
         "fromInteger": byteStringFromInteger,
     }
 
-    const { left: errors, right: props} = pipe(
+    const { left: errors, right: props } = pipe(
         methods,
         ROR.collect(StringOrd)((key, value) => pipe(
-            decl,
+            node,
             TS.getMember(key),
             O.map(sig => makeCompileTimeObject(sig, sig.getSymbolOrThrow(), { loadOps: [], parseCall: value })),
             E.fromOption(() => key)
@@ -80,13 +81,48 @@ export function makeByteStringConstructor(decl: tsm.InterfaceDeclaration) {
         ROA.separate
     );
 
-    if (errors.length > 0) throw new CompileError(`unresolved ByteStringConstructor members: ${errors.join(', ')}`, decl);
-    const symbol = decl.getSymbol();
-    if (!symbol) throw new CompileError(`no symbol for ${decl.getName()}`, decl);
+    if (errors.length > 0) throw new CompileError(`unresolved ByteStringConstructor members: ${errors.join(', ')}`, node);
+    const symbol = node.getSymbol();
+    if (!symbol) throw new CompileError(`no symbol for ${node.getName()}`, node);
 
-    return makeCompileTimeObject(decl, symbol, { loadOps: [], getProperty: props})
+    return makeCompileTimeObject(node, symbol, { loadOps: [], getProperty: props })
 }
 
+export function makeByteStringInterface(node: tsm.InterfaceDeclaration) {
+
+    // const lengthSig = pipe(node, TS.getMember('length'), O.chain(O.fromPredicate(tsm.Node.isPropertySignature)));
+
+    const asIntCTO = pipe(
+        node,
+        TS.getMember('asInteger'),
+        O.chain(O.fromPredicate(tsm.Node.isMethodSignature)),
+        O.bindTo('sig'),
+        O.bind('symbol', ({ sig }) => TS.getSymbol(sig)),
+        O.map(({ sig, symbol }) => {
+            const parseCall: ParseCallArgsFunc = (scope) => (node) => {
+                return pipe(
+                    node, 
+                    parseMethodCallExpression(scope),
+                    E.map(ROA.append({ kind: "convert", type: sc.StackItemType.Integer } as Operation))
+                )
+            }
+            return makeCompileTimeObject(sig, symbol, { loadOps: [], parseCall });
+        })
+    );
+
+    const symbol = node.getSymbol();
+    if (!symbol) throw new CompileError(`no symbol for ${node.getName()}`, node);
+
+    return pipe(
+        O.Do,
+        O.bind("asInteger", () => asIntCTO),
+        O.map(({ asInteger }) => makeCompileTimeObject(node, symbol, { getProperty: [asInteger] })),
+        O.match(
+            () => { throw new CompileError('invalid ByteString interface', node) },
+            identity
+        )
+    )
+}
 
 // const byteStringInstanceMethods: Record<string, BuiltInCallableOptions> = {
 //     "asInteger": {

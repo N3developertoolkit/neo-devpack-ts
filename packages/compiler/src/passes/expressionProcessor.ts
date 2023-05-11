@@ -56,12 +56,27 @@ export const parsePropertyAccessExpression =
         return pipe(
             node, 
             resolvePropertyAccessExpression(scope),
-            O.chain(cto => {
-                return O.fromNullable(cto.loadOps);
-            }),
-            E.fromOption(() => makeParseError(node)(`loadOps not available for ${node.getExpression().print()}`)),
+            E.fromOption(() => makeParseError(node)(`failed to resolve ${node.getName()} property`)),
+            E.chain(cto => pipe(
+                cto.loadOps,
+                E.fromNullable(makeParseError(node)(`can't load ${node.getName()} property`))
+            ))
+            );
+    }
+
+export const parseIdentifier =
+    (scope: Scope) => (node: tsm.Identifier): E.Either<ParseError, readonly Operation[]> => {
+        return pipe(
+            node,
+            resolveIdentifier(scope),
+            E.fromOption(() => makeParseError(node)(`failed to resolve ${node.getText()} identifier`)),
+            E.chain(cto => pipe(
+                cto.loadOps,
+                E.fromNullable(makeParseError(node)(`can't load ${node.getText()} identifier`))
+            ))
         );
     }
+
 export function parseExpression(scope: Scope) {
     return (node: tsm.Expression): E.Either<ParseError, readonly Operation[]> => {
 
@@ -69,6 +84,7 @@ export function parseExpression(scope: Scope) {
             case tsm.SyntaxKind.BigIntLiteral: return parseBigIntLiteral(node as tsm.BigIntLiteral);
             case tsm.SyntaxKind.CallExpression: return parseCallExpression(scope)(node as tsm.CallExpression);
             case tsm.SyntaxKind.FalseKeyword: return parseBooleanLiteral(node as tsm.FalseLiteral);
+            case tsm.SyntaxKind.Identifier: return parseIdentifier(scope)(node as tsm.Identifier);
             case tsm.SyntaxKind.NullKeyword: return parseNullLiteral(node);
             case tsm.SyntaxKind.NumericLiteral: return parseNumericLiteral(node as tsm.NumericLiteral);
             case tsm.SyntaxKind.PropertyAccessExpression: return parsePropertyAccessExpression(scope)(node as tsm.PropertyAccessExpression);

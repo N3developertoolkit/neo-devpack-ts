@@ -204,3 +204,42 @@ export function makeStorageConstructor(decl: tsm.InterfaceDeclaration) {
 
     return makeCompileTimeObject(decl, symbol, { loadOps: [], getProperty: props})
 }
+
+export function makeReadonlyStorageContext(decl: tsm.InterfaceDeclaration) {
+
+}
+
+// export interface ReadonlyStorageContext {
+//     get(key: StorageType): ByteString | undefined;
+//     find(prefix: ByteString, options: FindOptions): Iterator<unknown>;
+//     entries(prefix?: ByteString, removePrefix?: boolean): Iterator<[ByteString, ByteString]>;
+//     keys(prefix?: ByteString, removePrefix?: boolean): Iterator<ByteString>;
+//     values(prefix?: ByteString): Iterator<ByteString>;
+// }        
+    
+// export interface StorageContext extends ReadonlyStorageContext {
+//     readonly asReadonly: ReadonlyStorageContext;
+//     put(key: StorageType, value: StorageType): void;
+//     delete(key: StorageType): void;
+// }
+
+// const readonlyStorageContextMethods: Record<string, BuiltInCallableOptions> = {
+//     "get": { 
+//         loadOps: [{ kind: "syscall", name: "System.Storage.Get" } as Operation], 
+//     },
+//     "find": { 
+//         loadOps: [{ kind: "syscall", name: "System.Storage.Find" } as Operation], 
+//     },
+//     "entries": {
+//         loadOps: [{ kind: "syscall", name: "System.Storage.Find" } as Operation],
+//         parseArguments: invokeFindRemovePrefix(FindOptions.RemovePrefix, FindOptions.None)
+//     },
+//     "keys": {
+//         loadOps: [{ kind: "syscall", name: "System.Storage.Find" } as Operation],
+//         parseArguments: invokeFindRemovePrefix(FindOptions.RemovePrefix | FindOptions.KeysOnly, FindOptions.KeysOnly)
+//     },
+//     "values": {
+//         loadOps: [{ kind: "syscall", name: "System.Storage.Find" } as Operation],
+//         parseArguments: invokeFindValues
+//     },
+// }

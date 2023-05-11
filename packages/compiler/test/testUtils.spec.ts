@@ -8,7 +8,8 @@ import { createContractProject } from '../src/utils';
 import { collectProjectDeclarations } from '../src/passes/collectProjectDeclarations';
 import { makeGlobalScope } from '../src/passes/builtins';
 import { parseExpression } from '../src/passes/expressionProcessor';
-import { Scope, createEmptyScope } from '../src/types/CompileTimeObject';
+import { CompileTimeObject, Scope, createEmptyScope, createScope, updateScope } from '../src/types/CompileTimeObject';
+import { Operation } from '../src/types/Operation';
 
 // import { CompileTimeObject, createEmptyScope, makeCompileTimeObject, updateScope } from '../src/types/CompileTimeObject';
 // import { Operation } from '../src/types/Operation';
@@ -43,6 +44,18 @@ export function createTestGlobalScope(project: tsm.Project) {
     return globalScope;
 }
 
+export function createTestScope(
+    parentScope?: Scope,
+    symbols?: CompileTimeObject | readonly CompileTimeObject[],
+    types?: CompileTimeObject | readonly CompileTimeObject[]
+) {
+    const scope = createEmptyScope(parentScope);
+    return pipe(
+        updateScope(scope)(symbols, types),
+        E.match(e => expect.fail(e), identity )
+    );
+}
+
 export function testParseExpression(node: tsm.Expression, scope?: Scope) {
     scope ??= createEmptyScope();
 
@@ -54,5 +67,14 @@ export function testParseExpression(node: tsm.Expression, scope?: Scope) {
             identity
         )
     );
+}
 
+
+export function createTestCTO(node: tsm.Node) {
+    const symbol = node.getSymbolOrThrow();
+    return <CompileTimeObject>{
+        node, 
+        symbol,
+        loadOps: [ { kind: 'noop', debug: `${symbol.getName()}.load` } as Operation ],
+    }
 }

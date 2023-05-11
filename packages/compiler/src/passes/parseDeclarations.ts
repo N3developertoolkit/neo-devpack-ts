@@ -55,6 +55,20 @@ export const parseCallExpression = (scope: Scope) => (node: tsm.CallExpression) 
     );
 }
 
+export const parseMethodCallExpression = (scope: Scope) => (node: tsm.CallExpression) => {
+    const expr = node.getExpression();
+    if (tsm.Node.hasExpression(expr)) {
+        return pipe(
+            node,
+            TS.getArguments,
+            ROA.prepend(expr.getExpression()),
+            parseArguments(scope),
+        );
+    } else {
+        return E.left(makeParseError(node)('invalid method call expression'));
+    }
+}
+
 export function parseEnumDecl(decl: tsm.EnumDeclaration) {
     return pipe(
         decl.getMembers(),

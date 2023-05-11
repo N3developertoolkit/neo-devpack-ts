@@ -7,8 +7,11 @@ import { sc } from "@cityofzion/neon-core";
 
 import { parseExpression } from '../src/passes/expressionProcessor';
 import { parse } from 'path';
-import { createTestProject, createTestGlobalScope, testParseExpression } from './testUtils.spec';
+import { createTestProject, createTestGlobalScope, testParseExpression, createTestCTO, createTestScope } from './testUtils.spec';
 import { Operation } from '../src/types/Operation';
+import { createScope, CompileTimeObject, CompileTimeObjectOptions, makeCompileTimeObject } from '../src/types/CompileTimeObject';
+
+
 // export function createTestScope(symbols?: CompileTimeObject | readonly CompileTimeObject[], types?: CompileTimeObject | readonly CompileTimeObject[]) {
 //     return pipe(
 //         updateScope(createEmptyScope())(symbols, types),
@@ -114,6 +117,43 @@ describe("builts-ins", () => {
         });
     });
 
+    describe("ByteString", () => {
+        it("length", () => {
+            const contract = /*javascript*/`const $hello = ByteString.fromString("hello"); const $VAR = $hello.length;`;
+
+            const { project, sourceFile } = createTestProject(contract);
+            const globalScope = createTestGlobalScope(project);
+
+            const hello = sourceFile.getVariableDeclarationOrThrow('$hello');
+            const helloCTO = createTestCTO(hello);
+            const scope = createTestScope(globalScope, helloCTO)
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+            expect(result).to.have.lengthOf(2);
+            expect(result[0]).to.deep.equal(helloCTO.loadOps![0]);
+            expect(result[1]).to.have.property('kind', 'size');
+        });
+
+        it("asInteger", () => {
+            const contract = /*javascript*/`const $hello = ByteString.fromString("hello"); const $VAR = $hello.asInteger();`;
+
+            const { project, sourceFile } = createTestProject(contract);
+            const globalScope = createTestGlobalScope(project);
+
+            const hello = sourceFile.getVariableDeclarationOrThrow('$hello');
+            const helloCTO = createTestCTO(hello);
+            const scope = createTestScope(globalScope, helloCTO)
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+            expect(result).to.have.lengthOf(2);
+            expect(result[0]).to.deep.equal(helloCTO.loadOps![0]);
+            expect(result[1]).to.have.property('kind', 'convert');
+            expect(result[1]).to.have.property('type', sc.StackItemType.Integer);
+        })
+    });
+
     describe("StorageConstructor", () => {
         it("context", () => {
             const contract = /*javascript*/`const $VAR = Storage.context;`;
@@ -126,6 +166,7 @@ describe("builts-ins", () => {
             expect(result[0]).to.have.property('kind', 'syscall');
             expect(result[0]).to.have.property('name', "System.Storage.GetContext");
         });
+
         it("readonlyContext", () => {
             const contract = /*javascript*/`const $VAR = Storage.readonlyContext;`;
             const { project, sourceFile } = createTestProject(contract);
@@ -137,7 +178,14 @@ describe("builts-ins", () => {
             expect(result[0]).to.have.property('kind', 'syscall');
             expect(result[0]).to.have.property('name', "System.Storage.GetReadOnlyContext");
         });
+        it("get", () => {
+            const contract = /*javascript*/`const $VAR = Storage.readonlyContext.get("key");`;
+            const { project, sourceFile } = createTestProject(contract);
+            const scope = createTestGlobalScope(project);
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
 
+        });
     });
 });
 

@@ -16,7 +16,7 @@ import { parseExpression } from "./expressionProcessor";
 import { LibraryDeclaration } from "../types/LibraryDeclaration";
 import { parseArguments, parseCallExpression, parseEnumDecl } from "./parseDeclarations";
 import { ParseNewArgsFunc } from "../types/CompileTimeObject";
-import { makeByteStringConstructor } from "./builtins.ByteString";
+import { makeByteStringConstructor, makeByteStringInterface } from "./builtins.ByteString";
 import { makeStorageConstructor } from "./builtins.Storage";
 
 module REGEX {
@@ -294,36 +294,32 @@ export const makeGlobalScope =
             const varStmts = pipe(decls, ROA.filterMap(isVariableStatement));
             const varDecls = pipe(varStmts, ROA.chain(s => s.getDeclarations()));
 
+            const makeInterface = (name: string, factory: (decl: tsm.InterfaceDeclaration) => CompileTimeObject) => {
+                return pipe(
+                    interfaces,
+                    ROA.findFirst(i => i.getName() === name),
+                    O.map(factory),
+                    O.match(
+                        () => { throw new Error(`${name} not found`) },
+                        identity
+                    )
+                )
+            }
+
             const q =varDecls.map(d => d.getName());
 
             varDecls.find(d => d.getName() === "ByteString")
 
             const byteStringVar = makeStaticVariable("ByteString", varDecls);
-            const storageVar = makeStaticVariable("Storage", varDecls);
+            // const storageVar = makeStaticVariable("Storage", varDecls);
             // const runtimeVar = makeStaticVariable("Runtime", varDecls);
             
-            const byteStringCtorType = pipe(
-                interfaces,
-                ROA.findFirst(i => i.getName() === "ByteStringConstructor"),
-                O.map(makeByteStringConstructor),
-                O.match(
-                    () => { throw new Error("ByteStringConstructor not found") },
-                    identity
-                )
-            )
-
-            const storageCtorType = pipe(
-                interfaces,
-                ROA.findFirst(i => i.getName() === "StorageConstructor"),
-                O.map(makeStorageConstructor),
-                O.match(
-                    () => { throw new Error("StorageConstructor not found") },
-                    identity
-                ),
-            )
-
-            let typeDefs: ReadonlyArray<CompileTimeObject> = [byteStringCtorType, storageCtorType];
-            let symbolDefs: ReadonlyArray<CompileTimeObject> = [byteStringVar, storageVar]
+            const byteStringCtorType = makeInterface("ByteStringConstructor", makeByteStringConstructor);
+            const byteStringType = makeInterface("ByteString", makeByteStringInterface);
+            // const storageCtorType = makeInterface("StorageConstructor", makeStorageConstructor);
+            
+            let typeDefs: ReadonlyArray<CompileTimeObject> = [byteStringCtorType, byteStringType];
+            let symbolDefs: ReadonlyArray<CompileTimeObject> = [byteStringVar ]
 
 
             // const enumObjects = pipe(
