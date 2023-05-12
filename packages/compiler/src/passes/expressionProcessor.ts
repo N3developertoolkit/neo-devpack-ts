@@ -5,7 +5,7 @@ import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option'
 import * as TS from "../TS";
 import { getBooleanConvertOps, getStringConvertOps, Operation, pushInt, pushString } from "../types/Operation";
-import { CompileTimeObject, Scope, resolve, resolveType } from "../types/CompileTimeObject";
+import { CompileTimeObject, Scope, ScopedNodeFunc, resolve, resolveType } from "../types/CompileTimeObject";
 import { ParseError, isStringLike, isVoidLike, makeParseError } from "../utils";
 
 export function makeConditionalExpression({ condition, whenTrue, whenFalse }: {
@@ -170,122 +170,122 @@ function parseBinaryOperatorExpression(scope: Scope, operator: tsm.ts.BinaryOper
 
     return E.left(`Invalid binary operator ${tsm.SyntaxKind[operator]}`);
 }
-    function parseOperatorOperation(operatorOperation: Operation, scope: Scope, left: tsm.Expression, right: tsm.Expression) {
-        return pipe(
-            E.Do,
-            E.bind('leftOps', () => parseExpression(scope)(left)),
-            E.bind('rightOps', () => parseExpression(scope)(right)),
-            E.map(({ leftOps, rightOps }) => pipe(
-                leftOps,
-                ROA.concat(rightOps),
-                ROA.append(operatorOperation)
-            ))
-        );
-    }
+function parseOperatorOperation(operatorOperation: Operation, scope: Scope, left: tsm.Expression, right: tsm.Expression) {
+    return pipe(
+        E.Do,
+        E.bind('leftOps', () => parseExpression(scope)(left)),
+        E.bind('rightOps', () => parseExpression(scope)(right)),
+        E.map(({ leftOps, rightOps }) => pipe(
+            leftOps,
+            ROA.concat(rightOps),
+            ROA.append(operatorOperation)
+        ))
+    );
+}
 
-    // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Logical_OR
-    // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Logical_AND
-    function parseLogicalOperation(operator: tsm.SyntaxKind.BarBarToken | tsm.SyntaxKind.AmpersandAmpersandToken, scope: Scope, left: tsm.Expression, right: tsm.Expression) {
-        const rightTarget: Operation = { kind: "noop" };
-        const endTarget: Operation = { kind: "noop" };
+// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Logical_OR
+// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Logical_AND
+function parseLogicalOperation(operator: tsm.SyntaxKind.BarBarToken | tsm.SyntaxKind.AmpersandAmpersandToken, scope: Scope, left: tsm.Expression, right: tsm.Expression) {
+    const rightTarget: Operation = { kind: "noop" };
+    const endTarget: Operation = { kind: "noop" };
 
-        const logicalOps: readonly Operation[] = operator === tsm.SyntaxKind.BarBarToken
-            ? [{ kind: "jumpifnot", target: rightTarget }, { kind: "pushbool", value: true }]
-            : [{ kind: "jumpif", target: rightTarget }, { kind: "pushbool", value: false }];
+    const logicalOps: readonly Operation[] = operator === tsm.SyntaxKind.BarBarToken
+        ? [{ kind: "jumpifnot", target: rightTarget }, { kind: "pushbool", value: true }]
+        : [{ kind: "jumpif", target: rightTarget }, { kind: "pushbool", value: false }];
 
-        return pipe(
-            E.Do,
-            E.bind('leftOps', () => parseExpressionAsBoolean(scope)(left)),
-            E.bind('rightOps', () => parseExpressionAsBoolean(scope)(right)),
-            E.map(({ leftOps, rightOps }) => pipe(
-                leftOps,
-                ROA.concat(logicalOps),
-                ROA.concat<Operation>([{ kind: "jump", target: endTarget }, rightTarget]),
-                ROA.concat(rightOps),
-                ROA.concat<Operation>([endTarget])
-            ))
-        );
-    }
+    return pipe(
+        E.Do,
+        E.bind('leftOps', () => parseExpressionAsBoolean(scope)(left)),
+        E.bind('rightOps', () => parseExpressionAsBoolean(scope)(right)),
+        E.map(({ leftOps, rightOps }) => pipe(
+            leftOps,
+            ROA.concat(logicalOps),
+            ROA.concat<Operation>([{ kind: "jump", target: endTarget }, rightTarget]),
+            ROA.concat(rightOps),
+            ROA.concat<Operation>([endTarget])
+        ))
+    );
+}
 
-    function parseStringConcat(scope: Scope, left: tsm.Expression, right: tsm.Expression): E.Either<ParseError, readonly Operation[]> {
-        return pipe(
-            E.Do,
-            E.bind('leftOps', () => parseExpressionAsString(scope)(left)),
-            E.bind('rightOps', () => parseExpressionAsString(scope)(right)),
-            E.map(({ leftOps, rightOps }) => pipe(
-                leftOps,
-                ROA.concat(rightOps),
-                ROA.append<Operation>({ kind: "concat" })
-            ))
-        );
-    }
+function parseStringConcat(scope: Scope, left: tsm.Expression, right: tsm.Expression): E.Either<ParseError, readonly Operation[]> {
+    return pipe(
+        E.Do,
+        E.bind('leftOps', () => parseExpressionAsString(scope)(left)),
+        E.bind('rightOps', () => parseExpressionAsString(scope)(right)),
+        E.map(({ leftOps, rightOps }) => pipe(
+            leftOps,
+            ROA.concat(rightOps),
+            ROA.append<Operation>({ kind: "concat" })
+        ))
+    );
+}
 
-    // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Nullish_coalescing
-    // The nullish coalescing (??) operator is a logical operator that returns its right-hand side operand
-    // when its left-hand side operand is null or undefined, and otherwise returns its left-hand side operand.
-    function parseNullishCoalescing(scope: Scope, left: tsm.Expression, right: tsm.Expression) {
-        const endTarget: Operation = { kind: "noop" };
-        return pipe(
-            E.Do,
-            E.bind('leftOps', () => parseExpression(scope)(left)),
-            E.bind('rightOps', () => parseExpression(scope)(right)),
-            E.map(({ leftOps, rightOps }) => pipe(
-                leftOps,
-                ROA.concat<Operation>([
-                    { kind: "duplicate" },
-                    { kind: "isnull" },
-                    { kind: "jumpifnot", target: endTarget },
-                    { kind: "drop" },
-                ]),
-                ROA.concat(rightOps),
-                ROA.append<Operation>(endTarget)
-            ))
-        );
-    }
+// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Nullish_coalescing
+// The nullish coalescing (??) operator is a logical operator that returns its right-hand side operand
+// when its left-hand side operand is null or undefined, and otherwise returns its left-hand side operand.
+function parseNullishCoalescing(scope: Scope, left: tsm.Expression, right: tsm.Expression) {
+    const endTarget: Operation = { kind: "noop" };
+    return pipe(
+        E.Do,
+        E.bind('leftOps', () => parseExpression(scope)(left)),
+        E.bind('rightOps', () => parseExpression(scope)(right)),
+        E.map(({ leftOps, rightOps }) => pipe(
+            leftOps,
+            ROA.concat<Operation>([
+                { kind: "duplicate" },
+                { kind: "isnull" },
+                { kind: "jumpifnot", target: endTarget },
+                { kind: "drop" },
+            ]),
+            ROA.concat(rightOps),
+            ROA.append<Operation>(endTarget)
+        ))
+    );
+}
 
-    // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/in
-    // The in operator returns true if the specified property is in the specified object or its prototype chain.
-    function parseInOperator(scope: Scope, left: tsm.Expression, right: tsm.Expression): E.Either<ParseError, readonly Operation[]> {
-        return pipe(
-            E.Do,
-            E.bind('leftOps', () => parseExpression(scope)(left)),
-            E.bind('rightOps', () => parseExpression(scope)(right)),
-            E.map(({ leftOps, rightOps }) => pipe(
-                rightOps,
-                ROA.concat(leftOps),
-                ROA.append<Operation>({ kind: "haskey" })
-            ))
-        );
-    }
+// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/in
+// The in operator returns true if the specified property is in the specified object or its prototype chain.
+function parseInOperator(scope: Scope, left: tsm.Expression, right: tsm.Expression): E.Either<ParseError, readonly Operation[]> {
+    return pipe(
+        E.Do,
+        E.bind('leftOps', () => parseExpression(scope)(left)),
+        E.bind('rightOps', () => parseExpression(scope)(right)),
+        E.map(({ leftOps, rightOps }) => pipe(
+            rightOps,
+            ROA.concat(leftOps),
+            ROA.append<Operation>({ kind: "haskey" })
+        ))
+    );
+}
 
-     // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Comma_operator
-    // The comma (,) operator evaluates each of its operands (from left to right) 
-    // and returns the value of the last operand.
-    function parseCommaOperator(scope: Scope, left: tsm.Expression, right: tsm.Expression) {
-        const needsDrop = tsm.Node.isExpression(left)
-            && !isVoidLike(left.getType())
-            && !TS.isAssignmentExpression(left);
-        const dropOps = needsDrop
-            ? ROA.of<Operation>({ kind: "drop" })
-            : ROA.empty;
+// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Comma_operator
+// The comma (,) operator evaluates each of its operands (from left to right) 
+// and returns the value of the last operand.
+function parseCommaOperator(scope: Scope, left: tsm.Expression, right: tsm.Expression) {
+    const needsDrop = tsm.Node.isExpression(left)
+        && !isVoidLike(left.getType())
+        && !TS.isAssignmentExpression(left);
+    const dropOps = needsDrop
+        ? ROA.of<Operation>({ kind: "drop" })
+        : ROA.empty;
 
-        return pipe(
-            E.Do,
-            E.bind('leftOps', () => parseExpression(scope)(left)),
-            E.bind('rightOps', () => parseExpression(scope)(right)),
-            E.map(({ leftOps, rightOps }) => pipe(
-                leftOps,
-                ROA.concat(dropOps),
-                ROA.concat(rightOps)
-            ))
-        );
-    }
+    return pipe(
+        E.Do,
+        E.bind('leftOps', () => parseExpression(scope)(left)),
+        E.bind('rightOps', () => parseExpression(scope)(right)),
+        E.map(({ leftOps, rightOps }) => pipe(
+            leftOps,
+            ROA.concat(dropOps),
+            ROA.concat(rightOps)
+        ))
+    );
+}
 
 
 export const parseBinaryExpression =
     (scope: Scope) =>
         (node: tsm.BinaryExpression): E.Either<ParseError, readonly Operation[]> => {
-            
+
             const operator = TS.getBinaryOperator(node);
             const left = node.getLeft();
             const right = node.getRight();
@@ -367,24 +367,38 @@ function resolvePropertyAccessExpression(scope: Scope) {
         const expr = node.getExpression();
         return pipe(
             node,
-            // first, get the property symbol
             TS.getSymbol,
             O.chain(symbol => pipe(
-                // next, try and resolve the property on the CTO directly
                 expr,
                 resolveExpression(scope),
-                O.chain(getProperty(symbol)),
-                // Finally, if the CTO doesn't contain the property,
-                // try and resolve the property on the expression's type CTO
-                O.alt(() => pipe(
-                    expr.getType(),
-                    TS.getTypeSymbol,
-                    O.chain(q => {
-                        return resolveType(scope)(q);
-                    }),
-                    O.chain(getProperty(symbol))
+                O.bindTo('cto'),
+                O.bind('propcto', ({ cto }) => pipe(
+                    cto,
+                    getProperty(symbol),
+                    O.alt(() => pipe(
+                        expr.getType(),
+                        TS.getTypeSymbol,
+                        O.chain(resolveType(scope)),
+                        O.chain(getProperty(symbol))
+                    ))
                 ))
             )),
+            O.map(({ cto, propcto }) => {
+                const getLoadOps: ScopedNodeFunc<tsm.Expression> = (scope) => (node) => {
+                    return pipe(
+                        cto.getLoadOps,
+                        E.fromNullable(makeParseError(expr)(`no load ops`)),
+                        E.chain(getLoadOps => getLoadOps(scope)(node)),
+                        E.chain(one => pipe(
+                            propcto.getLoadOps,
+                            E.fromNullable(makeParseError(node)(`no load ops`)),
+                            E.chain(getLoadOps => getLoadOps(scope)(node)),
+                            E.map(two => ROA.concat(two)(one))
+                        ))
+                    )
+                };
+                return <CompileTimeObject>{ ...propcto, getLoadOps }
+            })
         );
     }
 

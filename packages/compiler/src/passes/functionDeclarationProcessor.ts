@@ -95,7 +95,7 @@ function adaptExpressionStatement(node: tsm.ExpressionStatement): S.State<AdaptS
     const expr = node.getExpression();
     return context => {
 
-        const dropOps: readonly Operation[] = isVoidLike(node.getType()) ? ROA.empty : ROA.of({ kind: 'drop' });
+        const dropOps: readonly Operation[] = isVoidLike(expr.getType()) ? ROA.empty : ROA.of({ kind: 'drop' });
         let [ops, $context] = adaptExpression(expr)(context);
         ops = pipe(ops,
             updateLocation(node),
@@ -150,6 +150,7 @@ function adaptVariableStatement(node: tsm.VariableStatement): S.State<AdaptState
             E.match(
                 error => [ROA.empty, updateContextErrors(context)(error)],
                 ([scope, vars, ops]) => {
+                    ops = updateLocation(node)(ops);
                     const locals = ROA.concat(vars)(context.locals);
                     return [ops, { ...context, locals, scope }];
                 }
