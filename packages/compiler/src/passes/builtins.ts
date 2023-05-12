@@ -3,7 +3,8 @@ import { sc, u } from "@cityofzion/neon-core";
 import { flow, identity, pipe } from "fp-ts/lib/function";
 import * as E from "fp-ts/Either";
 import * as ROA from 'fp-ts/ReadonlyArray'
-import * as ROR from 'fp-ts/ReadonlyRecord'
+import * as ROR from 'fp-ts/ReadonlyRecord';
+import { Ord as StringOrd } from 'fp-ts/string';
 import * as O from 'fp-ts/Option'
 import * as TS from "../TS";
 
@@ -273,184 +274,101 @@ const isInterfaceDeclaration = O.fromPredicate(tsm.Node.isInterfaceDeclaration);
 const isVariableStatement = O.fromPredicate(tsm.Node.isVariableStatement);
 const isEnumDeclaration = O.fromPredicate(tsm.Node.isEnumDeclaration);
 
-
-function makeStaticVariable(name: string, variables: readonly tsm.VariableDeclaration[]) {
-    return pipe(
-        variables,
-        ROA.findFirst(v => v.getName() === name),
-        O.bindTo("decl"),
-        O.bind("symbol", ({ decl }) => pipe(decl, TS.getSymbol)),
-        O.map(({ decl, symbol }) => makeCompileTimeObject(decl, symbol, { loadOps: [] })),
-        O.match(() => { throw new Error(`${name} built-in not found`); }, identity)
-    )
+function makeStaticObject(decl: tsm.VariableDeclaration) {
+    const symbol = decl.getSymbol();
+    if (!symbol) throw new CompileError("symbol not found", decl);
+    return makeCompileTimeObject(decl, symbol, { loadOps: [] });
 }
+
 export const makeGlobalScope =
     (decls: readonly LibraryDeclaration[]): CompilerState<Scope> =>
         diagnostics => {
+            let symbolDefs: ReadonlyArray<CompileTimeObject> = ROA.empty;
 
+            const enums = pipe(decls, ROA.filterMap(isEnumDeclaration));
             const functions = pipe(decls, ROA.filterMap(isFunctionDeclaration));
             const interfaces = pipe(decls, ROA.filterMap(isInterfaceDeclaration));
-            const varStmts = pipe(decls, ROA.filterMap(isVariableStatement));
-            const varDecls = pipe(varStmts, ROA.chain(s => s.getDeclarations()));
+            const varStatements = pipe(decls, ROA.filterMap(isVariableStatement));
+            const variables = pipe(varStatements, ROA.chain(s => s.getDeclarations()));
 
-            const makeInterface = (name: string, factory: (decl: tsm.InterfaceDeclaration) => CompileTimeObject) => {
-                return pipe(
-                    interfaces,
-                    ROA.findFirst(i => i.getName() === name),
-                    O.map(factory),
+            symbolDefs = pipe(
+                enums,
+                ROA.map(makeEnumObject),
+                ROA.concat(symbolDefs));
+            symbolDefs = pipe(
+                varStatements,
+                ROA.filter(TS.hasTag("nativeContract")),
+                ROA.chain(s => s.getDeclarations()),
+                ROA.map(makeStaticObject),
+                ROA.concat(symbolDefs));
+            symbolDefs = pipe(
+                functions,
+                ROA.filter(TS.hasTag("syscall")),
+                ROA.map(makeSysCallFunctionObject),
+                ROA.concat(symbolDefs));
+            symbolDefs = pipe(
+                functions,
+                ROA.filter(TS.hasTag("operation")),
+                ROA.map(makeOperationsFunctionObject),
+                ROA.concat(symbolDefs));
+            symbolDefs = pipe(
+                functions,
+                ROA.filter(decl => decl.getName() === 'callContract'),
+                single,
+                O.map(makeCallContractFunctionObject),
+                O.match(
+                    () => { throw new Error("callContract not found"); },
+                    o => ROA.append(o)(symbolDefs)
+                )
+            );
+            symbolDefs = pipe(
+                {
+                    "ByteString": makeStaticObject,
+                    "Error": makeErrorObject,
+                    "Storage": makeStaticObject,
+                    "Runtime": makeStaticObject,
+                },
+                ROR.collect(StringOrd)((key, value) => pipe(
+                    variables,
+                    ROA.findFirst(i => i.getName() === key),
+                    O.map(value),
                     O.match(
-                        () => { throw new Error(`${name} not found`) },
+                        () => { throw new Error(`failed to resolve built in variable ${key}`) },
                         identity
                     )
-                )
-            }
+                )),
+                ROA.concat(symbolDefs));
 
-            const q = varDecls.map(d => d.getName());
-
-            varDecls.find(d => d.getName() === "ByteString")
-
-            const byteStringVar = makeStaticVariable("ByteString", varDecls);
-            const storageVar = makeStaticVariable("Storage", varDecls);
-            // const runtimeVar = makeStaticVariable("Runtime", varDecls);
-
-            const byteStringCtorType = makeInterface("ByteStringConstructor", makeByteStringConstructor);
-            const byteStringType = makeInterface("ByteString", makeByteStringInterface);
-            const storageCtorType = makeInterface("StorageConstructor", makeStorageConstructor);
-            const storageCtxType = makeInterface("StorageContext", makeStorageContext);
-            const roStorageCtxType = makeInterface("ReadonlyStorageContext", makeReadonlyStorageContext);
-
-            let typeDefs: ReadonlyArray<CompileTimeObject> = [byteStringCtorType, byteStringType, storageCtorType, storageCtxType, roStorageCtxType];
-            let symbolDefs: ReadonlyArray<CompileTimeObject> = [byteStringVar, storageVar]
-
-
-            const enumObjects = pipe(
-                decls, 
-                ROA.filterMap(isEnumDeclaration), 
-                ROA.map(makeEnumObject)
-            );
-
-            symbolDefs = ROA.concat(enumObjects)(symbolDefs);
-
-            // const nativeContractObjects = pipe(
-            //     decls,
-            //     ROA.filterMap(isVariableStatement),
-            //     ROA.filter(TS.hasTag("nativeContract")),
-            //     ROA.chain(s => s.getDeclarations()),
-            //     ROA.map(makeNativeContractObject)
-            // );
-
-            // const sysCallFunctionObjects = pipe(
-            //     functions,
-            //     ROA.filter(TS.hasTag("syscall")),
-            //     ROA.map(makeSysCallFunctionObject)
-            // )
-
-            // const operationFunctionObjects = pipe(
-            //     functions,
-            //     ROA.filter(TS.hasTag("operation")),
-            //     ROA.map(makeOperationsFunctionObject)
-            // )
-
-            // const stackItemTypes = pipe(
-            //     interfaces,
-            //     ROA.filter(TS.hasTag("stackitem")),
-            //     ROA.map(makeStackItemType),
-            // )
-
-            // const nativeContractTypes = pipe(
-            //     interfaces,
-            //     ROA.filter(TS.hasTag("nativeContract")),
-            //     ROA.map(makeNativeContractType),
-            // )
-
-
-            // interface Error {
-            //     name: string;
-            //     message: string;
-            //     stack?: string;
-            // }
-
-            // interface ErrorConstructor {
-            //     new(message?: string): Error;
-            //     (message?: string): Error;
-            //     readonly prototype: Error;
-            // }
-
-            // declare var Error: ErrorConstructor;
-
-
-
-
-            // const callContractFuncObject = makeDeclaration("callContract", makeCallContractFunctionObject);
-
-            // pipe(
-            //     "callContract",
-            //     getDeclaration,
-            //     O.map(decl => makeCallContractFunctionObject(decl as tsm.FunctionDeclaration)),
-            //     O.match(() => { throw new Error("callContract function not found") }, identity)
-            // );
-
-            // const runtimeCtorType = pipe(
-            //     "RuntimeConstructor",
-            //     getDeclaration,
-            //     O.map(decl => makeRuntimeConstructorType(decl as tsm.InterfaceDeclaration)),
-            //     O.match(() => { throw new Error("RuntimeConstructor interface not found") }, identity)
-            // );
-
-            // const runtimeObj = pipe(
-            //     "Runtime",
-            //     getDeclaration,
-            //     O.map(decl => {
-            //         const symbol = decl.getSymbol();
-            //         if (!symbol) throw new CompileError("symbol not found", decl);
-            //         return makeCompileTimeObject(decl, symbol, {});
-            //     }),
-            //     O.match(() => { throw new Error("Runtime variable declaration not found") }, identity)
-            // );
-
-            // const errorObj = pipe(
-            //     "ErrorConstructor",
-            //     getDeclaration,
-            //     O.map(decl => makeErrorObject(decl as tsm.VariableDeclaration)),
-            //     O.match(() => { throw new Error("Error variable declaration not found") }, identity)
-            // );
-
-
-
-
-            // const builtInFunctions: Record<string, (decl: tsm.FunctionDeclaration) => CompileTimeObject> = {
-            //     "callContract": makeCallContractFunctionObject,
-            // }
-
-
-
-            // const builtInInterfaces: Record<string, (decl: tsm.InterfaceDeclaration) => CompileTimeObject> = {
-            // //     "RuntimeConstructor": makeRuntimeConstructorType,
-
-
-
-            // //     // "ByteStringConstructor": makeByteStringConstructor,
-            // //     // "ByteString": makeByteStringInterface,
-            // //     // "Iterator": makeIteratorInterface,
-            // //     // "ReadonlyStorageContext": makeReadonlyStorageContext,
-            // //     // "StorageConstructor": makeStorageConstructor,
-            // //     // "StorageContext": makeStorageContext,
-            // }
-
-            // const builtInVars: Record<string, (decl: tsm.VariableDeclaration) => CompileTimeObject> = {
-            //     "Error": makeErrorObject,
-
-            //     // "Runtime": createBuiltInSymbol,
-
-
-
-
-            //     // "ByteString": createBuiltInSymbol,
-            //     // "Storage": createBuiltInSymbol,
-            // }
-
-
-
+            let typeDefs: ReadonlyArray<CompileTimeObject> = ROA.empty;
+            typeDefs = pipe(
+                {
+                    "ByteStringConstructor": makeByteStringConstructor,
+                    "ByteString": makeByteStringInterface,
+                    "StorageConstructor": makeStorageConstructor,
+                    "StorageContext": makeStorageContext,
+                    "ReadonlyStorageContext": makeReadonlyStorageContext,
+                    "RuntimeConstructor": makeRuntimeConstructorType
+                },
+                ROR.collect(StringOrd)((key, value) => pipe(
+                    interfaces,
+                    ROA.findFirst(i => i.getName() === key),
+                    O.map(value),
+                    O.match(
+                        () => { throw new Error(`failed to resolve built in interface ${key}`) },
+                        identity
+                    )
+                )),
+                ROA.concat(typeDefs));
+            typeDefs = pipe(
+                interfaces,
+                ROA.filter(TS.hasTag("stackitem")),
+                ROA.map(makeStackItemType),
+                ROA.concat(typeDefs));
+            typeDefs = pipe(
+                interfaces,
+                ROA.filter(TS.hasTag("nativeContract")),
+                ROA.map(makeNativeContractType),
+                ROA.concat(typeDefs));
 
             return pipe(
                 createScope()(symbolDefs, typeDefs),
@@ -464,42 +382,6 @@ export const makeGlobalScope =
                     }
                 )
             );
-
-
-            // function makeDeclaration(name: string, func: (decl: BuiltinDeclaration) => CompileTimeObject): CompileTimeObject {
-
-            //     for (const decl of decls) {
-            //         if (tsm.Node.isVariableStatement(decl)) {
-            //             const varDecl = decl.getDeclarations().find(decl => decl.getSymbol()?.getName() === name)
-            //             if (varDecl) return func(varDecl);
-            //         }
-            //         else {
-            //             if (decl.getSymbol()?.getName() === name) return func(decl);
-            //         }
-            //     }
-
-            //     throw new Error(`${name} declaration not found`) 
-            // }
-
         }
 
 export type BuiltinDeclaration = tsm.EnumDeclaration | tsm.FunctionDeclaration | tsm.InterfaceDeclaration | tsm.VariableDeclaration;
-
-// const resolveBuiltins =
-//     <T extends BuiltinDeclaration>(map: ROR.ReadonlyRecord<string, (decl: T) => CompileTimeObject>) =>
-//         (declarations: readonly T[]) =>
-//             (symbolDefs: readonly CompileTimeObject[]) => {
-//                 const defs = pipe(
-//                     map,
-//                     ROR.mapWithIndex((key, func) => pipe(
-//                         declarations,
-//                         ROA.filter(d => d.getName() === key),
-//                         single,
-//                         O.map(func),
-//                         E.fromOption(() => key),
-//                     )),
-//                     rorValues,
-//                     checkErrors('unresolved built in variables'),
-//                 )
-//                 return ROA.concat(defs)(symbolDefs);
-//             }

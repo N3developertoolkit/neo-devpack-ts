@@ -1,13 +1,65 @@
 import 'mocha';
 import { expect } from 'chai';
+import * as tsm from "ts-morph";
 
 import { sc } from "@cityofzion/neon-core";
 
 import { createTestProject, createTestGlobalScope, testParseExpression, createTestScope, createTestVariable } from './testUtils.spec';
 import { Operation } from '../src/types/Operation';
 import { FindOptions } from '../src/passes/builtins.Storage';
+import { buffer } from 'stream/consumers';
 
 describe("builts-ins", () => {
+    describe("Error", () => {
+        it("throw Error()", () => {
+            const contract = /*javascript*/`throw Error();`;
+            const { project, sourceFile } = createTestProject(contract);
+            const scope = createTestGlobalScope(project);
+            const stmt = sourceFile.getStatements()[0].asKindOrThrow(tsm.SyntaxKind.ThrowStatement);
+            const expr = stmt.getExpression();
+
+            const result = testParseExpression(expr, scope);
+            expect(result).to.have.lengthOf(1);
+            expect(result[0]).deep.equals(<Operation>{ kind: 'pushdata', value: Uint8Array.from([]) })
+        });
+
+        it("throw Error('message')", () => {
+            const contract = /*javascript*/`throw Error('message');`;
+            const { project, sourceFile } = createTestProject(contract);
+            const scope = createTestGlobalScope(project);
+            const stmt = sourceFile.getStatements()[0].asKindOrThrow(tsm.SyntaxKind.ThrowStatement);
+            const expr = stmt.getExpression();
+
+            const result = testParseExpression(expr, scope);
+            expect(result).to.have.lengthOf(1);
+            expect(result[0]).deep.equals(<Operation>{ kind: 'pushdata', value: Buffer.from('message', "utf8") })
+        });
+
+        it("throw new Error()", () => {
+            const contract = /*javascript*/`throw new Error();`;
+            const { project, sourceFile } = createTestProject(contract);
+            const scope = createTestGlobalScope(project);
+            const stmt = sourceFile.getStatements()[0].asKindOrThrow(tsm.SyntaxKind.ThrowStatement);
+            const expr = stmt.getExpression();
+
+            const result = testParseExpression(expr, scope);
+            expect(result).to.have.lengthOf(1);
+            expect(result[0]).deep.equals(<Operation>{ kind: 'pushdata', value: Uint8Array.from([]) })
+        });
+
+        it("throw new Error('message')", () => {
+            const contract = /*javascript*/`throw new Error('message');`;
+            const { project, sourceFile } = createTestProject(contract);
+            const scope = createTestGlobalScope(project);
+            const stmt = sourceFile.getStatements()[0].asKindOrThrow(tsm.SyntaxKind.ThrowStatement);
+            const expr = stmt.getExpression();
+
+            const result = testParseExpression(expr, scope);
+            expect(result).to.have.lengthOf(1);
+            expect(result[0]).deep.equals(<Operation>{ kind: 'pushdata', value: Buffer.from('message', "utf8") })
+        });
+    });
+
     describe("Enums", () => {
         it("CallFlags.None", () => {
             const contract = /*javascript*/`const $VAR = CallFlags.None;`;

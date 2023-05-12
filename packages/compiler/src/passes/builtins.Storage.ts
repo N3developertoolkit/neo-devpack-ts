@@ -23,7 +23,7 @@ export const enum FindOptions {
     PickField1 = 1 << 5
 }
 
-export function makeStorageConstructor(nod: tsm.InterfaceDeclaration) {
+export function makeStorageConstructor(node: tsm.InterfaceDeclaration) {
 
     const members: ROR.ReadonlyRecord<string, Operation> = {
         "context": { kind: "syscall", name: "System.Storage.GetContext" },
@@ -33,7 +33,7 @@ export function makeStorageConstructor(nod: tsm.InterfaceDeclaration) {
     const { left: errors, right: props } = pipe(
         members,
         ROR.collect(StringOrd)((key, value) => pipe(
-            nod,
+            node,
             TS.getMember(key),
             O.chain(O.fromPredicate(tsm.Node.isPropertySignature)),
             O.map(sig => makeCompileTimeObject(sig, sig.getSymbolOrThrow(), { loadOps: [value] })),
@@ -41,11 +41,11 @@ export function makeStorageConstructor(nod: tsm.InterfaceDeclaration) {
         )),
         ROA.separate
     );
-    if (errors.length > 0) throw new CompileError(`unresolved ByteStringConstructor members: ${errors.join(', ')}`, nod);
-    const symbol = nod.getSymbol();
-    if (!symbol) throw new CompileError(`no symbol for ${nod.getName()}`, nod);
+    if (errors.length > 0) throw new CompileError(`unresolved ByteStringConstructor members: ${errors.join(', ')}`, node);
+    const symbol = node.getSymbol();
+    if (!symbol) throw new CompileError(`no symbol for ${node.getName()}`, node);
 
-    return makeCompileTimeObject(nod, symbol, { loadOps: [], getProperty: props })
+    return makeCompileTimeObject(node, symbol, { loadOps: [], getProperty: props })
 }
 
 function makeFindCall(getFindOps: (scope: Scope, node: tsm.CallExpression) => E.Either<ParseError, readonly Operation[]>): ScopedNodeFunc<tsm.CallExpression> {
