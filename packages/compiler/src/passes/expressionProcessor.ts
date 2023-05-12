@@ -317,12 +317,12 @@ export const parsePrefixUnaryExpression =
 
             switch (operator) {
                 case tsm.SyntaxKind.PlusPlusToken:
-                case tsm.SyntaxKind.MinusMinusToken:{
+                case tsm.SyntaxKind.MinusMinusToken: {
                     const kind = operator === tsm.SyntaxKind.PlusPlusToken ? "increment" : "decrement";
                     // TODO: parse operand, append kind (inc/dec), dup, store operand 
                     return E.left(makeParseError(node)(`assignment not yet implemented`));
                 }
-                case tsm.SyntaxKind.PlusToken: 
+                case tsm.SyntaxKind.PlusToken:
                     return pipe(operand, parseExpression(scope))
                 case tsm.SyntaxKind.MinusToken:
                     return pipe(operand, parseExpression(scope), E.map(ROA.append<Operation>({ kind: "negate" })))
@@ -333,7 +333,7 @@ export const parsePrefixUnaryExpression =
             }
 
             return E.left(makeParseError(node)(`Invalid prefix unary operator ${tsm.SyntaxKind[operator]}`));
-         }
+        }
 
 export const parsePostfixUnaryExpression =
     (scope: Scope) =>
@@ -342,6 +342,18 @@ export const parsePostfixUnaryExpression =
             const kind = node.getOperatorToken() === tsm.SyntaxKind.PlusPlusToken ? "increment" : "decrement";
             // TODO: parse operand, dup, append kind (inc/dec), store operand
             return E.left(makeParseError(node)(`assignment not yet implemented`));
+        }
+
+export const parseParenthesizedExpression =
+    (scope: Scope) =>
+        (node: tsm.ParenthesizedExpression): E.Either<ParseError, readonly Operation[]> => {
+            return parseExpression(scope)(node.getExpression())
+        }
+
+export const parseNonNullExpression =
+    (scope: Scope) =>
+        (node: tsm.NonNullExpression): E.Either<ParseError, readonly Operation[]> => {
+            return parseExpression(scope)(node.getExpression())
         }
 
 export function parseExpression(scope: Scope) {
@@ -355,8 +367,10 @@ export function parseExpression(scope: Scope) {
             case tsm.SyntaxKind.FalseKeyword: return parseBooleanLiteral(node as tsm.FalseLiteral);
             case tsm.SyntaxKind.Identifier: return parseIdentifier(scope)(node as tsm.Identifier);
             case tsm.SyntaxKind.NewExpression: return parseNewExpression(scope)(node as tsm.NewExpression);
+            case tsm.SyntaxKind.NonNullExpression: return parseNonNullExpression(scope)(node as tsm.NonNullExpression);
             case tsm.SyntaxKind.NullKeyword: return parseNullLiteral(node);
             case tsm.SyntaxKind.NumericLiteral: return parseNumericLiteral(node as tsm.NumericLiteral);
+            case tsm.SyntaxKind.ParenthesizedExpression: return parseParenthesizedExpression(scope)(node as tsm.ParenthesizedExpression);
             case tsm.SyntaxKind.PostfixUnaryExpression: return parsePostfixUnaryExpression(scope)(node as tsm.PostfixUnaryExpression);
             case tsm.SyntaxKind.PrefixUnaryExpression: return parsePrefixUnaryExpression(scope)(node as tsm.PrefixUnaryExpression);
             case tsm.SyntaxKind.PropertyAccessExpression: return parsePropertyAccessExpression(scope)(node as tsm.PropertyAccessExpression);
