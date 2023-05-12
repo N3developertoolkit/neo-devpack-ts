@@ -1,80 +1,37 @@
 import 'mocha';
-import { assert, expect } from 'chai';
+import { expect } from 'chai';
 
-import * as tsm from "ts-morph";
 import { sc } from "@cityofzion/neon-core";
 
-
-import { parseExpression } from '../src/passes/expressionProcessor';
-import { parse } from 'path';
 import { createTestProject, createTestGlobalScope, testParseExpression, createTestScope, createTestVariable } from './testUtils.spec';
 import { Operation } from '../src/types/Operation';
-import { createScope, CompileTimeObject, CompileTimeObjectOptions, makeCompileTimeObject, ScopedNodeFunc } from '../src/types/CompileTimeObject';
-
-
-// export function createTestScope(symbols?: CompileTimeObject | readonly CompileTimeObject[], types?: CompileTimeObject | readonly CompileTimeObject[]) {
-//     return pipe(
-//         updateScope(createEmptyScope())(symbols, types),
-//         E_fail
-//     );
-// }
-
-// export function findSymbol(name: string, node: tsm.Node, flags: tsm.ts.SymbolFlags) {
-//     const symbol = node.getSymbolsInScope(flags).find(s => s.getName() === name);
-//     if (!symbol) expect.fail(`Symbol ${name} not found`);
-//     return symbol;
-// }
-
-// export function findProperty(name: string, symbol: tsm.Symbol) {
-//     const props = symbol.getDeclarations().flatMap(d => d.getType().getProperties());
-//     const prop = props.find(p => p.getName() === name);
-//     if (!prop) expect.fail(`Property ${name} not found`);
-//     return prop;
-// }
-
-// export function E_fail<T>(value: E.Either<string | ParseError, T>): T {
-//     if (E.isLeft(value)) {
-//         const message = typeof value.left  === 'string' ? value.left : value.left.message;
-//         expect.fail(message);
-//     } else {
-//         return value.right;
-//     }
-// }
-
-// describe("built-ins", () => {
-//     it("@stackItem", () => {
-//         const contract = /*javascript*/`
-//             function testFunc() {
-//                 const tx = Runtime.scriptContainer as Transaction;
-//                 const currentHash = tx.sender;
-//             }`;
-
-//             const { sourceFile } = createTestProject(contract);
-//             const symbolTXtype = findSymbol("Transaction", sourceFile, tsm.ts.SymbolFlags.Interface);
-//             const declTXtype = symbolTXtype.getDeclarations()[0].asKindOrThrow(tsm.SyntaxKind.InterfaceDeclaration);
-//             const ctoTXtype = makeStackItemType(declTXtype);
-
-//             const func = sourceFile.getFunctionOrThrow('testFunc');
-//             const symbolTX = findSymbol("tx", func, tsm.ts.SymbolFlags.Variable);
-//             const decltx = symbolTX.getValueDeclarationOrThrow();
-//             const ctoTX = makeCompileTimeObject(decltx, symbolTX, { loadOps: [{ kind: 'noop', debug: 'tx' } as Operation] });
-
-//             const scope = createTestScope(ctoTX, ctoTXtype);
-
-//             const decl = func.getDescendantsOfKind(tsm.SyntaxKind.VariableDeclaration)[1];
-//             const init = decl.getInitializerOrThrow();
-
-//             const tree = parseExpressionTree(init);
-//             const resolved = pipe(
-//                 tree,
-//                 E.chain(loadTree(scope)),
-//                 E.match(error => expect.fail(error.message), identity)
-//             )
-
-//     })
-// });
+import { FindOptions } from '../src/passes/builtins.Storage';
 
 describe("builts-ins", () => {
+    describe("Enums", () => {
+        it("CallFlags.None", () => {
+            const contract = /*javascript*/`const $VAR = CallFlags.None;`;
+            const { project, sourceFile } = createTestProject(contract);
+            const scope = createTestGlobalScope(project);
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+
+            const result = testParseExpression(init, scope);
+            expect(result).to.have.lengthOf(1);
+            expect(result[0]).deep.equals(<Operation>{ kind: 'pushint', value: 0n })
+        });
+
+        it("CallFlags.All", () => {
+            const contract = /*javascript*/`const $VAR = CallFlags.All;`;
+            const { project, sourceFile } = createTestProject(contract);
+            const scope = createTestGlobalScope(project);
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+
+            const result = testParseExpression(init, scope);
+            expect(result).to.have.lengthOf(1);
+            expect(result[0]).deep.equals(<Operation>{ kind: 'pushint', value: 15n })
+        });
+    })
+
     describe("ByteStringConstructor", () => {
         it("fromHex", () => {
             const contract = /*javascript*/`const $VAR = ByteString.fromHex("0xFF");`;
@@ -198,7 +155,223 @@ describe("builts-ins", () => {
             const result = testParseExpression(init, scope);
 
             expect(result).length(4);
-            expect(result[0]).deep.equals(<Operation>{ kind: 'pushint', value: 32n })
+            expect(result[0]).deep.equals(<Operation>{ kind: 'pushint', value: BigInt(FindOptions.PickField1) })
+            expect(result[1]).equals(helloCTO.loadOp);
+            expect(result[2]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.GetReadOnlyContext" })
+            expect(result[3]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.Find" })
+        });
+
+        it("values no prefix", () => {
+            const contract = /*javascript*/`const $VAR = Storage.readonlyContext.values();`;
+            const { project, sourceFile } = createTestProject(contract);
+            const scope = createTestGlobalScope(project);
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+
+            expect(result).length(4);
+            expect(result[0]).deep.equals(<Operation>{ kind: 'pushint', value: BigInt(FindOptions.ValuesOnly) })
+            expect(result[1]).deep.equals(<Operation>{ kind: 'pushdata', value: Uint8Array.from([]) })
+            expect(result[2]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.GetReadOnlyContext" })
+            expect(result[3]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.Find" })
+        });
+
+        it("values null prefix", () => {
+            const contract = /*javascript*/`const $VAR = Storage.readonlyContext.values(null);`;
+            const { project, sourceFile } = createTestProject(contract);
+            const scope = createTestGlobalScope(project);
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+
+            expect(result).length(4);
+            expect(result[0]).deep.equals(<Operation>{ kind: 'pushint', value: BigInt(FindOptions.ValuesOnly) })
+            expect(result[1]).deep.equals(<Operation>{ kind: 'pushnull' })
+            expect(result[2]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.GetReadOnlyContext" })
+            expect(result[3]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.Find" })
+        });
+
+        it("values undefined prefix", () => {
+            const contract = /*javascript*/`const $VAR = Storage.readonlyContext.values(undefined);`;
+            const { project, sourceFile } = createTestProject(contract);
+            const scope = createTestGlobalScope(project);
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+
+            expect(result).length(4);
+            expect(result[0]).deep.equals(<Operation>{ kind: 'pushint', value: BigInt(FindOptions.ValuesOnly) })
+            expect(result[1]).deep.equals(<Operation>{ kind: 'pushnull' })
+            expect(result[2]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.GetReadOnlyContext" })
+            expect(result[3]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.Find" })
+        });
+
+        it("values with prefix", () => {
+            const contract = /*javascript*/`const $hello = ByteString.fromString("hello"); const $VAR = Storage.readonlyContext.values($hello);`;
+            const { project, sourceFile } = createTestProject(contract);
+            const globalScope = createTestGlobalScope(project);
+
+            const hello = sourceFile.getVariableDeclarationOrThrow('$hello');
+            const helloCTO = createTestVariable(hello);
+            const scope = createTestScope(globalScope, helloCTO)
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+
+            expect(result).length(4);
+            expect(result[0]).deep.equals(<Operation>{ kind: 'pushint', value: BigInt(FindOptions.ValuesOnly) })
+            expect(result[1]).equals(helloCTO.loadOp);
+            expect(result[2]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.GetReadOnlyContext" })
+            expect(result[3]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.Find" })
+        });
+
+        it("keys no prefix", () => {
+            const contract = /*javascript*/`const $VAR = Storage.readonlyContext.keys();`;
+            const { project, sourceFile } = createTestProject(contract);
+            const scope = createTestGlobalScope(project);
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+
+            expect(result).length(4);
+            expect(result[0]).deep.equals(<Operation>{ kind: 'pushint', value: BigInt(FindOptions.KeysOnly | FindOptions.RemovePrefix) })
+            expect(result[1]).deep.equals(<Operation>{ kind: 'pushdata', value: Uint8Array.from([]) })
+            expect(result[2]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.GetReadOnlyContext" })
+            expect(result[3]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.Find" })
+        });
+
+        it("keys with prefix", () => {
+            const contract = /*javascript*/`const $hello = ByteString.fromString("hello"); const $VAR = Storage.readonlyContext.keys($hello);`;
+            const { project, sourceFile } = createTestProject(contract);
+            const globalScope = createTestGlobalScope(project);
+
+            const hello = sourceFile.getVariableDeclarationOrThrow('$hello');
+            const helloCTO = createTestVariable(hello);
+            const scope = createTestScope(globalScope, helloCTO)
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+
+            expect(result).length(4);
+            expect(result[0]).deep.equals(<Operation>{ kind: 'pushint', value: BigInt(FindOptions.KeysOnly | FindOptions.RemovePrefix) })
+            expect(result[1]).equals(helloCTO.loadOp);
+            expect(result[2]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.GetReadOnlyContext" })
+            expect(result[3]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.Find" })
+        });
+
+        it("keys with prefix and not keep prefix", () => {
+            const contract = /*javascript*/`const $hello = ByteString.fromString("hello"); const $VAR = Storage.readonlyContext.keys($hello, false);`;
+            const { project, sourceFile } = createTestProject(contract);
+            const globalScope = createTestGlobalScope(project);
+
+            const hello = sourceFile.getVariableDeclarationOrThrow('$hello');
+            const helloCTO = createTestVariable(hello);
+            const scope = createTestScope(globalScope, helloCTO)
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+
+            expect(result).length(4);
+            expect(result[0]).deep.equals(<Operation>{ kind: 'pushint', value: BigInt(FindOptions.KeysOnly | FindOptions.RemovePrefix) })
+            expect(result[1]).equals(helloCTO.loadOp);
+            expect(result[2]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.GetReadOnlyContext" })
+            expect(result[3]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.Find" })
+        });
+
+        it("keys with prefix and keep prefix", () => {
+            const contract = /*javascript*/`const $hello = ByteString.fromString("hello"); const $VAR = Storage.readonlyContext.keys($hello, true);`;
+            const { project, sourceFile } = createTestProject(contract);
+            const globalScope = createTestGlobalScope(project);
+
+            const hello = sourceFile.getVariableDeclarationOrThrow('$hello');
+            const helloCTO = createTestVariable(hello);
+            const scope = createTestScope(globalScope, helloCTO)
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+
+            expect(result).length(4);
+            expect(result[0]).deep.equals(<Operation>{ kind: 'pushint', value: BigInt(FindOptions.KeysOnly) })
+            expect(result[1]).equals(helloCTO.loadOp);
+            expect(result[2]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.GetReadOnlyContext" })
+            expect(result[3]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.Find" })
+        });
+
+        it("keys undefined prefix", () => {
+            const contract = /*javascript*/`const $hello = ByteString.fromString("hello"); const $VAR = Storage.readonlyContext.keys(undefined);`;
+            const { project, sourceFile } = createTestProject(contract);
+            const scope = createTestGlobalScope(project);
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+
+            expect(result).length(4);
+            expect(result[0]).deep.equals(<Operation>{ kind: 'pushint', value: BigInt(FindOptions.KeysOnly | FindOptions.RemovePrefix) })
+            expect(result[1]).deep.equals(<Operation>{ kind: 'pushnull' })
+            expect(result[2]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.GetReadOnlyContext" })
+            expect(result[3]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.Find" })
+        });
+
+        
+        it("keys undefined prefix and not keep prefix", () => {
+            const contract = /*javascript*/`const $hello = ByteString.fromString("hello"); const $VAR = Storage.readonlyContext.keys(undefined, false);`;
+            const { project, sourceFile } = createTestProject(contract);
+            const scope = createTestGlobalScope(project);
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+
+            expect(result).length(4);
+            expect(result[0]).deep.equals(<Operation>{ kind: 'pushint', value: BigInt(FindOptions.KeysOnly | FindOptions.RemovePrefix) })
+            expect(result[1]).deep.equals(<Operation>{ kind: 'pushnull' })
+            expect(result[2]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.GetReadOnlyContext" })
+            expect(result[3]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.Find" })
+        });
+        
+        it("keys undefined prefix and keep prefix", () => {
+            const contract = /*javascript*/`const $hello = ByteString.fromString("hello"); const $VAR = Storage.readonlyContext.keys(undefined, true);`;
+            const { project, sourceFile } = createTestProject(contract);
+            const scope = createTestGlobalScope(project);
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+
+            expect(result).length(4);
+            expect(result[0]).deep.equals(<Operation>{ kind: 'pushint', value: BigInt(FindOptions.KeysOnly) })
+            expect(result[1]).deep.equals(<Operation>{ kind: 'pushnull' })
+            expect(result[2]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.GetReadOnlyContext" })
+            expect(result[3]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.Find" })
+        });
+
+        it("entries no prefix", () => {
+            const contract = /*javascript*/`const $VAR = Storage.readonlyContext.entries();`;
+            const { project, sourceFile } = createTestProject(contract);
+            const scope = createTestGlobalScope(project);
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+
+            expect(result).length(4);
+            expect(result[0]).deep.equals(<Operation>{ kind: 'pushint', value: BigInt(FindOptions.RemovePrefix) })
+            expect(result[1]).deep.equals(<Operation>{ kind: 'pushdata', value: Uint8Array.from([]) })
+            expect(result[2]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.GetReadOnlyContext" })
+            expect(result[3]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.Find" })
+        });
+
+        it("entries with prefix", () => {
+            const contract = /*javascript*/`const $hello = ByteString.fromString("hello"); const $VAR = Storage.readonlyContext.entries($hello);`;
+            const { project, sourceFile } = createTestProject(contract);
+            const globalScope = createTestGlobalScope(project);
+
+            const hello = sourceFile.getVariableDeclarationOrThrow('$hello');
+            const helloCTO = createTestVariable(hello);
+            const scope = createTestScope(globalScope, helloCTO)
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+
+            expect(result).length(4);
+            expect(result[0]).deep.equals(<Operation>{ kind: 'pushint', value: BigInt(FindOptions.RemovePrefix) })
             expect(result[1]).equals(helloCTO.loadOp);
             expect(result[2]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.GetReadOnlyContext" })
             expect(result[3]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.Find" })

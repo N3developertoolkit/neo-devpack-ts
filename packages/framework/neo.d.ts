@@ -82,10 +82,10 @@ declare global {
         // the following three methods map to StorageContext.Find, with what I would argue are the most common
         // combinations of Flag Options:
 
-        // with and without RemovePrefix
-        entries(prefix?: ByteString, removePrefix?: boolean): Iterator<[ByteString, ByteString]>;
-        // KeysOnly with and without RemovePrefix
-        keys(prefix?: ByteString, removePrefix?: boolean): Iterator<ByteString>;
+        // with and without RemovePrefix. Default to removing the prefix
+        entries(prefix?: ByteString, keepPrefix?: boolean): Iterator<[ByteString, ByteString]>;
+        // KeysOnly with and without RemovePrefix, Default to removing the prefix
+        keys(prefix?: ByteString, keepPrefix?: boolean): Iterator<ByteString>;
         // ValuesOnly
         values(prefix?: ByteString): Iterator<ByteString>;
 

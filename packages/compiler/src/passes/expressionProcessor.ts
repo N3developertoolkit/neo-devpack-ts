@@ -5,7 +5,7 @@ import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option'
 import * as TS from "../TS";
-import { isJumpTargetOp, Operation, pushInt, pushString, SimpleOperationKind } from "../types/Operation";
+import { getBooleanConvertOps, isJumpTargetOp, Operation, pushInt, pushString, SimpleOperationKind } from "../types/Operation";
 import { CompileTimeObject, Scope, resolve, resolveType } from "../types/CompileTimeObject";
 import { ParseError, isBigIntLike, isBooleanLike, isNumberLike, isStringLike, makeParseError } from "../utils";
 
@@ -67,6 +67,11 @@ export const parsePropertyAccessExpression =
 
 export const parseIdentifier =
     (scope: Scope) => (node: tsm.Identifier): E.Either<ParseError, readonly Operation[]> => {
+
+        // undefined resolves as a symbol rather than as a keyword like null does
+        const type = node.getType();
+        if (type.isUndefined()) { return E.of(ROA.of({ kind: 'pushnull' })) }
+
         return pipe(
             node,
             resolveIdentifier(scope),
@@ -96,6 +101,16 @@ export function parseExpression(scope: Scope) {
             default:
                 return E.left(makeParseError(node)(`parseExpression ${node.getKindName()} not impl`));
         };
+    }
+}
+
+export function parseExpressionAsBoolean(scope: Scope) {
+    return (node: tsm.Expression): E.Either<ParseError, readonly Operation[]> => {
+        return pipe(
+            node,
+            parseExpression(scope),
+            E.map(ROA.concat(getBooleanConvertOps(node.getType())))
+        )
     }
 }
 
@@ -457,24 +472,24 @@ export function resolveExpression(scope: Scope) {
 //         }
 
 
-// export function makeConditionalExpression({ condition, whenTrue, whenFalse }: {
-//     condition: readonly Operation[];
-//     whenTrue: readonly Operation[];
-//     whenFalse: readonly Operation[];
-// }): readonly Operation[] {
+export function makeConditionalExpression({ condition, whenTrue, whenFalse }: {
+    condition: readonly Operation[];
+    whenTrue: readonly Operation[];
+    whenFalse: readonly Operation[];
+}): readonly Operation[] {
 
-//     const falseTarget: Operation = { kind: "noop" };
-//     const endTarget: Operation = { kind: "noop" };
-//     return pipe(
-//         condition,
-//         ROA.append({ kind: 'jumpifnot', target: falseTarget } as Operation),
-//         ROA.concat(whenTrue),
-//         ROA.append({ kind: 'jump', target: endTarget } as Operation),
-//         ROA.append(falseTarget as Operation),
-//         ROA.concat(whenFalse),
-//         ROA.append(endTarget as Operation)
-//     );
-// }
+    const falseTarget: Operation = { kind: "noop" };
+    const endTarget: Operation = { kind: "noop" };
+    return pipe(
+        condition,
+        ROA.append({ kind: 'jumpifnot', target: falseTarget } as Operation),
+        ROA.concat(whenTrue),
+        ROA.append({ kind: 'jump', target: endTarget } as Operation),
+        ROA.append(falseTarget as Operation),
+        ROA.concat(whenFalse),
+        ROA.append(endTarget as Operation)
+    );
+}
 
 // export const parseConditionalExpression =
 //     (scope: Scope) =>

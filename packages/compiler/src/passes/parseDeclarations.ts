@@ -5,10 +5,12 @@ import * as ROA from 'fp-ts/ReadonlyArray';
 import * as E from "fp-ts/Either";
 import * as O from "fp-ts/Option";
 import * as TS from '../TS';
+import * as ROR from 'fp-ts/ReadonlyRecord';
+import { Ord as StringOrd } from 'fp-ts/string';
 
-import { makeParseError } from "../utils";
+import { CompileError, makeParseError } from "../utils";
 import { Operation, pushInt, pushString } from "../types/Operation";
-import { Scope, ScopedNodeFunc, makeCompileTimeObject } from "../types/CompileTimeObject";
+import { CompileTimeObject, Scope, ScopedNodeFunc, makeCompileTimeObject } from "../types/CompileTimeObject";
 import {  parseExpression } from "./expressionProcessor";
 
 export function makeLocalVariable(node: tsm.Identifier | tsm.BindingElement, symbol: tsm.Symbol, index: number) {
@@ -215,4 +217,34 @@ export function parseInterfaceDecl(node: tsm.InterfaceDeclaration) {
         ROA.chain(s => s.getDeclarations() as tsm.TypeElementTypes[]),
     )
     return parseInterfaceMembers(node, members);
+}
+
+export function makeParseMethodCall(callOp: Operation): ScopedNodeFunc<tsm.CallExpression> {
+    return (scope) => (node) => {
+        return pipe(
+            node,
+            parseMethodCallExpression(scope),
+            E.map(ROA.append(callOp))
+        )
+    }
+}
+
+export function makeMembers(node: tsm.InterfaceDeclaration, members: Record<string, (sig: tsm.PropertySignature | tsm.MethodSignature, symbol: tsm.Symbol) => CompileTimeObject>) {
+    const { left: errors, right: props } = pipe(
+        members,
+        ROR.collect(StringOrd)((key, value) => {
+            return pipe(
+                node,
+                TS.getMember(key),
+                O.bindTo('sig'),
+                O.bind('symbol', ({ sig }) => TS.getSymbol(sig)),
+                O.map(({ sig, symbol }) => value(sig, symbol)),
+                E.fromOption(() => key)
+            );
+        }),
+        ROA.separate
+    );
+
+    if (errors.length > 0) throw new CompileError(`unresolved ReadonlyStorageContext interface members: ${errors.join(', ')}`, node);
+    return props;
 }
