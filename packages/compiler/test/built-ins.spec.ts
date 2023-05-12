@@ -11,7 +11,7 @@ import { buffer } from 'stream/consumers';
 
 describe("builts-ins", () => {
     describe("Error", () => {
-        it("throw Error()", () => {
+        it("Error()", () => {
             const contract = /*javascript*/`throw Error();`;
             const { project, sourceFile } = createTestProject(contract);
             const scope = createTestGlobalScope(project);
@@ -23,7 +23,7 @@ describe("builts-ins", () => {
             expect(result[0]).deep.equals(<Operation>{ kind: 'pushdata', value: Uint8Array.from([]) })
         });
 
-        it("throw Error('message')", () => {
+        it("Error('message')", () => {
             const contract = /*javascript*/`throw Error('message');`;
             const { project, sourceFile } = createTestProject(contract);
             const scope = createTestGlobalScope(project);
@@ -35,7 +35,7 @@ describe("builts-ins", () => {
             expect(result[0]).deep.equals(<Operation>{ kind: 'pushdata', value: Buffer.from('message', "utf8") })
         });
 
-        it("throw new Error()", () => {
+        it("new Error()", () => {
             const contract = /*javascript*/`throw new Error();`;
             const { project, sourceFile } = createTestProject(contract);
             const scope = createTestGlobalScope(project);
@@ -47,7 +47,7 @@ describe("builts-ins", () => {
             expect(result[0]).deep.equals(<Operation>{ kind: 'pushdata', value: Uint8Array.from([]) })
         });
 
-        it("throw new Error('message')", () => {
+        it("new Error('message')", () => {
             const contract = /*javascript*/`throw new Error('message');`;
             const { project, sourceFile } = createTestProject(contract);
             const scope = createTestGlobalScope(project);
