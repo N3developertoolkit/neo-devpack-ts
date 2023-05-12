@@ -103,7 +103,7 @@ export const getMethodMember = (name: string) => (node: MemberedNode) => {
     );
 }
 
-const compoundAssignmentOperatorMap = new Map<tsm.SyntaxKind, tsm.ts.BinaryOperator>([
+export const compoundAssignmentOperatorMap = new Map<tsm.SyntaxKind, tsm.ts.BinaryOperator>([
     [tsm.SyntaxKind.PlusEqualsToken, tsm.ts.SyntaxKind.PlusToken],
     [tsm.SyntaxKind.MinusEqualsToken, tsm.SyntaxKind.MinusToken],
     [tsm.SyntaxKind.AsteriskAsteriskEqualsToken, tsm.SyntaxKind.AsteriskAsteriskToken],
@@ -122,12 +122,13 @@ const compoundAssignmentOperatorMap = new Map<tsm.SyntaxKind, tsm.ts.BinaryOpera
 ]) as ReadonlyMap<tsm.SyntaxKind, tsm.ts.BinaryOperator>;
 
 export function isAssignmentExpression(node: tsm.Expression) {
-    if (tsm.Node.isBinaryExpression(node)) {
-        const opKind = node.getOperatorToken().getKind();
-        return opKind === tsm.SyntaxKind.EqualsToken || compoundAssignmentOperatorMap.has(opKind);
-    } else {
-        return false;
-    }
+    if (!tsm.Node.isBinaryExpression(node)) return false;
+    const opKind = node.getOperatorToken().getKind();
+    return opKind === tsm.SyntaxKind.EqualsToken || compoundAssignmentOperatorMap.has(opKind);
+}
+
+export function getBinaryOperator(node: tsm.BinaryExpression) {
+    return node.getOperatorToken().getKind() as tsm.ts.BinaryOperator;
 }
 
 export const parseSymbol = (node: tsm.Node): E.Either<ParseError, tsm.Symbol> => {
