@@ -186,7 +186,7 @@ function adaptContinueStatement(node: tsm.ContinueStatement): S.State<AdaptState
             O.map(target => ({ kind: 'jump', location: node, target } as Operation)),
             O.match(
                 () => {
-                    const error = makeParseError(node)('break statement not within a loop or switch');
+                    const error = makeParseError(node)('continue statement not within a loop');
                     return [ROA.empty, updateContextErrors(context)(error)];
                 },
                 op => [ROA.of(op), context]
