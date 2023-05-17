@@ -31,7 +31,7 @@ export function makeConditionalExpression({ condition, whenTrue, whenFalse }: {
     );
 }
 
-function parseBigIntLitera(node: tsm.BigIntLiteral): E.Either<ParseError, readonly Operation[]> {
+function parseBigIntLiteral(node: tsm.BigIntLiteral): E.Either<ParseError, readonly Operation[]> {
     const value = node.getLiteralValue() as bigint;
     return pipe(value, pushInt, ROA.of, E.of);
 }
@@ -541,36 +541,31 @@ export function parseObjectLiteralExpression(scope: Scope) {
 export function parseExpression(scope: Scope) {
     return (node: tsm.Expression): E.Either<ParseError, readonly Operation[]> => {
 
+        switch (node.getKind()) {
+            case tsm.SyntaxKind.ArrayLiteralExpression: return parseArrayLiteral(scope)(node as tsm.ArrayLiteralExpression);
+            // case tsm.SyntaxKind.AsExpression: return parseAsExpression(scope)(node as tsm.AsExpression);
+            case tsm.SyntaxKind.BigIntLiteral: return parseBigIntLiteral(node as tsm.BigIntLiteral);
+            case tsm.SyntaxKind.BinaryExpression: return parseBinaryExpression(scope)(node as tsm.BinaryExpression);
+            // case tsm.SyntaxKind.CallExpression: return parseCallExpression(scope)(node as tsm.CallExpression);
+            case tsm.SyntaxKind.ConditionalExpression: return parseConditionalExpression(scope)(node as tsm.ConditionalExpression);
+            // case tsm.SyntaxKind.ElementAccessExpression: return parseElementAccessExpression(scope)(node as tsm.ElementAccessExpression);
+            case tsm.SyntaxKind.FalseKeyword: return parseBooleanLiteral(node as tsm.BooleanLiteral);
+            // case tsm.SyntaxKind.Identifier: return parseIdentifier(scope)(node as tsm.Identifier);
+            // case tsm.SyntaxKind.NewExpression: return parseNewExpression(scope)(node as tsm.NewExpression);
+            // case tsm.SyntaxKind.NonNullExpression: return parseNonNullExpression(scope)(node as tsm.NonNullExpression);
+            case tsm.SyntaxKind.NullKeyword: return parseNullLiteral(node as tsm.NullLiteral);
+            case tsm.SyntaxKind.NumericLiteral: return parseNumericLiteral(node as tsm.NumericLiteral);
+            case tsm.SyntaxKind.ObjectLiteralExpression: return parseObjectLiteralExpression(scope)(node as tsm.ObjectLiteralExpression);
+            // case tsm.SyntaxKind.ParenthesizedExpression: return parseParenthesizedExpression(scope)(node as tsm.ParenthesizedExpression);
+            case tsm.SyntaxKind.PostfixUnaryExpression: return parsePostfixUnaryExpression(scope)(node as tsm.PostfixUnaryExpression);
+            case tsm.SyntaxKind.PrefixUnaryExpression: return parsePrefixUnaryExpression(scope)(node as tsm.PrefixUnaryExpression);
+            // case tsm.SyntaxKind.PropertyAccessExpression: return parsePropertyAccessExpression(scope)(node as tsm.PropertyAccessExpression);
+            case tsm.SyntaxKind.StringLiteral: return parseStringLiteral(node as tsm.StringLiteral);
+            case tsm.SyntaxKind.TrueKeyword: return parseBooleanLiteral(node as tsm.BooleanLiteral);
+
+        }
+
         return E.left(makeParseError(node)(`parseExpression ${node.getKindName()} not implemented`));
-
-        // const chain = makeExpressionChain(node);
-        // const context: ExpressionParserContext = {
-        //     errors: [],
-        //     scope,
-        //     endTarget: { kind: 'noop' },
-        // }
-
-        // throw new Error();
-
-        // return pipe(
-        //     chain,
-        //     ROA.reduce(
-        //         E.of<ParseError, ExpressionChainContext>(context),
-        //         (ctx, node) => { return pipe(ctx, E.chain(ctx => reduceExpressionChain(ctx, node))); }
-        //     ),
-        //     E.map(ctx => {
-        //         const hasEndJumps = pipe(
-        //             ctx.ops,
-        //             ROA.filter(isJumpTargetOp),
-        //             ROA.filter(op => op.target === ctx.endTarget),
-        //             ROA.isNonEmpty
-        //         );
-        //         return hasEndJumps
-        //             ? ROA.append(ctx.endTarget)(ctx.ops)
-        //             : ctx.ops;
-
-        //     })
-        // );
     }
 }
 
