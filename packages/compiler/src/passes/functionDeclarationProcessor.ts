@@ -554,10 +554,9 @@ const adaptDispatchMap: AdaptDispatchMap<readonly Operation[], AdaptStatementCon
     [tsm.SyntaxKind.TryStatement]: adaptTryStatement,
     [tsm.SyntaxKind.VariableStatement]: adaptVariableStatement,
     [tsm.SyntaxKind.WhileStatement]: adaptWhileStatement,
-
-    [tsm.SyntaxKind.SwitchStatement]: adaptFutureWork,
-    [tsm.SyntaxKind.ForInStatement]: adaptFutureWork,
-    [tsm.SyntaxKind.ForOfStatement]: adaptFutureWork,
+    // [tsm.SyntaxKind.SwitchStatement]: adaptFutureWork,
+    // [tsm.SyntaxKind.ForInStatement]: adaptFutureWork,
+    // [tsm.SyntaxKind.ForOfStatement]: adaptFutureWork,
 }
 
 // Not Supported:
