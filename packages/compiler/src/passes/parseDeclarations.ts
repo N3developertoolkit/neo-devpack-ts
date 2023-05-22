@@ -11,7 +11,7 @@ import { Ord as StringOrd } from 'fp-ts/string';
 import { CompileError, makeParseError } from "../utils";
 import { Operation, pushInt, pushString } from "../types/Operation";
 import { CompileTimeObject, Scope, ScopedNodeFunc, makeCompileTimeObject } from "../types/CompileTimeObject";
-import {  parseExpression } from "./expressionProcessor";
+import { parseExpression } from "./expressionProcessor";
 
 export function makeLocalVariable(node: tsm.Identifier | tsm.BindingElement, symbol: tsm.Symbol, index: number) {
     const loadOps = [{ kind: "loadlocal", index } as Operation];

@@ -1,17 +1,16 @@
 import * as tsm from "ts-morph";
-import { sc } from "@cityofzion/neon-core";
-import { flow, pipe } from "fp-ts/lib/function";
+import { pipe } from "fp-ts/lib/function";
 import * as E from "fp-ts/Either";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as O from 'fp-ts/Option'
 import * as TS from "../TS";
 import * as ROR from 'fp-ts/ReadonlyRecord';
 import { Ord as StringOrd } from 'fp-ts/string';
-import { Operation, isPushBoolOp } from "../types/Operation";
+import { Operation } from "../types/Operation";
 import { CompileTimeObject, Scope, ScopedNodeFunc, makeCompileTimeObject } from "../types/CompileTimeObject";
-import { CompileError, ParseError, makeParseError, single } from "../utils";
-import { makeMembers, makeParseMethodCall, parseMethodCallExpression } from "./parseDeclarations";
-import { makeConditionalExpression, parseExpression, parseExpressionAsBoolean } from "./expressionProcessor";
+import { CompileError, ParseError, makeParseError } from "../utils";
+import { makeMembers, makeParseMethodCall } from "./parseDeclarations";
+import { parseExpression } from "./expressionProcessor";
 
 export const enum FindOptions {
     None = 0,
@@ -78,43 +77,43 @@ function makeFindCall(getFindOps: (scope: Scope, node: tsm.CallExpression) => E.
     }
 }
 
-function makeKeepPrefixGetOptions(findOptions: FindOptions): (scope: Scope, node: tsm.CallExpression) => E.Either<ParseError, readonly Operation[]> {
+// function makeKeepPrefixGetOptions(findOptions: FindOptions): (scope: Scope, node: tsm.CallExpression) => E.Either<ParseError, readonly Operation[]> {
 
-    const trueOption = findOptions;
-    const falseOption = findOptions | FindOptions.RemovePrefix;
+//     const trueOption = findOptions;
+//     const falseOption = findOptions | FindOptions.RemovePrefix;
 
-    return (scope, node) => {
-        return pipe(
-            node,
-            TS.getArguments,
-            ROA.lookup(1),
-            O.match(
-                () => E.of(ROA.of({ kind: 'pushbool', value: false } as Operation)),
-                flow(parseExpressionAsBoolean(scope))
-            ),
-            E.map(condition => {
-                const op = pipe(
-                    condition,
-                    ROA.filter(op => op.kind != 'noop'),
-                    single,
-                    O.toUndefined
-                )
+//     return (scope, node) => {
+//         return pipe(
+//             node,
+//             TS.getArguments,
+//             ROA.lookup(1),
+//             O.match(
+//                 () => E.of(ROA.of({ kind: 'pushbool', value: false } as Operation)),
+//                 flow(parseExpressionAsBoolean(scope))
+//             ),
+//             E.map(condition => {
+//                 const op = pipe(
+//                     condition,
+//                     ROA.filter(op => op.kind != 'noop'),
+//                     single,
+//                     O.toUndefined
+//                 )
 
-                if (op && isPushBoolOp(op)) {
-                    // if the arg is a hard coded true or false, push the appropriate option directly
-                    const option = op.value ? trueOption : falseOption;
-                    return ROA.of({ kind: 'pushint', value: BigInt(option) } as Operation)
-                } else {
-                    // otherwise, insert a conditional to calculate the find option at runtime
-                    const whenTrue = ROA.of({ kind: 'pushint', value: BigInt(trueOption) } as Operation);
-                    const whenFalse = ROA.of({ kind: 'pushint', value: BigInt(falseOption) } as Operation);
-                    return makeConditionalExpression({ condition, whenTrue, whenFalse })
-                }
-            })
+//                 if (op && isPushBoolOp(op)) {
+//                     // if the arg is a hard coded true or false, push the appropriate option directly
+//                     const option = op.value ? trueOption : falseOption;
+//                     return ROA.of({ kind: 'pushint', value: BigInt(option) } as Operation)
+//                 } else {
+//                     // otherwise, insert a conditional to calculate the find option at runtime
+//                     const whenTrue = ROA.of({ kind: 'pushint', value: BigInt(trueOption) } as Operation);
+//                     const whenFalse = ROA.of({ kind: 'pushint', value: BigInt(falseOption) } as Operation);
+//                     return makeConditionalExpression({ condition, whenTrue, whenFalse })
+//                 }
+//             })
 
-        )
-    };
-}
+//         )
+//     };
+// }
 
 function makeReadonlyStorageContextMembers(node: tsm.InterfaceDeclaration) {
     const members: Record<string, (sig: tsm.PropertySignature | tsm.MethodSignature, symbol: tsm.Symbol) => CompileTimeObject> = {
@@ -126,21 +125,21 @@ function makeReadonlyStorageContextMembers(node: tsm.InterfaceDeclaration) {
             const parseCall = makeParseMethodCall({ kind: "syscall", name: "System.Storage.Find" });
             return makeCompileTimeObject(sig, symbol, { loadOps: [], parseCall });
         },
-        entries: (sig, symbol) => {
-            const getFindOps = makeKeepPrefixGetOptions(FindOptions.None);
-            const parseCall: ScopedNodeFunc<tsm.CallExpression> = makeFindCall(getFindOps);
-            return makeCompileTimeObject(sig, symbol, { loadOps: [], parseCall });
-        },
-        keys: (sig, symbol) => {
-            const getFindOps = makeKeepPrefixGetOptions(FindOptions.KeysOnly);
-            const parseCall: ScopedNodeFunc<tsm.CallExpression> = makeFindCall(getFindOps);
-            return makeCompileTimeObject(sig, symbol, { loadOps: [], parseCall });
-        },
-        values: (sig, symbol) => {
-            const findOps = pipe(<Operation>{ kind: 'pushint', value: BigInt(FindOptions.ValuesOnly) }, ROA.of);
-            const parseCall: ScopedNodeFunc<tsm.CallExpression> = makeFindCall(() => E.of(findOps));
-            return makeCompileTimeObject(sig, symbol, { loadOps: [], parseCall });
-        },
+        // entries: (sig, symbol) => {
+        //     const getFindOps = makeKeepPrefixGetOptions(FindOptions.None);
+        //     const parseCall: ScopedNodeFunc<tsm.CallExpression> = makeFindCall(getFindOps);
+        //     return makeCompileTimeObject(sig, symbol, { loadOps: [], parseCall });
+        // },
+        // keys: (sig, symbol) => {
+        //     const getFindOps = makeKeepPrefixGetOptions(FindOptions.KeysOnly);
+        //     const parseCall: ScopedNodeFunc<tsm.CallExpression> = makeFindCall(getFindOps);
+        //     return makeCompileTimeObject(sig, symbol, { loadOps: [], parseCall });
+        // },
+        // values: (sig, symbol) => {
+        //     const findOps = pipe(<Operation>{ kind: 'pushint', value: BigInt(FindOptions.ValuesOnly) }, ROA.of);
+        //     const parseCall: ScopedNodeFunc<tsm.CallExpression> = makeFindCall(() => E.of(findOps));
+        //     return makeCompileTimeObject(sig, symbol, { loadOps: [], parseCall });
+        // },
     }
 
     return makeMembers(node, members);

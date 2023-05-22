@@ -1,16 +1,11 @@
 import * as tsm from "ts-morph";
-import { flow, pipe } from 'fp-ts/function';
+import { pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
-import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
-import * as O from 'fp-ts/Option'
 import * as TS from "../TS";
-import * as S from "fp-ts/State";
-import { getBooleanConvertOps, getStringConvertOps, isJumpTargetOp, Operation, pushInt, pushString } from "../types/Operation";
-import { CompileTimeObject, Scope, ScopedNodeFunc, resolve, resolveType } from "../types/CompileTimeObject";
-import { CompileError, ParseError, isStringLike, isVoidLike, makeParseError } from "../utils";
-import { ReadonlyNonEmptyArray } from "fp-ts/ReadonlyNonEmptyArray";
-import { sc } from "@cityofzion/neon-core";
+import { getBooleanConvertOps, getStringConvertOps, Operation, pushInt, pushString } from "../types/Operation";
+import { Scope } from "../types/CompileTimeObject";
+import { ParseError, isStringLike, isVoidLike, makeParseError } from "../utils";
 
 export function makeConditionalExpression({ condition, whenTrue, whenFalse }: {
     condition: readonly Operation[];
@@ -93,7 +88,12 @@ const binaryOperationMap = new Map<tsm.SyntaxKind, Operation>([
 
 function parseStore(scope: Scope, node: tsm.Expression) {
     return (ops: readonly Operation[]): E.Either<ParseError, readonly Operation[]> => {
-        return E.left(makeParseError(node)(`assignment not implemented`));
+        return pipe(
+            node,
+            resolveExpression,
+            E.chain(resolved => resolved.getStoreOps(scope)),
+            E.map(storeOps => ROA.concat(storeOps)(ops))
+        )
     }
 }
 
@@ -253,7 +253,7 @@ function parseBinaryExpression(scope: Scope) {
     };
 }
 
-export function parsePrefixUnaryExpression(scope: Scope) {
+function parsePrefixUnaryExpression(scope: Scope) {
     return (node: tsm.PrefixUnaryExpression): E.Either<ParseError, readonly Operation[]> => {
         const operand = node.getOperand();
         const operator = node.getOperatorToken();
@@ -284,7 +284,7 @@ export function parsePrefixUnaryExpression(scope: Scope) {
     };
 }
 
-export function parsePostfixUnaryExpression(scope: Scope) {
+function parsePostfixUnaryExpression(scope: Scope) {
     return (node: tsm.PostfixUnaryExpression): E.Either<ParseError, readonly Operation[]> => {
         const operand = node.getOperand();
         const kind = node.getOperatorToken() === tsm.SyntaxKind.PlusPlusToken ? "increment" : "decrement";
@@ -298,7 +298,7 @@ export function parsePostfixUnaryExpression(scope: Scope) {
     };
 }
 
-export function parseArrayLiteral(scope: Scope) {
+function parseArrayLiteral(scope: Scope) {
     return (node: tsm.ArrayLiteralExpression): E.Either<ParseError, readonly Operation[]> => {
         const elements = node.getElements();
         return pipe(
@@ -315,7 +315,7 @@ export function parseArrayLiteral(scope: Scope) {
 }
 
 
-export function parseObjectLiteralExpression(scope: Scope) {
+function parseObjectLiteralExpression(scope: Scope) {
     return (node: tsm.ObjectLiteralExpression): E.Either<ParseError, readonly Operation[]> => {
         const props = node.getProperties();
         return pipe(
@@ -365,211 +365,40 @@ export function parseObjectLiteralExpression(scope: Scope) {
     }
 }
 
-
-
-// function reduceIdentifier(context: ExpressionChainContext, node: tsm.Identifier): E.Either<ParseError, ExpressionChainContext> {
-
-//     return pipe(
-//         node,
-//         TS.parseSymbol,
-//         E.chain(symbol => pipe(
-//             symbol,
-//             resolve(context.scope),
-//             E.fromOption(() => makeParseError(node)(`Failed to resolve identifier ${symbol.getName()}`))
-//         )),
-//         E.bindTo('cto'),
-//         E.bind('loadOps', ({ cto }) => cto.getLoadOps
-//             ? cto.getLoadOps(context.scope)(node)
-//             : E.left(makeParseError(node)(`${cto.symbol.getName()} does not support load operations`))),
-//         E.map(({ cto, loadOps }) => ({ ...context, cto, ops: ROA.concat(context.ops)(loadOps) }))
-//     )
-// }
-
-// function resolveProperty(context: ExpressionChainContext, node: tsm.PropertyAccessExpression) {
-//     return pipe(
-//         node,
-//         TS.getSymbol,
-//         E.fromOption(() => makeParseError(node)(`Failed to resolve symbol for property access expression`)),
-//         E.chain(symbol => pipe(
-//             // first, try and resolve the property on the current object directly
-//             getProperty(context.cto, symbol),
-//             // if the property isn't found on the current object, try and resolve
-//             // the property on the current object's type
-//             O.alt(() => pipe(
-//                 context.cto,
-//                 O.fromNullable,
-//                 O.map(cto => cto.node.getType()),
-//                 O.chain(TS.getTypeSymbol),
-//                 O.chain(resolveType(context.scope)),
-//                 O.chain(cto => getProperty(cto, symbol))
-//             )),
-//             E.fromOption(() => makeParseError(node)(`Failed to resolve ${symbol.getName()} property`))
-//         ))
-//     )
-
-//     function getProperty(cto: CompileTimeObject | undefined, symbol: tsm.Symbol) {
-//         return cto?.getProperty ? cto.getProperty(symbol) : O.none;
-//     }
-// }
-
-// function reducePropertyAccessExpression(context: ExpressionChainContext, node: tsm.PropertyAccessExpression): ExpressionChainContext {
-
-//     const jumpOps: readonly Operation[] = node.hasQuestionDotToken()
-//         ? [
-//             { kind: "duplicate" },
-//             { kind: "isnull" },
-//             { kind: "jumpif", target: context.endTarget }
-//         ]
-//         : [];
-
-//     const q = pipe(
-//         resolveProperty(context, node),
-//         E.bindTo('cto'),
-//         E.bind('loadOps', ({ cto }) => cto.getLoadOps
-//             ? cto.getLoadOps(context.scope)(node)
-//             : E.left(makeParseError(node)(`${cto.symbol.getName()} does not support load operations`))
-//         ),
-//         E.match(
-//             error => (<ExpressionChainContext>{ ...context, error }),
-//             ({ cto, loadOps }) => {
-//                 return ({ ...context, cto, ops: ROA.concat(context.ops)(loadOps) });
-//             }
-//         )
-
-//     )
-// }
-
-// function resolvePropertyAccessExpression(scope: Scope) {
-//     return (node: tsm.PropertyAccessExpression): O.Option<CompileTimeObject> => {
-//         const expr = node.getExpression();
-//         return pipe(
-//             node,
-//             TS.getSymbol,
-//             O.chain(symbol => pipe(
-//                 expr,
-//                 resolveExpression(scope),
-//                 O.bindTo('exprcto'),
-//                 O.bind('propcto', ({ exprcto }) => pipe(
-//                     exprcto,
-//                     getProperty(symbol),
-//                     O.alt(() => pipe(
-//                         expr.getType(),
-//                         TS.getTypeSymbol,
-//                         O.chain(resolveType(scope)),
-//                         O.chain(getProperty(symbol))
-//                     ))
-//                 ))
-//             )),
-//             O.map(({ exprcto, propcto }) => combineCTO(propcto, exprcto))
-//         );
-//     }
-
-//     function getProperty(symbol: tsm.Symbol) {
-//         return (cto: CompileTimeObject): O.Option<CompileTimeObject> => {
-//             return pipe(
-//                 cto.getProperty,
-//                 O.fromNullable,
-//                 O.chain(getProperty => getProperty(symbol))
-//             )
-//         }
-//     }
-// }
-// function reduceExpressionChain(context: ExpressionChainContext, node: tsm.Expression): E.Either<ParseError, ExpressionChainContext> {
-
-//     switch (node.getKind()) {
-//         // case tsm.SyntaxKind.ArrayLiteralExpression:
-//         // case tsm.SyntaxKind.AsExpression:
-//         // case tsm.SyntaxKind.BigIntLiteral: return reduceBigIntLitera(context, node as tsm.BigIntLiteral);
-//         // case tsm.SyntaxKind.BinaryExpression
-//         // case tsm.SyntaxKind.CallExpression
-//         // case tsm.SyntaxKind.ConditionalExpression
-//         // case tsm.SyntaxKind.ElementAccessExpression
-//         // case tsm.SyntaxKind.FalseKeyword: return reduceBooleanLiteral(context, node as tsm.BooleanLiteral);
-//         // case tsm.SyntaxKind.Identifier: return reduceIdentifier(context, node as tsm.Identifier);
-//         // case tsm.SyntaxKind.NewExpression
-//         // case tsm.SyntaxKind.NonNullExpression
-//         // case tsm.SyntaxKind.NullKeyword: return reduceNullLiteral(context, node as tsm.NullLiteral);
-//         // case tsm.SyntaxKind.NumericLiteral: return reduceNumericLiteral(context, node as tsm.NumericLiteral);
-//         // case tsm.SyntaxKind.ObjectLiteralExpression
-//         // case tsm.SyntaxKind.ParenthesizedExpression
-//         // case tsm.SyntaxKind.PostfixUnaryExpression
-//         // case tsm.SyntaxKind.PrefixUnaryExpression
-//         // case tsm.SyntaxKind.PropertyAccessExpression: return reducePropertyAccessExpression(context, node as tsm.PropertyAccessExpression);
-//         // case tsm.SyntaxKind.StringLiteral: return reduceStringLiteral(context, node as tsm.StringLiteral);
-//         // case tsm.SyntaxKind.TrueKeyword: return reduceBooleanLiteral(context, node as tsm.BooleanLiteral);
-//     }
-
-//     return E.left(makeParseError(node)(`reduceChainContext ${node.getKindName()} not implemented`));
-// }
-
-
-
-// function makeExpressionChain(node: tsm.Expression): ReadonlyNonEmptyArray<tsm.Expression> {
-//     return makeChain(RNEA.of<tsm.Expression>(node));
-
-//     function makeChain(chain: ReadonlyNonEmptyArray<tsm.Expression>): ReadonlyNonEmptyArray<tsm.Expression> {
-//         return pipe(
-//             chain,
-//             RNEA.head,
-//             TS.getExpression,
-//             O.match(
-//                 () => chain,
-//                 expr => makeChain(ROA.prepend(expr)(chain))
-//             )
-//         );
-//     }
-// }
-
-
-// interface ExpressionParserContext {
-//     readonly errors: readonly ParseError[];
-//     readonly scope: Scope;
-//     readonly endTarget: Operation;
-// }
-
-// type ExpressionParser = S.State<ExpressionParserContext, readonly Operation[]>;
-
-// function adaptBigIntLiteral(node: tsm.BigIntLiteral): S.State<ExpressionParserContext, readonly Operation[]> {
-//     return context => {
-//         const value = node.getLiteralValue() as bigint;
-//         const ops = pushInt(value);
-
-//         return [[], context];
-//     }
-// }
-
 export function parseExpression(scope: Scope) {
     return (node: tsm.Expression): E.Either<ParseError, readonly Operation[]> => {
 
+        if (tsm.Node.hasExpression(node)) {
+            return pipe(
+                node,
+                resolveExpression,
+                E.chain(resolved => resolved.getLoadOps(scope)),
+            )
+        }
+
         switch (node.getKind()) {
             case tsm.SyntaxKind.ArrayLiteralExpression: return parseArrayLiteral(scope)(node as tsm.ArrayLiteralExpression);
-            // case tsm.SyntaxKind.AsExpression: return parseAsExpression(scope)(node as tsm.AsExpression);
+            case tsm.SyntaxKind.AsExpression: return parseExpression(scope)((node as tsm.AsExpression).getExpression());
             case tsm.SyntaxKind.BigIntLiteral: return parseBigIntLiteral(node as tsm.BigIntLiteral);
             case tsm.SyntaxKind.BinaryExpression: return parseBinaryExpression(scope)(node as tsm.BinaryExpression);
-            // case tsm.SyntaxKind.CallExpression: return parseCallExpression(scope)(node as tsm.CallExpression);
             case tsm.SyntaxKind.ConditionalExpression: return parseConditionalExpression(scope)(node as tsm.ConditionalExpression);
-            // case tsm.SyntaxKind.ElementAccessExpression: return parseElementAccessExpression(scope)(node as tsm.ElementAccessExpression);
             case tsm.SyntaxKind.FalseKeyword: return parseBooleanLiteral(node as tsm.BooleanLiteral);
-            // case tsm.SyntaxKind.Identifier: return parseIdentifier(scope)(node as tsm.Identifier);
-            // case tsm.SyntaxKind.NewExpression: return parseNewExpression(scope)(node as tsm.NewExpression);
-            // case tsm.SyntaxKind.NonNullExpression: return parseNonNullExpression(scope)(node as tsm.NonNullExpression);
+            case tsm.SyntaxKind.NonNullExpression: return parseExpression(scope)((node as tsm.NonNullExpression).getExpression());
             case tsm.SyntaxKind.NullKeyword: return parseNullLiteral(node as tsm.NullLiteral);
             case tsm.SyntaxKind.NumericLiteral: return parseNumericLiteral(node as tsm.NumericLiteral);
             case tsm.SyntaxKind.ObjectLiteralExpression: return parseObjectLiteralExpression(scope)(node as tsm.ObjectLiteralExpression);
-            // case tsm.SyntaxKind.ParenthesizedExpression: return parseParenthesizedExpression(scope)(node as tsm.ParenthesizedExpression);
+            case tsm.SyntaxKind.ParenthesizedExpression: return parseExpression(scope)((node as tsm.ParenthesizedExpression).getExpression());
             case tsm.SyntaxKind.PostfixUnaryExpression: return parsePostfixUnaryExpression(scope)(node as tsm.PostfixUnaryExpression);
             case tsm.SyntaxKind.PrefixUnaryExpression: return parsePrefixUnaryExpression(scope)(node as tsm.PrefixUnaryExpression);
-            // case tsm.SyntaxKind.PropertyAccessExpression: return parsePropertyAccessExpression(scope)(node as tsm.PropertyAccessExpression);
             case tsm.SyntaxKind.StringLiteral: return parseStringLiteral(node as tsm.StringLiteral);
             case tsm.SyntaxKind.TrueKeyword: return parseBooleanLiteral(node as tsm.BooleanLiteral);
-
         }
 
-        return E.left(makeParseError(node)(`parseExpression ${node.getKindName()} not implemented`));
+        return E.left(makeParseError(node)(`parseExpression ${node.getKindName()} not supported`));
     }
 }
 
-export function parseExpressionAsBoolean(scope: Scope) {
+function parseExpressionAsBoolean(scope: Scope) {
     return (node: tsm.Expression): E.Either<ParseError, readonly Operation[]> => {
         return pipe(
             node,
@@ -579,7 +408,7 @@ export function parseExpressionAsBoolean(scope: Scope) {
     }
 }
 
-export function parseExpressionAsString(scope: Scope) {
+function parseExpressionAsString(scope: Scope) {
     return (node: tsm.Expression): E.Either<ParseError, readonly Operation[]> => {
         return pipe(
             node,
@@ -595,6 +424,41 @@ export function parseExpressionAsString(scope: Scope) {
 
 
 
+interface ResolvedExpression {
+    getLoadOps(scope: Scope): E.Either<ParseError, readonly Operation[]>;
+    getStoreOps(scope: Scope): E.Either<ParseError, readonly Operation[]>;
+ }
+
+function resolveIdentifier(node: tsm.Identifier): E.Either<ParseError, ResolvedExpression> {
+    return E.left(makeParseError(node)(`resolveIdentifier not implemented`));
+}
+
+function resolvePropertyAccessExpression(node: tsm.PropertyAccessExpression): E.Either<ParseError, ResolvedExpression> {
+    return E.left(makeParseError(node)(`resolvePropertyAccessExpression not implemented`));
+}
+
+function resolveElementAccessExpression(node: tsm.ElementAccessExpression): E.Either<ParseError, ResolvedExpression> {
+    return E.left(makeParseError(node)(`resolveElementAccessExpression not implemented`));
+}
+
+function resolveCallExpression(node: tsm.CallExpression): E.Either<ParseError, ResolvedExpression> {
+    return E.left(makeParseError(node)(`resolveCallExpression not implemented`));
+}
+
+function resolveNewExpression(node: tsm.NewExpression): E.Either<ParseError, ResolvedExpression> {
+    return E.left(makeParseError(node)(`resolveNewExpression not implemented`));
+}
+
+function resolveExpression(node: tsm.Expression): E.Either<ParseError, ResolvedExpression> {
+    switch (node.getKind()) {
+        case tsm.SyntaxKind.Identifier: return resolveIdentifier(node as tsm.Identifier);
+        case tsm.SyntaxKind.PropertyAccessExpression: return resolvePropertyAccessExpression(node as tsm.PropertyAccessExpression);
+        case tsm.SyntaxKind.ElementAccessExpression: return resolveElementAccessExpression(node as tsm.ElementAccessExpression);
+        case tsm.SyntaxKind.CallExpression: return resolveCallExpression(node as tsm.CallExpression);
+        case tsm.SyntaxKind.NewExpression: return resolveNewExpression(node as tsm.NewExpression);
+    }
+    return E.left(makeParseError(node)(`resolveExpression ${node.getKindName()} not supported`));
+}
 
 
 
