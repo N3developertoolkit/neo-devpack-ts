@@ -26,7 +26,7 @@ function isJsonString(json: JSON.Json): json is string {
 }
 
 const collectDeclarations =
-    (resolver: Resolver) =>
+    (resolver: SourceFileResolver) =>
         (node: tsm.Node): readonly LibraryDeclaration[] => {
 
             let declarations: readonly LibraryDeclaration[] = ROA.empty;
@@ -51,12 +51,19 @@ const collectDeclarations =
                         break;
                     }
                     case tsm.SyntaxKind.ModuleDeclaration: {
-                        const body = (child as tsm.ModuleDeclaration).getBody();
-                        const modDecls = body ? collectDeclarations(resolver)(body) : [];
-                        declarations = ROA.concat(modDecls)(declarations);
+                        const decl = child as tsm.ModuleDeclaration;
+                        // Ignore namespaces in declaration files. Neo.d.ts doesn't use them and 
+                        // none of the namespaces from the standard TS lib files are supported. 
+                        if (!decl.hasNamespaceKeyword()) {
+                            const body = decl.getBody();
+                            const modDecls = body ? collectDeclarations(resolver)(body) : [];
+                            declarations = ROA.concat(modDecls)(declarations);
+                        }
                         break;
                     }
                     case tsm.SyntaxKind.ExportDeclaration: {
+                        // The only export declarations we expect to see is the empty one in neo.d.ts.
+                        // None of the standard TS lib files have an export declaration.
                         const exports = (child as tsm.ExportDeclaration).getNamedExports();
                         if (ROA.isNonEmpty(exports)) {
                             throw new Error('non empty ExportDeclaration')
@@ -74,7 +81,7 @@ const collectDeclarations =
         }
 
 const collectSourceFileDeclarations =
-    (resolver: Resolver) =>
+    (resolver: SourceFileResolver) =>
         (src: tsm.SourceFile): S.State<readonly LibraryDeclaration[], ReadonlyArray<E.Either<string, tsm.SourceFile>>> =>
             declarations => {
 
@@ -88,7 +95,7 @@ const collectSourceFileDeclarations =
                 const $declarations = collectDeclarations(resolver)(src);
 
                 return [
-                    resolveReferences(resolver)(libs, types),
+                    resolveSourceFiles(resolver)(libs, types),
                     ROA.concat($declarations)(declarations)
                 ];
             }
@@ -96,13 +103,13 @@ const collectSourceFileDeclarations =
 export const collectProjectDeclarations =
     (project: tsm.Project): CompilerState<readonly LibraryDeclaration[]> =>
         diagnostics => {
-            const resolver = makeResolver(project);
-            const $parseLibrarySourceFile = collectSourceFileDeclarations(resolver);
+            const srcResolver = makeSourceFileResolver(project);
+            const $parseLibrarySourceFile = collectSourceFileDeclarations(srcResolver);
 
             const opts = project.compilerOptions.get();
             let { left: failures, right: sources } = pipe(
                 opts,
-                opts => resolveReferences(resolver)(opts.lib ?? [], opts.types ?? []),
+                opts => resolveSourceFiles(srcResolver)(opts.lib ?? [], opts.types ?? []),
                 ROA.partitionMap(identity)
             )
             let parsed: ReadonlySet<string> = ROS.empty;
@@ -131,70 +138,70 @@ export const collectProjectDeclarations =
             return [declarations, ROA.concat($diagnostics)(diagnostics)];
         }
 
-interface Resolver {
+interface SourceFileResolver {
     resolveLib(lib: string): E.Either<string, tsm.SourceFile>,
     resolveTypes(types: string): E.Either<string, tsm.SourceFile>,
 }
 
-function resolveReferences(resolver: Resolver) {
+function resolveSourceFiles(resolver: SourceFileResolver) {
     return (libs: ReadonlyArray<string>, types: ReadonlyArray<string>) => {
         const resolvedLibs = pipe(libs, ROA.map(resolver.resolveLib));
-        const resolbedTypes = pipe(types, ROA.map(resolver.resolveTypes));
-        return ROA.concat(resolvedLibs)(resolbedTypes);
+        const resolvedTypes = pipe(types, ROA.map(resolver.resolveTypes));
+        return ROA.concat(resolvedLibs)(resolvedTypes);
     };
 }
 
-const LIB_PATH = `/node_modules/typescript/lib/`;
-
-function makeResolver(project: tsm.Project): Resolver {
+function makeSourceFileResolver(project: tsm.Project): SourceFileResolver {
 
     const fs = project.getFileSystem();
     const getSourceFile = (path: string) => pipe(project.getSourceFile(path), O.fromNullable);
     const getFile = (path: string) => fs.fileExistsSync(path) ? O.some(fs.readFileSync(path)) : O.none;
     const fileExists = (path: string): O.Option<string> => fs.fileExistsSync(path) ? O.some(path) : O.none;
 
-    const resolveLib = (lib: string) =>
-        pipe(
-            LIB_PATH + lib,
-            getSourceFile,
-            O.alt(() => pipe(LIB_PATH + `lib.${lib}.d.ts`, getSourceFile)),
-            E.fromOption(() => `${lib} library`)
-        )
+    const LIB_PATH = `/node_modules/typescript/lib/`;
+    const resolveLib = (lib: string) => pipe(
+        // First, try and resolve lib as a full file name
+        LIB_PATH + lib,
+        getSourceFile,
+        // If that fails, try and resolve lib as a library name by adding 
+        // the "lib." prefix and the ".d.ts" extension
+        O.alt(() => pipe(LIB_PATH + `lib.${lib}.d.ts`, getSourceFile)),
+        // if neither resolution approach works, return an error
+        E.fromOption(() => `${lib} library`)
+    );
 
-    const resolveTypes = (types: string) =>
-        pipe(
-            // look in node_modules/@types for types package first
-            `/node_modules/@types/${types}/package.json`,
-            fileExists,
-            // look in node_modules/ for types package if doesn't exist under @types 
-            O.alt(() => pipe(`/node_modules/${types}/package.json`, fileExists)),
-            O.chain(pkgJsonPath => pipe(
-                pkgJsonPath,
-                // load package.json file, parse the JSON and cast it to a JsonRecord (aka an object)
-                getFile,
-                O.chain(flow(JSON.parse, O.fromEither)),
-                O.chain(O.fromPredicate(isJsonRecord)),
-                // look in typings and types properties for relative path
-                // to declarations file
-                O.chain(pkgJson => pipe(
+    const resolveTypes = (types: string) => pipe(
+        // First, look in node_modules/@types for types package
+        `/node_modules/@types/${types}/package.json`,
+        fileExists,
+        // if types package doesn't exist under @types, look in node_modules/  
+        O.alt(() => pipe(`/node_modules/${types}/package.json`, fileExists)),
+        // resolve the type information from resolved types package.json to a source file
+        O.chain(pkgJsonPath => pipe(
+            pkgJsonPath,
+            // load package.json file, parse the JSON and cast it to a JsonRecord (aka an object)
+            getFile,
+            O.chain(flow(JSON.parse, O.fromEither)),
+            O.chain(O.fromPredicate(isJsonRecord)),
+            // look in typings and types properties for relative path
+            // to declarations file
+            O.chain(pkgJson => pipe(
+                pkgJson,
+                ROR.lookup('typings'),
+                O.alt(() => pipe(
                     pkgJson,
-                    ROR.lookup('typings'),
-                    O.alt(() => pipe(
-                        pkgJson,
-                        ROR.lookup('types')
-                    ))
-                )),
-                // cast JSON value to string
-                O.chain(O.fromPredicate(isJsonString)),
-                // resolve relative path to absolute path and load as source
-                O.map(path => posix.resolve(posix.dirname(pkgJsonPath), path)),
-                O.chain(getSourceFile)
+                    ROR.lookup('types')
+                ))
             )),
-            E.fromOption(() => `${types} types`)
-        )
+            // cast JSON value to string
+            O.chain(O.fromPredicate(isJsonString)),
+            // resolve relative path to absolute path and load as source file
+            O.map(path => posix.resolve(posix.dirname(pkgJsonPath), path)),
+            O.chain(getSourceFile)
+        )),
+        // if types package cannot be found or loaded, return an error
+        E.fromOption(() => `${types} types`)
+    );
 
-    return {
-        resolveLib,
-        resolveTypes
-    }
+    return { resolveLib, resolveTypes };
 }

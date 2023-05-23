@@ -124,7 +124,7 @@ export function createContractProject() {
             lib: ["lib.es2020.d.ts"],
             types: ["@neo-project/neo-contract-framework"],
             target: tsm.ts.ScriptTarget.ES2020,
-            moduleResolution: tsm.ts.ModuleResolutionKind.NodeJs,
+            moduleResolution: tsm.ts.ModuleResolutionKind.Node10,
         },
         useInMemoryFileSystem: true,
     });
