@@ -66,7 +66,7 @@ declare global {
         PickField1 = 32, // Indicates that only the field 1 of the deserialized values need to be returned. This flag must be set together with <see cref="DeserializeValues"/>.
     }
 
-    export const Storage: StorageConstructor;
+    export const $torage: StorageConstructor;
 
     export interface StorageConstructor {
         readonly context: StorageContext;

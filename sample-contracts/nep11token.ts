@@ -19,7 +19,7 @@ export function decimals() { return DECIMALS; }
 
 /** @safe */
 export function totalSupply(): bigint {
-    const value = Storage.context.get(TOTAL_SUPPLY_KEY);
+    const value = $torage.context.get(TOTAL_SUPPLY_KEY);
     return value ? value.asInteger() : 0n;
 }
 
@@ -27,7 +27,7 @@ export function totalSupply(): bigint {
 export function balanceOf(account: ByteString): bigint {
     if (!account || account.length != 20) throw Error("The argument \"account\" is invalid.");
     const key = concat(BALANCE_PREFIX, account);
-    const value = Storage.context.get(key);
+    const value = $torage.context.get(key);
     return value ? value.asInteger() : 0n;
 }
 
@@ -35,7 +35,7 @@ export function balanceOf(account: ByteString): bigint {
 export function tokensOf(account: ByteString) {
     if (!account || account.length != 20) throw Error("The argument \"account\" is invalid.");
     const prefix = concat(ACCOUNT_TOKEN_PREFIX, account);
-    return Storage.context.keys(prefix, true)
+    return $torage.context.keys(prefix, true)
 }
 
 /** @struct */
@@ -49,7 +49,7 @@ interface TokenState {
 export function transfer(to: ByteString, tokenId: ByteString, data: any) {
     if (!to || to.length != 20) throw Error("The argument \"to\" is invalid.");
     const key = concat(TOKEN_PREFIX, tokenId);
-    const serialzied = Storage.context.get(key);
+    const serialzied = $torage.context.get(key);
     if (!serialzied) {
         log("invalid tokenId");
         return false;
@@ -63,7 +63,7 @@ export function transfer(to: ByteString, tokenId: ByteString, data: any) {
 
     if (owner !== to) {
         token.owner = to;
-        Storage.context.put(key, StdLib.serialize(token));
+        $torage.context.put(key, StdLib.serialize(token));
         updateBalance(owner, tokenId, -1n);
         updateBalance(to, tokenId, 1n);
     }
@@ -84,7 +84,7 @@ function postTransfer(from: ByteString | null, to: ByteString | null, tokenId: B
 /** @safe */
 export function ownerof(tokenId: ByteString) {
     const key = concat(TOKEN_PREFIX, tokenId);
-    const serialzied = Storage.context.get(key);
+    const serialzied = $torage.context.get(key);
     if (serialzied) {
         // const { owner } = StdLib.deserialize(serialzied) as TokenState;
         const token = StdLib.deserialize(serialzied) as TokenState;
@@ -96,15 +96,15 @@ export function ownerof(tokenId: ByteString) {
 
 /** @safe */
 export function tokens() {
-    return Storage.context.keys(TOKEN_PREFIX, true);
+    return $torage.context.keys(TOKEN_PREFIX, true);
 }
 
 // mint
 export function mint(owner: ByteString, name: string, description: string, image: string) {
     if (!checkOwner()) throw Error("Only the contract owner can mint tokens");
 
-    const id = Storage.context.get(TOKENID_KEY)?.asInteger() ?? 0n;
-    Storage.context.put(TOKENID_KEY, ByteString.fromInteger(id + 1n));
+    const id = $torage.context.get(TOKENID_KEY)?.asInteger() ?? 0n;
+    $torage.context.put(TOKENID_KEY, ByteString.fromInteger(id + 1n));
 
     const idString = concat(SYMBOL, ByteString.fromInteger(id));
     const tokenId = CryptoLib.sha256(idString);
@@ -112,7 +112,7 @@ export function mint(owner: ByteString, name: string, description: string, image
     const tokenState: TokenState = { owner, name, description, image };
     const serializedState = StdLib.serialize(tokenState);
     const tokenKey = concat(TOKEN_PREFIX, tokenId);
-    Storage.context.put(tokenKey, serializedState);
+    $torage.context.put(tokenKey, serializedState);
     updateBalance(owner, tokenId, 1n);
     updateTotalSupply(1n);
     postTransfer(null, owner, tokenId, null);
@@ -122,7 +122,7 @@ export function mint(owner: ByteString, name: string, description: string, image
 /** @safe */
 export function properties(tokenId: ByteString) {
     const key = concat(TOKEN_PREFIX, tokenId);
-    const serialzied = Storage.context.get(key);
+    const serialzied = $torage.context.get(key);
     
     // if (serialzied) {
     //     const token = StdLib.deserialize(serialzied) as TokenState;
@@ -140,7 +140,7 @@ export function properties(tokenId: ByteString) {
 export function _deploy(_data: any, update: boolean): void {
     if (update) return;
     const tx = Runtime.scriptContainer as Transaction;
-    Storage.context.put(OWNER_KEY, tx.sender);
+    $torage.context.put(OWNER_KEY, tx.sender);
 }
 
 export function update(nefFile: ByteString, manifest: string) {
@@ -152,25 +152,25 @@ export function update(nefFile: ByteString, manifest: string) {
 }
 
 function checkOwner() {
-    return checkWitness(Storage.context.get(OWNER_KEY)!);
+    return checkWitness($torage.context.get(OWNER_KEY)!);
 }
 
 function updateTotalSupply(increment: bigint) {
-    const totalSupply = Storage.context.get(TOTAL_SUPPLY_KEY)?.asInteger() ?? 0n;
-    Storage.context.put(TOTAL_SUPPLY_KEY, ByteString.fromInteger(totalSupply + increment))
+    const totalSupply = $torage.context.get(TOTAL_SUPPLY_KEY)?.asInteger() ?? 0n;
+    $torage.context.put(TOTAL_SUPPLY_KEY, ByteString.fromInteger(totalSupply + increment))
 
 }
 
 function updateBalance(account: ByteString, tokenId: ByteString, increment: bigint) {
     const balanceKey = concat(BALANCE_PREFIX, account);
-    const balance = Storage.context.get(balanceKey)?.asInteger() ?? 0n;
+    const balance = $torage.context.get(balanceKey)?.asInteger() ?? 0n;
     const newBalance = balance + increment;
     if (newBalance < 0) throw Error();
-    else if (newBalance === 0n) Storage.context.delete(balanceKey);
-    else Storage.context.put(balanceKey, ByteString.fromInteger(newBalance))
+    else if (newBalance === 0n) $torage.context.delete(balanceKey);
+    else $torage.context.put(balanceKey, ByteString.fromInteger(newBalance))
 
     const accountTokenKey = concat(ACCOUNT_TOKEN_PREFIX, concat(account, tokenId));
-    if (increment > 0n) Storage.context.put(accountTokenKey, ByteString.fromInteger(0n))
-    else Storage.context.delete(accountTokenKey);
+    if (increment > 0n) $torage.context.put(accountTokenKey, ByteString.fromInteger(0n))
+    else $torage.context.delete(accountTokenKey);
 }
 

@@ -320,7 +320,7 @@ export const makeGlobalScope =
                 {
                     "ByteString": makeStaticObject,
                     "Error": makeErrorObject,
-                    "Storage": makeStaticObject,
+                    "$torage": makeStaticObject,
                     "Runtime": makeStaticObject,
                 },
                 ROR.collect(StringOrd)((key, value) => pipe(
