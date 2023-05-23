@@ -269,10 +269,6 @@ const makeErrorObject = (decl: tsm.VariableDeclaration) => {
     return makeCompileTimeObject(decl, symbol, { parseCall, parseConstructor });
 }
 
-const isFunctionDeclaration = O.fromPredicate(tsm.Node.isFunctionDeclaration);
-const isInterfaceDeclaration = O.fromPredicate(tsm.Node.isInterfaceDeclaration);
-const isVariableStatement = O.fromPredicate(tsm.Node.isVariableStatement);
-const isEnumDeclaration = O.fromPredicate(tsm.Node.isEnumDeclaration);
 
 function makeStaticObject(decl: tsm.VariableDeclaration) {
     const symbol = decl.getSymbol();
@@ -285,20 +281,19 @@ export const makeGlobalScope =
         diagnostics => {
             let symbolDefs: ReadonlyArray<CompileTimeObject> = ROA.empty;
 
-            const enums = pipe(decls, ROA.filterMap(isEnumDeclaration));
-            const functions = pipe(decls, ROA.filterMap(isFunctionDeclaration));
-            const interfaces = pipe(decls, ROA.filterMap(isInterfaceDeclaration));
-            const varStatements = pipe(decls, ROA.filterMap(isVariableStatement));
-            const variables = pipe(varStatements, ROA.chain(s => s.getDeclarations()));
+            const enums = pipe(decls, ROA.filterMap(O.fromPredicate(tsm.Node.isEnumDeclaration)));
+            const functions = pipe(decls, ROA.filterMap(O.fromPredicate(tsm.Node.isFunctionDeclaration)));
+            const interfaces = pipe(decls, ROA.filterMap(O.fromPredicate(tsm.Node.isInterfaceDeclaration)));
+            const variables = pipe(decls, ROA.filterMap(O.fromPredicate(tsm.Node.isVariableDeclaration)));
+
 
             symbolDefs = pipe(
                 enums,
                 ROA.map(makeEnumObject),
                 ROA.concat(symbolDefs));
             symbolDefs = pipe(
-                varStatements,
-                ROA.filter(TS.hasTag("nativeContract")),
-                ROA.chain(s => s.getDeclarations()),
+                variables,
+                ROA.filter($var => pipe($var.getVariableStatementOrThrow(), TS.hasTag("nativeContract"))),
                 ROA.map(makeStaticObject),
                 ROA.concat(symbolDefs));
             symbolDefs = pipe(

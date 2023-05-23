@@ -5,4 +5,4 @@ export type LibraryDeclaration =
     tsm.FunctionDeclaration |
     tsm.InterfaceDeclaration |
     tsm.TypeAliasDeclaration |
-    tsm.VariableStatement;
+    tsm.VariableDeclaration;

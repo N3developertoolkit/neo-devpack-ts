@@ -34,20 +34,28 @@ const collectDeclarations =
             node.forEachChild(child => {
                 switch (child.getKind()) {
                     case tsm.SyntaxKind.EnumDeclaration:
-                    case tsm.SyntaxKind.FunctionDeclaration:
-                    case tsm.SyntaxKind.InterfaceDeclaration:
-                    case tsm.SyntaxKind.TypeAliasDeclaration:
-                    case tsm.SyntaxKind.VariableStatement:
-                        declarations = ROA.append(child as LibraryDeclaration)(declarations);
+                        declarations = ROA.append<LibraryDeclaration>(child as tsm.EnumDeclaration)(declarations);
                         break;
-
+                    case tsm.SyntaxKind.FunctionDeclaration:
+                        declarations = ROA.append<LibraryDeclaration>(child as tsm.FunctionDeclaration)(declarations);
+                        break;
+                    case tsm.SyntaxKind.InterfaceDeclaration:
+                        declarations = ROA.append<LibraryDeclaration>(child as tsm.InterfaceDeclaration)(declarations);
+                        break;
+                    case tsm.SyntaxKind.TypeAliasDeclaration:
+                        declarations = ROA.append<LibraryDeclaration>(child as tsm.TypeAliasDeclaration)(declarations);
+                        break;
+                    case tsm.SyntaxKind.VariableStatement: {
+                        const varDecls = (child as tsm.VariableStatement).getDeclarations();
+                        declarations = ROA.concat<LibraryDeclaration>(varDecls)(declarations);
+                        break;
+                    }
                     case tsm.SyntaxKind.ModuleDeclaration: {
                         const body = (child as tsm.ModuleDeclaration).getBody();
                         const modDecls = body ? collectDeclarations(resolver)(body) : [];
                         declarations = ROA.concat(modDecls)(declarations);
                         break;
                     }
-
                     case tsm.SyntaxKind.ExportDeclaration: {
                         const exports = (child as tsm.ExportDeclaration).getNamedExports();
                         if (ROA.isNonEmpty(exports)) {
@@ -55,10 +63,8 @@ const collectDeclarations =
                         }
                         break;
                     }
-
                     case tsm.SyntaxKind.EndOfFileToken:
                         break;
-
                     default:
                         throw new CompileError(`collectDeclarations ${child.getKindName()}`, child)
                 }
