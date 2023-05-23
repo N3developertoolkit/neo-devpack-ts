@@ -3,12 +3,12 @@ import { sc, u } from "@cityofzion/neon-core";
 import { flow, identity, pipe } from "fp-ts/lib/function";
 import * as E from "fp-ts/Either";
 import * as ROA from 'fp-ts/ReadonlyArray'
+import * as S from 'fp-ts/State';
 import * as ROR from 'fp-ts/ReadonlyRecord';
 import { Ord as StringOrd } from 'fp-ts/string';
 import * as O from 'fp-ts/Option'
 import * as TS from "../TS";
 
-import { CompilerState } from "../types/CompileOptions";
 import { CompileTimeObject, CompileTimeObjectOptions, Scope, ScopedNodeFunc, createEmptyScope, createScope, makeCompileTimeObject } from "../types/CompileTimeObject";
 import { CompileError, createDiagnostic, isArray, isVoidLike, makeParseError, single, ParseError } from "../utils";
 import { Operation, parseOperation } from "../types/Operation";
@@ -276,10 +276,52 @@ function makeStaticObject(decl: tsm.VariableDeclaration) {
     return makeCompileTimeObject(decl, symbol, { loadOps: [] });
 }
 
+
+
+function dump(decls: readonly LibraryDeclaration[]) {
+    const $$$ = [];
+
+    for (const d of decls) {
+        const name = d.getName();
+        const kind = d.getKindName();
+
+        const type = d.getType();
+        const typesymbol = type.getSymbol();
+        const typename = typesymbol?.getName();
+        const typeid = (type.compilerType as any).id;
+
+
+        $$$.push({ name, kind, typename, typeid })
+    }
+
+    console.table($$$);
+
+}
+
+interface DeclarationState {
+
+}
 export const makeGlobalScope =
-    (decls: readonly LibraryDeclaration[]): CompilerState<Scope> =>
+    (decls: readonly LibraryDeclaration[]): S.State<readonly tsm.ts.Diagnostic[], Scope> =>
         diagnostics => {
             let symbolDefs: ReadonlyArray<CompileTimeObject> = ROA.empty;
+
+            const declMap = new Map<string, readonly LibraryDeclaration[]>();
+            for (const d of decls) {
+                const name = d.getName();
+                if (!name) throw new CompileError("invalid name", d);
+                const list = declMap.get(name) ?? [];
+                declMap.set(name, ROA.append(d)(list));
+            }
+
+            for (const d of decls) {
+                // if (d.getKind() === tsm.SyntaxKind.TypeAliasDeclaration) continue;
+                // const type = d.getType();
+                // // NaN and Infinity are numbers so don't have symbols;
+                // if (type.isNumber()) continue;
+                const symbol = d.getType().getSymbol();
+                if (!symbol) console.log(`symbol not found ${d.getName()} ${d.getKindName()}`);
+            }
 
             const enums = pipe(decls, ROA.filterMap(O.fromPredicate(tsm.Node.isEnumDeclaration)));
             const functions = pipe(decls, ROA.filterMap(O.fromPredicate(tsm.Node.isFunctionDeclaration)));

@@ -52,5 +52,3 @@ export interface CompileContext {
     readonly options: Readonly<Required<CompileOptions>>;
     readonly project: tsm.Project;
 }
-
-export type CompilerState<T> = S.State<readonly tsm.ts.Diagnostic[], T>;

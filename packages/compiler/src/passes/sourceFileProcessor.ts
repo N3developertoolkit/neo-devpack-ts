@@ -2,9 +2,10 @@ import * as tsm from "ts-morph";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as TS from '../TS';
 import * as E from "fp-ts/Either";
+import * as S from 'fp-ts/State';
 
 import { flow, identity, pipe } from "fp-ts/function";
-import { CompiledProject, CompilerState, ContractEvent, ContractMethod, ContractSlot } from "../types/CompileOptions";
+import { CompiledProject, ContractEvent, ContractMethod, ContractSlot } from "../types/CompileOptions";
 import { parseContractMethod } from "./functionDeclarationProcessor";
 import { handleVariableStatement } from "./variableStatementProcessor";
 import { Operation } from "../types/Operation";
@@ -170,7 +171,7 @@ const reduceSourceFile =
 
 export const parseProject =
     (project: tsm.Project) =>
-        (globalScope: Scope): CompilerState<CompiledProject> =>
+        (globalScope: Scope): S.State<readonly tsm.ts.Diagnostic[], CompiledProject> =>
             (diagnostics) => {
 
                 const ctx: ParseSourceContext = {

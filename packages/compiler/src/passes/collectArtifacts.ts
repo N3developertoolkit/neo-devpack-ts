@@ -5,10 +5,10 @@ import { flow, pipe } from "fp-ts/function";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROS from 'fp-ts/ReadonlySet'
 import * as E from 'fp-ts/Either'
-
+import * as S from 'fp-ts/State'
 import { CallOperation, CallTokenOperation, convertJumpOperationKind, convertJumpTargetOps, convertLoadStoreKind, convertSimpleOperationKind, getOperationSize, isCallOp, isCallTokenOp, isConvertOp, isInitSlotOp, isInitStaticOperation, isJumpOffsetOp, isJumpTargetOp, isLoadStoreOp, isPushBoolOp, isPushDataOp, isPushIntOp, isSimpleOp, isSysCallOp, JumpOffsetOperation, LoadStoreOperation, Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "../types/Operation";
 import { asContractParamType, asReturnType, convertBigInteger, createDiagnostic, E_fromSeparated } from "../utils";
-import { CompiledProject, CompiledProjectArtifacts, CompileOptions, CompilerState, ContractEvent, ContractMethod } from "../types/CompileOptions";
+import { CompiledProject, CompiledProjectArtifacts, CompileOptions, ContractEvent, ContractMethod } from "../types/CompileOptions";
 import { DebugInfoMethod, makeDebugInfo, SequencePoint } from "../types/DebugInfo";
 
 function collectMethodTokens(methods: ReadonlyArray<ContractMethod>): ReadonlyArray<sc.MethodToken> {
@@ -319,7 +319,7 @@ function collectPermissions(
 
 export const collectArtifacts =
     (name: string, options: CompileOptions) =>
-        (compiledProject: CompiledProject): CompilerState<Partial<CompiledProjectArtifacts>> =>
+        (compiledProject: CompiledProject): S.State<readonly tsm.ts.Diagnostic[], Partial<CompiledProjectArtifacts>> =>
             diagnostics => {
                 const { left:jumpConvertErrors, right: methods} = pipe(
                     compiledProject.methods,

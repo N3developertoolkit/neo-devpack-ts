@@ -14,7 +14,6 @@ import * as ROR from 'fp-ts/ReadonlyRecord';
 import * as STR from 'fp-ts/string';
 
 import { CompileError, createDiagnostic } from "../utils";
-import { CompilerState } from "../types/CompileOptions";
 import { LibraryDeclaration } from "../types/LibraryDeclaration";
 
 function isJsonRecord(json: JSON.Json): json is JSON.JsonRecord {
@@ -65,9 +64,7 @@ const collectDeclarations =
                         // The only export declarations we expect to see is the empty one in neo.d.ts.
                         // None of the standard TS lib files have an export declaration.
                         const exports = (child as tsm.ExportDeclaration).getNamedExports();
-                        if (ROA.isNonEmpty(exports)) {
-                            throw new Error('non empty ExportDeclaration')
-                        }
+                        if (ROA.isNonEmpty(exports)) throw new CompileError('non empty ExportDeclaration', child)
                         break;
                     }
                     case tsm.SyntaxKind.EndOfFileToken:
@@ -101,7 +98,7 @@ const collectSourceFileDeclarations =
             }
 
 export const collectProjectDeclarations =
-    (project: tsm.Project): CompilerState<readonly LibraryDeclaration[]> =>
+    (project: tsm.Project): S.State<readonly tsm.ts.Diagnostic[], readonly LibraryDeclaration[]> =>
         diagnostics => {
             const srcResolver = makeSourceFileResolver(project);
             const $parseLibrarySourceFile = collectSourceFileDeclarations(srcResolver);
