@@ -83,11 +83,11 @@ declare global {
         // combinations of Flag Options:
 
         // with and without RemovePrefix. Default to removing the prefix
-        // entries(prefix?: ByteString, keepPrefix?: boolean): Iterator<[ByteString, ByteString]>;
+        entries(prefix?: ByteString, keepPrefix?: boolean): Iterator<[ByteString, ByteString]>;
         // KeysOnly with and without RemovePrefix, Default to removing the prefix
-        // keys(prefix?: ByteString, keepPrefix?: boolean): Iterator<ByteString>;
+        keys(prefix?: ByteString, keepPrefix?: boolean): Iterator<ByteString>;
         // ValuesOnly
-        // values(prefix?: ByteString): Iterator<ByteString>;
+        values(prefix?: ByteString): Iterator<ByteString>;
 
         // this interface will need a mechanism for surfacing the DeserializeValues option.
         // for now, author can simply call StdLib.deserialize, but that's a pricy call to execute
