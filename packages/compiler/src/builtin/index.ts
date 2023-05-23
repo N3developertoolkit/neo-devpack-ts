@@ -14,6 +14,11 @@ import { CompileError, ParseError, createDiagnostic, makeParseDiagnostic } from 
 import { parseEnumDecl } from "../passes/parseDeclarations";
 import { Operation, parseOperation } from "../types/Operation";
 import { create } from "domain";
+import { makeByteString } from "./bytestring";
+import { makeCallContract } from "./callContract";
+import { makeRuntime } from "./runtime";
+import { makeStorage } from "./storage";
+import { makeError } from "./error";
 
 
 
@@ -167,10 +172,25 @@ function makeStackItemTypes(ctx: GlobalScopeContext) {
 }
 
 
+const makerFunctions = [
+    // metadata driven built ins
+    makeEnumObjects,
+    makeNativeContracts,
+    makeOperationFunctions,
+    makeStackItemTypes,
+    makeSyscallFunctions,
+    // explicit built ins
+    makeByteString,
+    makeCallContract,
+    makeError,
+    makeRuntime,
+    makeStorage
+]
 
 
 
-export function makeGlobalScope2(decls: readonly LibraryDeclaration[]): S.State<readonly tsm.ts.Diagnostic[], Scope> {
+
+export function makeGlobalScope(decls: readonly LibraryDeclaration[]): S.State<readonly tsm.ts.Diagnostic[], Scope> {
     return diagnostics => {
         const errors: tsm.ts.Diagnostic[] = [];
         const objects: CompileTimeObject[] = [];
@@ -200,12 +220,7 @@ export function makeGlobalScope2(decls: readonly LibraryDeclaration[]): S.State<
             addType: (obj: CompileTimeObject) => { types.push(obj); }
         }
 
-        // make all the metadata-driven built ins
-        makeEnumObjects(context);
-        makeNativeContracts(context);
-        makeSyscallFunctions(context);
-        makeOperationFunctions(context);
-        makeStackItemTypes(context);
+        makerFunctions.forEach(maker => maker(context));
 
         diagnostics = ROA.concat(errors)(diagnostics);
         return pipe(

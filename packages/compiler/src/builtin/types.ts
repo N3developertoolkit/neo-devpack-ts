@@ -17,7 +17,7 @@ export interface GlobalScopeContext {
     addError(error: tsm.ts.Diagnostic): void;
 }
 
-export function parseTypeSymbol(node: LibraryDeclaration) {
+export function parseSymbol(node: LibraryDeclaration) {
     return pipe(
         node,
         TS.getSymbol,
@@ -25,7 +25,7 @@ export function parseTypeSymbol(node: LibraryDeclaration) {
     );
 }
 
-export function parseSymbol(node: LibraryDeclaration) {
+export function parseTypeSymbol(node: LibraryDeclaration) {
     return pipe(
         node.getType(),
         TS.getTypeSymbol,
