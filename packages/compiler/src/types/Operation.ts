@@ -251,7 +251,7 @@ export interface PushDataOperation {
 export const isPushDataOp = (op: Operation): op is PushDataOperation => op.kind === 'pushdata';
 
 export function pushString(value: string, location?: Location): PushDataOperation {
-    const op = { kind: 'pushdata', value: Buffer.from(value, 'utf8')  } as PushDataOperation;
+    const op = { kind: 'pushdata', value: Buffer.from(value, 'utf8') } as PushDataOperation;
     return location ? { ...op, location } : op;
 }
 
@@ -539,6 +539,24 @@ export const convertJumpOffsetOps =
             ROA.sequence(E.Applicative)
         )
     }
+
+export function getIntegerConvertOps(type: tsm.Type): readonly Operation[] {
+    if (isBigIntLike(type) || isNumberLike(type)) return [];
+    if (isBooleanLike(type)) {
+        return [
+            { kind: 'jumpifnot', offset: 3 },
+            pushInt(0),
+            { kind: "jump", offset: 2 },
+            pushInt(1),
+            { kind: 'noop' }
+        ];
+    }
+    if (isStringLike(type)) {
+        const token = new sc.MethodToken({ hash: CONST.NATIVE_CONTRACT_HASH.StdLib, method: "atoi", hasReturnValue: true, parametersCount: 1 })
+        return [{ kind: 'calltoken', token }]
+    }
+    return [{ kind: "convert", type: sc.StackItemType.Integer }];
+}
 
 export function getStringConvertOps(type: tsm.Type): readonly Operation[] {
 
