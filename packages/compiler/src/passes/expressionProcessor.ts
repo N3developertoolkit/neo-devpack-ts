@@ -52,8 +52,9 @@ interface ExpressionHeadContext {
 }
 
 interface ExpressionContext extends ExpressionHeadContext {
-    readonly node: tsm.Expression;
+    readonly node: tsm.Expression | tsm.ShorthandPropertyAssignment;
     readonly type: tsm.Type;
+    readonly cto?: CompileTimeObject;
 
     readonly getOps: () => E.Either<ParseError, readonly Operation[]>;
     readonly getStoreOps: () => E.Either<ParseError, readonly Operation[]>;
@@ -126,7 +127,7 @@ function reduceObjectLiteral(context: ExpressionHeadContext, node: tsm.ObjectLit
         ROA.map(prop => pipe(
             E.Do,
             E.bind('key', () => TS.parseSymbol(prop)),
-            E.bind('value', () => reduceObjectLiteralProperty(context.scope, prop))
+            E.bind('value', () => reduceObjectLiteralProperty(context, prop))
         )),
         ROA.sequence(E.Applicative),
         E.map(props => {
@@ -147,38 +148,33 @@ function reduceObjectLiteral(context: ExpressionHeadContext, node: tsm.ObjectLit
 
     )
 
-    function reduceObjectLiteralProperty(scope: Scope, node: tsm.ObjectLiteralElementLike): E.Either<ParseError, ExpressionContext> {
+    function reduceObjectLiteralProperty(context: ExpressionHeadContext, node: tsm.ObjectLiteralElementLike): E.Either<ParseError, ExpressionContext> {
         const makeError = makeParseError(node);
 
         if (tsm.Node.isPropertyAssignment(node)) {
             return pipe(
                 node.getInitializer(),
                 E.fromNullable(makeError('invalid initializer')),
-                E.chain(resolveExpression(scope))
+                E.chain(resolveExpression(context.scope))
             )
         }
 
         if (tsm.Node.isShorthandPropertyAssignment(node)) {
             return pipe(
                 node.getObjectAssignmentInitializer(),
-                E.fromPredicate(
-                    init => !init,
-                    () => makeError(`shorthand property assignment initializer not supported`)
-                ),
-                E.chain(() => TS.parseSymbol(node)),
-                E.chain(flow(resolveSymbol(scope), E.mapLeft(makeError)))
+                init => init 
+                    ? E.left(makeError(`shorthand property assignment initializer not supported`)) 
+                    : E.of(node),
+                E.chain(resolveSymbol(context))
             )
         }
+
         return E.left(makeError(`reduceObjectLiteralProperty ${node.getKindName()} not supported`));
     }
 }
 
 function reduceIdentifier(context: ExpressionHeadContext, node: tsm.Identifier): E.Either<ParseError, ExpressionContext> {
-    return pipe(
-        node,
-        TS.parseSymbol,
-        E.chain(flow(resolveSymbol(context.scope), E.mapLeft(makeParseError(node))))
-    )
+    return pipe(node, resolveSymbol(context))
 }
 
 function reduceConditionalExpression(context: ExpressionHeadContext, node: tsm.ConditionalExpression): E.Either<ParseError, ExpressionContext> {
@@ -319,7 +315,7 @@ function reduceBinaryExpression(context: ExpressionHeadContext, node: tsm.Binary
             // The comma (,) operator evaluates each of its operands (from left to right)
             // and returns the value of the last operand.
             case tsm.SyntaxKind.CommaToken: {
-                const dropOps = isVoidLike(left.type) || TS.isAssignmentExpression(left.node)
+                const dropOps = isVoidLike(left.type) || (tsm.Node.isExpression(left.node) && TS.isAssignmentExpression(left.node))
                     ? ROA.empty
                     : ROA.of<Operation>({ kind: "drop" });
 
@@ -526,12 +522,34 @@ function reduceExpressionTail(node: tsm.Expression) {
     };
 }
 
-function resolveSymbol(scope: Scope) {
-    return (symbol: tsm.Symbol): E.Either<string, ExpressionContext> => {
-        return E.left((`resolveSymbol not implemented (${symbol.getName()})`));
+function resolveSymbol(context: ExpressionHeadContext) {
+    return (node: tsm.Identifier | tsm.ShorthandPropertyAssignment) => {
+        const makeError = makeParseError(node);
+        return pipe(
+            node,
+            TS.parseSymbol,
+            E.chain(symbol => pipe(
+                symbol,
+                resolve(context.scope),
+                E.fromOption(() => makeError(`failed to resolve ${symbol.getName()}`))
+            )),
+            E.map(cto => {
+                // TODO: CTO -> getOps/getStoreOps
+                const getOps = () => E.left(makeError(`symbol getOps not implemented`));
+                const getStoreOps = () => E.left(makeError(`symbol getStoreOps not implemented`));
+
+                return <ExpressionContext>{
+                    ...context,
+                    node,
+                    type: cto.node.getType(),
+                    cto,
+                    getOps,
+                    getStoreOps
+                }
+            })
+        )
     }
 }
-
 
 function resolveExpression(scope: Scope) {
     return (node: tsm.Expression): E.Either<ParseError, ExpressionContext> => {
