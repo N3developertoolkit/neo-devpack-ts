@@ -7,7 +7,7 @@ import * as O from 'fp-ts/Option'
 
 import { collectProjectDeclarations } from "./passes/collectProjectDeclarations";
 import { collectArtifacts } from "./passes/collectArtifacts";
-import { makeGlobalScope } from "./passes/builtins";
+import { makeGlobalScope } from "./builtin";
 import { parseProject } from "./passes/sourceFileProcessor";
 import { CompileOptions, CompileArtifacts } from "./types/CompileOptions";
 

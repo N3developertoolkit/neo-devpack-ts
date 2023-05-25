@@ -6,7 +6,7 @@
  */
 
 const VALUE_KEY = ByteString.fromHex("0x00");
-const VALUE_KEY_LENGTH = VALUE_KEY.length;
+// const VALUE_KEY_LENGTH = VALUE_KEY.length;
 // const OWNER_KEY = ByteString.fromHex("0xFF");
 
 // /** @safe */

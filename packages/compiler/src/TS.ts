@@ -138,3 +138,10 @@ export const parseSymbol = (node: tsm.Node): E.Either<ParseError, tsm.Symbol> =>
         E.fromOption(() => makeParseError(node)('invalid symbol'))
     );
 };
+
+// export function getTypeId(type: tsm.Node| tsm.Type) {
+//     const $type = type instanceof tsm.Type ? type : type.getType();
+//     const id = ($type.compilerType as any).id as number;
+//     if (typeof id !== 'number') throw new Error(`invalid type id: ${id}`);
+//     return id;
+// }

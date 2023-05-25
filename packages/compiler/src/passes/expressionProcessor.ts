@@ -512,12 +512,10 @@ function reduceExpressionTail(node: tsm.Expression) {
             case tsm.SyntaxKind.CallExpression:
             case tsm.SyntaxKind.ElementAccessExpression:
             case tsm.SyntaxKind.NewExpression:
-            case tsm.SyntaxKind.PropertyAccessExpression: {
+            case tsm.SyntaxKind.PropertyAccessExpression: 
                 return E.left(makeParseError(node)(`reduceExpressionTail ${node.getKindName()} not implemented`));
-            }
-            default: {
+            default: 
                 return E.left(makeParseError(node)(`reduceExpressionTail ${node.getKindName()} not supported`));
-            }
         }
     };
 }
@@ -568,7 +566,6 @@ function resolveExpression(scope: Scope) {
 
 export function parseExpression(scope: Scope) {
     return (node: tsm.Expression): E.Either<ParseError, readonly Operation[]> => {
-
         return pipe(
             node,
             resolveExpression(scope),
