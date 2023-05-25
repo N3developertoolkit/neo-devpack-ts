@@ -71,13 +71,14 @@ export interface Scope {
 }
 
 function createSymbolMap(ctos: readonly CompileTimeObject[]): E.Either<string, ReadonlyMap<tsm.Symbol, CompileTimeObject>> {
+    // since there is at least one scenario where symbols are resolved by name (object literal shorthand properties) 
+    // rather than symbol, ensure there are no duplicate names
     const names = pipe(ctos, ROA.map(d => d.symbol.getName()));
     const diff = pipe(names, ROA.difference(STR.Eq)(pipe(names, ROA.uniq(STR.Eq))));
     return diff.length === 0
         ? E.of(new Map(ctos.map(v => [v.symbol, v])) as ReadonlyMap<tsm.Symbol, CompileTimeObject>)
         : E.left(`validateDefs duplicate names: ${diff.join(', ')}`);
 }
-
 
 export const createEmptyScope = (parentScope?: Scope): Scope => {
     return {
@@ -123,6 +124,13 @@ export const resolve = (scope: Scope) => (symbol: tsm.Symbol): O.Option<CompileT
         ))
     );
 };
+
+export const resolveName = (scope: Scope) => (name: string): O.Option<CompileTimeObject> => {
+    for (const [symbol, cto] of scope.symbols.entries()) {
+        if (symbol.getName() === name) return O.some(cto);
+    }
+    return O.isSome(scope.parentScope) ? resolveName(scope.parentScope.value)(name) : O.none;
+}
 
 export const resolveType = (scope: Scope) => (symbol: tsm.Symbol): O.Option<CompileTimeObject> => {
     return pipe(

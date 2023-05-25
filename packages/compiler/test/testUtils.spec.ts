@@ -76,3 +76,7 @@ export function createTestVariable(node: tsm.VariableDeclaration) {
     return { node, symbol, loadOp, storeOp, loadOps: [loadOp], storeOps: [storeOp] };
 }
 
+export function expectPushData(op: Operation, value: string) {
+    expect(op).has.property('kind', 'pushdata');
+    expect(op).has.deep.property('value', Buffer.from(value, 'utf8'));
+}

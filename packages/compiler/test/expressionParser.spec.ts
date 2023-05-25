@@ -6,7 +6,7 @@ import { identity, pipe } from 'fp-ts/function';
 import * as E from 'fp-ts/Either';
 import { parseExpression } from '../src/passes/expressionProcessor';
 import { createEmptyScope } from '../src/types/CompileTimeObject';
-import { createTestGlobalScope, createTestProject, createTestScope, createTestVariable, testParseExpression } from "./testUtils.spec";
+import { createTestGlobalScope, createTestProject, createTestScope, createTestVariable, expectPushData, testParseExpression } from "./testUtils.spec";
 import { Operation } from '../src/types/Operation';
 import { sc } from '@cityofzion/neon-core';
 import { ts } from 'ts-morph';
@@ -55,8 +55,7 @@ describe("expression parser", () => {
             const result = testLiteral(contract);
 
             expect(result).lengthOf(1);
-            expect(result[0]).has.property('kind', 'pushdata');
-            expect(result[0]).has.deep.property('value', Buffer.from("Hello, World!", 'utf8'));
+            expectPushData(result[0], "Hello, World!");
         });
 
         it("boolean literal", () => {
@@ -109,6 +108,58 @@ describe("expression parser", () => {
             );
             expect(result.node).to.equal(init);
         });
+
+        it("array literal", () => {
+            const contract = /*javascript*/ `const $VAR = [10,20,30,40,50];`;
+            const result = testLiteral(contract);
+
+            expect(result).lengthOf(7);
+            expect(result[0]).deep.equals({ kind: 'pushint', value: 10n });
+            expect(result[1]).deep.equals({ kind: 'pushint', value: 20n });
+            expect(result[2]).deep.equals({ kind: 'pushint', value: 30n });
+            expect(result[3]).deep.equals({ kind: 'pushint', value: 40n });
+            expect(result[4]).deep.equals({ kind: 'pushint', value: 50n });
+            expect(result[5]).deep.equals({ kind: 'pushint', value: 5n });
+            expect(result[6]).deep.equals({ kind: 'packarray' });
+        });
+
+        describe("object literal", () => {
+            it("property", () => {
+                const contract = /*javascript*/ `const $VAR = { a: 10, b:20 };`;
+                const result = testLiteral(contract);
+
+                expect(result).lengthOf(6);
+                expect(result[0]).deep.equals({ kind: 'pushint', value: 10n });
+                expectPushData(result[1], "a");
+                expect(result[2]).deep.equals({ kind: 'pushint', value: 20n });
+                expectPushData(result[3], "b");
+                expect(result[4]).deep.equals({ kind: 'pushint', value: 2n });
+                expect(result[5]).deep.equals({ kind: 'packmap' });
+            });
+
+            it("shorthand property", () => {
+                const contract = /*javascript*/ `const a = 10; const b = 20; const $VAR = { a, b };`;
+                const { sourceFile } = createTestProject(contract);
+
+                const a = sourceFile.getVariableDeclarationOrThrow('a');
+                const aCTO = createTestVariable(a);
+                const b = sourceFile.getVariableDeclarationOrThrow('b');
+                const bCTO = createTestVariable(b);
+                const scope = createTestScope(undefined, [aCTO, bCTO])
+    
+                const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+                const result = testParseExpression(init, scope);
+    
+                expect(result).lengthOf(6);
+                expect(result[0]).equals(aCTO.loadOp);
+                expectPushData(result[1], "a");
+                expect(result[2]).equals(bCTO.loadOp);
+                expectPushData(result[3], "b");
+                expect(result[4]).deep.equals({ kind: 'pushint', value: 2n });
+                expect(result[5]).deep.equals({ kind: 'packmap' });
+            });
+        })
+
     });
 
     describe("identifier", () => {

@@ -1,15 +1,13 @@
 import * as tsm from "ts-morph";
-import { flow, pipe } from 'fp-ts/function';
+import { pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option';
 import * as TS from "../TS";
 import { getBooleanConvertOps, getIntegerConvertOps, getStringConvertOps, Operation, pushInt, pushString } from "../types/Operation";
-import { CompileTimeObject, resolve, Scope } from "../types/CompileTimeObject";
+import { CompileTimeObject, resolve, resolveName, Scope } from "../types/CompileTimeObject";
 import { ParseError, isStringLike, isVoidLike, makeParseError } from "../utils";
-import { parseSymbol } from "../builtin/types";
-import { reduceRight } from "fp-ts/lib/Foldable";
 
 export function makeConditionalExpression({ condition, whenTrue, whenFalse }: {
     condition: readonly Operation[];
@@ -161,11 +159,20 @@ function reduceObjectLiteral(context: ExpressionHeadContext, node: tsm.ObjectLit
 
         if (tsm.Node.isShorthandPropertyAssignment(node)) {
             return pipe(
-                node.getObjectAssignmentInitializer(),
-                init => init 
-                    ? E.left(makeError(`shorthand property assignment initializer not supported`)) 
-                    : E.of(node),
-                E.chain(resolveSymbol(context))
+                node,
+                E.fromPredicate(
+                    node => !node.hasObjectAssignmentInitializer(),
+                    () => makeError(`shorthand property assignment initializer not supported`)),
+                E.chain(TS.parseSymbol),
+                // TS compiler doesn't use the same symbol instance for shorthand properties
+                // as it does for identifiers. So we have to resolve the property by name.
+                E.map(symbol => symbol.getName()),
+                E.chain(name => pipe(
+                    name,
+                    resolveName(context.scope),
+                    E.fromOption(() => makeError(`shorthand property assignment ${name} not found`))
+                )),
+                E.map(makeContextFromCTO(context, node))
             )
         }
 
@@ -512,9 +519,9 @@ function reduceExpressionTail(node: tsm.Expression) {
             case tsm.SyntaxKind.CallExpression:
             case tsm.SyntaxKind.ElementAccessExpression:
             case tsm.SyntaxKind.NewExpression:
-            case tsm.SyntaxKind.PropertyAccessExpression: 
+            case tsm.SyntaxKind.PropertyAccessExpression:
                 return E.left(makeParseError(node)(`reduceExpressionTail ${node.getKindName()} not implemented`));
-            default: 
+            default:
                 return E.left(makeParseError(node)(`reduceExpressionTail ${node.getKindName()} not supported`));
         }
     };
@@ -531,22 +538,26 @@ function resolveSymbol(context: ExpressionHeadContext) {
                 resolve(context.scope),
                 E.fromOption(() => makeError(`failed to resolve ${symbol.getName()}`))
             )),
-            E.map(cto => {
-                const getOps = () => E.of(cto.loadOps);
-                const getStoreOps = () => cto.storeOps 
-                    ? E.of(cto.storeOps) 
-                    : E.left(makeError(`symbol ${cto.symbol.getName()} has no storeOps`));
-
-                return <ExpressionContext>{
-                    ...context,
-                    node,
-                    type: cto.node.getType(),
-                    cto,
-                    getOps,
-                    getStoreOps
-                }
-            })
+            E.map(makeContextFromCTO(context, node))
         )
+    }
+}
+
+function makeContextFromCTO(context: ExpressionHeadContext, node: tsm.Node) {
+    return (cto: CompileTimeObject) => {
+        const getOps = () => E.of(cto.loadOps);
+        const getStoreOps = () => cto.storeOps
+            ? E.of(cto.storeOps)
+            : E.left(makeParseError(node)(`symbol ${cto.symbol.getName()} has no storeOps`));
+
+        return <ExpressionContext>{
+            ...context,
+            node,
+            type: cto.node.getType(),
+            cto,
+            getOps,
+            getStoreOps
+        }
     }
 }
 
