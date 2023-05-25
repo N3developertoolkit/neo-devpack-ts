@@ -42,6 +42,7 @@ describe("expression parser", () => {
 
         });
     });
+
     describe("literals", () => {
 
         function testLiteral(contract: string) {
@@ -194,4 +195,47 @@ describe("expression parser", () => {
             expect(result[1]).equals(helloCTO.storeOp);
         });
     });
+
+    it("conditional expression", () => {
+        const contract = /*javascript*/`const $VAR = true ? 42 : 0;`;
+        const { sourceFile } = createTestProject(contract);
+
+        const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+        const result = testParseExpression(init);
+
+        expect(result).lengthOf(7);
+        expect(result[0]).deep.equals({ kind: 'pushbool', value: true });
+        expect(result[1]).deep.equals({ kind: 'jumpifnot', target: result[4] });
+        expect(result[2]).deep.equals({ kind: 'pushint', value: 42n });
+        expect(result[3]).deep.equals({ kind: 'jump', target: result[6] });
+        expect(result[4]).deep.equals({ kind: 'noop', });
+        expect(result[5]).deep.equals({ kind: 'pushint', value: 0n });
+        expect(result[6]).deep.equals({ kind: 'noop', });
+    })
+
+    describe("postfix unary expression", () => {
+
+        function testExpresion(contract: string, kind: string) {
+            const { sourceFile } = createTestProject(contract);
+
+            const hello = sourceFile.getVariableDeclarationOrThrow('$hello');
+            const helloCTO = createTestVariable(hello);
+            const scope = createTestScope(undefined, helloCTO);
+
+            const node = sourceFile.forEachChildAsArray()[1].asKindOrThrow(tsm.SyntaxKind.ExpressionStatement);
+            const result = testParseExpression(node.getExpression(), scope);
+
+            expect(result).lengthOf(4);
+            expect(result[0]).equals(helloCTO.loadOp);
+            expect(result[1]).deep.equals({ kind: 'duplicate' });
+            expect(result[2]).deep.equals({ kind });
+            expect(result[3]).equals(helloCTO.storeOp);
+        }
+
+        it("increment", () => {testExpresion(/*javascript*/`let $hello = 42; $hello++;`, 'increment')});
+
+        it("decrement", () => {testExpresion(/*javascript*/`let $hello = 42; $hello--;`, 'decrement')});
+    });
+
+    // TODO: tests for prefix unary and binary expressions 
 });
