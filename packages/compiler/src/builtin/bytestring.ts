@@ -19,7 +19,7 @@ export function makeByteString(ctx: GlobalScopeContext) {
         O.bindTo("node"),
         O.bind("symbol", ({ node }) => TS.getSymbol(node)),
         // TODO: real CTO
-        O.map(({ node, symbol }) => <CompileTimeObject>{ node, symbol }),
+        O.map(({ node, symbol }) => <CompileTimeObject>{ node, symbol, loadOps: [] }),
         O.match(
             () => ctx.addError(createDiagnostic("could not find ByteString variable")),
             ctx.addObject

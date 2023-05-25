@@ -53,7 +53,7 @@ function makeNativeContracts(ctx: GlobalScopeContext) {
                 node,
                 parseSymbol,
                 // TODO: real CTO
-                E.map(symbol => <CompileTimeObject>{ node, symbol }),
+                E.map(symbol => <CompileTimeObject>{ node, symbol, loadOps: [] }),
             )),
             ROA.separate
         );
@@ -70,7 +70,7 @@ function makeNativeContracts(ctx: GlobalScopeContext) {
                 node,
                 parseTypeSymbol,
                 // TODO: real CTO
-                E.map(symbol => <CompileTimeObject>{ node, symbol }),
+                E.map(symbol => <CompileTimeObject>{ node, symbol, loadOps: [] }),
             )),
             ROA.separate
         );
@@ -107,7 +107,7 @@ function makeOperationFunctions(ctx: GlobalScopeContext) {
                 E.mapLeft(msg => createDiagnostic(msg, { node }))
             )),
             // TODO: real CTO
-            E.map(({ symbol, operations }) => <CompileTimeObject>{ node, symbol }),
+            E.map(({ symbol, operations }) => <CompileTimeObject>{ node, symbol, loadOps: [] }),
         );
     }
 
@@ -145,7 +145,7 @@ function makeSyscallFunctions(ctx: GlobalScopeContext) {
                 E.fromOption(() => createDiagnostic(`Invalid @syscall tag for ${node.getName()}`, { node }),
                 ))),
             // TODO: real CTO
-            E.map(({ symbol, serviceName }) => <CompileTimeObject>{ node, symbol }),
+            E.map(({ symbol, serviceName }) => <CompileTimeObject>{ node, symbol, loadOps: [] }),
         );
     }
 }
@@ -166,7 +166,7 @@ function makeStackItemTypes(ctx: GlobalScopeContext) {
             E.Do,
             E.bind("symbol", () => pipe(node, parseTypeSymbol)),
             // TODO: real CTO
-            E.map(({ symbol }) => <CompileTimeObject>{ node, symbol }),
+            E.map(({ symbol }) => <CompileTimeObject>{ node, symbol, loadOps: [] }),
         );
     }
 }

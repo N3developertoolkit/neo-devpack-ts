@@ -1,5 +1,6 @@
 import 'mocha';
 import { assert, expect } from 'chai';
+import * as tsm from 'ts-morph';
 
 import { identity, pipe } from 'fp-ts/function';
 import * as E from 'fp-ts/Either';
@@ -8,6 +9,7 @@ import { createEmptyScope } from '../src/types/CompileTimeObject';
 import { createTestGlobalScope, createTestProject, createTestScope, createTestVariable, testParseExpression } from "./testUtils.spec";
 import { Operation } from '../src/types/Operation';
 import { sc } from '@cityofzion/neon-core';
+import { ts } from 'ts-morph';
 
 describe("expression parser", () => {
     describe.skip("foo", () => {
@@ -109,9 +111,9 @@ describe("expression parser", () => {
         });
     });
 
-    describe.skip("identifier", () => {
+    describe("identifier", () => {
         it("load", () => {
-            const contract = /*javascript*/`const $hello: ByteString = null!; const $VAR = $hello;`;
+            const contract = /*javascript*/`const $hello = 42; const $VAR = $hello;`;
             const { sourceFile } = createTestProject(contract);
 
             const hello = sourceFile.getVariableDeclarationOrThrow('$hello');
@@ -123,6 +125,22 @@ describe("expression parser", () => {
 
             expect(result).lengthOf(1);
             expect(result[0]).equals(helloCTO.loadOp);
+        });
+
+        it("store", () => {
+            const contract = /*javascript*/`let $hello: number; $hello = 42;`;
+            const { sourceFile } = createTestProject(contract);
+
+            const hello = sourceFile.getVariableDeclarationOrThrow('$hello');
+            const helloCTO = createTestVariable(hello);
+            const scope = createTestScope(undefined, helloCTO);
+
+            const node = sourceFile.forEachChildAsArray()[1].asKindOrThrow(tsm.SyntaxKind.ExpressionStatement);
+            const result = testParseExpression(node.getExpression(), scope);
+
+            expect(result).lengthOf(2);
+            expect(result[0]).deep.equals({ kind: 'pushint', value: 42n });
+            expect(result[1]).equals(helloCTO.storeOp);
         });
     });
 });

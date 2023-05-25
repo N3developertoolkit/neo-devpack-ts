@@ -532,9 +532,10 @@ function resolveSymbol(context: ExpressionHeadContext) {
                 E.fromOption(() => makeError(`failed to resolve ${symbol.getName()}`))
             )),
             E.map(cto => {
-                // TODO: CTO -> getOps/getStoreOps
-                const getOps = () => E.left(makeError(`symbol getOps not implemented`));
-                const getStoreOps = () => E.left(makeError(`symbol getStoreOps not implemented`));
+                const getOps = () => E.of(cto.loadOps);
+                const getStoreOps = () => cto.storeOps 
+                    ? E.of(cto.storeOps) 
+                    : E.left(makeError(`symbol ${cto.symbol.getName()} has no storeOps`));
 
                 return <ExpressionContext>{
                     ...context,

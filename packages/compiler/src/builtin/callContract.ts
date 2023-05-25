@@ -19,7 +19,7 @@ export function makeCallContract(ctx: GlobalScopeContext) {
         O.bindTo("node"),
         O.bind("symbol", ({ node }) => TS.getSymbol(node)),
         // TODO: real CTO
-        O.map(({ node, symbol }) => <CompileTimeObject>{ node, symbol }),
+        O.map(({ node, symbol }) => <CompileTimeObject>{ node, symbol, loadOps: [] }),
         O.match(
             () => ctx.addError(createDiagnostic("could not find callContract function")),
             ctx.addObject

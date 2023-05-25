@@ -18,12 +18,15 @@ export type GetPropertyFunc = (symbol: tsm.Symbol) => O.Option<CompileTimeObject
 export interface CompileTimeObject {
     readonly node: tsm.Node;
     readonly symbol: tsm.Symbol;
-    // readonly loadOps?: ReadonlyArray<Operation>;
+
+    readonly loadOps: ReadonlyArray<Operation>;
     readonly storeOps?: ReadonlyArray<Operation>;
-    readonly getProperty?: GetPropertyFunc;
-    readonly parseCall?: ScopedNodeFunc<tsm.CallExpression>;
-    readonly parseConstructor?: ScopedNodeFunc<tsm.NewExpression>;
-    readonly getLoadOps?: ScopedNodeFunc<tsm.Expression>;
+
+    // readonly storeOps?: ReadonlyArray<Operation>;
+    // readonly getProperty?: GetPropertyFunc;
+    // readonly parseCall?: ScopedNodeFunc<tsm.CallExpression>;
+    // readonly parseConstructor?: ScopedNodeFunc<tsm.NewExpression>;
+    // readonly getLoadOps?: ScopedNodeFunc<tsm.Expression>;
 }
 
 export interface CompileTimeObjectOptions {
@@ -34,29 +37,30 @@ export interface CompileTimeObjectOptions {
     readonly parseConstructor?: ScopedNodeFunc<tsm.NewExpression>;
 }
 
-export function makeGetProperty(options: CompileTimeObjectOptions): GetPropertyFunc | undefined {
-    const getProperty = options.getProperty;
-    if (!getProperty) return undefined;
+// export function makeGetProperty(options: CompileTimeObjectOptions): GetPropertyFunc | undefined {
+//     const getProperty = options.getProperty;
+//     if (!getProperty) return undefined;
 
-    // if getProperty is a function, return it as is
-    if (typeof getProperty === 'function') return getProperty;
+//     // if getProperty is a function, return it as is
+//     if (typeof getProperty === 'function') return getProperty;
 
-    // if getProperty is an array of CompileTimeObjects, create a map and
-    // return a method that looks up the provided symbol in the map
-    const map = new Map(getProperty.map(cto => [cto.symbol, cto] as const));
-    return (symbol) => O.fromNullable(map.get(symbol));
-}
+//     // if getProperty is an array of CompileTimeObjects, create a map and
+//     // return a method that looks up the provided symbol in the map
+//     const map = new Map(getProperty.map(cto => [cto.symbol, cto] as const));
+//     return (symbol) => O.fromNullable(map.get(symbol));
+// }
 
 export function makeCompileTimeObject(node: tsm.Node, symbol: tsm.Symbol, options: CompileTimeObjectOptions): CompileTimeObject {
     const getLoadOps = options.loadOps ? <ScopedNodeFunc<tsm.Expression>>((scope) => (node) => E.of(options.loadOps)) : undefined;
     return {
         node,
         symbol,
-        storeOps: options.storeOps,
-        getLoadOps,
-        getProperty: makeGetProperty(options),
-        parseCall: options.parseCall,
-        parseConstructor: options.parseConstructor,
+        loadOps: options.loadOps ?? [],
+        // storeOps: options.storeOps,
+        // getLoadOps,
+        // getProperty: makeGetProperty(options),
+        // parseCall: options.parseCall,
+        // parseConstructor: options.parseConstructor,
     };
 }
 

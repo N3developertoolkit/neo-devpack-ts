@@ -40,9 +40,10 @@ function handleIdentifierBinding(
             O.chain(O.fromPredicate(isPushOp)),
             O.match(
                 () => {
-                    const def = factory(node, symbol, 0);
-                    const ops = ROA.concat(def.storeOps ?? [])(initOps);
-                    return E.of([ROA.of(def), ops] as const)
+                    return E.left(makeParseError(node)(`handleIdentifierBinding disabled`));
+                    // const def = factory(node, symbol, 0);
+                    // const ops = ROA.concat(def.storeOps ?? [])(initOps);
+                    // return E.of([ROA.of(def), ops] as const)
                 },
                 op => {
                     const def = makeConstant(node, symbol, op);
@@ -87,7 +88,7 @@ function handleArrayBindingPattern(
                             { kind: "duplicate", location: def.node },
                             pushInt(index),
                             { kind: 'pickitem' },
-                            ...def.storeOps ?? []
+                            // ...def.storeOps ?? []
                         ] as readonly Operation[]),
                         // for the last binding element, pick the specified key
                         // from the object without duplicating
@@ -96,7 +97,7 @@ function handleArrayBindingPattern(
                             const lastOps: readonly Operation[] = [
                                 pushInt(index, def.node),
                                 { kind: 'pickitem' },
-                                ...def.storeOps ?? []
+                                // ...def.storeOps ?? []
                             ];
                             return ROA.append(lastOps)(ops);
                         },
@@ -150,7 +151,7 @@ function handleObjectBindingPattern(
                             { kind: "duplicate", location: def.node },
                             pushString(name),
                             { kind: 'pickitem' },
-                            ...def.storeOps ?? []
+                            // ...def.storeOps ?? []
                         ] as readonly Operation[]),
                         // for the last binding element, pick the specified key
                         // from the object without duplicating
@@ -159,7 +160,7 @@ function handleObjectBindingPattern(
                             const lastOps: readonly Operation[] = [
                                 pushString(name, def.node),
                                 { kind: 'pickitem' },
-                                ...def.storeOps ?? []
+                                // ...def.storeOps ?? []
                             ];
                             return ROA.append(lastOps)(ops);
                         },

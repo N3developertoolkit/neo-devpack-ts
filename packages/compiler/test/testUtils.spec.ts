@@ -72,7 +72,7 @@ export function testParseExpression(node: tsm.Expression, scope?: Scope) {
 export function createTestVariable(node: tsm.VariableDeclaration) {
     const symbol = node.getSymbolOrThrow();
     const loadOp = { kind: 'noop', debug: `${node.getName()}.load` } as Operation;
-    const getLoadOps: ScopedNodeFunc<tsm.Expression> = (_scope) => (_node) => E.of(ROA.of(loadOp));
-    return { node, symbol, loadOp, getLoadOps  }
+    const storeOp = { kind: 'noop', debug: `${node.getName()}.store` } as Operation;
+    return { node, symbol, loadOp, storeOp, loadOps: [loadOp], storeOps: [storeOp] };
 }
 
