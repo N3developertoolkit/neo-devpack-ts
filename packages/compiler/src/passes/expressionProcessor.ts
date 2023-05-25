@@ -7,7 +7,7 @@ import * as O from 'fp-ts/Option';
 import * as TS from "../TS";
 import { getBooleanConvertOps, getIntegerConvertOps, getStringConvertOps, Operation, pushInt, pushString } from "../types/Operation";
 import { CompileTimeObject, resolve, resolveName, Scope } from "../types/CompileTimeObject";
-import { ParseError, isStringLike, isVoidLike, makeParseError } from "../utils";
+import { ParseError, isIntegerLike, isStringLike, isVoidLike, makeParseError } from "../utils";
 
 export function makeConditionalExpression({ condition, whenTrue, whenFalse }: {
     condition: readonly Operation[];
@@ -396,8 +396,13 @@ function reduceBinaryExpression(context: ExpressionHeadContext, node: tsm.Binary
 
 function reducePostfixUnaryExpression(context: ExpressionHeadContext, node: tsm.PostfixUnaryExpression): E.Either<ParseError, ExpressionContext> {
     const kind = node.getOperatorToken() === tsm.SyntaxKind.PlusPlusToken ? "increment" : "decrement";
+    const operand = node.getOperand();
+    if (!isIntegerLike(operand.getType())) {
+        E.left(makeParseError(node)(`arithmetic operations only supported on integer types`));
+    }
+
     return pipe(
-        node.getOperand(),
+        operand,
         resolveExpression(context.scope),
         E.map(context => {
             const getStoreOps = () => E.left(makeParseError(node)(`store unary expression not supported`));
@@ -420,9 +425,13 @@ function reducePostfixUnaryExpression(context: ExpressionHeadContext, node: tsm.
 function reducePrefixUnaryExpression(context: ExpressionHeadContext, node: tsm.PrefixUnaryExpression): E.Either<ParseError, ExpressionContext> {
     const operator = node.getOperatorToken();
     const operand = node.getOperand();
+    const operandType = operand.getType();
     switch (operator) {
         case tsm.SyntaxKind.PlusPlusToken:
         case tsm.SyntaxKind.MinusMinusToken: {
+            if (!isIntegerLike(operandType)) {
+                E.left(makeParseError(node)(`arithmetic operations only supported on integer types`));
+            }
             const kind = operator === tsm.SyntaxKind.PlusPlusToken ? "increment" : "decrement";
             return pipe(
                 operand,
@@ -444,16 +453,20 @@ function reducePrefixUnaryExpression(context: ExpressionHeadContext, node: tsm.P
                 })
             )
         }
-        case tsm.SyntaxKind.PlusToken:
-            return makeContext(operand, getIntegerConvertOps(node.getType()));
-        case tsm.SyntaxKind.MinusToken: {
-            const additionalOps = ROA.append<Operation>({ kind: "negate" })(getIntegerConvertOps(node.getType()));
+        case tsm.SyntaxKind.PlusToken: {
+            const additionalOps = pipe(operandType, getIntegerConvertOps);
             return makeContext(operand, additionalOps);
         }
-        case tsm.SyntaxKind.TildeToken:
-            return makeContext(operand, [{ kind: "invert" }]);
+        case tsm.SyntaxKind.MinusToken: {
+            const additionalOps = pipe(operandType, getIntegerConvertOps, ROA.append<Operation>({ kind: "negate" }));
+            return makeContext(operand, additionalOps);
+        }
+        case tsm.SyntaxKind.TildeToken: {
+            const additionalOps = pipe(operandType, getIntegerConvertOps, ROA.append<Operation>({ kind: "invert" }));
+            return makeContext(operand, additionalOps);
+        }
         case tsm.SyntaxKind.ExclamationToken: {
-            const additionalOps = ROA.append<Operation>({ kind: "not" })(getBooleanConvertOps(node.getType()));
+            const additionalOps = pipe(operandType, getBooleanConvertOps, ROA.append<Operation>({ kind: "not" }));
             return makeContext(operand, additionalOps);
         }
     }

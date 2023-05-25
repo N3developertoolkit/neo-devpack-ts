@@ -153,6 +153,7 @@ export const isBooleanLike = (type: tsm.Type) => checkFlags(type, tsm.ts.TypeFla
 export const isNumberLike = (type: tsm.Type) => checkFlags(type, tsm.ts.TypeFlags.NumberLike);
 export const isStringLike = (type: tsm.Type) => checkFlags(type, tsm.ts.TypeFlags.StringLike);
 export const isVoidLike = (type: tsm.Type) => checkFlags(type, tsm.ts.TypeFlags.VoidLike);
+export const isIntegerLike = (type: tsm.Type) => isBigIntLike(type) || isNumberLike(type);
 
 export function isConst(node: tsm.TypeNode) {
     if (tsm.Node.isTypeReference(node)) {
