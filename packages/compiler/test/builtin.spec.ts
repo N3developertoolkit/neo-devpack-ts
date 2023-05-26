@@ -83,6 +83,40 @@ describe("builts-ins", () => {
         });
     })
 
+    describe("syscall functions", () => {
+        it("burnGas", () => {
+            const contract = /*javascript*/`burnGas(10n);`;
+            const { project, sourceFile } = createTestProject(contract);
+            const scope = createTestGlobalScope(project);
+            const expr = sourceFile.forEachChildAsArray()[0]
+                .asKindOrThrow(tsm.SyntaxKind.ExpressionStatement).getExpression();
+            const result = testParseExpression(expr, scope);
+
+            expect(result).length(2);
+            expect(result[0]).deep.equals({ kind: 'pushint', value: 10n })
+            expect(result[1]).deep.equals({ kind: 'syscall', name: "System.Runtime.BurnGas" })
+        });
+
+        
+        it("checkWitness", () => {
+            const contract = /*javascript*/`const account: ByteString = null!; checkWitness(account);`;
+            const { project, sourceFile } = createTestProject(contract);
+            const globalScope = createTestGlobalScope(project);
+
+            const account = sourceFile.getVariableDeclarationOrThrow('account');
+            const accountCTO = createTestVariable(account);
+            const scope = createTestScope(globalScope, accountCTO)
+
+            const expr = sourceFile.forEachChildAsArray()[1]
+                .asKindOrThrow(tsm.SyntaxKind.ExpressionStatement).getExpression();
+            const result = testParseExpression(expr, scope);
+
+            expect(result).length(2);
+            expect(result[0]).equals(accountCTO.loadOp);
+            expect(result[1]).deep.equals({ kind: 'syscall', name: "System.Runtime.CheckWitness" })
+        });
+    });
+
     describe.skip("ByteStringConstructor", () => {
         it("fromHex", () => {
             const contract = /*javascript*/`const $VAR = ByteString.fromHex("0xFF");`;

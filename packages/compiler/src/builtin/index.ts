@@ -7,10 +7,10 @@ import * as ROR from 'fp-ts/ReadonlyRecord';
 import * as S from 'fp-ts/State';
 import * as TS from "../TS";
 
-import { CompileTimeObject, Scope, createEmptyScope, createScope } from "../types/CompileTimeObject";
+import { CompileTimeObject, InvokeResolver, Scope, createEmptyScope, createScope } from "../types/CompileTimeObject";
 import { LibraryDeclaration } from "../types/LibraryDeclaration";
-import { GlobalScopeContext, parseSymbol, parseTypeSymbol } from "./types";
-import { CompileError, ParseError, createDiagnostic, makeParseDiagnostic } from "../utils";
+import { GlobalScopeContext, makeInvokeResolver, parseSymbol, parseTypeSymbol } from "./types";
+import { CompileError, ParseError, createDiagnostic, isArray, makeParseDiagnostic, makeParseError } from "../utils";
 import { parseEnumDecl } from "../passes/parseDeclarations";
 import { Operation, parseOperation } from "../types/Operation";
 import { create } from "domain";
@@ -123,6 +123,9 @@ function makeOperationFunctions(ctx: GlobalScopeContext) {
 
 }
 
+
+
+
 function makeSyscallFunctions(ctx: GlobalScopeContext) {
     const { left: errors, right: objects } = pipe(
         ctx.decls,
@@ -144,8 +147,11 @@ function makeSyscallFunctions(ctx: GlobalScopeContext) {
                 TS.getTagComment('syscall'),
                 E.fromOption(() => createDiagnostic(`Invalid @syscall tag for ${node.getName()}`, { node }),
                 ))),
-            // TODO: real CTO
-            E.map(({ symbol, serviceName }) => <CompileTimeObject>{ node, symbol, loadOps: [] }),
+            E.map(({ symbol, serviceName }) => {
+                const op = <Operation>{ kind:'syscall', name: serviceName };
+                const call = makeInvokeResolver(node, op);
+                return <CompileTimeObject>{ node, symbol, loadOps: [], call };
+            }),
         );
     }
 }
@@ -178,7 +184,7 @@ const makerFunctions = [
     // makeNativeContracts,
     // makeOperationFunctions,
     // makeStackItemTypes,
-    // makeSyscallFunctions,
+    makeSyscallFunctions,
     // // explicit built ins
     // makeByteString,
     // makeCallContract,
