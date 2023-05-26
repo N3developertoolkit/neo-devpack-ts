@@ -4,10 +4,10 @@ import { identity, pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as S from 'fp-ts/State';
 import * as E from 'fp-ts/Either';
-import { createContractProject } from '../src/utils';
+import { createContractProject, isArray } from '../src/utils';
 import { collectProjectDeclarations } from '../src/passes/collectProjectDeclarations';
 import { parseExpression } from '../src/passes/expressionProcessor';
-import { CompileTimeObject, CompileTimeType, Scope, createEmptyScope, updateScope } from '../src/types/CompileTimeObject';
+import { CompileTimeObject, CompileTimeType, PropertyResolver, Scope, createEmptyScope, updateScope } from '../src/types/CompileTimeObject';
 import { Operation } from '../src/types/Operation';
 import { makeGlobalScope } from '../src/builtin'
 
@@ -66,14 +66,37 @@ export function testParseExpression(node: tsm.Expression, scope?: Scope) {
     );
 }
 
-export function createTestVariable(node: tsm.VariableDeclaration) {
-    const symbol = node.getSymbolOrThrow();
-    const loadOp = { kind: 'noop', debug: `${node.getName()}.load` } as Operation;
-    const storeOp = { kind: 'noop', debug: `${node.getName()}.store` } as Operation;
-    return { node, symbol, loadOp, storeOp, loadOps: [loadOp], storeOps: [storeOp] };
+interface CreateTestVariableOptions {
+    name?: string;
+    symbol?: tsm.Symbol;
+    properties?: ReadonlyMap<string, PropertyResolver>;
+}
+
+export function createTestVariable(node: tsm.Node, options?: CreateTestVariableOptions) {
+    const symbol = options?.symbol ?? node.getSymbolOrThrow();
+    const name = options?.name ?? (tsm.Node.hasName(node) ? node.getName() : symbol.getName());
+    const loadOp = { kind: 'noop', debug: `${name}.load` } as Operation;
+    const storeOp = { kind: 'noop', debug: `${name}.store` } as Operation;
+    return { node, symbol, loadOp, storeOp, loadOps: [loadOp], storeOps: [storeOp], properties: options?.properties };
 }
 
 export function expectPushData(op: Operation, value: string) {
     expect(op).has.property('kind', 'pushdata');
     expect(op).has.deep.property('value', Buffer.from(value, 'utf8'));
+}
+
+export function createPropResolver(cto: CompileTimeObject): PropertyResolver {
+    return (opsFunc) => pipe(
+        opsFunc(),
+        E.map(ops => {
+            const loadOps = ROA.concat(cto.loadOps)(ops);
+            const storeOps = cto.storeOps ? ROA.concat(cto.storeOps)(ops) : undefined;
+            return { ...cto, loadOps, storeOps, } as CompileTimeObject;
+        })
+    );
+}
+
+export function createPropResolvers(properties: CompileTimeObject | readonly CompileTimeObject[]): ReadonlyMap<string, PropertyResolver> {
+    properties = isArray(properties) ? properties : ROA.of(properties);
+    return new Map(properties.map(cto => [cto.symbol.getName(), createPropResolver(cto)]));
 }

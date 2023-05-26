@@ -9,8 +9,8 @@ import * as STR from 'fp-ts/string';
 import { Operation } from "./Operation";
 import { CompileError, ParseError, isArray } from "../utils";
 
-type GetOpsFunc = () => E.Either<ParseError, readonly Operation[]>;
-type PropertyResolver = (func: GetOpsFunc) => E.Either<ParseError, CompileTimeObject>;
+export type GetOpsFunc = () => E.Either<ParseError, readonly Operation[]>;
+export type PropertyResolver = (func: GetOpsFunc) => E.Either<ParseError, CompileTimeObject>;
 
 export interface CompileTimeObject {
     readonly node: tsm.Node;
@@ -18,7 +18,7 @@ export interface CompileTimeObject {
 
     readonly loadOps: ReadonlyArray<Operation>;
     readonly storeOps?: ReadonlyArray<Operation>;
-    readonly properties?: ReadonlyMap<tsm.Symbol, PropertyResolver>;
+    readonly properties?: ReadonlyMap<string, PropertyResolver>;
 }
 
 export interface CompileTimeType {

@@ -1,48 +1,14 @@
 import 'mocha';
-import { assert, expect } from 'chai';
+import { expect } from 'chai';
 import * as tsm from 'ts-morph';
 
 import { identity, pipe } from 'fp-ts/function';
 import * as E from 'fp-ts/Either';
 import { parseExpression } from '../src/passes/expressionProcessor';
-import { createEmptyScope } from '../src/types/CompileTimeObject';
-import { createTestGlobalScope, createTestProject, createTestScope, createTestVariable, expectPushData, testParseExpression } from "./testUtils.spec";
-import { Operation } from '../src/types/Operation';
-import { sc } from '@cityofzion/neon-core';
-import { ts } from 'ts-morph';
+import { CompileTimeType, createEmptyScope } from '../src/types/CompileTimeObject';
+import { createPropResolver, createPropResolvers, createTestProject, createTestScope, createTestVariable, expectPushData, testParseExpression } from "./testUtils.spec";
 
 describe("expression parser", () => {
-    describe.skip("foo", () => {
-        it("Storage.readonlyContext.get('key')!.asInteger()", () => {
-            const contract = /*javascript*/`const $VAR = Storage.readonlyContext.get("key")!.asInteger();`;
-            const { project, sourceFile } = createTestProject(contract);
-            const scope = createTestGlobalScope(project);
-
-            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
-            const result = testParseExpression(init, scope);
-
-            expect(result).has.length(4);
-            expect(result[0]).deep.equals({ kind: 'pushdata', value: Buffer.from("key", 'utf8') });
-            expect(result[1]).deep.equals({ kind: 'syscall', name: "System.Storage.GetReadOnlyContext" })
-            expect(result[2]).deep.equals({ kind: 'syscall', name: "System.Storage.Get" })
-            expect(result[3]).deep.equals({ kind: 'convert', type: sc.StackItemType.Integer });
-        });
-
-        it("Storage.readonlyContext.get('key')?.asInteger() ?? 0n", () => {
-            // const value = Storage.context.get(key);
-            // return value?.asInteger() ?? 0n;
-            // Storage.context.get(TOTAL_SUPPLY_KEY)!.asInteger();
-
-            const contract = /*javascript*/`const $VAR = Storage.readonlyContext.get('key')?.asInteger() ?? 0n;`;
-            const { project, sourceFile } = createTestProject(contract);
-            const scope = createTestGlobalScope(project);
-
-            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
-            const result = testParseExpression(init, scope);
-
-        });
-    });
-
     describe("literals", () => {
 
         function testLiteral(contract: string) {
@@ -147,10 +113,10 @@ describe("expression parser", () => {
                 const b = sourceFile.getVariableDeclarationOrThrow('b');
                 const bCTO = createTestVariable(b);
                 const scope = createTestScope(undefined, [aCTO, bCTO])
-    
+
                 const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
                 const result = testParseExpression(init, scope);
-    
+
                 expect(result).lengthOf(6);
                 expect(result[0]).equals(aCTO.loadOp);
                 expectPushData(result[1], "a");
@@ -190,13 +156,14 @@ describe("expression parser", () => {
             const node = sourceFile.forEachChildAsArray()[1].asKindOrThrow(tsm.SyntaxKind.ExpressionStatement);
             const result = testParseExpression(node.getExpression(), scope);
 
-            expect(result).lengthOf(2);
+            expect(result).lengthOf(3);
             expect(result[0]).deep.equals({ kind: 'pushint', value: 42n });
-            expect(result[1]).equals(helloCTO.storeOp);
+            expect(result[1]).deep.equals({ kind: 'duplicate' });
+            expect(result[2]).equals(helloCTO.storeOp);
         });
     });
 
-    it("conditional expression", () => {
+    it("conditional", () => {
         const contract = /*javascript*/`const $VAR = true ? 42 : 0;`;
         const { sourceFile } = createTestProject(contract);
 
@@ -213,7 +180,7 @@ describe("expression parser", () => {
         expect(result[6]).deep.equals({ kind: 'noop', });
     })
 
-    describe("postfix unary expression", () => {
+    describe("postfix unary", () => {
 
         function testExpresion(contract: string, kind: string) {
             const { sourceFile } = createTestProject(contract);
@@ -232,10 +199,101 @@ describe("expression parser", () => {
             expect(result[3]).equals(helloCTO.storeOp);
         }
 
-        it("increment", () => {testExpresion(/*javascript*/`let $hello = 42; $hello++;`, 'increment')});
+        it("increment", () => { testExpresion(/*javascript*/`let $hello = 42; $hello++;`, 'increment') });
 
-        it("decrement", () => {testExpresion(/*javascript*/`let $hello = 42; $hello--;`, 'decrement')});
+        it("decrement", () => { testExpresion(/*javascript*/`let $hello = 42; $hello--;`, 'decrement') });
     });
 
-    // TODO: tests for prefix unary and binary expressions 
+    describe.skip("prefix unary", () => {
+        // TODO: add tests
+    });
+
+    describe.skip("binary", () => {
+        // TODO: add tests
+    });
+
+    describe("property access", () => {
+        it("object property", () => {
+            const contract = /*javascript*/`const test = { value: 42 }; const $VAR = test.value;`;
+            const { sourceFile } = createTestProject(contract);
+
+            const test = sourceFile.getVariableDeclarationOrThrow('test');
+            const testInit = test.getInitializerOrThrow().asKindOrThrow(tsm.SyntaxKind.ObjectLiteralExpression);
+            const valueCTO = createTestVariable(testInit.getPropertyOrThrow("value"));
+
+            const properties = createPropResolvers(valueCTO);
+
+            const testCTO = createTestVariable(test, { properties });
+            const scope = createTestScope(undefined, testCTO);
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+
+            expect(result).lengthOf(2);
+            expect(result[0]).equals(testCTO.loadOp);
+            expect(result[1]).equals(valueCTO.loadOp);
+        });
+
+        it("type property", () => {
+            const contract = /*javascript*/`
+                interface Test { value: number; }
+                const test:Test = null!;
+                const $VAR = test.value;`;
+            const { sourceFile } = createTestProject(contract);
+
+            const testInterface = sourceFile.getInterfaceOrThrow('Test');
+            const testInterfaceType = testInterface.getType();
+            const value = testInterfaceType.getPropertyOrThrow('value');
+            const valueCTO = createTestVariable(value.getValueDeclarationOrThrow());
+            const properties = new Map([[value, createPropResolver(valueCTO)]])
+
+            const testInterfaceCTT: CompileTimeType = { type: testInterfaceType, properties };
+
+            const test = sourceFile.getVariableDeclarationOrThrow('test');
+            const testCTO = createTestVariable(test);
+            const scope = createTestScope(undefined, testCTO, testInterfaceCTT);
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+
+            expect(result).lengthOf(2);
+            expect(result[0]).equals(testCTO.loadOp);
+            expect(result[1]).equals(valueCTO.loadOp);
+        });
+
+        it("store object property", () => {
+            const contract = /*javascript*/`const test = { value: 42 }; test.value = 42;`;
+            const { sourceFile } = createTestProject(contract);
+
+            const test = sourceFile.getVariableDeclarationOrThrow('test');
+            const testInit = test.getInitializerOrThrow().asKindOrThrow(tsm.SyntaxKind.ObjectLiteralExpression);
+            const valueCTO = createTestVariable(testInit.getPropertyOrThrow("value"));
+
+            const properties = createPropResolvers(valueCTO);
+
+            const testCTO = createTestVariable(test, { properties });
+            const scope = createTestScope(undefined, testCTO);
+
+            const init = sourceFile.forEachChildAsArray()[1].asKindOrThrow(tsm.SyntaxKind.ExpressionStatement).getExpression();
+            const result = testParseExpression(init, scope);
+
+            expect(result).lengthOf(4);
+            expect(result[0]).deep.equals({ kind: 'pushint', value: 42n })
+            expect(result[1]).deep.equals({ kind: 'duplicate' })
+            expect(result[2]).equals(testCTO.loadOp);
+            expect(result[3]).equals(valueCTO.storeOp);
+
+        });
+
+        it("store type property", () => {
+            const contract = /*javascript*/`
+                interface Hello { world: number; }
+                const $hello:Hello = null!;
+                $hello.world = 42;`;
+            const { sourceFile } = createTestProject(contract);
+
+        });
+
+
+    })
 });

@@ -6,7 +6,7 @@ import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option';
 import * as TS from "../TS";
 import { getBooleanConvertOps, getIntegerConvertOps, getStringConvertOps, Operation, pushInt, pushString } from "../types/Operation";
-import { CompileTimeObject, CompileTimeType, resolve, resolveName, Scope } from "../types/CompileTimeObject";
+import { CompileTimeObject, CompileTimeType, resolve, resolveName, resolveType, Scope } from "../types/CompileTimeObject";
 import { ParseError, isIntegerLike, isStringLike, isVoidLike, makeParseError } from "../utils";
 
 export function makeConditionalExpression({ condition, whenTrue, whenFalse }: {
@@ -239,24 +239,27 @@ function reduceBinaryExpression(context: ExpressionHeadContext, node: tsm.Binary
         })
     )
 
+    function makeAssignment(left: ExpressionContext, right: E.Either<ParseError, readonly Operation[]>): E.Either<ParseError, readonly Operation[]> {
+        return pipe(
+            E.Do,
+            E.bind('left', () => left.getStoreOps()),
+            E.bind('right', () => right),
+            E.map(({ left, right }) => pipe(
+                right,
+                ROA.append<Operation>({ kind: 'duplicate' }),
+                ROA.concat(left),
+            ))
+        )
+    }
+
     function makeGetOps(operator: tsm.ts.BinaryOperator, left: ExpressionContext, right: ExpressionContext): () => E.Either<ParseError, readonly Operation[]> {
         if (operator === tsm.SyntaxKind.EqualsToken) {
-            return () => pipe(
-                E.Do,
-                E.bind('left', () => left.getStoreOps()),
-                E.bind('right', () => right.getOps()),
-                E.map(({ left, right }) => ROA.concat(left)(right))
-            )
+            return () => makeAssignment(left, right.getOps());
         }
 
         const mappedOperator = TS.compoundAssignmentOperatorMap.get(operator);
         if (mappedOperator) {
-            return () => pipe(
-                E.Do,
-                E.bind('left', () => left.getStoreOps()),
-                E.bind('right', () => pipe(getOperatorOps(mappedOperator, left, right))),
-                E.map(({ left, right }) => ROA.concat(left)(right))
-            )
+            return () => makeAssignment(left, getOperatorOps(mappedOperator, left, right));
         }
 
         return () => pipe(getOperatorOps(operator, left, right));
@@ -282,7 +285,7 @@ function reduceBinaryExpression(context: ExpressionHeadContext, node: tsm.Binary
             )
         }
 
-        // for any of the operators with a direct operation correlary, push the operations for the 
+        // for any of the operators with a direct operation corollary, push the operations for the 
         // left and right hand side expressions, then push the correlatated operation.
         const operatorOperation = binaryOperationMap.get(operator);
         if (operatorOperation) {
@@ -533,14 +536,27 @@ function reduceNewExpression(context: ExpressionContext, node: tsm.NewExpression
 }
 
 function reducePropertyAccessExpression(context: ExpressionContext, node: tsm.PropertyAccessExpression): E.Either<ParseError, ExpressionContext> {
-    const symbol = node.getSymbolOrThrow();
-    let q = context.cto?.properties?.get(symbol);
 
-    const ctt: CompileTimeType = null!;
-    q = ctt.properties?.get(symbol);
-    // next, try to resolve the property from the type
-      
-    return E.left(makeParseError(node)(`reducePropertyAccessExpression ${node.getKindName()} not implemented`));
+    return pipe(
+        node,
+        TS.parseSymbol,
+        E.chain(symbol => pipe(
+            // first, try to resolve the property on the object
+            context.cto?.properties?.get(symbol.getName()),
+            O.fromNullable,
+            // if the object doesn't have the property, try and resolve the property on the type
+            O.alt(() => pipe(
+                context.type,
+                resolveType(context.scope),
+                O.chain(ctt => {
+                    return O.fromNullable(ctt.properties?.get(symbol));
+                })
+            )),
+            E.fromOption(() => makeParseError(node)(`failed to resolve ${symbol.getName()}`))
+        )),
+        E.chain(resolver => resolver(context.getOps)),
+        E.map(makeContextFromCTO(context, node))
+    )
 }
 
 function reduceExpressionTail(node: tsm.Expression) {
@@ -548,7 +564,7 @@ function reduceExpressionTail(node: tsm.Expression) {
         switch (node.getKind()) {
             case tsm.SyntaxKind.AsExpression:
             case tsm.SyntaxKind.NonNullExpression:
-            case tsm.SyntaxKind.ParenthesizedExpression: 
+            case tsm.SyntaxKind.ParenthesizedExpression:
                 return E.of({ ...context, type: node.getType() });
             case tsm.SyntaxKind.CallExpression:
                 return reduceCallExpression(context, node as tsm.CallExpression);
