@@ -13,7 +13,7 @@ export interface GlobalScopeContext {
     readonly declMap: ReadonlyMap<string, readonly LibraryDeclaration[]>;
 
     addObject(obj: CompileTimeObject): void;
-    addType(obj: CompileTimeObject): void;
+    // addType(obj: CompileTimeObject): void;
     addError(error: tsm.ts.Diagnostic): void;
 }
 

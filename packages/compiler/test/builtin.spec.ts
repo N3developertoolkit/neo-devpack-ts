@@ -8,8 +8,8 @@ import { createTestProject, createTestGlobalScope, testParseExpression, createTe
 import { Operation } from '../src/types/Operation';
 import { FindOptions } from '../src/builtin/storage';
 
-describe.skip("builts-ins", () => {
-    describe("Error", () => {
+describe("builts-ins", () => {
+    describe.skip("Error", () => {
         it("Error()", () => {
             const contract = /*javascript*/`throw Error();`;
             const { project, sourceFile } = createTestProject(contract);
@@ -83,7 +83,7 @@ describe.skip("builts-ins", () => {
         });
     })
 
-    describe("ByteStringConstructor", () => {
+    describe.skip("ByteStringConstructor", () => {
         it("fromHex", () => {
             const contract = /*javascript*/`const $VAR = ByteString.fromHex("0xFF");`;
             const { project, sourceFile } = createTestProject(contract);
@@ -119,7 +119,7 @@ describe.skip("builts-ins", () => {
         });
     });
 
-    describe("ByteString", () => {
+    describe.skip("ByteString", () => {
         it("length", () => {
             const contract = /*javascript*/`const $hello = ByteString.fromString("hello"); const $VAR = $hello.length;`;
 
@@ -155,7 +155,7 @@ describe.skip("builts-ins", () => {
         })
     });
 
-    describe("StorageConstructor", () => {
+    describe.skip("StorageConstructor", () => {
         it("context", () => {
             const contract = /*javascript*/`const $VAR = Storage.context;`;
             const { project, sourceFile } = createTestProject(contract);
@@ -179,7 +179,7 @@ describe.skip("builts-ins", () => {
         });
     });
 
-    describe("StorageContext", () => {
+    describe.skip("StorageContext", () => {
         it("get", () => {
             const contract = /*javascript*/`const $VAR = Storage.readonlyContext.get("key");`;
             const { project, sourceFile } = createTestProject(contract);

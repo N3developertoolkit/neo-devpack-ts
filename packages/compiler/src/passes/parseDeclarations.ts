@@ -6,12 +6,14 @@ import * as E from "fp-ts/Either";
 import * as O from "fp-ts/Option";
 import * as TS from '../TS';
 import * as ROR from 'fp-ts/ReadonlyRecord';
+import * as ROM from 'fp-ts/ReadonlyMap';
 import { Ord as StringOrd } from 'fp-ts/string';
 
 import { CompileError, ParseError, makeParseError } from "../utils";
 import { Operation, pushInt, pushString } from "../types/Operation";
-import { CompileTimeObject, Scope } from "../types/CompileTimeObject";
+import { CompileTimeObject, PropertyResolver, Scope } from "../types/CompileTimeObject";
 import { parseExpression } from "./expressionProcessor";
+import { make } from "fp-ts/lib/Tree";
 
 export function makeLocalVariable(node: tsm.Identifier | tsm.BindingElement, symbol: tsm.Symbol, index: number): CompileTimeObject {
     throw new Error('disabled');
@@ -76,21 +78,70 @@ export const parseMethodCallExpression = (scope: Scope) => (node: tsm.CallExpres
     }
 }
 
-export function parseEnumDecl(decl: tsm.EnumDeclaration): CompileTimeObject {
-    throw new Error('disabled');
-    // return pipe(
-    //     decl.getMembers(),
-    //     ROA.map(member => pipe(
-    //         E.Do,
-    //         E.bind('op', () => pipe(member, getValue, E.mapLeft(e => makeParseError(member)(e)))),
-    //         E.bind('symbol', () => pipe(member, TS.parseSymbol)),
-    //         E.map(({ op, symbol }) => makeCompileTimeObject(member, symbol, { loadOps: [op] }))
-    //     )),
-    //     ROA.sequence(E.Applicative),
-    //     E.bindTo('props'),
-    //     E.bind('symbol', () => pipe(decl, TS.parseSymbol)),
-    //     E.map(({ props, symbol }) => makeCompileTimeObject(decl, symbol, { loadOps: [], getProperty: props }))
-    // );
+interface MakeCompileTimeObjectOptions {
+    symbol?: tsm.Symbol;
+    loadOps?: readonly Operation[];
+    storeOps?: readonly Operation[];
+    props?: readonly CompileTimeObject[];
+}
+
+function makeCompileTimeObject(node: tsm.Node, options?: MakeCompileTimeObjectOptions): E.Either<ParseError, CompileTimeObject> {
+
+    const properties = pipe(
+        options?.props,
+        O.fromNullable,
+        O.map(props => new Map(props.map(cto => [cto.symbol.getName(), <PropertyResolver>(($this) => E.of(cto))]))),
+        O.map(ROM.fromMap),
+        O.toUndefined
+    )
+
+    return pipe(
+        E.Do,
+        E.bind('symbol', () => pipe(
+            options?.symbol,
+            O.fromNullable,
+            O.alt(() => pipe(node, TS.getSymbol)),
+            E.fromOption(() => makeParseError(node)('missing symbol'))
+        )),
+        E.bind('loadOps', () => pipe(
+            options?.loadOps,
+            O.fromNullable,
+            O.getOrElse(() => ROA.empty as readonly Operation[]),
+            E.of<ParseError, readonly Operation[]>
+        )),
+        E.map(({ symbol, loadOps }) => (<CompileTimeObject>{ node, symbol, loadOps, properties }))
+    )
+}
+
+function makePropResolvers(properties: readonly CompileTimeObject[]) {
+    return pipe(
+        properties,
+        ROA.map(cto => {
+            const name = cto.symbol.getName();
+            const resolver: PropertyResolver = () => E.of(cto);
+            return [name, resolver] as const;
+        }),
+        props => new Map(props),
+        ROM.fromMap,
+    )
+}
+
+export function parseEnumDecl(decl: tsm.EnumDeclaration): E.Either<ParseError, CompileTimeObject> {
+    return pipe(
+        decl.getMembers(),
+        ROA.map(member => pipe(
+            E.Do,
+            E.bind('op', () => pipe(member, getValue, E.mapLeft(e => makeParseError(member)(e)))),
+            E.bind('symbol', () => pipe(member, TS.parseSymbol)),
+            E.map(({ op, symbol }) => <CompileTimeObject>{ node: member, symbol, loadOps: [op] })
+        )),
+        ROA.sequence(E.Applicative),
+        E.bindTo('props'),
+        E.bind('symbol', () => pipe(decl, TS.parseSymbol)),
+        E.map(({ props, symbol }) => {
+            return <CompileTimeObject>{ node: decl, symbol, loadOps: [], properties: makePropResolvers(props) };
+        })
+    );
 
     function getValue(member: tsm.EnumMember): E.Either<string, Operation> {
         const value = member.getValue();
