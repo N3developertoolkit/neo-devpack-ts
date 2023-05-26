@@ -220,44 +220,43 @@ export const handleVariableStatement =
     (scope: Scope) =>
         (factory: VariableFactory) =>
             (node: tsm.VariableStatement | tsm.VariableDeclarationList): E.Either<readonly ParseError[], VariableStatementResult> => {
-                return pipe(
-                    node.getDeclarations(),
-                    ROA.map(decl => pipe(
-                        decl.getInitializer(),
-                        O.fromNullable,
-                        O.match(
-                            () => node.getDeclarationKind() === tsm.VariableDeclarationKind.Const
-                                ? E.left(makeParseError(node)(`Constant variable ${decl.getName()} must have an initializer`))
-                                : E.of(ROA.empty),
-                            init => pipe(
-                                init,
-                                parseExpression(scope),
-                            )),
-                        E.chain(handleVariableDeclaration(decl.getNameNode(), node.getDeclarationKind(), factory))
-                    )),
-                    ROA.separate,
-                    E_fromSeparated,
-                    E.chain(values => {
-                        const defs = pipe(values, ROA.map(([defs]) => defs), ROA.flatten);
-                        const ops = pipe(values, ROA.map(([, ops]) => ops), ROA.flatten);
-                        return pipe(
-                            defs,
-                            // add all the symbol definitions to the scope
-                            updateScope(scope),
-                            E.mapLeft(flow(makeParseError(node), ROA.of)),
-                            E.map(scope => pipe(
-                                defs,
-                                // filter out all the constants from the array of symbol definitions
-                                // that get returned to the caller
-                                // ROA.filter(def => !(def instanceof ConstantSymbolDef)),
-                                ROA.filter(def => 'isConstant' in def ? !def.isConstant : true),
-                                ROA.map(def => ({ name: def.symbol.getName(), type: def.node.getType() } as ContractSlot)),
-                                varDefs => {
-                                    return [scope, varDefs, ops] as VariableStatementResult;
-                                }
-                            ))
-                        );
-                    })
-                );
+                throw new Error('disabled');
+                // return E.left(ROA.of(makeParseError(node)(`handleVariableStatement disabled`)));
+
+                // const q =  pipe(
+                //     node.getDeclarations(),
+                //     ROA.map(decl => pipe(
+                //         decl.getInitializer(),
+                //         O.fromNullable,
+                //         O.match(
+                //             () => node.getDeclarationKind() === tsm.VariableDeclarationKind.Const
+                //                 ? E.left(makeParseError(node)(`Constant variable ${decl.getName()} must have an initializer`))
+                //                 : E.of(ROA.empty),
+                //             init => pipe(
+                //                 init,
+                //                 parseExpression(scope),
+                //             )),
+                //         E.chain(handleVariableDeclaration(decl.getNameNode(), node.getDeclarationKind(), factory))
+                //     )),
+                //     ROA.separate,
+                //     E_fromSeparated,
+                //     E.chain(values => {
+                //         const defs = pipe(values, ROA.map(([defs]) => defs), ROA.flatten);
+                //         const ops = pipe(values, ROA.map(([, ops]) => ops), ROA.flatten);
+                //         const $scope = updateScope(scope)(defs);
+
+                //         return pipe(
+                //             defs,
+                //             // filter out all the constants from the array of symbol definitions
+                //             // that get returned to the caller
+                //             // ROA.filter(def => !(def instanceof ConstantSymbolDef)),
+                //             ROA.filter(def => 'isConstant' in def ? !def.isConstant : true),
+                //             ROA.map(def => ({ name: def.symbol.getName(), type: def.node.getType() } as ContractSlot)),
+                //             varDefs => {
+                //                 return [scope, varDefs, ops] as VariableStatementResult;
+                //             }
+                //         )
+                //     })
+                // );
             };
 

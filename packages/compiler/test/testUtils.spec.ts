@@ -7,7 +7,7 @@ import * as E from 'fp-ts/Either';
 import { createContractProject } from '../src/utils';
 import { collectProjectDeclarations } from '../src/passes/collectProjectDeclarations';
 import { parseExpression } from '../src/passes/expressionProcessor';
-import { CompileTimeObject, Scope, ScopedNodeFunc, createEmptyScope, createScope, updateScope } from '../src/types/CompileTimeObject';
+import { CompileTimeObject, CompileTimeType, Scope, createEmptyScope, updateScope } from '../src/types/CompileTimeObject';
 import { Operation } from '../src/types/Operation';
 import { makeGlobalScope } from '../src/builtin'
 
@@ -47,13 +47,10 @@ export function createTestGlobalScope(project: tsm.Project) {
 export function createTestScope(
     parentScope?: Scope,
     symbols?: CompileTimeObject | readonly CompileTimeObject[],
-    types?: CompileTimeObject | readonly CompileTimeObject[]
+    types?: CompileTimeType | readonly CompileTimeType[]
 ) {
     const scope = createEmptyScope(parentScope);
-    return pipe(
-        updateScope(scope)(symbols, types),
-        E.match(e => expect.fail(e), identity)
-    );
+    return updateScope(scope)(symbols, types);
 }
 
 export function testParseExpression(node: tsm.Expression, scope?: Scope) {

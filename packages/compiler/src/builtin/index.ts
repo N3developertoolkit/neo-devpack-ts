@@ -23,17 +23,19 @@ import { makeError } from "./error";
 
 
 function makeEnumObjects(ctx: GlobalScopeContext): void {
-    // std TS lib does not define any enums
-    // convert all neo enum declarations to objects
-    const { left: errors, right: objects } = pipe(
-        ctx.decls,
-        ROA.filterMap(O.fromPredicate(tsm.Node.isEnumDeclaration)),
-        ROA.map(parseEnumDecl),
-        ROA.map(E.mapLeft(makeParseDiagnostic)),
-        ROA.separate
-    );
-    errors.forEach(ctx.addError);
-    objects.forEach(ctx.addObject);
+    throw new Error('disabled');
+
+    // // std TS lib does not define any enums
+    // // convert all neo enum declarations to objects
+    // const { left: errors, right: objects } = pipe(
+    //     ctx.decls,
+    //     ROA.filterMap(O.fromPredicate(tsm.Node.isEnumDeclaration)),
+    //     ROA.map(parseEnumDecl),
+    //     ROA.map(E.mapLeft(makeParseDiagnostic)),
+    //     ROA.separate
+    // );
+    // errors.forEach(ctx.addError);
+    // objects.forEach(ctx.addObject);
 }
 
 function makeNativeContracts(ctx: GlobalScopeContext) {
@@ -192,48 +194,51 @@ const makerFunctions = [
 
 export function makeGlobalScope(decls: readonly LibraryDeclaration[]): S.State<readonly tsm.ts.Diagnostic[], Scope> {
     return diagnostics => {
-        const errors: tsm.ts.Diagnostic[] = [];
-        const objects: CompileTimeObject[] = [];
-        const types: CompileTimeObject[] = [];
+        // const errors: tsm.ts.Diagnostic[] = [];
+        // const objects: CompileTimeObject[] = [];
+        // // const types: Comp[] = [];
 
-        const declMap = new Map<string, readonly LibraryDeclaration[]>();
-        for (const decl of decls) {
-            const name = decl.getName();
-            if (name) {
-                const list = declMap.get(name) ?? [];
-                declMap.set(name, ROA.append(decl)(list));
-            } else {
-                errors.push(createDiagnostic("invalid name", { node: decl }))
-            }
-        }
+        // const declMap = new Map<string, readonly LibraryDeclaration[]>();
+        // for (const decl of decls) {
+        //     const name = decl.getName();
+        //     if (name) {
+        //         const list = declMap.get(name) ?? [];
+        //         declMap.set(name, ROA.append(decl)(list));
+        //     } else {
+        //         errors.push(createDiagnostic("invalid name", { node: decl }))
+        //     }
+        // }
 
-        // if there are any errors creating the decl map, bail out without creating a scope
-        if (errors.length > 0) {
-            return [createEmptyScope(), ROA.concat(errors)(diagnostics)];
-        }
+        // // if there are any errors creating the decl map, bail out without creating a scope
+        // if (errors.length > 0) {
+        //     return [createEmptyScope(), ROA.concat(errors)(diagnostics)];
+        // }
 
-        const context: GlobalScopeContext = {
-            decls,
-            declMap,
-            addError: (error: tsm.ts.Diagnostic) => { errors.push(error); },
-            addObject: (obj: CompileTimeObject) => { objects.push(obj); },
-            addType: (obj: CompileTimeObject) => { types.push(obj); }
-        }
+        // const context: GlobalScopeContext = {
+        //     decls,
+        //     declMap,
+        //     addError: (error: tsm.ts.Diagnostic) => { errors.push(error); },
+        //     addObject: (obj: CompileTimeObject) => { objects.push(obj); },
+        //     addType: (obj: CompileTimeObject) => { types.push(obj); }
+        // }
 
-        makerFunctions.forEach(maker => maker(context));
+        // makerFunctions.forEach(maker => maker(context));
 
-        diagnostics = ROA.concat(errors)(diagnostics);
-        return pipe(
-            createScope()(objects, types),
-            E.match(
-                error => {
-                    diagnostics = ROA.append(createDiagnostic(error))(diagnostics);
-                    return [createEmptyScope(), diagnostics];
-                },
-                scope => {
-                    return [scope, diagnostics];
-                }
-            )
-        );
+        const scope = createEmptyScope();
+        return [scope, diagnostics];
+
+        // diagnostics = ROA.concat(errors)(diagnostics);
+        // return pipe(
+        //     ,
+        //     E.match(
+        //         error => {
+        //             diagnostics = ROA.append(createDiagnostic(error))(diagnostics);
+        //             return [createEmptyScope(), diagnostics];
+        //         },
+        //         scope => {
+        //             return [scope, diagnostics];
+        //         }
+        //     )
+        // );
     };
 }

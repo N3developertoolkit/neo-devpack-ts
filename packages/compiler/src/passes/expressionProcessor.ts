@@ -6,7 +6,7 @@ import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option';
 import * as TS from "../TS";
 import { getBooleanConvertOps, getIntegerConvertOps, getStringConvertOps, Operation, pushInt, pushString } from "../types/Operation";
-import { CompileTimeObject, resolve, resolveName, Scope } from "../types/CompileTimeObject";
+import { CompileTimeObject, CompileTimeType, resolve, resolveName, Scope } from "../types/CompileTimeObject";
 import { ParseError, isIntegerLike, isStringLike, isVoidLike, makeParseError } from "../utils";
 
 export function makeConditionalExpression({ condition, whenTrue, whenFalse }: {
@@ -520,20 +520,44 @@ function reduceExpressionHead(scope: Scope, node: tsm.Expression): E.Either<Pars
     }
 }
 
+function reduceCallExpression(context: ExpressionContext, node: tsm.CallExpression): E.Either<ParseError, ExpressionContext> {
+    return E.left(makeParseError(node)(`reduceCallExpression ${node.getKindName()} not implemented`));
+}
+
+function reduceElementAccessExpression(context: ExpressionContext, node: tsm.ElementAccessExpression): E.Either<ParseError, ExpressionContext> {
+    return E.left(makeParseError(node)(`reduceElementAccessExpression ${node.getKindName()} not implemented`));
+}
+
+function reduceNewExpression(context: ExpressionContext, node: tsm.NewExpression): E.Either<ParseError, ExpressionContext> {
+    return E.left(makeParseError(node)(`reduceNewExpression ${node.getKindName()} not implemented`));
+}
+
+function reducePropertyAccessExpression(context: ExpressionContext, node: tsm.PropertyAccessExpression): E.Either<ParseError, ExpressionContext> {
+    const symbol = node.getSymbolOrThrow();
+    let q = context.cto?.properties?.get(symbol);
+
+    const ctt: CompileTimeType = null!;
+    q = ctt.properties?.get(symbol);
+    // next, try to resolve the property from the type
+      
+    return E.left(makeParseError(node)(`reducePropertyAccessExpression ${node.getKindName()} not implemented`));
+}
+
 function reduceExpressionTail(node: tsm.Expression) {
     return (context: ExpressionContext): E.Either<ParseError, ExpressionContext> => {
         switch (node.getKind()) {
             case tsm.SyntaxKind.AsExpression:
             case tsm.SyntaxKind.NonNullExpression:
-            case tsm.SyntaxKind.ParenthesizedExpression: {
-                const type = node.getType();
-                return E.of({ ...context, type });
-            }
+            case tsm.SyntaxKind.ParenthesizedExpression: 
+                return E.of({ ...context, type: node.getType() });
             case tsm.SyntaxKind.CallExpression:
+                return reduceCallExpression(context, node as tsm.CallExpression);
             case tsm.SyntaxKind.ElementAccessExpression:
+                return reduceElementAccessExpression(context, node as tsm.ElementAccessExpression);
             case tsm.SyntaxKind.NewExpression:
+                return reduceNewExpression(context, node as tsm.NewExpression);
             case tsm.SyntaxKind.PropertyAccessExpression:
-                return E.left(makeParseError(node)(`reduceExpressionTail ${node.getKindName()} not implemented`));
+                return reducePropertyAccessExpression(context, node as tsm.PropertyAccessExpression);
             default:
                 return E.left(makeParseError(node)(`reduceExpressionTail ${node.getKindName()} not supported`));
         }

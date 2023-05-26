@@ -7,13 +7,10 @@ import * as ROA from 'fp-ts/ReadonlyArray';
 import * as STR from 'fp-ts/string';
 
 import { Operation } from "./Operation";
-import { ParseError, isArray } from "../utils";
+import { CompileError, ParseError, isArray } from "../utils";
 
-
-export type ScopedNodeFunc<T extends tsm.Node> = (scope: Scope) => (node: T) => E.Either<ParseError, readonly Operation[]>;
-// export type ParseCallArgsFunc = ScopedNodeFunc<tsm.CallExpression>;
-// export type ParseNewArgsFunc = ScopedNodeFunc<tsm.NewExpression>;
-export type GetPropertyFunc = (symbol: tsm.Symbol) => O.Option<CompileTimeObject>;
+type GetOpsFunc = () => E.Either<ParseError, readonly Operation[]>;
+type PropertyResolver = (func: GetOpsFunc) => E.Either<ParseError, CompileTimeObject>;
 
 export interface CompileTimeObject {
     readonly node: tsm.Node;
@@ -21,63 +18,18 @@ export interface CompileTimeObject {
 
     readonly loadOps: ReadonlyArray<Operation>;
     readonly storeOps?: ReadonlyArray<Operation>;
-
-    // readonly storeOps?: ReadonlyArray<Operation>;
-    // readonly getProperty?: GetPropertyFunc;
-    // readonly parseCall?: ScopedNodeFunc<tsm.CallExpression>;
-    // readonly parseConstructor?: ScopedNodeFunc<tsm.NewExpression>;
-    // readonly getLoadOps?: ScopedNodeFunc<tsm.Expression>;
+    readonly properties?: ReadonlyMap<tsm.Symbol, PropertyResolver>;
 }
 
-export interface CompileTimeObjectOptions {
-    readonly loadOps?: ReadonlyArray<Operation>;
-    readonly storeOps?: ReadonlyArray<Operation>;
-    readonly getProperty?: GetPropertyFunc | readonly CompileTimeObject[];
-    readonly parseCall?: ScopedNodeFunc<tsm.CallExpression>;
-    readonly parseConstructor?: ScopedNodeFunc<tsm.NewExpression>;
-}
-
-// export function makeGetProperty(options: CompileTimeObjectOptions): GetPropertyFunc | undefined {
-//     const getProperty = options.getProperty;
-//     if (!getProperty) return undefined;
-
-//     // if getProperty is a function, return it as is
-//     if (typeof getProperty === 'function') return getProperty;
-
-//     // if getProperty is an array of CompileTimeObjects, create a map and
-//     // return a method that looks up the provided symbol in the map
-//     const map = new Map(getProperty.map(cto => [cto.symbol, cto] as const));
-//     return (symbol) => O.fromNullable(map.get(symbol));
-// }
-
-export function makeCompileTimeObject(node: tsm.Node, symbol: tsm.Symbol, options: CompileTimeObjectOptions): CompileTimeObject {
-    const getLoadOps = options.loadOps ? <ScopedNodeFunc<tsm.Expression>>((scope) => (node) => E.of(options.loadOps)) : undefined;
-    return {
-        node,
-        symbol,
-        loadOps: options.loadOps ?? [],
-        // storeOps: options.storeOps,
-        // getLoadOps,
-        // getProperty: makeGetProperty(options),
-        // parseCall: options.parseCall,
-        // parseConstructor: options.parseConstructor,
-    };
+export interface CompileTimeType {
+    readonly type: tsm.Type;
+    readonly properties?: ReadonlyMap<tsm.Symbol, PropertyResolver>;
 }
 
 export interface Scope {
     readonly parentScope: O.Option<Scope>;
     readonly symbols: ReadonlyMap<tsm.Symbol, CompileTimeObject>;
-    readonly types: ReadonlyMap<tsm.Symbol, CompileTimeObject>;
-}
-
-function createSymbolMap(ctos: readonly CompileTimeObject[]): E.Either<string, ReadonlyMap<tsm.Symbol, CompileTimeObject>> {
-    // since there is at least one scenario where symbols are resolved by name (object literal shorthand properties) 
-    // rather than symbol, ensure there are no duplicate names
-    const names = pipe(ctos, ROA.map(d => d.symbol.getName()));
-    const diff = pipe(names, ROA.difference(STR.Eq)(pipe(names, ROA.uniq(STR.Eq))));
-    return diff.length === 0
-        ? E.of(new Map(ctos.map(v => [v.symbol, v])) as ReadonlyMap<tsm.Symbol, CompileTimeObject>)
-        : E.left(`validateDefs duplicate names: ${diff.join(', ')}`);
+    readonly types: ReadonlyMap<tsm.Type, CompileTimeType>;
 }
 
 export const createEmptyScope = (parentScope?: Scope): Scope => {
@@ -87,31 +39,33 @@ export const createEmptyScope = (parentScope?: Scope): Scope => {
         types: new Map(),
     };
 };
-const $createScope = (parentScope: O.Option<Scope>) => (defs: readonly CompileTimeObject[], types: readonly CompileTimeObject[] = []): E.Either<string, Scope> => {
-    return pipe(
-        E.Do,
-        E.bind("symbols", () => pipe(defs, createSymbolMap)),
-        E.bind("types", () => pipe(types, createSymbolMap)),
-        E.bind("parentScope", () => E.of(parentScope))
-    );
-};
+
+const makeScope =
+    (parentScope: O.Option<Scope>) =>
+        (ctos: readonly CompileTimeObject[], ctts: readonly CompileTimeType[] = []): Scope => {
+            const symbols = new Map(ctos.map(cto => [cto.symbol, cto]));
+            const types = new Map(ctts.map(cto => [cto.type, cto]));
+            return { parentScope, symbols, types };
+        };
 
 
-export const createScope = (parentScope?: Scope) => (defs: readonly CompileTimeObject[], types: readonly CompileTimeObject[] = []): E.Either<string, Scope> => {
-    return $createScope(O.fromNullable(parentScope))(defs, types);
-};
+export const createScope =
+    (parentScope?: Scope) =>
+        (ctos: readonly CompileTimeObject[], ctts: readonly CompileTimeType[] = []): Scope => {
+            return makeScope(O.fromNullable(parentScope))(ctos, ctts);
+        };
 
 export const updateScope =
     (scope: Scope) =>
         (
             symbols?: CompileTimeObject | readonly CompileTimeObject[],
-            types?: CompileTimeObject | readonly CompileTimeObject[]
-        ): E.Either<string, Scope> => {
+            types?: CompileTimeType | readonly CompileTimeType[]
+        ): Scope => {
             symbols = symbols ? isArray(symbols) ? symbols : [symbols] : [];
             symbols = ROA.concat(symbols)([...scope.symbols.values()]);
             types = types ? isArray(types) ? types : [types] : [];
             types = ROA.concat(types)([...scope.types.values()]);
-            return $createScope(scope.parentScope)(symbols, types);
+            return makeScope(scope.parentScope)(symbols, types);
         };
 
 export const resolve = (scope: Scope) => (symbol: tsm.Symbol): O.Option<CompileTimeObject> => {
@@ -132,13 +86,13 @@ export const resolveName = (scope: Scope) => (name: string): O.Option<CompileTim
     return O.isSome(scope.parentScope) ? resolveName(scope.parentScope.value)(name) : O.none;
 }
 
-export const resolveType = (scope: Scope) => (symbol: tsm.Symbol): O.Option<CompileTimeObject> => {
+export const resolveType = (scope: Scope) => (type: tsm.Type): O.Option<CompileTimeType> => {
     return pipe(
-        scope.types.get(symbol),
+        scope.types.get(type),
         O.fromNullable,
         O.alt(() => pipe(
             scope.parentScope,
-            O.chain(p => resolveType(p)(symbol))
+            O.chain(p => resolveType(p)(type))
         ))
     );
 };

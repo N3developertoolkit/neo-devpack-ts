@@ -9,7 +9,7 @@ import { CompiledProject, ContractEvent, ContractMethod, ContractSlot } from "..
 import { parseContractMethod } from "./functionDeclarationProcessor";
 import { handleVariableStatement } from "./variableStatementProcessor";
 import { Operation } from "../types/Operation";
-import { Scope, CompileTimeObject, createEmptyScope, updateScope } from "../types/CompileTimeObject";
+import { Scope, CompileTimeObject, createEmptyScope, updateScope, CompileTimeType } from "../types/CompileTimeObject";
 import { makeParseError, ParseError, makeParseDiagnostic, ReduceDispatchMap, dispatchReduce, updateContextErrors } from "../utils";
 import { makeStaticVariable, parseEnumDecl, parseFunctionDecl, parseInterfaceDecl, parseTypeAliasDecl } from "./parseDeclarations";
 
@@ -30,25 +30,29 @@ const hoist =
             );
         }
 
-function hoistSymbol(scope: Scope, cto: CompileTimeObject): E.Either<string, Scope> {
-    return updateScope(scope)(cto);
-}
-function hoistType(scope: Scope, cto: CompileTimeObject): E.Either<string, Scope> {
-    return updateScope(scope)(undefined, cto);
-}
+// // TODO: remove E.Either
+// function hoistSymbol(scope: Scope, cto: CompileTimeObject): E.Either<string, Scope> {
+//     return E.of(updateScope(scope)(cto));
+// }
+
+// function hoistType(scope: Scope, cto: CompileTimeType): E.Either<string, Scope> {
+//     return E.of(updateScope(scope)(undefined, cto));
+// }
 
 function hoistDeclaration(context: HoistContext, node: tsm.Node): HoistContext {
+    throw new Error('disabled');
+    // return context;
 
-    switch (node.getKind()) {
-        case tsm.SyntaxKind.InterfaceDeclaration:
-            return pipe(node as tsm.InterfaceDeclaration, parseInterfaceDecl, hoist(context, node, hoistType));
-        case tsm.SyntaxKind.TypeAliasDeclaration:
-            return pipe(node as tsm.TypeAliasDeclaration, parseTypeAliasDecl, hoist(context, node, hoistType));
-        case tsm.SyntaxKind.FunctionDeclaration:
-            return pipe(node as tsm.FunctionDeclaration, parseFunctionDecl, hoist(context, node, hoistSymbol));
-        default:
-            return context;
-    }
+    // switch (node.getKind()) {
+    //     case tsm.SyntaxKind.InterfaceDeclaration:
+    //         return pipe(node as tsm.InterfaceDeclaration, parseInterfaceDecl, hoist(context, node, hoistType));
+    //     case tsm.SyntaxKind.TypeAliasDeclaration:
+    //         return pipe(node as tsm.TypeAliasDeclaration, parseTypeAliasDecl, hoist(context, node, hoistType));
+    //     case tsm.SyntaxKind.FunctionDeclaration:
+    //         return pipe(node as tsm.FunctionDeclaration, parseFunctionDecl, hoist(context, node, hoistSymbol));
+    //     default:
+    //         return context;
+    // }
 }
 
 interface HoistContext {
@@ -114,18 +118,20 @@ function reduceVariableStatement(context: ParseDeclarationsContext, node: tsm.Va
 }
 
 function reduceEnumDeclaration(context: ParseDeclarationsContext, node: tsm.EnumDeclaration): ParseDeclarationsContext {
-    return pipe(
-        node,
-        parseEnumDecl,
-        E.chain(flow(
-            updateScope(context.scope),
-            E.mapLeft(makeParseError(node))
-        )),
-        E.match(
-            updateContextErrors(context),
-            scope => ({ ...context, scope })
-        )
-    )
+    throw new Error('disabled');
+    // return context;
+    // return pipe(
+    //     node,
+    //     parseEnumDecl,
+    //     E.chain(flow(
+    //         updateScope(context.scope),
+    //         E.mapLeft(makeParseError(node))
+    //     )),
+    //     E.match(
+    //         updateContextErrors(context),
+    //         scope => ({ ...context, scope })
+    //     )
+    // )
 }
 
 

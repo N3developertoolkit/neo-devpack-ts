@@ -286,12 +286,7 @@ function adaptCatchVariableDeclaration(node: tsm.CatchClause) {
                 E.Do,
                 E.bind('symbol', () => TS.parseSymbol(name)),
                 E.bind('localvar', ({ symbol }) => E.of(makeLocalVariable(name, symbol, context.locals.length))),
-                E.bind('scope', ({ localvar }) => pipe(
-                    localvar,
-                    ROA.of,
-                    updateScope(context.scope),
-                    E.mapLeft(error => makeParseError(name)(error))
-                )),
+                E.bind('scope', ({ localvar }) => E.of(updateScope(context.scope)(localvar))),
                 E.match(
                     updateContextErrors(context),
                     ({ localvar: { symbol, node }, scope }) => {
@@ -636,13 +631,7 @@ const adaptFunctionDeclaration = (parentScope: Scope, node: tsm.FunctionDeclarat
                 )),
                 ROA.separate,
                 E_fromSeparated,
-                E.chain(defs => {
-                    return pipe(
-                        defs,
-                        createScope(parentScope),
-                        E.mapLeft(flow(makeParseError(node), ROA.of))
-                    );
-                })
+                E.map(createScope(parentScope))
             )),
             E.bind('body', () => pipe(
                 node.getBody(),

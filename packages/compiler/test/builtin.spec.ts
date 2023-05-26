@@ -4,10 +4,9 @@ import * as tsm from "ts-morph";
 
 import { sc } from "@cityofzion/neon-core";
 
-import { createTestProject, createTestGlobalScope, testParseExpression, createTestScope, createTestVariable } from './testUtils.spec';
+import { createTestProject, createTestGlobalScope, testParseExpression, createTestVariable, createTestScope } from './testUtils.spec';
 import { Operation } from '../src/types/Operation';
 import { FindOptions } from '../src/builtin/storage';
-import { buffer } from 'stream/consumers';
 
 describe.skip("builts-ins", () => {
     describe("Error", () => {
