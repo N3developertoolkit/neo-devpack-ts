@@ -8,6 +8,7 @@ import * as TS from "../TS";
 import { getBooleanConvertOps, getIntegerConvertOps, getStringConvertOps, Operation, pushInt, pushString } from "../types/Operation";
 import { CompileTimeObject, CompileTimeType, resolve, resolveName, resolveType, Scope } from "../types/CompileTimeObject";
 import { ParseError, isIntegerLike, isStringLike, isVoidLike, makeParseError } from "../utils";
+import { reduce } from "fp-ts/lib/Foldable";
 
 export function makeConditionalExpression({ condition, whenTrue, whenFalse }: {
     condition: readonly Operation[];
@@ -524,7 +525,25 @@ function reduceExpressionHead(scope: Scope, node: tsm.Expression): E.Either<Pars
 }
 
 function reduceCallExpression(context: ExpressionContext, node: tsm.CallExpression): E.Either<ParseError, ExpressionContext> {
-    return E.left(makeParseError(node)(`reduceCallExpression ${node.getKindName()} not implemented`));
+    return pipe(
+        context.cto?.call,
+        O.fromNullable,
+        O.alt(() => pipe(
+            context.type,
+            resolveType(context.scope),
+            O.chain(ctt => O.fromNullable(ctt.call))
+        )),
+        E.fromOption(() => makeParseError(node)(`${context.cto?.symbol.getName()} not callable`)),
+        E.bindTo('invoker'),
+        E.bind('args', () => pipe(
+            node,
+            TS.getArguments,
+            ROA.map(resolveExpression(context.scope)),
+            ROA.sequence(E.Applicative)
+        )),
+        E.chain(({ invoker, args }) => invoker(context.getOps, args.map(ctx => ctx.getOps))),
+        E.map(makeContextFromCTO(context, node))
+    )
 }
 
 function reduceElementAccessExpression(context: ExpressionContext, node: tsm.ElementAccessExpression): E.Either<ParseError, ExpressionContext> {
@@ -532,11 +551,28 @@ function reduceElementAccessExpression(context: ExpressionContext, node: tsm.Ele
 }
 
 function reduceNewExpression(context: ExpressionContext, node: tsm.NewExpression): E.Either<ParseError, ExpressionContext> {
-    return E.left(makeParseError(node)(`reduceNewExpression ${node.getKindName()} not implemented`));
+    return pipe(
+        context.cto?.callNew,
+        O.fromNullable,
+        O.alt(() => pipe(
+            context.type,
+            resolveType(context.scope),
+            O.chain(ctt => O.fromNullable(ctt.callNew))
+        )),
+        E.fromOption(() => makeParseError(node)(`${context.cto?.symbol.getName()} not constructable`)),
+        E.bindTo('invoker'),
+        E.bind('args', () => pipe(
+            node,
+            TS.getArguments,
+            ROA.map(resolveExpression(context.scope)),
+            ROA.sequence(E.Applicative)
+        )),
+        E.chain(({ invoker, args }) => invoker(context.getOps, args.map(ctx => ctx.getOps))),
+        E.map(makeContextFromCTO(context, node))
+    )
 }
 
 function reducePropertyAccessExpression(context: ExpressionContext, node: tsm.PropertyAccessExpression): E.Either<ParseError, ExpressionContext> {
-
     return pipe(
         node,
         TS.parseSymbol,
@@ -548,9 +584,7 @@ function reducePropertyAccessExpression(context: ExpressionContext, node: tsm.Pr
             O.alt(() => pipe(
                 context.type,
                 resolveType(context.scope),
-                O.chain(ctt => {
-                    return O.fromNullable(ctt.properties?.get(symbol));
-                })
+                O.chain(ctt => O.fromNullable(ctt.properties?.get(symbol)))
             )),
             E.fromOption(() => makeParseError(node)(`failed to resolve ${symbol.getName()}`))
         )),

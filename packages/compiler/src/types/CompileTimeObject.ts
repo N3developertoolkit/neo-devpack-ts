@@ -10,7 +10,8 @@ import { Operation } from "./Operation";
 import { CompileError, ParseError, isArray } from "../utils";
 
 export type GetOpsFunc = () => E.Either<ParseError, readonly Operation[]>;
-export type PropertyResolver = (func: GetOpsFunc) => E.Either<ParseError, CompileTimeObject>;
+export type PropertyResolver = ($this: GetOpsFunc) => E.Either<ParseError, CompileTimeObject>;
+export type InvokeResolver = ($this: GetOpsFunc, args: readonly GetOpsFunc[]) => E.Either<ParseError, CompileTimeObject>;
 
 export interface CompileTimeObject {
     readonly node: tsm.Node;
@@ -19,11 +20,15 @@ export interface CompileTimeObject {
     readonly loadOps: ReadonlyArray<Operation>;
     readonly storeOps?: ReadonlyArray<Operation>;
     readonly properties?: ReadonlyMap<string, PropertyResolver>;
+    readonly call?: InvokeResolver;
+    readonly callNew?: InvokeResolver;
 }
 
 export interface CompileTimeType {
     readonly type: tsm.Type;
     readonly properties?: ReadonlyMap<tsm.Symbol, PropertyResolver>;
+    readonly call?: InvokeResolver;
+    readonly callNew?: InvokeResolver;
 }
 
 export interface Scope {
