@@ -4,9 +4,12 @@ import * as tsm from 'ts-morph';
 
 import { identity, pipe } from 'fp-ts/function';
 import * as E from 'fp-ts/Either';
+import * as ROA from 'fp-ts/ReadonlyArray';
 import { parseExpression } from '../src/passes/expressionProcessor';
-import { CompileTimeType, createEmptyScope } from '../src/types/CompileTimeObject';
-import { createPropResolver, createPropResolvers, createTestProject, createTestScope, createTestVariable, expectPushData, testParseExpression } from "./testUtils.spec";
+import { CompileTimeObject, CompileTimeType, InvokeResolver, createEmptyScope } from '../src/types/CompileTimeObject';
+import { createPropResolver, createPropResolvers, createTestProject, createTestScope, createTestVariable, expectPushData, makeFunctionInvoker as createFunctionInvoker, testParseExpression } from "./testUtils.spec";
+import { isArray, makeParseError } from '../src/utils';
+import { Operation } from '../src/types/Operation';
 
 describe("expression parser", () => {
     describe("literals", () => {
@@ -213,7 +216,7 @@ describe("expression parser", () => {
     });
 
     describe("property access", () => {
-        it("object property", () => {
+        it("load object property", () => {
             const contract = /*javascript*/`const test = { value: 42 }; const $VAR = test.value;`;
             const { sourceFile } = createTestProject(contract);
 
@@ -221,8 +224,8 @@ describe("expression parser", () => {
             const testInit = test.getInitializerOrThrow().asKindOrThrow(tsm.SyntaxKind.ObjectLiteralExpression);
             const valueCTO = createTestVariable(testInit.getPropertyOrThrow("value"));
 
-            const properties = createPropResolvers(valueCTO);
-            const testCTO = createTestVariable(test, { properties });
+            const testProps = createPropResolvers(valueCTO);
+            const testCTO = createTestVariable(test, { properties: testProps });
             const scope = createTestScope(undefined, testCTO);
 
             const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
@@ -241,8 +244,8 @@ describe("expression parser", () => {
             const testInit = test.getInitializerOrThrow().asKindOrThrow(tsm.SyntaxKind.ObjectLiteralExpression);
             const valueCTO = createTestVariable(testInit.getPropertyOrThrow("value"));
 
-            const properties = createPropResolvers(valueCTO);
-            const testCTO = createTestVariable(test, { properties });
+            const testProps = createPropResolvers(valueCTO);
+            const testCTO = createTestVariable(test, { properties: testProps });
             const scope = createTestScope(undefined, testCTO);
 
             const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
@@ -258,23 +261,23 @@ describe("expression parser", () => {
             expect(result[5]).deep.equals({ kind: "noop" });
         });
 
-        it("type property", () => {
+        it("load type property", () => {
             const contract = /*javascript*/`
                 interface Test { value: number; }
                 const test:Test = null!;
                 const $VAR = test.value;`;
             const { sourceFile } = createTestProject(contract);
 
-            const testInterface = sourceFile.getInterfaceOrThrow('Test');
-            const testInterfaceType = testInterface.getType();
-            const value = testInterfaceType.getPropertyOrThrow('value');
+            const iTest = sourceFile.getInterfaceOrThrow('Test');
+            const iTestType = iTest.getType();
+            const value = iTestType.getPropertyOrThrow('value');
             const valueCTO = createTestVariable(value.getValueDeclarationOrThrow());
-            const properties = new Map([[value, createPropResolver(valueCTO)]])
-            const testInterfaceCTT: CompileTimeType = { type: testInterfaceType, properties };
+            const iTestProps = new Map([[value, createPropResolver(valueCTO)]])
+            const iTestCTT: CompileTimeType = { type: iTestType, properties: iTestProps };
 
             const test = sourceFile.getVariableDeclarationOrThrow('test');
             const testCTO = createTestVariable(test);
-            const scope = createTestScope(undefined, testCTO, testInterfaceCTT);
+            const scope = createTestScope(undefined, testCTO, iTestCTT);
 
             const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
             const result = testParseExpression(init, scope);
@@ -292,9 +295,8 @@ describe("expression parser", () => {
             const testInit = test.getInitializerOrThrow().asKindOrThrow(tsm.SyntaxKind.ObjectLiteralExpression);
             const valueCTO = createTestVariable(testInit.getPropertyOrThrow("value"));
 
-            const properties = createPropResolvers(valueCTO);
-
-            const testCTO = createTestVariable(test, { properties });
+            const testProps = createPropResolvers(valueCTO);
+            const testCTO = createTestVariable(test, { properties: testProps });
             const scope = createTestScope(undefined, testCTO);
 
             const init = sourceFile.forEachChildAsArray()[1].asKindOrThrow(tsm.SyntaxKind.ExpressionStatement).getExpression();
@@ -314,16 +316,16 @@ describe("expression parser", () => {
                 test.value = 42;`;
             const { sourceFile } = createTestProject(contract);
 
-            const testInterface = sourceFile.getInterfaceOrThrow('Test');
-            const testInterfaceType = testInterface.getType();
-            const value = testInterfaceType.getPropertyOrThrow('value');
+            const iTest = sourceFile.getInterfaceOrThrow('Test');
+            const iTestType = iTest.getType();
+            const value = iTestType.getPropertyOrThrow('value');
             const valueCTO = createTestVariable(value.getValueDeclarationOrThrow());
-            const properties = new Map([[value, createPropResolver(valueCTO)]])
-            const testInterfaceCTT: CompileTimeType = { type: testInterfaceType, properties };
+            const iTestProps = new Map([[value, createPropResolver(valueCTO)]])
+            const iTestCTT: CompileTimeType = { type: iTestType, properties: iTestProps };
 
             const test = sourceFile.getVariableDeclarationOrThrow('test');
             const testCTO = createTestVariable(test);
-            const scope = createTestScope(undefined, testCTO, testInterfaceCTT);
+            const scope = createTestScope(undefined, testCTO, iTestCTT);
 
             const init = sourceFile.forEachChildAsArray()[2].asKindOrThrow(tsm.SyntaxKind.ExpressionStatement).getExpression();
             const result = testParseExpression(init, scope);
@@ -335,4 +337,137 @@ describe("expression parser", () => {
             expect(result[3]).equals(valueCTO.storeOp);
         });
     })
+
+    describe.skip("constructor", () => {
+        // TODO: add tests
+    })
+
+    describe("call", () => {
+        it("function", () => { 
+            const contract = /*javascript*/`function test(a: number, b: string) { return 42; } const $VAR = test(42, "hello");`;
+            const { sourceFile } = createTestProject(contract);
+
+            const test = sourceFile.getFunctionOrThrow('test');
+            const testCallOp = { kind: 'noop', debug: 'test.call' } as Operation;
+            const testCTO = createTestVariable(test, { call: createFunctionInvoker(test, testCallOp)});
+            const scope = createTestScope(undefined, testCTO);
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+
+            expect(result).lengthOf(3);
+            expectPushData(result[0], "hello");
+            expect(result[1]).deep.equals({ kind: 'pushint', value: 42n });
+            expect(result[2]).equals(testCallOp);
+        })
+
+        it("object method", () => { 
+            const contract = /*javascript*/`
+                const obj = { test(a: number, b: string) { return 42; } }; 
+                const $VAR = obj.test(42, "hello");`;
+            const { sourceFile } = createTestProject(contract);
+
+            const obj = sourceFile.getVariableDeclarationOrThrow('obj');
+            const objInit = obj.getInitializerOrThrow().asKindOrThrow(tsm.SyntaxKind.ObjectLiteralExpression);
+            const test = objInit.getPropertyOrThrow('test');
+            const testCallOp = { kind: 'noop', debug: 'test.call' } as Operation;
+            const testCTO = createTestVariable(test, { call: createFunctionInvoker(test, testCallOp, true)});
+            const properties = createPropResolvers(testCTO);
+            const objCTO = createTestVariable(obj, { properties });
+            const scope = createTestScope(undefined, objCTO);
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+
+            expect(result).lengthOf(4);
+            expectPushData(result[0], "hello");
+            expect(result[1]).deep.equals({ kind: 'pushint', value: 42n });
+            expect(result[2]).equals(objCTO.loadOp);
+            expect(result[3]).equals(testCallOp);
+        })
+
+        it("object static method", () => { 
+            const contract = /*javascript*/`
+                const obj = { test(a: number, b: string) { return 42; } }; 
+                const $VAR = obj.test(42, "hello");`;
+            const { sourceFile } = createTestProject(contract);
+
+            const obj = sourceFile.getVariableDeclarationOrThrow('obj');
+            const objInit = obj.getInitializerOrThrow().asKindOrThrow(tsm.SyntaxKind.ObjectLiteralExpression);
+            const test = objInit.getPropertyOrThrow('test');
+            const testCallOp = { kind: 'noop', debug: 'test.call' } as Operation;
+            const testCTO = createTestVariable(test, { call: createFunctionInvoker(test, testCallOp, false)});
+            const properties = createPropResolvers(testCTO);
+            const objCTO = createTestVariable(obj, { properties });
+            const scope = createTestScope(undefined, objCTO);
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+
+            expect(result).lengthOf(3);
+            expectPushData(result[0], "hello");
+            expect(result[1]).deep.equals({ kind: 'pushint', value: 42n });
+            expect(result[2]).equals(testCallOp);
+        })
+
+        it("type method", () => { 
+            const contract = /*javascript*/`
+                interface Test { do(a: number, b: string): number; }
+                const obj:Test = null!;
+                const $VAR = obj.do(42, "hello");`;
+            const { sourceFile } = createTestProject(contract);
+
+            const iTest = sourceFile.getInterfaceOrThrow('Test');
+            const iTestType = iTest.getType();
+            const doProp = iTestType.getPropertyOrThrow('do');
+            const doDecl = doProp.getValueDeclarationOrThrow();
+            const doCallOp = { kind: 'noop', debug: 'do.call' } as Operation;
+            const doCTO = createTestVariable(doDecl, { call: createFunctionInvoker(doDecl, doCallOp, true)});
+            const iTestProps = new Map([[doProp, createPropResolver(doCTO)]])
+            const iTestCTT: CompileTimeType = { type: iTestType, properties: iTestProps };
+
+            const obj = sourceFile.getVariableDeclarationOrThrow('obj');
+            const objCTO = createTestVariable(obj);
+            const scope = createTestScope(undefined, objCTO, iTestCTT);
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+
+            expect(result).lengthOf(4);
+            expectPushData(result[0], "hello");
+            expect(result[1]).deep.equals({ kind: 'pushint', value: 42n });
+            expect(result[2]).equals(objCTO.loadOp);
+            expect(result[3]).equals(doCallOp);
+        })
+
+        
+        it("type static method", () => { 
+            const contract = /*javascript*/`
+                interface Test { do(a: number, b: string): number; }
+                const obj:Test = null!;
+                const $VAR = obj.do(42, "hello");`;
+            const { sourceFile } = createTestProject(contract);
+
+            const iTest = sourceFile.getInterfaceOrThrow('Test');
+            const iTestType = iTest.getType();
+            const doProp = iTestType.getPropertyOrThrow('do');
+            const doDecl = doProp.getValueDeclarationOrThrow();
+            const doCallOp = { kind: 'noop', debug: 'do.call' } as Operation;
+            const doCTO = createTestVariable(doDecl, { call: createFunctionInvoker(doDecl, doCallOp)});
+            const iTestProps = new Map([[doProp, createPropResolver(doCTO)]])
+            const iTestCTT: CompileTimeType = { type: iTestType, properties: iTestProps };
+
+            const obj = sourceFile.getVariableDeclarationOrThrow('obj');
+            const objCTO = createTestVariable(obj);
+            const scope = createTestScope(undefined, objCTO, iTestCTT);
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+
+            expect(result).lengthOf(3);
+            expectPushData(result[0], "hello");
+            expect(result[1]).deep.equals({ kind: 'pushint', value: 42n });
+            expect(result[2]).equals(doCallOp);
+        })
+    });
 });

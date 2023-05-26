@@ -7,7 +7,7 @@ import * as E from 'fp-ts/Either';
 import { createContractProject, isArray } from '../src/utils';
 import { collectProjectDeclarations } from '../src/passes/collectProjectDeclarations';
 import { parseExpression } from '../src/passes/expressionProcessor';
-import { CompileTimeObject, CompileTimeType, PropertyResolver, Scope, createEmptyScope, updateScope } from '../src/types/CompileTimeObject';
+import { CompileTimeObject, CompileTimeType, InvokeResolver, PropertyResolver, Scope, createEmptyScope, updateScope } from '../src/types/CompileTimeObject';
 import { Operation } from '../src/types/Operation';
 import { makeGlobalScope } from '../src/builtin'
 
@@ -70,6 +70,8 @@ interface CreateTestVariableOptions {
     name?: string;
     symbol?: tsm.Symbol;
     properties?: ReadonlyMap<string, PropertyResolver>;
+    call?: InvokeResolver;
+    callNew?: InvokeResolver;
 }
 
 export function createTestVariable(node: tsm.Node, options?: CreateTestVariableOptions) {
@@ -77,7 +79,19 @@ export function createTestVariable(node: tsm.Node, options?: CreateTestVariableO
     const name = options?.name ?? (tsm.Node.hasName(node) ? node.getName() : symbol.getName());
     const loadOp = { kind: 'noop', debug: `${name}.load` } as Operation;
     const storeOp = { kind: 'noop', debug: `${name}.store` } as Operation;
-    return { node, symbol, loadOp, storeOp, loadOps: [loadOp], storeOps: [storeOp], properties: options?.properties };
+    const loadOps = options?.call || options?.callNew ? [] : [loadOp];
+    const storeOps = options?.call || options?.callNew ? undefined : [storeOp];
+    return { 
+        node, 
+        symbol, 
+        loadOp, 
+        storeOp, 
+        loadOps, 
+        storeOps, 
+        properties: options?.properties,
+        call: options?.call,
+        callNew: options?.callNew,
+    };
 }
 
 export function expectPushData(op: Operation, value: string) {
@@ -99,4 +113,23 @@ export function createPropResolver(cto: CompileTimeObject): PropertyResolver {
 export function createPropResolvers(properties: CompileTimeObject | readonly CompileTimeObject[]): ReadonlyMap<string, PropertyResolver> {
     properties = isArray(properties) ? properties : ROA.of(properties);
     return new Map(properties.map(cto => [cto.symbol.getName(), createPropResolver(cto)]));
+}
+
+export function makeFunctionInvoker(node: tsm.Node, ops: Operation | readonly Operation[], implicitThis: boolean = false) : InvokeResolver {
+    return ($this, args) => {
+        const $args = implicitThis ? ROA.prepend($this)(args) : args;
+        return pipe(
+            $args,
+            ROA.reverse,
+            ROA.map(arg => arg()),
+            ROA.sequence(E.Applicative),
+            E.map(ROA.flatten),
+            E.map(ROA.concat(isArray(ops) ? ops : [ops])),
+            E.map(loadOps => (<CompileTimeObject>{
+                node: node,
+                symbol: node.getSymbolOrThrow(),
+                loadOps
+            }))
+        );
+    }
 }

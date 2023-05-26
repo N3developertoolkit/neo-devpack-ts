@@ -533,6 +533,7 @@ function reduceCallExpression(context: ExpressionContext, node: tsm.CallExpressi
             resolveType(context.scope),
             O.chain(ctt => O.fromNullable(ctt.call))
         )),
+        // TODO: Optional Chaining support
         E.fromOption(() => makeParseError(node)(`${context.cto?.symbol.getName()} not callable`)),
         E.bindTo('invoker'),
         E.bind('args', () => pipe(
@@ -544,10 +545,6 @@ function reduceCallExpression(context: ExpressionContext, node: tsm.CallExpressi
         E.chain(({ invoker, args }) => invoker(context.getOps, args.map(ctx => ctx.getOps))),
         E.map(makeContextFromCTO(context, node))
     )
-}
-
-function reduceElementAccessExpression(context: ExpressionContext, node: tsm.ElementAccessExpression): E.Either<ParseError, ExpressionContext> {
-    return E.left(makeParseError(node)(`reduceElementAccessExpression ${node.getKindName()} not implemented`));
 }
 
 function reduceNewExpression(context: ExpressionContext, node: tsm.NewExpression): E.Either<ParseError, ExpressionContext> {
@@ -604,6 +601,10 @@ function reducePropertyAccessExpression(context: ExpressionContext, node: tsm.Pr
         }),
         E.map(makeContextFromCTO(context, node))
     )
+}
+
+function reduceElementAccessExpression(context: ExpressionContext, node: tsm.ElementAccessExpression): E.Either<ParseError, ExpressionContext> {
+    return E.left(makeParseError(node)(`reduceElementAccessExpression ${node.getKindName()} not implemented`));
 }
 
 function reduceExpressionTail(node: tsm.Expression) {
