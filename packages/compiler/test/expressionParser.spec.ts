@@ -222,7 +222,6 @@ describe("expression parser", () => {
             const valueCTO = createTestVariable(testInit.getPropertyOrThrow("value"));
 
             const properties = createPropResolvers(valueCTO);
-
             const testCTO = createTestVariable(test, { properties });
             const scope = createTestScope(undefined, testCTO);
 
@@ -232,6 +231,31 @@ describe("expression parser", () => {
             expect(result).lengthOf(2);
             expect(result[0]).equals(testCTO.loadOp);
             expect(result[1]).equals(valueCTO.loadOp);
+        });
+
+        it("optional chaining", () => {
+            const contract = /*javascript*/`const test = { value: 42 }; const $VAR = test?.value;`;
+            const { sourceFile } = createTestProject(contract);
+
+            const test = sourceFile.getVariableDeclarationOrThrow('test');
+            const testInit = test.getInitializerOrThrow().asKindOrThrow(tsm.SyntaxKind.ObjectLiteralExpression);
+            const valueCTO = createTestVariable(testInit.getPropertyOrThrow("value"));
+
+            const properties = createPropResolvers(valueCTO);
+            const testCTO = createTestVariable(test, { properties });
+            const scope = createTestScope(undefined, testCTO);
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+
+            expect(result).lengthOf(6);
+            expect(result[0]).equals(testCTO.loadOp);
+            expect(result[1]).equals(valueCTO.loadOp);
+            expect(result[2]).deep.equals({ kind: "duplicate" });
+            expect(result[3]).deep.equals({ kind: "isnull" });
+            expect(result[4]).has.property("kind", "jumpif");
+            expect(result[4]).has.property("target", result[5]);
+            expect(result[5]).deep.equals({ kind: "noop" });
         });
 
         it("type property", () => {
@@ -246,7 +270,6 @@ describe("expression parser", () => {
             const value = testInterfaceType.getPropertyOrThrow('value');
             const valueCTO = createTestVariable(value.getValueDeclarationOrThrow());
             const properties = new Map([[value, createPropResolver(valueCTO)]])
-
             const testInterfaceCTT: CompileTimeType = { type: testInterfaceType, properties };
 
             const test = sourceFile.getVariableDeclarationOrThrow('test');
@@ -282,18 +305,34 @@ describe("expression parser", () => {
             expect(result[1]).deep.equals({ kind: 'duplicate' })
             expect(result[2]).equals(testCTO.loadOp);
             expect(result[3]).equals(valueCTO.storeOp);
-
         });
 
         it("store type property", () => {
             const contract = /*javascript*/`
-                interface Hello { world: number; }
-                const $hello:Hello = null!;
-                $hello.world = 42;`;
+                interface Test { value: number; }
+                const test:Test = null!;
+                test.value = 42;`;
             const { sourceFile } = createTestProject(contract);
 
+            const testInterface = sourceFile.getInterfaceOrThrow('Test');
+            const testInterfaceType = testInterface.getType();
+            const value = testInterfaceType.getPropertyOrThrow('value');
+            const valueCTO = createTestVariable(value.getValueDeclarationOrThrow());
+            const properties = new Map([[value, createPropResolver(valueCTO)]])
+            const testInterfaceCTT: CompileTimeType = { type: testInterfaceType, properties };
+
+            const test = sourceFile.getVariableDeclarationOrThrow('test');
+            const testCTO = createTestVariable(test);
+            const scope = createTestScope(undefined, testCTO, testInterfaceCTT);
+
+            const init = sourceFile.forEachChildAsArray()[2].asKindOrThrow(tsm.SyntaxKind.ExpressionStatement).getExpression();
+            const result = testParseExpression(init, scope);
+
+            expect(result).lengthOf(4);
+            expect(result[0]).deep.equals({ kind: 'pushint', value: 42n })
+            expect(result[1]).deep.equals({ kind: 'duplicate' })
+            expect(result[2]).equals(testCTO.loadOp);
+            expect(result[3]).equals(valueCTO.storeOp);
         });
-
-
     })
 });

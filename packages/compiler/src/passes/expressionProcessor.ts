@@ -5,7 +5,7 @@ import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option';
 import * as TS from "../TS";
-import { getBooleanConvertOps, getIntegerConvertOps, getStringConvertOps, Operation, pushInt, pushString } from "../types/Operation";
+import { getBooleanConvertOps, getIntegerConvertOps, getStringConvertOps, Operation, pushInt, pushString, isJumpTargetOp } from "../types/Operation";
 import { CompileTimeObject, CompileTimeType, resolve, resolveName, resolveType, Scope } from "../types/CompileTimeObject";
 import { ParseError, isIntegerLike, isStringLike, isVoidLike, makeParseError } from "../utils";
 import { reduce } from "fp-ts/lib/Foldable";
@@ -589,6 +589,19 @@ function reducePropertyAccessExpression(context: ExpressionContext, node: tsm.Pr
             E.fromOption(() => makeParseError(node)(`failed to resolve ${symbol.getName()}`))
         )),
         E.chain(resolver => resolver(context.getOps)),
+        E.map(cto => {
+            if (node.hasQuestionDotToken()) {
+                const loadOps = pipe(
+                    cto.loadOps,
+                    ROA.concat<Operation>([
+                        { kind: "duplicate" },
+                        { kind: "isnull" },
+                        { kind: "jumpif", target: context.endTarget }
+                    ]))
+                return { ...cto, loadOps } as CompileTimeObject
+            }
+            return cto;
+        }),
         E.map(makeContextFromCTO(context, node))
     )
 }
@@ -659,6 +672,24 @@ function resolveExpression(scope: Scope) {
                 context,
                 (ctx, node) => E.chain(reduceExpressionTail(node))(ctx)
             ),
+            E.map(context => {
+                const getOps = () => {
+                    return pipe(
+                        context.getOps(),
+                        E.map(ops => {
+                            const endJumps = pipe(
+                                ops,
+                                ROA.filter(isJumpTargetOp),
+                                ROA.filter(op => op.target === context.endTarget),
+                            )
+                            return endJumps.length > 0
+                                ? ROA.append(context.endTarget)(ops)
+                                : ops;
+                        })
+                    )
+                };
+                return { ...context, getOps };
+            })
         )
     }
 }
