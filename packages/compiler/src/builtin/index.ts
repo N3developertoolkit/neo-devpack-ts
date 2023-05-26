@@ -187,7 +187,7 @@ const makerFunctions = [
     makeSyscallFunctions,
     // // explicit built ins
     // makeByteString,
-    // makeCallContract,
+    makeCallContract,
     // makeError,
     // makeRuntime,
     // makeStorage

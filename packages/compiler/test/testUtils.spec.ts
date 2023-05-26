@@ -99,6 +99,12 @@ export function expectPushData(op: Operation, value: string) {
     expect(op).has.deep.property('value', Buffer.from(value, 'utf8'));
 }
 
+export function expectPushInt(op: Operation, value: number | bigint) {
+    value = typeof value === 'bigint' ? value : BigInt(value);
+    expect(op).has.property('kind', 'pushint');
+    expect(op).has.deep.property('value', value);
+}
+
 export function createPropResolver(cto: CompileTimeObject): PropertyResolver {
     return (opsFunc) => pipe(
         opsFunc(),

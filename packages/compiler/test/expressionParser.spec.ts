@@ -7,7 +7,7 @@ import * as E from 'fp-ts/Either';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import { parseExpression } from '../src/passes/expressionProcessor';
 import { CompileTimeObject, CompileTimeType, InvokeResolver, createEmptyScope } from '../src/types/CompileTimeObject';
-import { createPropResolver, createPropResolvers, createTestProject, createTestScope, createTestVariable, expectPushData, makeFunctionInvoker as createFunctionInvoker, testParseExpression } from "./testUtils.spec";
+import { createPropResolver, createPropResolvers, createTestProject, createTestScope, createTestVariable, expectPushData, makeFunctionInvoker as createFunctionInvoker, testParseExpression, expectPushInt } from "./testUtils.spec";
 import { isArray, makeParseError } from '../src/utils';
 import { Operation } from '../src/types/Operation';
 
@@ -50,8 +50,7 @@ describe("expression parser", () => {
             const result = testLiteral(contract);
 
             expect(result).lengthOf(1);
-            expect(result[0]).has.property('kind', 'pushint');
-            expect(result[0]).has.property('value', 42n);
+            expectPushInt(result[0], 42);
         });
 
         it("bigint literal", () => {
@@ -59,8 +58,7 @@ describe("expression parser", () => {
             const result = testLiteral(contract);
 
             expect(result).lengthOf(1);
-            expect(result[0]).has.property('kind', 'pushint');
-            expect(result[0]).has.property('value', 108446744073709551616n);
+            expectPushInt(result[0], 108446744073709551616n);
         });
 
         it("invalid numeric literal", () => {
@@ -84,12 +82,12 @@ describe("expression parser", () => {
             const result = testLiteral(contract);
 
             expect(result).lengthOf(7);
-            expect(result[0]).deep.equals({ kind: 'pushint', value: 10n });
-            expect(result[1]).deep.equals({ kind: 'pushint', value: 20n });
-            expect(result[2]).deep.equals({ kind: 'pushint', value: 30n });
-            expect(result[3]).deep.equals({ kind: 'pushint', value: 40n });
-            expect(result[4]).deep.equals({ kind: 'pushint', value: 50n });
-            expect(result[5]).deep.equals({ kind: 'pushint', value: 5n });
+            expectPushInt(result[0], 10);
+            expectPushInt(result[1], 20);
+            expectPushInt(result[2], 30);
+            expectPushInt(result[3], 40);
+            expectPushInt(result[4], 50);
+            expectPushInt(result[5], 5);
             expect(result[6]).deep.equals({ kind: 'packarray' });
         });
 
@@ -99,11 +97,11 @@ describe("expression parser", () => {
                 const result = testLiteral(contract);
 
                 expect(result).lengthOf(6);
-                expect(result[0]).deep.equals({ kind: 'pushint', value: 10n });
+                expectPushInt(result[0], 10);
                 expectPushData(result[1], "a");
-                expect(result[2]).deep.equals({ kind: 'pushint', value: 20n });
+                expectPushInt(result[2], 20);
                 expectPushData(result[3], "b");
-                expect(result[4]).deep.equals({ kind: 'pushint', value: 2n });
+                expectPushInt(result[4], 2);
                 expect(result[5]).deep.equals({ kind: 'packmap' });
             });
 
@@ -125,7 +123,7 @@ describe("expression parser", () => {
                 expectPushData(result[1], "a");
                 expect(result[2]).equals(bCTO.loadOp);
                 expectPushData(result[3], "b");
-                expect(result[4]).deep.equals({ kind: 'pushint', value: 2n });
+                expectPushInt(result[4], 2);
                 expect(result[5]).deep.equals({ kind: 'packmap' });
             });
         })
@@ -160,7 +158,7 @@ describe("expression parser", () => {
             const result = testParseExpression(node.getExpression(), scope);
 
             expect(result).lengthOf(3);
-            expect(result[0]).deep.equals({ kind: 'pushint', value: 42n });
+            expectPushInt(result[0], 42);
             expect(result[1]).deep.equals({ kind: 'duplicate' });
             expect(result[2]).equals(helloCTO.storeOp);
         });
@@ -176,10 +174,10 @@ describe("expression parser", () => {
         expect(result).lengthOf(7);
         expect(result[0]).deep.equals({ kind: 'pushbool', value: true });
         expect(result[1]).deep.equals({ kind: 'jumpifnot', target: result[4] });
-        expect(result[2]).deep.equals({ kind: 'pushint', value: 42n });
+        expectPushInt(result[2], 42);
         expect(result[3]).deep.equals({ kind: 'jump', target: result[6] });
         expect(result[4]).deep.equals({ kind: 'noop', });
-        expect(result[5]).deep.equals({ kind: 'pushint', value: 0n });
+        expectPushInt(result[5], 0);
         expect(result[6]).deep.equals({ kind: 'noop', });
     })
 
@@ -303,7 +301,7 @@ describe("expression parser", () => {
             const result = testParseExpression(init, scope);
 
             expect(result).lengthOf(4);
-            expect(result[0]).deep.equals({ kind: 'pushint', value: 42n })
+            expectPushInt(result[0], 42);
             expect(result[1]).deep.equals({ kind: 'duplicate' })
             expect(result[2]).equals(testCTO.loadOp);
             expect(result[3]).equals(valueCTO.storeOp);
@@ -331,7 +329,7 @@ describe("expression parser", () => {
             const result = testParseExpression(init, scope);
 
             expect(result).lengthOf(4);
-            expect(result[0]).deep.equals({ kind: 'pushint', value: 42n })
+            expectPushInt(result[0], 42);
             expect(result[1]).deep.equals({ kind: 'duplicate' })
             expect(result[2]).equals(testCTO.loadOp);
             expect(result[3]).equals(valueCTO.storeOp);
@@ -357,7 +355,7 @@ describe("expression parser", () => {
 
             expect(result).lengthOf(3);
             expectPushData(result[0], "hello");
-            expect(result[1]).deep.equals({ kind: 'pushint', value: 42n });
+            expectPushInt(result[1], 42);
             expect(result[2]).equals(testCallOp);
         })
 
@@ -381,7 +379,7 @@ describe("expression parser", () => {
 
             expect(result).lengthOf(4);
             expectPushData(result[0], "hello");
-            expect(result[1]).deep.equals({ kind: 'pushint', value: 42n });
+            expectPushInt(result[1], 42);
             expect(result[2]).equals(objCTO.loadOp);
             expect(result[3]).equals(testCallOp);
         })
@@ -406,7 +404,7 @@ describe("expression parser", () => {
 
             expect(result).lengthOf(3);
             expectPushData(result[0], "hello");
-            expect(result[1]).deep.equals({ kind: 'pushint', value: 42n });
+            expectPushInt(result[1], 42);
             expect(result[2]).equals(testCallOp);
         })
 
@@ -435,7 +433,7 @@ describe("expression parser", () => {
 
             expect(result).lengthOf(4);
             expectPushData(result[0], "hello");
-            expect(result[1]).deep.equals({ kind: 'pushint', value: 42n });
+            expectPushInt(result[1], 42);
             expect(result[2]).equals(objCTO.loadOp);
             expect(result[3]).equals(doCallOp);
         })
@@ -466,7 +464,7 @@ describe("expression parser", () => {
 
             expect(result).lengthOf(3);
             expectPushData(result[0], "hello");
-            expect(result[1]).deep.equals({ kind: 'pushint', value: 42n });
+            expectPushInt(result[1], 42);
             expect(result[2]).equals(doCallOp);
         })
     });

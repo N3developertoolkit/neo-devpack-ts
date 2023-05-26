@@ -4,7 +4,7 @@ import * as tsm from "ts-morph";
 
 import { sc } from "@cityofzion/neon-core";
 
-import { createTestProject, createTestGlobalScope, testParseExpression, createTestVariable, createTestScope } from './testUtils.spec';
+import { createTestProject, createTestGlobalScope, testParseExpression, createTestVariable, createTestScope, expectPushData, expectPushInt } from './testUtils.spec';
 import { Operation } from '../src/types/Operation';
 import { FindOptions } from '../src/builtin/storage';
 
@@ -68,7 +68,7 @@ describe("builts-ins", () => {
 
             const result = testParseExpression(init, scope);
             expect(result).to.have.lengthOf(1);
-            expect(result[0]).deep.equals(<Operation>{ kind: 'pushint', value: 0n })
+            expectPushInt(result[0], 0);
         });
 
         it("CallFlags.All", () => {
@@ -79,7 +79,7 @@ describe("builts-ins", () => {
 
             const result = testParseExpression(init, scope);
             expect(result).to.have.lengthOf(1);
-            expect(result[0]).deep.equals(<Operation>{ kind: 'pushint', value: 15n })
+            expectPushInt(result[0], 15);
         });
     })
 
@@ -93,13 +93,15 @@ describe("builts-ins", () => {
             const result = testParseExpression(expr, scope);
 
             expect(result).length(2);
-            expect(result[0]).deep.equals({ kind: 'pushint', value: 10n })
+            expectPushInt(result[0], 10);
             expect(result[1]).deep.equals({ kind: 'syscall', name: "System.Runtime.BurnGas" })
         });
 
         
         it("checkWitness", () => {
-            const contract = /*javascript*/`const account: ByteString = null!; checkWitness(account);`;
+            const contract = /*javascript*/`
+                const account: ByteString = null!; 
+                checkWitness(account);`;
             const { project, sourceFile } = createTestProject(contract);
             const globalScope = createTestGlobalScope(project);
 
@@ -116,6 +118,32 @@ describe("builts-ins", () => {
             expect(result[1]).deep.equals({ kind: 'syscall', name: "System.Runtime.CheckWitness" })
         });
     });
+
+    it("callContract", () => {
+        const contract = /*javascript*/`
+            const hash: ByteString = null!; 
+            callContract(hash, "method", CallFlags.All, 42, "hello");`;
+        const { project, sourceFile } = createTestProject(contract);
+        const globalScope = createTestGlobalScope(project);
+
+        const hash = sourceFile.getVariableDeclarationOrThrow('hash');
+        const hashCTO = createTestVariable(hash);
+        const scope = createTestScope(globalScope, hashCTO)
+
+        const expr = sourceFile.forEachChildAsArray()[1]
+            .asKindOrThrow(tsm.SyntaxKind.ExpressionStatement).getExpression();
+        const result = testParseExpression(expr, scope);
+
+        expect(result).length(8);
+        expectPushData(result[0], "hello");
+        expectPushInt(result[1], 42);
+        expectPushInt(result[2], 2);
+        expect(result[3]).deep.equals({ kind: 'packarray' })
+        expectPushInt(result[4], 15); // 15 == CallFlags.all
+        expectPushData(result[5], "method");
+        expect(result[6]).equals(hashCTO.loadOp);
+        expect(result[7]).deep.equals({ kind: 'syscall', name: "System.Contract.Call" })
+    })
 
     describe.skip("ByteStringConstructor", () => {
         it("fromHex", () => {
