@@ -162,11 +162,10 @@ declare global {
     export function callContract(scriptHash: ByteString, method: string, callFlags: CallFlags, ...args: any[]): any;
 
 
-    /** @nativeContract */
+    /** @nativeContract {0xfffdc93764dbaddd97c48f252a53ea4643faa3fd} */
     export const ContractManagement: ContractManagementConstructor;
 
     // TODO: @nativeContract safe methods 
-    /** @nativeContract {0xfffdc93764dbaddd97c48f252a53ea4643faa3fd} */
     export interface ContractManagementConstructor {
         /** @nativeContract getMinimumDeploymentFee */
         readonly minimumDeploymentFee: bigint;
@@ -180,10 +179,9 @@ declare global {
         destroy(): void;
     }
 
-    /** @nativeContract  */
+    /** @nativeContract {0xacce6fd80d44e1796aa0c2c625e9e4e0ce39efc0} */
     export const StdLib: StdLibConstructor;
 
-    /** @nativeContract {0xacce6fd80d44e1796aa0c2c625e9e4e0ce39efc0} */
     export interface StdLibConstructor {
         atoi(value: string, base?: number): bigint;
         itoa(value: bigint, base?: bigint): string;
@@ -202,7 +200,7 @@ declare global {
         stringSplit(str: string, separator: string, removeEmptyEntries?: boolean): string[];
     }
 
-    /** @nativeContract */
+    /** @nativeContract {0x726cb6e0cd8628a1350a611384688911ab75f51b} */
     export const CryptoLib: CryptoLibConstructor;
 
     export const enum ECDsaCurve {
@@ -210,7 +208,6 @@ declare global {
         secp256r1 = 23,
     }
 
-    /** @nativeContract {0x726cb6e0cd8628a1350a611384688911ab75f51b} */
     export interface CryptoLibConstructor {
         murmur32(data: ByteString, seed: number): ByteString;
         ripemd160(data: ByteString): ByteString;
@@ -218,7 +215,7 @@ declare global {
         verifyWithECDsa(message: ByteString, pubkey: ByteString, signature: ByteString, curve: ECDsaCurve): boolean;
     }
 
-    /** @nativeContract */
+    /** @nativeContract {0xda65b600f7124ce6c79950c1772a36403104f2be} */
     export const Ledger: LedgerConstructor;
 
     export const enum VMState {
@@ -228,7 +225,6 @@ declare global {
         BREAK = 4,
     }
 
-    /** @nativeContract {0xda65b600f7124ce6c79950c1772a36403104f2be} */
     export interface LedgerConstructor {
         readonly currentHash: ByteString;
         readonly currentIndex: number;
@@ -240,10 +236,14 @@ declare global {
         getTransactionVMState(hash: ByteString): VMState;
     }
 
-    /** @nativeContract */
-    export const NeoToken: NeoTokenConstructor;
+    export interface FungibleTokenConstructor {
+        readonly decimals: number;
+        readonly symbol: string;
+        readonly totalSupply: bigint;
+        balanceOf(account: ByteString): bigint;
+        transfer(from: ByteString, to: ByteString, amount: bigint, data?: any): boolean;
+    }
 
-    /** @nativeContract {0xef4073a0f2b305a38ec4050e4d3d28bc40ea63f5} */
     export interface NeoTokenConstructor extends FungibleTokenConstructor {
         /** @nativeContract getGasPerBlock */
         readonly gasPerBlock: bigint;
@@ -268,22 +268,15 @@ declare global {
         getAccountState(account: ByteString): NeoAccountState[];
     }
 
-    /** @nativeContract */
-    export const GasToken: FungibleTokenConstructor;
+    /** @nativeContract {0xef4073a0f2b305a38ec4050e4d3d28bc40ea63f5} */
+    export const NeoToken: NeoTokenConstructor;
 
     /** @nativeContract {0xd2a4cff31913016155e38e474a2c06d08be276cf} */
-    export interface FungibleTokenConstructor {
-        readonly decimals: number;
-        readonly symbol: string;
-        readonly totalSupply: bigint;
-        balanceOf(account: ByteString): bigint;
-        transfer(from: ByteString, to: ByteString, amount: bigint, data?: any): boolean;
-    }
-
-    /** @nativeContract */
-    export const Policy: PolicyConstructor;
+    export const GasToken: FungibleTokenConstructor;
 
     /** @nativeContract {0xcc5e4edd9f5f8dba8bb65734541df7a1c081c67b} */
+    export const Policy: PolicyConstructor;
+
     export interface PolicyConstructor {
         /** @nativeContract getFeePerByte */
         readonly feePerByte: number;
@@ -294,7 +287,7 @@ declare global {
         isBlocked(account: ByteString): boolean;
     }
 
-    /** @nativeContract */
+    /** @nativeContract {0x49cf4e5378ffcd4dec034fd98a174c5491e395e2} */
     export const RoleManagement: RoleManagementConstructor;
 
     export const enum Role {
@@ -303,15 +296,13 @@ declare global {
         NeoFSAlphabetNode = 16,
     }
 
-    /** @nativeContract {0x49cf4e5378ffcd4dec034fd98a174c5491e395e2} */
     export interface RoleManagementConstructor {
         getDesignatedByRole(role: Role, index: number): ByteString[];
     }
 
-    /** @nativeContract */
+    /** @nativeContract {0xfe924b7cfe89ddd271abaf7210a80a7e11178758} */
     export const Oracle: OracleConstructor;
 
-    /** @nativeContract {0xfe924b7cfe89ddd271abaf7210a80a7e11178758} */
     export interface OracleConstructor {
         /** @nativeContract getPrice */
         readonly price: bigint;
