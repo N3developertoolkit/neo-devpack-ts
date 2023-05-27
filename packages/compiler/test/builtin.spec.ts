@@ -163,19 +163,31 @@ describe("builts-ins", () => {
             ["notifications", "System.Runtime.GetNotifications"],
         ];
 
-        properties.forEach(([property, syscall]) => {
-            it(property, () => {
-                const contract = /*javascript*/`const $VAR = Runtime.${property};`;
-                const { project, sourceFile } = createTestProject(contract);
-                const scope = createTestGlobalScope(project);
-                const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
-    
-                const result = testParseExpression(init, scope);
-                expect(result).to.have.lengthOf(1);
-                expect(result[0]).deep.equals({ kind: 'syscall', name: syscall })
-            });
-        });
+        properties.forEach(([property, syscall]) => { testSyscallProperty("Runtime", property, syscall) });
     });
+
+    function testSyscallProperty(object: string, property: string, syscall: string) {
+        it(property, () => {
+            const contract = /*javascript*/`const $VAR = ${object}.${property};`;
+            const { project, sourceFile } = createTestProject(contract);
+            const scope = createTestGlobalScope(project);
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+
+            const result = testParseExpression(init, scope);
+            expect(result).to.have.lengthOf(1);
+            expect(result[0]).deep.equals({ kind: 'syscall', name: syscall })
+        });
+    }
+
+    // TODO: $torage => Storage
+    describe("Storage", () => {
+        const properties = [
+            ["context", "System.Storage.GetContext"],
+            ["readonlyContext", "System.Storage.GetReadOnlyContext"],
+        ]
+
+        properties.forEach(([property, syscall]) => { testSyscallProperty("$torage", property, syscall) });
+    })
 
     describe.skip("ByteStringConstructor", () => {
         it("fromHex", () => {

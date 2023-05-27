@@ -190,7 +190,7 @@ const makerFunctions = [
     makeCallContract,
     // makeError,
     makeRuntime,
-    // makeStorage
+    makeStorage
 ]
 
 

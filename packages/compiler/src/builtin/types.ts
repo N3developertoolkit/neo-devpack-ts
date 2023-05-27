@@ -2,8 +2,10 @@ import * as tsm from "ts-morph";
 
 import { pipe } from "fp-ts/lib/function";
 import * as E from "fp-ts/Either";
+import * as O from 'fp-ts/Option'
 import * as TS from "../TS";
 import * as ROA from 'fp-ts/ReadonlyArray';
+
 
 import { CompileTimeObject, GetOpsFunc, InvokeResolver } from "../types/CompileTimeObject";
 import { LibraryDeclaration } from "../types/LibraryDeclaration";
@@ -45,7 +47,7 @@ export function parseArguments(args: readonly GetOpsFunc[]): E.Either<ParseError
     )
 }
 
-export function makeInvokeResolver(node: tsm.Node, ops: Operation | readonly Operation[], implicitThis: boolean = false) : InvokeResolver {
+export function makeInvokeResolver(node: tsm.Node, ops: Operation | readonly Operation[], implicitThis: boolean = false): InvokeResolver {
     return ($this, args) => {
         const $args = implicitThis ? ROA.prepend($this)(args) : args;
         return pipe(
@@ -58,5 +60,17 @@ export function makeInvokeResolver(node: tsm.Node, ops: Operation | readonly Ope
                 loadOps
             }))
         );
+    }
+}
+
+export function getVarDecl(ctx: GlobalScopeContext) {
+    return (name: string) => {
+        return pipe(
+            ctx.declMap.get(name),
+            O.fromNullable,
+            O.chain(ROA.head),
+            O.chain(O.fromPredicate(tsm.Node.isVariableDeclaration)),
+            E.fromOption(() => `could not find ${name} variable`),
+        )
     }
 }

@@ -5,20 +5,18 @@ import * as O from 'fp-ts/Option'
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as TS from "../TS";
 
-import { GlobalScopeContext } from "./types";
+import { GlobalScopeContext, getVarDecl } from "./types";
 import { Operation } from "../types/Operation";
 import { CompileTimeObject } from "../types/CompileTimeObject";
 import { makePropResolvers } from "../passes/parseDeclarations";
 import { createDiagnostic } from "../utils";
 
 
+
 export function makeRuntime(ctx: GlobalScopeContext) {
     pipe(
-        ctx.declMap.get("Runtime"),
-        O.fromNullable,
-        O.chain(ROA.head),
-        O.chain(O.fromPredicate(tsm.Node.isVariableDeclaration)),
-        E.fromOption(() => "could not find Runtime variable"),
+        "Runtime",
+        getVarDecl(ctx),
         E.bindTo('node'),
         E.bind('symbol', ({node}) => pipe(node, TS.getSymbol, E.fromOption(() => "could not find symbol for Runtime"))),
         E.bind('props', ({ node }) => pipe(
