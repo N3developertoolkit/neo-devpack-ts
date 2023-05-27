@@ -113,7 +113,7 @@ function makeCompileTimeObject(node: tsm.Node, options?: MakeCompileTimeObjectOp
     )
 }
 
-function makePropResolvers(properties: readonly CompileTimeObject[]) {
+export function makePropResolvers(properties: readonly CompileTimeObject[]) {
     return pipe(
         properties,
         ROA.map(cto => {

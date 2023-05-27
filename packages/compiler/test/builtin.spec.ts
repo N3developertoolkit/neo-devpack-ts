@@ -97,7 +97,6 @@ describe("builts-ins", () => {
             expect(result[1]).deep.equals({ kind: 'syscall', name: "System.Runtime.BurnGas" })
         });
 
-        
         it("checkWitness", () => {
             const contract = /*javascript*/`
                 const account: ByteString = null!; 
@@ -144,6 +143,39 @@ describe("builts-ins", () => {
         expect(result[6]).equals(hashCTO.loadOp);
         expect(result[7]).deep.equals({ kind: 'syscall', name: "System.Contract.Call" })
     })
+
+    describe("Runtime", () => {
+
+        const properties = [
+            ["callFlags", "System.Contract.GetCallFlags"],
+            ["remainingGas", "System.Runtime.GasLeft"],
+            ["entryScriptHash", "System.Runtime.GetEntryScriptHash"],
+            ["executingScriptHash", "System.Runtime.GetExecutingScriptHash"],
+            ["invocationCounter", "System.Runtime.GetInvocationCounter"],
+            ["platform", "System.Runtime.Platform"],
+            ["network", "System.Runtime.GetNetwork"],
+            ["addressVersion", "System.Runtime.GetAddressVersion"],
+            ["trigger", "System.Runtime.GetTrigger"],
+            ["time", "System.Runtime.GetTime"],
+            ["scriptContainer", "System.Runtime.GetScriptContainer"],
+            ["callingScriptHash", "System.Runtime.GetCallingScriptHash"],
+            ["random", "System.Runtime.GetRandom"],
+            ["notifications", "System.Runtime.GetNotifications"],
+        ];
+
+        properties.forEach(([property, syscall]) => {
+            it(property, () => {
+                const contract = /*javascript*/`const $VAR = Runtime.${property};`;
+                const { project, sourceFile } = createTestProject(contract);
+                const scope = createTestGlobalScope(project);
+                const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+    
+                const result = testParseExpression(init, scope);
+                expect(result).to.have.lengthOf(1);
+                expect(result[0]).deep.equals({ kind: 'syscall', name: syscall })
+            });
+        });
+    });
 
     describe.skip("ByteStringConstructor", () => {
         it("fromHex", () => {

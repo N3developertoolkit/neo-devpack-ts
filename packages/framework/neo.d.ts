@@ -110,7 +110,6 @@ declare global {
     export interface RuntimeConstructor {
         /** @syscall System.Contract.GetCallFlags */
         readonly callFlags: CallFlags;
-
         /** @syscall System.Runtime.Platform */
         readonly platform: string;
         /** @syscall System.Runtime.GetNetwork */
