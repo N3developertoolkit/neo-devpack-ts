@@ -3,15 +3,16 @@ import { pipe } from "fp-ts/lib/function";
 import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option'
 import * as ROA from 'fp-ts/ReadonlyArray'
+import * as ROM from 'fp-ts/ReadonlyMap';
 import * as S from 'fp-ts/State';
 import * as TS from "../TS";
 
-import { CompileTimeObject, InvokeResolver, Scope, createEmptyScope, createScope } from "../types/CompileTimeObject";
+import { CompileTimeObject, CompileTimeType, InvokeResolver, PropertyResolver, Scope, createEmptyScope, createScope } from "../types/CompileTimeObject";
 import { LibraryDeclaration } from "../types/LibraryDeclaration";
 import { GlobalScopeContext, makeInvokeResolver, parseArguments, parseSymbol } from "./types";
 import { createDiagnostic, isVoidLike, makeParseDiagnostic } from "../utils";
 import { makePropResolvers, parseEnumDecl } from "../passes/parseDeclarations";
-import { Operation, parseOperation } from "../types/Operation";
+import { Operation, parseOperation, pushInt } from "../types/Operation";
 import { makeCallContract } from "./callContract";
 import { makeRuntime } from "./runtime";
 import { makeStorage } from "./storage";
@@ -21,7 +22,7 @@ module REGEX {
     export const match = (regex: RegExp) => (value: string) => O.fromNullable(value.match(regex));
 }
 
-function makeEnumObjects(ctx: GlobalScopeContext): void {
+function makeEnums(ctx: GlobalScopeContext): void {
     // std TS lib does not define any enums
     // convert all neo enum declarations to objects
     const { left: errors, right: objects } = pipe(
@@ -34,7 +35,6 @@ function makeEnumObjects(ctx: GlobalScopeContext): void {
     errors.forEach(ctx.addError);
     objects.forEach(ctx.addObject);
 }
-
 
 function makeNativeContracts(ctx: GlobalScopeContext) {
     const regexMethodToken = /\{((?:0x)?[0-9a-fA-F]{40})\}/;
@@ -171,9 +171,6 @@ function makeOperationFunctions(ctx: GlobalScopeContext) {
     }
 }
 
-
-
-
 function makeSyscallFunctions(ctx: GlobalScopeContext) {
     const { left: errors, right: objects } = pipe(
         ctx.decls,
@@ -204,34 +201,61 @@ function makeSyscallFunctions(ctx: GlobalScopeContext) {
     }
 }
 
-// function makeStackItemTypes(ctx: GlobalScopeContext) {
-//     const { left: errors, right: types } = pipe(
-//         ctx.decls,
-//         ROA.filterMap(O.fromPredicate(tsm.Node.isInterfaceDeclaration)),
-//         ROA.filter(TS.hasTag("stackitem")),
-//         ROA.map(makeStackItemType),
-//         ROA.separate
-//     )
-//     errors.forEach(ctx.addError);
-//     types.forEach(ctx.addType);
 
-//     function makeStackItemType(node: tsm.InterfaceDeclaration) {
-//         return pipe(
-//             E.Do,
-//             E.bind("symbol", () => pipe(node, parseTypeSymbol)),
-//             // TODO: real CTO
-//             E.map(({ symbol }) => <CompileTimeObject>{ node, symbol, loadOps: [] }),
-//         );
-//     }
-// }
 
+function makeStackItems(ctx: GlobalScopeContext) {
+    const { left: errors, right: types } = pipe(
+        ctx.decls,
+        ROA.filterMap(O.fromPredicate(tsm.Node.isInterfaceDeclaration)),
+        ROA.filter(TS.hasTag("stackitem")),
+        ROA.map(makeStackItemType),
+        ROA.separate
+    )
+    errors.forEach(ctx.addError);
+    types.forEach(ctx.addType);
+
+    function makeStackItemType(node: tsm.InterfaceDeclaration): E.Either<tsm.ts.Diagnostic, CompileTimeType>  {
+        const type = node.getType();
+        return pipe(
+            type.getProperties(),
+            ROA.mapWithIndex((index, symbol) => pipe(
+                symbol.getValueDeclaration(),
+                E.fromPredicate(
+                    tsm.Node.isPropertySignature,
+                    () => createDiagnostic(`could not get value declaration for ${node.getName()}.${symbol.getName()}`, { node })
+                ),
+                E.map(node => {
+                    const loadOps: readonly Operation[] = [pushInt(index), { kind: 'pickitem' }];
+                    return <CompileTimeObject>{ node, symbol, loadOps };
+                })
+            )), 
+            ROA.sequence(E.Applicative),
+            E.map(props => {
+                const properties = pipe(
+                    props,
+                    ROA.map(cto => {
+                        const resolver: PropertyResolver = ($this) => pipe(
+                            $this(),
+                            E.map(ROA.concat(cto.loadOps)),
+                            E.map(loadOps => <CompileTimeObject>{ ...cto, loadOps })
+                        );
+                        return [cto.symbol, resolver] as const;
+                    }),
+                    props => new Map(props),
+                    ROM.fromMap,
+                )
+                return <CompileTimeType>{ type, properties }
+            })
+        )
+    }
+}
 
 const makerFunctions = [
     // metadata driven built ins
-    makeEnumObjects,
+    makeEnums,
     makeNativeContracts,
     // makeOperationFunctions,
-    // makeStackItemTypes,
+    makeStackItems,
     makeSyscallFunctions,
     // // explicit built ins
     // makeByteString,
@@ -245,7 +269,7 @@ export function makeGlobalScope(decls: readonly LibraryDeclaration[]): S.State<r
     return diagnostics => {
         const errors: tsm.ts.Diagnostic[] = [];
         const objects: CompileTimeObject[] = [];
-        // const types: Comp[] = [];
+        const types: CompileTimeType[] = [];
 
         const declMap = new Map<string, readonly LibraryDeclaration[]>();
         for (const decl of decls) {
@@ -268,12 +292,12 @@ export function makeGlobalScope(decls: readonly LibraryDeclaration[]): S.State<r
             declMap,
             addError: (error: tsm.ts.Diagnostic) => { errors.push(error); },
             addObject: (obj: CompileTimeObject) => { objects.push(obj); },
-            // addType: (obj: CompileTimeObject) => { types.push(obj); }
+            addType: (type: CompileTimeType) => { types.push(type); }
         }
 
         makerFunctions.forEach(maker => maker(context));
         return errors.length > 0
             ? [createEmptyScope(), ROA.concat(errors)(diagnostics)]
-            : [createScope(undefined)(objects), diagnostics];
+            : [createScope(undefined)(objects, types), diagnostics];
     };
 }

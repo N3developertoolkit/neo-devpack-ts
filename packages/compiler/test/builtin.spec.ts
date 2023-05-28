@@ -119,7 +119,7 @@ describe("builts-ins", () => {
     });
 
     describe("native contracts", () => {
-    
+
         it("simple property", () => {
             const contract = /*javascript*/`const $VAR = Ledger.currentHash;`;
             const { project, sourceFile } = createTestProject(contract);
@@ -208,7 +208,7 @@ describe("builts-ins", () => {
             expectCallToken(result[5], "0xfe924b7cfe89ddd271abaf7210a80a7e11178758", "request", 5, false);
         });
 
-        function expectCallToken(op: Operation,hash: string, method: string, paramCount: number, hasReturn: boolean) {
+        function expectCallToken(op: Operation, hash: string, method: string, paramCount: number, hasReturn: boolean) {
             expect(op).has.property('kind', 'calltoken');
             const token = (op as CallTokenOperation).token;
             expect(token.hash).equals(u.HexString.fromHex(hash, true).toString());
@@ -219,6 +219,61 @@ describe("builts-ins", () => {
         }
     })
 
+    describe("stack items", () => {
+
+        const tests: Record<string, readonly string[]> = {
+            Transaction: [
+                "hash",
+                "version",
+                "nonce",
+                "sender",
+                "systemFee",
+                "networkFee",
+                "validUntilBlock",
+                "script",
+            ],
+            Block: [
+                "hash",
+                "version",
+                "previousHash",
+                "merkleRoot",
+                "timestamp",
+                "nonce",
+                "index",
+                "primaryIndex",
+                "nextConsensus",
+                "transactionsCount"
+            ],
+            ContractMethodDescriptor: [
+                "name",
+                "parameters",
+            ]
+        }
+
+        for (const [type, properties] of Object.entries(tests)) {
+            properties.forEach((property, index) => { doTest(type, property, index) })
+        }
+
+        function doTest(type: string, property: string, index: number) {
+            it(`${type}.${property}`, () => {
+                const contract = /*javascript*/`const item: ${type} = null!; const $VAR = item.${property};`;
+                const { project, sourceFile } = createTestProject(contract);
+                const globalScope = createTestGlobalScope(project);
+
+                const item = sourceFile.getVariableDeclarationOrThrow('item');
+                const itemCTO = createTestVariable(item);
+                const scope = createTestScope(globalScope, itemCTO);
+
+                const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+                const result = testParseExpression(init, scope);
+
+                expect(result).length(3);
+                expect(result[0]).equals(itemCTO.loadOp);
+                expectPushInt(result[1], index);
+                expect(result[2]).deep.equals({ kind: 'pickitem' })
+            });
+        }
+    })
     it("callContract", () => {
         const contract = /*javascript*/`
             const hash: ByteString = null!; 

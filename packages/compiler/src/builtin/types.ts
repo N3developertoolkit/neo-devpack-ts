@@ -7,7 +7,7 @@ import * as TS from "../TS";
 import * as ROA from 'fp-ts/ReadonlyArray';
 
 
-import { CompileTimeObject, GetOpsFunc, InvokeResolver } from "../types/CompileTimeObject";
+import { CompileTimeObject, CompileTimeType, GetOpsFunc, InvokeResolver } from "../types/CompileTimeObject";
 import { LibraryDeclaration } from "../types/LibraryDeclaration";
 import { ParseError, createDiagnostic, isArray } from "../utils";
 import { Operation } from "../types/Operation";
@@ -17,7 +17,7 @@ export interface GlobalScopeContext {
     readonly declMap: ReadonlyMap<string, readonly LibraryDeclaration[]>;
 
     addObject(obj: CompileTimeObject): void;
-    // addType(obj: CompileTimeObject): void;
+    addType(type: CompileTimeType): void;
     addError(error: tsm.ts.Diagnostic): void;
 }
 
