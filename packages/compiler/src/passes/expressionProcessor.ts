@@ -532,8 +532,9 @@ function reduceExpressionHead(scope: Scope, node: tsm.Expression): E.Either<Pars
 }
 
 function reduceCallExpression(context: ExpressionContext, node: tsm.CallExpression): E.Either<ParseError, ExpressionContext> {
+
     return pipe(
-        context.cto?.call,
+        context.cto?.call ? context.cto.call(node) : undefined,
         O.fromNullable,
         O.alt(() => pipe(
             context.type,
@@ -556,7 +557,7 @@ function reduceCallExpression(context: ExpressionContext, node: tsm.CallExpressi
 
 function reduceNewExpression(context: ExpressionContext, node: tsm.NewExpression): E.Either<ParseError, ExpressionContext> {
     return pipe(
-        context.cto?.callNew,
+        context.cto?.callNew ? context.cto.callNew(node) : undefined,
         O.fromNullable,
         O.alt(() => pipe(
             context.type,

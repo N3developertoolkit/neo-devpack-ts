@@ -105,7 +105,7 @@ function makeNativeContracts(ctx: GlobalScopeContext) {
                     } else {
                         // token.parametersCount field is dependent on the number of arguments,
                         // so can't use makeInvokeResolver here
-                        const call: InvokeResolver = ($this, args) => {
+                        const resolver: InvokeResolver = ($this, args) => {
                             const token = new sc.MethodToken({
                                 hash: hash.toString(),
                                 method,
@@ -120,7 +120,7 @@ function makeNativeContracts(ctx: GlobalScopeContext) {
                                 E.map(loadOps => <CompileTimeObject>{ node, symbol, loadOps })
                             );
                         }
-                        return <CompileTimeObject>{ node, symbol, loadOps: [], call };
+                        return <CompileTimeObject>{ node, symbol, loadOps: [], call: () => resolver };
                     }
                 })
             )
@@ -194,8 +194,8 @@ function makeSyscallFunctions(ctx: GlobalScopeContext) {
                 ))),
             E.map(({ symbol, serviceName }) => {
                 const op = <Operation>{ kind: 'syscall', name: serviceName };
-                const call = makeInvokeResolver(node, op);
-                return <CompileTimeObject>{ node, symbol, loadOps: [], call };
+                const resolver = makeInvokeResolver(node, op);
+                return <CompileTimeObject>{ node, symbol, loadOps: [], call: () => resolver };
             }),
         );
     }

@@ -82,6 +82,8 @@ export function createTestVariable(node: tsm.Node, options?: CreateTestVariableO
     const storeOp = { kind: 'noop', debug: `${name}.store` } as Operation;
     const loadOps = options?.call || options?.callNew ? [] : [loadOp];
     const storeOps = options?.call || options?.callNew ? undefined : [storeOp];
+    const call = options?.call ? () => options.call! : undefined;
+    const callNew = options?.callNew ? () => options.callNew! : undefined;
     return { 
         node, 
         symbol, 
@@ -90,8 +92,8 @@ export function createTestVariable(node: tsm.Node, options?: CreateTestVariableO
         loadOps, 
         storeOps, 
         properties: options?.properties,
-        call: options?.call,
-        callNew: options?.callNew,
+        call,
+        callNew,
     };
 }
 

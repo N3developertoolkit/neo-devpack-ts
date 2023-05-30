@@ -44,7 +44,7 @@ export function makeCallContract(ctx: GlobalScopeContext) {
                     E.map(loadOps => <CompileTimeObject>{ node, symbol, loadOps })
                 )
             }
-            return <CompileTimeObject>{ node, symbol, loadOps: [], call: resolver };
+            return <CompileTimeObject>{ node, symbol, loadOps: [], call: () => resolver };
         }),
         O.match(
             () => ctx.addError(createDiagnostic("could not find callContract function")),

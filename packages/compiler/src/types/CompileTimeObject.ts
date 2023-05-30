@@ -23,8 +23,8 @@ export interface CompileTimeObject {
     readonly loadOps: ReadonlyArray<Operation>;
     readonly storeOps?: ReadonlyArray<Operation>;
     readonly properties?: ReadonlyMap<string, PropertyResolver>;
-    readonly call?: InvokeResolver;
-    readonly callNew?: InvokeResolver;
+    readonly call?: (node: tsm.CallExpression) => InvokeResolver;
+    readonly callNew?: (node: tsm.NewExpression) => InvokeResolver;
 }
 
 export type CompileTimeValue = Pick<CompileTimeObject, 'node' | 'loadOps'>;
