@@ -11,8 +11,6 @@ import { CompileTimeObject } from "../types/CompileTimeObject";
 import { makePropResolvers } from "../passes/parseDeclarations";
 import { createDiagnostic } from "../utils";
 
-
-
 export function makeRuntime(ctx: GlobalScopeContext) {
     pipe(
         "Runtime",

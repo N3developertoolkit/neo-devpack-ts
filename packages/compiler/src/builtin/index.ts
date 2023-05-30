@@ -201,8 +201,6 @@ function makeSyscallFunctions(ctx: GlobalScopeContext) {
     }
 }
 
-
-
 function makeStackItems(ctx: GlobalScopeContext) {
     const { left: errors, right: types } = pipe(
         ctx.decls,

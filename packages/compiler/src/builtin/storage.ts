@@ -32,10 +32,10 @@ export function makeStorage(ctx: GlobalScopeContext) {
 
 export function makeStorageObject(ctx: GlobalScopeContext) {
 
-    const storageProps = new Map([
-        ["context", "System.Storage.GetContext"],
-        ["readonlyContext", "System.Storage.GetReadOnlyContext"]
-    ])
+    const storageProps: Record<string, string> = {
+        context: "System.Storage.GetContext",
+        readonlyContext: "System.Storage.GetReadOnlyContext"
+    }
 
     // TODO: $torage => Storage
     return pipe(
@@ -47,15 +47,12 @@ export function makeStorageObject(ctx: GlobalScopeContext) {
             const type = node.getType();
             return pipe(
                 storageProps,
-                ROM.mapWithIndex((name, syscall) => {
-                    return pipe(
-                        type.getProperty(name),
-                        E.fromNullable(`could not find property ${name} on Storage`),
-                        E.chain(symbol => makeProperty(symbol, syscall))
-                    );
-                }),
-                // don't care about order
-                ROM.values({compare: (a, b) => 0, equals: (a, b) => a === b }),
+                ROR.mapWithIndex((name, syscall) => pipe(
+                    type.getProperty(name),
+                    E.fromNullable(`could not find property ${name} on Storage`),
+                    E.chain(symbol => makeProperty(symbol, syscall))
+                )),
+                ROR.collect(STR.Ord)((_k, v) => v),
                 ROA.sequence(E.Applicative)
             )
         }),
