@@ -103,6 +103,22 @@ export const getMethodMember = (name: string) => (node: MemberedNode) => {
     );
 }
 
+export function getPropSig(symbol: tsm.Symbol) {
+    return pipe(
+        symbol.getValueDeclaration(),
+        O.fromNullable,
+        O.chain(decl => pipe(decl.asKind(tsm.SyntaxKind.PropertySignature), O.fromNullable)),
+    );
+}
+
+export function getMethodSig(symbol: tsm.Symbol) {
+    return pipe(
+        symbol.getValueDeclaration(),
+        O.fromNullable,
+        O.chain(decl => pipe(decl.asKind(tsm.SyntaxKind.MethodSignature), O.fromNullable)),
+    );
+}
+
 export const compoundAssignmentOperatorMap = new Map<tsm.SyntaxKind, tsm.ts.BinaryOperator>([
     [tsm.SyntaxKind.PlusEqualsToken, tsm.ts.SyntaxKind.PlusToken],
     [tsm.SyntaxKind.MinusEqualsToken, tsm.SyntaxKind.MinusToken],

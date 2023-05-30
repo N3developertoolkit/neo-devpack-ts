@@ -50,6 +50,10 @@ export function single<T>(array: ReadonlyArray<T>): O.Option<T> {
     return array.length === 1 ? O.some(array[0] as T) : O.none;
 }
 
+export function makeReadOnlyMap<K, V>(entries: readonly (readonly [K, V])[]): ReadonlyMap<K, V> {
+    return new Map<K, V>(entries);
+}
+
 export function isNotNullOrUndefined<T extends Object>(input: null | undefined | T): input is T {
     return input != null;
 }

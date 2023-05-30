@@ -4,9 +4,10 @@ import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option'
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROR from 'fp-ts/ReadonlyRecord';
+import * as TS from "../TS";
 
-import { GlobalScopeContext, getVarDeclAndSymbol, makeProperties } from "./types";
-import { CallInvokeResolver, CompileTimeObject, GetValueFunc } from "../types/CompileTimeObject";
+import { GlobalScopeContext, getVarDeclAndSymbol, makeInterface, makeProperties } from "./types";
+import { CallInvokeResolver, CompileTimeObject, GetValueFunc, PropertyResolver } from "../types/CompileTimeObject";
 import { createDiagnostic, makeParseError, single } from "../utils";
 import { Operation, isPushDataOp, isPushIntOp } from "../types/Operation";
 import { makePropResolvers } from "../passes/parseDeclarations";
@@ -51,7 +52,7 @@ function getFirstArg(node: tsm.Node) {
     }
 }
 
-const fromHex: CallInvokeResolver = (node) => ($this, args) => {
+const fromHex: CallInvokeResolver = (node) => (_$this, args) => {
     return pipe(
         args,
         getFirstArg(node),
@@ -73,7 +74,7 @@ const fromHex: CallInvokeResolver = (node) => ($this, args) => {
     )
 };
 
-const fromInteger: CallInvokeResolver = (node) => ($this, args) => {
+const fromInteger: CallInvokeResolver = (node) => (_$this, args) => {
     return pipe(
         args,
         getFirstArg(node),
@@ -93,22 +94,21 @@ const fromInteger: CallInvokeResolver = (node) => ($this, args) => {
     );
 }
 
-const fromString: CallInvokeResolver = (node) => ($this, args) => {
-    return pipe(
-        args,
-        getFirstArg(node),
-    );
+const fromString: CallInvokeResolver = (node) => (_$this, args) => {
+    return pipe(args, getFirstArg(node));
 }
 
 function makeByteStringObject(ctx: GlobalScopeContext) {
-    const bytestringProps: ROR.ReadonlyRecord<string, CallInvokeResolver> = {
-        fromHex, fromInteger, fromString
+    const props: ROR.ReadonlyRecord<string, CallInvokeResolver> = {
+        fromHex,
+        fromInteger,
+        fromString
     }
 
-   pipe(
+    pipe(
         "ByteString",
         getVarDeclAndSymbol(ctx),
-        E.bind('props', ({ node }) => makeProperties<CallInvokeResolver>(node, bytestringProps, makeProperty)),
+        E.bind('props', ({ node }) => makeProperties(node, props, makeProperty)),
         E.map(({ node, symbol, props }) => <CompileTimeObject>{ node, symbol, loadOps: [], properties: makePropResolvers(props) }),
         E.match(
             error => { ctx.addError(createDiagnostic(error)) },
@@ -123,15 +123,60 @@ function makeByteStringObject(ctx: GlobalScopeContext) {
                 O.fromNullable,
                 O.chain(O.fromPredicate(tsm.Node.isMethodSignature)),
                 E.fromOption(() => `could not find method signature for ${symbol.getName()}`),
-                E.map(node => {
-                    // const op = <Operation>{ kind: 'syscall', name: syscall }
-                    return <CompileTimeObject>{ node, symbol, loadOps: [], call };
-                })
+                E.map(node => <CompileTimeObject>{ node, symbol, loadOps: [], call })
             )
         }
     }
 }
 
+function makeLength(symbol: tsm.Symbol): E.Either<string, PropertyResolver> {
+    return pipe(
+        symbol,
+        TS.getPropSig,
+        O.map(node => {
+            const resolver: PropertyResolver = ($this) => pipe(
+                $this(),
+                E.map(ROA.append<Operation>({ kind: "size" })),
+                E.map(loadOps => <CompileTimeObject>{ node: node, loadOps })
+            );
+            return resolver;
+        }),
+        E.fromOption(() => `could not find ${symbol.getName()} member`)
+    )
+}
+
+function makeAsInteger(symbol: tsm.Symbol): E.Either<string, PropertyResolver> {
+    return pipe(
+        symbol,
+        TS.getMethodSig,
+        O.map(node => {
+            const resolver: PropertyResolver = ($this) => {
+                const call: CallInvokeResolver = (node) => (_$this, _args) => {
+                    return pipe(
+                        $this(),
+                        E.map(ROA.append<Operation>({ kind: "convert", type: sc.StackItemType.Integer })),
+                        E.map(loadOps => <CompileTimeObject>{ node, loadOps })
+                    )
+                }
+                return E.of(<CompileTimeObject>{ node: node, loadOps: [], call });
+            }
+            return resolver;
+        }),
+        E.fromOption(() => `could not find ${symbol.getName()} member`)
+    );
+}
+
+function makeByteStringInterface(ctx: GlobalScopeContext) {
+
+    const members: ROR.ReadonlyRecord<string, (s: tsm.Symbol) => E.Either<string, PropertyResolver>> = {
+        length: makeLength,
+        asInteger: makeAsInteger
+    }
+
+    makeInterface("ByteString", members, ctx);
+}
+
 export function makeByteString(ctx: GlobalScopeContext) {
     makeByteStringObject(ctx);
+    makeByteStringInterface(ctx);
 }

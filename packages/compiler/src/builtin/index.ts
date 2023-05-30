@@ -10,7 +10,7 @@ import * as TS from "../TS";
 import { CompileTimeObject, CompileTimeType, InvokeResolver, PropertyResolver, Scope, createEmptyScope, createScope } from "../types/CompileTimeObject";
 import { LibraryDeclaration } from "../types/LibraryDeclaration";
 import { GlobalScopeContext, makeInvokeResolver, parseArguments, parseSymbol } from "./types";
-import { createDiagnostic, isVoidLike, makeParseDiagnostic } from "../utils";
+import { createDiagnostic, isVoidLike, makeParseDiagnostic, makeReadOnlyMap } from "../utils";
 import { makePropResolvers, parseEnumDecl } from "../passes/parseDeclarations";
 import { Operation, parseOperation, pushInt } from "../types/Operation";
 import { makeCallContract } from "./callContract";
@@ -221,30 +221,21 @@ function makeStackItems(ctx: GlobalScopeContext) {
                 symbol.getValueDeclaration(),
                 E.fromPredicate(
                     tsm.Node.isPropertySignature,
-                    () => createDiagnostic(`could not get value declaration for ${node.getName()}.${symbol.getName()}`, { node })
+                    () => `could not get value declaration for ${node.getName()}.${symbol.getName()}`
                 ),
                 E.map(node => {
-                    const loadOps: readonly Operation[] = [pushInt(index), { kind: 'pickitem' }];
-                    return <CompileTimeObject>{ node, symbol, loadOps };
+                    const resolver: PropertyResolver = ($this) => pipe(
+                        $this(),
+                        E.map(ROA.concat<Operation>([pushInt(index), { kind: 'pickitem' }])),
+                        E.map(loadOps => <CompileTimeObject>{ node, symbol, loadOps })
+                    );
+                    return [symbol, resolver] as const;
                 })
             )), 
             ROA.sequence(E.Applicative),
-            E.map(props => {
-                const properties = pipe(
-                    props,
-                    ROA.map(cto => {
-                        const resolver: PropertyResolver = ($this) => pipe(
-                            $this(),
-                            E.map(ROA.concat(cto.loadOps)),
-                            E.map(loadOps => <CompileTimeObject>{ ...cto, loadOps })
-                        );
-                        return [cto.symbol, resolver] as const;
-                    }),
-                    props => new Map(props),
-                    ROM.fromMap,
-                )
-                return <CompileTimeType>{ type, properties }
-            })
+            E.mapLeft(msg => createDiagnostic(msg, { node })),
+            E.map(makeReadOnlyMap),
+            E.map(properties => <CompileTimeType>{ type, properties })
         )
     }
 }
@@ -289,7 +280,10 @@ export function makeGlobalScope(decls: readonly LibraryDeclaration[]): S.State<r
         const context: GlobalScopeContext = {
             decls,
             declMap,
-            addError: (error: tsm.ts.Diagnostic) => { errors.push(error); },
+            addError: (error: string | tsm.ts.Diagnostic) => { 
+                error = typeof error === 'string' ? createDiagnostic(error) : error;
+                errors.push(error); 
+            },
             addObject: (obj: CompileTimeObject) => { objects.push(obj); },
             addType: (type: CompileTimeType) => { types.push(type); }
         }

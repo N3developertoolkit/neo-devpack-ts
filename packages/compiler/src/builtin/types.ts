@@ -1,6 +1,6 @@
 import * as tsm from "ts-morph";
 
-import { pipe } from "fp-ts/lib/function";
+import { flow, pipe } from "fp-ts/lib/function";
 import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option'
 import * as TS from "../TS";
@@ -8,9 +8,9 @@ import * as ROA from 'fp-ts/ReadonlyArray';
 import * as ROR from 'fp-ts/ReadonlyRecord';
 import * as STR from 'fp-ts/string';
 
-import { CompileTimeObject, CompileTimeType, GetOpsFunc, GetValueFunc, InvokeResolver } from "../types/CompileTimeObject";
+import { CompileTimeObject, CompileTimeType, GetOpsFunc, GetValueFunc, InvokeResolver, PropertyResolver } from "../types/CompileTimeObject";
 import { LibraryDeclaration } from "../types/LibraryDeclaration";
-import { ParseError, createDiagnostic, isArray, single } from "../utils";
+import { ParseError, createDiagnostic, isArray, makeReadOnlyMap, single } from "../utils";
 import { Operation } from "../types/Operation";
 
 export interface GlobalScopeContext {
@@ -19,7 +19,7 @@ export interface GlobalScopeContext {
 
     addObject(obj: CompileTimeObject): void;
     addType(type: CompileTimeType): void;
-    addError(error: tsm.ts.Diagnostic): void;
+    addError(error: string | tsm.ts.Diagnostic): void;
 }
 
 export function parseSymbol(node: LibraryDeclaration) {
@@ -102,5 +102,42 @@ export function makeProperties<T>(
         )),
         ROR.collect(STR.Ord)((_k, v) => v),
         ROA.sequence(E.Applicative)
+    );
+}
+
+export function makeInterface(name: string, members: ROR.ReadonlyRecord<string, (s: tsm.Symbol) => E.Either<string, PropertyResolver>>, ctx: GlobalScopeContext) {
+    pipe(
+        ctx.declMap.get(name),
+        E.fromNullable(`could not find ${name} declarations`),
+        E.map(ROA.filterMap(O.fromPredicate(tsm.Node.isInterfaceDeclaration))),
+        E.chain(flow(ROA.head, E.fromOption(() => `could not find ${name} interface`))),
+        E.map(decl => {
+            const type = decl.getType();
+            const properties = pipe(
+                members,
+                ROR.mapWithIndex((memberName, factory) => {
+                    return pipe(
+                        type.getProperty(memberName),
+                        E.fromNullable(`could not find ${name}.${memberName} member`),
+                        E.bindTo('symbol'),
+                        E.bind('resolver', ({ symbol }) => factory(symbol)),
+                        E.map(({ symbol, resolver }) => [symbol, resolver] as const)
+                    );
+                }),
+                ROR.collect(STR.Ord)((_k, v) => v),
+                ROA.separate,
+                ({ left: errors, right: entries }) => {
+                    errors.forEach(error => ctx.addError(createDiagnostic(error)));
+                    return entries;
+                },
+                makeReadOnlyMap
+            )
+
+            return <CompileTimeType>{ type, properties };
+        }),
+        E.match(
+            error => { ctx.addError(error) },
+            ctx.addType
+        )
     );
 }

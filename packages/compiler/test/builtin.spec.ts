@@ -342,7 +342,7 @@ describe("builts-ins", () => {
     }
 
     // TODO: $torage => Storage
-    describe("Storage", () => {
+    describe("StorageConstructor", () => {
         const properties = [
             ["context", "System.Storage.GetContext"],
             ["readonlyContext", "System.Storage.GetReadOnlyContext"],
@@ -502,7 +502,7 @@ describe("builts-ins", () => {
         });
     });
 
-    describe.skip("ByteString", () => {
+    describe("ByteString", () => {
         it("length", () => {
             const contract = /*javascript*/`const $hello = ByteString.fromString("hello"); const $VAR = $hello.length;`;
 
@@ -538,28 +538,28 @@ describe("builts-ins", () => {
         })
     });
 
-    describe.skip("StorageConstructor", () => {
-        it("context", () => {
-            const contract = /*javascript*/`const $VAR = Storage.context;`;
-            const { project, sourceFile } = createTestProject(contract);
-            const scope = createTestGlobalScope(project);
-            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
-            const result = testParseExpression(init, scope);
+    // describe.skip("Storage", () => {
+    //     // it("context", () => {
+    //     //     const contract = /*javascript*/`const $VAR = Storage.context;`;
+    //     //     const { project, sourceFile } = createTestProject(contract);
+    //     //     const scope = createTestGlobalScope(project);
+    //     //     const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+    //     //     const result = testParseExpression(init, scope);
 
-            expect(result).length(1);
-            expect(result[0]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.GetContext" })
-        });
+    //     //     expect(result).length(1);
+    //     //     expect(result[0]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.GetContext" })
+    //     // });
 
-        it("readonlyContext", () => {
-            const contract = /*javascript*/`const $VAR = Storage.readonlyContext;`;
-            const { project, sourceFile } = createTestProject(contract);
-            const scope = createTestGlobalScope(project);
-            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
-            const result = testParseExpression(init, scope);
+    //     // it("readonlyContext", () => {
+    //     //     const contract = /*javascript*/`const $VAR = Storage.readonlyContext;`;
+    //     //     const { project, sourceFile } = createTestProject(contract);
+    //     //     const scope = createTestGlobalScope(project);
+    //     //     const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+    //     //     const result = testParseExpression(init, scope);
 
-            expect(result).length(1);
-            expect(result[0]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.GetReadOnlyContext" })
-        });
-    });
+    //     //     expect(result).length(1);
+    //     //     expect(result[0]).deep.equals(<Operation>{ kind: 'syscall', name: "System.Storage.GetReadOnlyContext" })
+    //     // });
+    // });
 });
 
