@@ -1,12 +1,17 @@
 import 'mocha';
 import { expect } from 'chai';
 import * as tsm from "ts-morph";
+import * as E from 'fp-ts/Either';
+import * as ROA from 'fp-ts/ReadonlyArray';
 
 import { sc, u } from "@cityofzion/neon-core";
 
 import { createTestProject, createTestGlobalScope, testParseExpression, createTestVariable, createTestScope, expectPushData, expectPushInt } from './testUtils.spec';
 import { CallTokenOperation, Operation } from '../src/types/Operation';
 import { FindOptions } from '../src/builtin/storage';
+import { pipe } from 'fp-ts/lib/function';
+import { parseExpression } from '../src/passes/expressionProcessor';
+import { CompileTimeObject } from '../src/types/CompileTimeObject';
 
 describe("builts-ins", () => {
     describe.skip("Error", () => {
@@ -274,6 +279,7 @@ describe("builts-ins", () => {
             });
         }
     })
+
     it("callContract", () => {
         const contract = /*javascript*/`
             const hash: ByteString = null!; 
@@ -345,16 +351,96 @@ describe("builts-ins", () => {
         properties.forEach(([property, syscall]) => { testSyscallProperty("$torage", property, syscall) });
     })
 
-    describe.skip("ByteStringConstructor", () => {
-        it("fromHex", () => {
-            const contract = /*javascript*/`const $VAR = ByteString.fromHex("0xFF");`;
+    describe("ByteStringConstructor", () => {
+        it("fromInteger", () => {
+            const contract = /*javascript*/`const $VAR = ByteString.fromInteger(12345);`;
             const { project, sourceFile } = createTestProject(contract);
             const scope = createTestGlobalScope(project);
             const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
 
             const result = testParseExpression(init, scope);
-            expect(result).to.have.lengthOf(1);
-            expect(result[0]).deep.equals(<Operation>{ kind: 'pushdata', value: Uint8Array.from([255]) })
+            expect(result).to.have.lengthOf(2);
+            expectPushInt(result[0], 12345n);
+            expect(result[1]).deep.equals({ kind: 'convert', type: sc.StackItemType.ByteString })
+        });
+
+        describe("fromHex", () => {
+            it("with prefix", () => {
+                const contract = /*javascript*/`const $VAR = ByteString.fromHex("0xFF");`;
+                const { project, sourceFile } = createTestProject(contract);
+                const scope = createTestGlobalScope(project);
+                const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+
+                const result = testParseExpression(init, scope);
+                expect(result).to.have.lengthOf(1);
+                expect(result[0]).deep.equals(<Operation>{ kind: 'pushdata', value: Uint8Array.from([255]) })
+            });
+
+            it("without prefix", () => {
+                const contract = /*javascript*/`const $VAR = ByteString.fromHex("FF");`;
+                const { project, sourceFile } = createTestProject(contract);
+                const scope = createTestGlobalScope(project);
+                const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+
+                const result = testParseExpression(init, scope);
+                expect(result).to.have.lengthOf(1);
+                expect(result[0]).deep.equals(<Operation>{ kind: 'pushdata', value: Uint8Array.from([255]) })
+            });
+
+            it("invalid hex string", () => {
+                const contract = /*javascript*/`const $VAR = ByteString.fromHex("test");`;
+                const { project, sourceFile } = createTestProject(contract);
+                const scope = createTestGlobalScope(project);
+                const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+
+                pipe(
+                    init,
+                    parseExpression(scope),
+                    E.match(
+                        error => expect(error.message).equal("invalid hex string"),
+                        () => expect.fail("expected error")
+                    )
+                );
+            });
+
+            it("const string value", () => {
+                const contract = /*javascript*/`
+                const value: string = "";
+                const $VAR = ByteString.fromHex(value);`;
+                const { project, sourceFile } = createTestProject(contract);
+                const globalScope = createTestGlobalScope(project);
+                const value = sourceFile.getVariableDeclarationOrThrow('value');
+                const valueCTO = createTestVariable(value, {
+                    loadOps: [{ kind: 'pushdata', value: Buffer.from("0xFF") }]
+                });
+                const scope = createTestScope(globalScope, valueCTO)
+
+                const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+                const result = testParseExpression(init, scope);
+                expect(result).to.have.lengthOf(1);
+                expect(result[0]).deep.equals(<Operation>{ kind: 'pushdata', value: Uint8Array.from([255]) })
+            });
+
+            it("non const string value", () => {
+                const contract = /*javascript*/`
+                const value: string = "";
+                const $VAR = ByteString.fromHex(value);`;
+                const { project, sourceFile } = createTestProject(contract);
+                const globalScope = createTestGlobalScope(project);
+                const value = sourceFile.getVariableDeclarationOrThrow('value');
+                const valueCTO = createTestVariable(value);
+                const scope = createTestScope(globalScope, valueCTO)
+
+                const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+                pipe(
+                    init,
+                    parseExpression(scope),
+                    E.match(
+                        error => expect(error.message).equal("fromHex requires a string literal argument"),
+                        () => expect.fail("expected error")
+                    )
+                );
+            });
         });
 
         it("fromString", () => {
@@ -366,18 +452,6 @@ describe("builts-ins", () => {
             const result = testParseExpression(init, scope);
             expect(result).to.have.lengthOf(1);
             expect(result[0]).deep.equals(<Operation>{ kind: 'pushdata', value: Uint8Array.from([104, 101, 108, 108, 111]) })
-        });
-
-        it("fromInteger", () => {
-            const contract = /*javascript*/`const $VAR = ByteString.fromInteger(12345);`;
-            const { project, sourceFile } = createTestProject(contract);
-            const scope = createTestGlobalScope(project);
-            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
-
-            const result = testParseExpression(init, scope);
-            expect(result).to.have.lengthOf(2);
-            expect(result[0]).deep.equals(<Operation>{ kind: 'pushint', value: 12345n })
-            expect(result[1]).deep.equals(<Operation>{ kind: 'convert', type: sc.StackItemType.ByteString })
         });
     });
 

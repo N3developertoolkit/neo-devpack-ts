@@ -6,7 +6,7 @@ import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option';
 import * as TS from "../TS";
 import { getBooleanConvertOps, getIntegerConvertOps, getStringConvertOps, Operation, pushInt, pushString, isJumpTargetOp } from "../types/Operation";
-import { CompileTimeObject, CompileTimeType, CompileTimeValue, GetValueFunc, resolve, resolveName, resolveType, Scope } from "../types/CompileTimeObject";
+import { CompileTimeObject, GetValueFunc, resolve, resolveName, resolveType, Scope } from "../types/CompileTimeObject";
 import { ParseError, isIntegerLike, isStringLike, isVoidLike, makeParseError } from "../utils";
 import { reduce } from "fp-ts/lib/Foldable";
 
@@ -62,7 +62,7 @@ interface ExpressionContext extends ExpressionHeadContext {
 function makeGetValueFunc(context: ExpressionContext): GetValueFunc {
     return () => pipe(
         context.getOps(),
-        E.map(loadOps => <CompileTimeValue>{ node: context.node, loadOps })
+        E.map(loadOps => <CompileTimeObject>{ node: context.node, loadOps })
     )
 }
 

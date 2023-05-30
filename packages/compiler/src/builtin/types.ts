@@ -5,11 +5,12 @@ import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option'
 import * as TS from "../TS";
 import * as ROA from 'fp-ts/ReadonlyArray';
-
+import * as ROR from 'fp-ts/ReadonlyRecord';
+import * as STR from 'fp-ts/string';
 
 import { CompileTimeObject, CompileTimeType, GetOpsFunc, GetValueFunc, InvokeResolver } from "../types/CompileTimeObject";
 import { LibraryDeclaration } from "../types/LibraryDeclaration";
-import { ParseError, createDiagnostic, isArray } from "../utils";
+import { ParseError, createDiagnostic, isArray, single } from "../utils";
 import { Operation } from "../types/Operation";
 
 export interface GlobalScopeContext {
@@ -68,9 +69,38 @@ export function getVarDecl(ctx: GlobalScopeContext) {
         return pipe(
             ctx.declMap.get(name),
             O.fromNullable,
-            O.chain(ROA.head),
-            O.chain(O.fromPredicate(tsm.Node.isVariableDeclaration)),
+            O.map(ROA.filterMap(O.fromPredicate(tsm.Node.isVariableDeclaration))),
+            O.chain(single),
             E.fromOption(() => `could not find ${name} variable`),
         )
     }
+}
+
+export function getVarDeclAndSymbol(ctx: GlobalScopeContext) {
+    return (name: string) => {
+        return pipe(
+            name,
+            getVarDecl(ctx),
+            E.bindTo('node'),
+            E.bind('symbol', ({node}) => pipe(node, TS.getSymbol, E.fromOption(() => `could not find symbol for ${name}`))),
+        );
+    }
+}
+
+export function makeProperties<T>(
+    node: tsm.Node, 
+    fields: ROR.ReadonlyRecord<string, T>,
+    makeProperty: (value: T) => (symbol: tsm.Symbol) => E.Either<string, CompileTimeObject>
+) {
+    const type = node.getType();
+    return pipe(   
+        fields,
+        ROR.mapWithIndex((name, value) => pipe(
+            type.getProperty(name),
+            E.fromNullable(`could not find ${tsm.Node.hasName(node) ? node.getName() : "<unknown>"} ${name} property`),
+            E.chain(makeProperty(value))
+        )),
+        ROR.collect(STR.Ord)((_k, v) => v),
+        ROA.sequence(E.Applicative)
+    );
 }

@@ -71,6 +71,8 @@ interface CreateTestVariableOptions {
     name?: string;
     symbol?: tsm.Symbol;
     properties?: ReadonlyMap<string, PropertyResolver>;
+    loadOps?: readonly Operation[];
+    storeOps?: readonly Operation[];
     call?: InvokeResolver;
     callNew?: InvokeResolver;
 }
@@ -80,8 +82,8 @@ export function createTestVariable(node: tsm.Node, options?: CreateTestVariableO
     const name = options?.name ?? (tsm.Node.hasName(node) ? node.getName() : symbol.getName());
     const loadOp = { kind: 'noop', debug: `${name}.load` } as Operation;
     const storeOp = { kind: 'noop', debug: `${name}.store` } as Operation;
-    const loadOps = options?.call || options?.callNew ? [] : [loadOp];
-    const storeOps = options?.call || options?.callNew ? undefined : [storeOp];
+    const loadOps = options?.loadOps ?? (options?.call || options?.callNew ? [] : [loadOp]);
+    const storeOps = options?.storeOps ?? (options?.call || options?.callNew ? undefined : [storeOp]);
     const call = options?.call ? () => options.call! : undefined;
     const callNew = options?.callNew ? () => options.callNew! : undefined;
     return { 

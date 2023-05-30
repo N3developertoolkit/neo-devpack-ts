@@ -9,12 +9,13 @@ import * as TS from "../TS";
 import * as ORD from 'fp-ts/Ord';
 import * as STR from 'fp-ts/string';
 
-import { GlobalScopeContext, getVarDecl } from "./types";
+import { GlobalScopeContext, getVarDecl, getVarDeclAndSymbol, makeProperties } from "./types";
 import { CompileTimeObject } from "../types/CompileTimeObject";
 import { Operation } from "../types/Operation";
 import { Ord } from "fp-ts/lib/Ord";
 import { makePropResolvers } from "../passes/parseDeclarations";
 import { createDiagnostic } from "../utils";
+import { make } from "fp-ts/lib/Tree";
 
 export const enum FindOptions {
     None = 0,
@@ -30,6 +31,19 @@ export function makeStorage(ctx: GlobalScopeContext) {
     makeStorageObject(ctx);
 }
 
+function MakeFoosTHing<T>(symbol: tsm.Symbol, value: T, makeCTO: (node: tsm.MethodSignature | tsm.PropertySignature) => CompileTimeObject): E.Either<string, CompileTimeObject> {
+    return pipe(
+        symbol.getValueDeclaration(),
+        O.fromNullable,
+        O.chain(O.fromPredicate(TS.isMethodOrProp)),
+        E.fromOption(() => `could not find property signature for ${symbol.getName()}`),
+        E.map(makeCTO)
+    )
+
+}
+
+
+
 export function makeStorageObject(ctx: GlobalScopeContext) {
 
     const storageProps: Record<string, string> = {
@@ -37,25 +51,11 @@ export function makeStorageObject(ctx: GlobalScopeContext) {
         readonlyContext: "System.Storage.GetReadOnlyContext"
     }
 
-    // TODO: $torage => Storage
     return pipe(
+        // TODO: $torage => Storage
         "$torage",
-        getVarDecl(ctx),
-        E.bindTo('node'),
-        E.bind('symbol', ({node}) => pipe(node, TS.getSymbol, E.fromOption(() => "could not find symbol for Storage"))),
-        E.bind('props', ({ node }) => {
-            const type = node.getType();
-            return pipe(
-                storageProps,
-                ROR.mapWithIndex((name, syscall) => pipe(
-                    type.getProperty(name),
-                    E.fromNullable(`could not find property ${name} on Storage`),
-                    E.chain(symbol => makeProperty(symbol, syscall))
-                )),
-                ROR.collect(STR.Ord)((_k, v) => v),
-                ROA.sequence(E.Applicative)
-            )
-        }),
+        getVarDeclAndSymbol(ctx),
+        E.bind('props', ({ node }) => makeProperties<string>(node, storageProps, makeProperty)),
         E.map(({ node, symbol, props }) => <CompileTimeObject>{ node, symbol, loadOps: [], properties: makePropResolvers(props) }),
         E.match(
             error => { ctx.addError(createDiagnostic(error)) },
@@ -63,16 +63,18 @@ export function makeStorageObject(ctx: GlobalScopeContext) {
         )
     )
 
-    function makeProperty(symbol: tsm.Symbol, syscall: string): E.Either<string, CompileTimeObject> {
-        return pipe(
-            symbol.getValueDeclaration(),
-            O.fromNullable,
-            O.chain(O.fromPredicate(tsm.Node.isPropertySignature)),
-            E.fromOption(() => `could not find property signature for ${symbol.getName()}`),
-            E.map(node => {
-                const op =  <Operation>{ kind: 'syscall', name: syscall }
-                return <CompileTimeObject>{ node, symbol, loadOps: [op] };
-            })
-        )
+    function makeProperty(syscall: string) {
+        return (symbol: tsm.Symbol): E.Either<string, CompileTimeObject> => {
+            return pipe(
+                symbol.getValueDeclaration(),
+                O.fromNullable,
+                O.chain(O.fromPredicate(tsm.Node.isPropertySignature)),
+                E.fromOption(() => `could not find property signature for ${symbol.getName()}`),
+                E.map(node => {
+                    const op = <Operation>{ kind: 'syscall', name: syscall }
+                    return <CompileTimeObject>{ node, symbol, loadOps: [op] };
+                })
+            )
+        }
     }
 }
