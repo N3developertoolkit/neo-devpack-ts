@@ -2,6 +2,7 @@ import { expect } from 'chai';
 import * as tsm from 'ts-morph';
 import { identity, pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
+import * as ROM from 'fp-ts/ReadonlyMap';
 import * as S from 'fp-ts/State';
 import * as E from 'fp-ts/Either';
 import { createContractProject, isArray } from '../src/utils';
@@ -118,7 +119,13 @@ export function createPropResolver(cto: CompileTimeObject): PropertyResolver {
 
 export function createPropResolvers(properties: CompileTimeObject | readonly CompileTimeObject[]): ReadonlyMap<string, PropertyResolver> {
     properties = isArray(properties) ? properties : ROA.of(properties);
-    return new Map(properties.map(cto => [cto.symbol.getName(), createPropResolver(cto)]));
+    return pipe(
+        properties,
+        ROA.filter(cto => !!cto.symbol),
+        ROA.map(cto => [cto.symbol!.getName(), createPropResolver(cto)] as const),
+        entries => new Map(entries),
+        ROM.fromMap,
+    )
 }
 
 export function makeFunctionInvoker(node: tsm.Node, ops: Operation | readonly Operation[], implicitThis: boolean = false) : InvokeResolver {

@@ -90,7 +90,8 @@ function makeCompileTimeObject(node: tsm.Node, options?: MakeCompileTimeObjectOp
     const properties = pipe(
         options?.props,
         O.fromNullable,
-        O.map(props => new Map(props.map(cto => [cto.symbol.getName(), <PropertyResolver>(($this) => E.of(cto))]))),
+        O.map(ROA.filter(cto => !!cto.symbol)),
+        O.map(props => new Map(props.map(cto => [cto.symbol!.getName(), <PropertyResolver>(($this) => E.of(cto))]))),
         O.map(ROM.fromMap),
         O.toUndefined
     )
@@ -116,8 +117,9 @@ function makeCompileTimeObject(node: tsm.Node, options?: MakeCompileTimeObjectOp
 export function makePropResolvers(properties: readonly CompileTimeObject[]) {
     return pipe(
         properties,
+        ROA.filter(cto => !!cto.symbol),
         ROA.map(cto => {
-            const name = cto.symbol.getName();
+            const name = cto.symbol!.getName();
             const resolver: PropertyResolver = () => E.of(cto);
             return [name, resolver] as const;
         }),

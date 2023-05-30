@@ -4,6 +4,7 @@ import { pipe } from "fp-ts/lib/function";
 import * as E from "fp-ts/Either";
 import * as O from "fp-ts/Option";
 import * as ROA from 'fp-ts/ReadonlyArray';
+import * as ROM from 'fp-ts/ReadonlyMap';
 import * as STR from 'fp-ts/string';
 
 import { Operation } from "./Operation";
@@ -17,7 +18,7 @@ export type InvokeResolver = ($this: GetValueFunc, args: readonly GetValueFunc[]
 
 export interface CompileTimeObject {
     readonly node: tsm.Node;
-    readonly symbol: tsm.Symbol;
+    readonly symbol?: tsm.Symbol;
 
     readonly loadOps: ReadonlyArray<Operation>;
     readonly storeOps?: ReadonlyArray<Operation>;
@@ -52,8 +53,20 @@ export const createEmptyScope = (parentScope?: Scope): Scope => {
 const makeScope =
     (parentScope: O.Option<Scope>) =>
         (ctos: readonly CompileTimeObject[], ctts: readonly CompileTimeType[] = []): Scope => {
-            const symbols = new Map(ctos.map(cto => [cto.symbol, cto]));
-            const types = new Map(ctts.map(cto => [cto.type, cto]));
+
+            const symbols = pipe(
+                ctos,
+                ROA.filter(cto => !!cto.symbol),
+                ROA.map(cto => [cto.symbol!, cto] as const),
+                entries => new Map(entries),
+                ROM.fromMap,
+            )
+            const types = pipe(
+                ctts,
+                ROA.map(ctt => [ctt.type, ctt] as const),
+                entries => new Map(entries),
+                ROM.fromMap,
+            )
             return { parentScope, symbols, types };
         };
 

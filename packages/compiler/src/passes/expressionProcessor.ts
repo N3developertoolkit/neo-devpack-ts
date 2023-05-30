@@ -541,7 +541,7 @@ function reduceCallExpression(context: ExpressionContext, node: tsm.CallExpressi
             O.chain(ctt => O.fromNullable(ctt.call))
         )),
         // TODO: Optional Chaining support
-        E.fromOption(() => makeParseError(node)(`${context.cto?.symbol.getName()} not callable`)),
+        E.fromOption(() => makeParseError(node)(`${context.cto?.symbol?.getName()} not callable`)),
         E.bindTo('invoker'),
         E.bind('args', () => pipe(
             node,
@@ -563,7 +563,7 @@ function reduceNewExpression(context: ExpressionContext, node: tsm.NewExpression
             resolveType(context.scope),
             O.chain(ctt => O.fromNullable(ctt.callNew))
         )),
-        E.fromOption(() => makeParseError(node)(`${context.cto?.symbol.getName()} not constructable`)),
+        E.fromOption(() => makeParseError(node)(`${context.cto?.symbol?.getName()} not constructable`)),
         E.bindTo('invoker'),
         E.bind('args', () => pipe(
             node,
@@ -656,7 +656,7 @@ function makeContextFromCTO(context: ExpressionHeadContext, node: tsm.Node) {
         const getOps = () => E.of(cto.loadOps);
         const getStoreOps = () => cto.storeOps
             ? E.of(cto.storeOps)
-            : E.left(makeParseError(node)(`symbol ${cto.symbol.getName()} has no storeOps`));
+            : E.left(makeParseError(node)(`symbol ${cto.symbol?.getName()} has no storeOps`));
 
         return <ExpressionContext>{
             ...context,

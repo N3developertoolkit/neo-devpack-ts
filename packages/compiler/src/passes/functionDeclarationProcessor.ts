@@ -289,7 +289,7 @@ function adaptCatchVariableDeclaration(node: tsm.CatchClause) {
                 E.bind('scope', ({ localvar }) => E.of(updateScope(context.scope)(localvar))),
                 E.match(
                     updateContextErrors(context),
-                    ({ localvar: { symbol, node }, scope }) => {
+                    ({ symbol, localvar: { node }, scope }) => {
                         const locals = ROA.append({ name: symbol.getName(), type: node.getType() })(context.locals);
                         return ({ ...context, locals, scope });
                     }
