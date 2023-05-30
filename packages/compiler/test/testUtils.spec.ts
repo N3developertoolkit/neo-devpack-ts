@@ -127,7 +127,7 @@ export function makeFunctionInvoker(node: tsm.Node, ops: Operation | readonly Op
         return pipe(
             $args,
             ROA.reverse,
-            ROA.map(arg => arg()),
+            ROA.map(arg => pipe(arg(), E.map(ctv => ctv.loadOps))),
             ROA.sequence(E.Applicative),
             E.map(ROA.flatten),
             E.map(ROA.concat(isArray(ops) ? ops : [ops])),

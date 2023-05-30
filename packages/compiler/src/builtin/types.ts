@@ -7,7 +7,7 @@ import * as TS from "../TS";
 import * as ROA from 'fp-ts/ReadonlyArray';
 
 
-import { CompileTimeObject, CompileTimeType, GetOpsFunc, InvokeResolver } from "../types/CompileTimeObject";
+import { CompileTimeObject, CompileTimeType, GetOpsFunc, GetValueFunc, InvokeResolver } from "../types/CompileTimeObject";
 import { LibraryDeclaration } from "../types/LibraryDeclaration";
 import { ParseError, createDiagnostic, isArray } from "../utils";
 import { Operation } from "../types/Operation";
@@ -37,11 +37,11 @@ export function parseTypeSymbol(node: LibraryDeclaration) {
     );
 }
 
-export function parseArguments(args: readonly GetOpsFunc[]): E.Either<ParseError, readonly Operation[]> {
+export function parseArguments(args: readonly GetValueFunc[]): E.Either<ParseError, readonly Operation[]> {
     return pipe(
         args,
         ROA.reverse,
-        ROA.map(arg => arg()),
+        ROA.map(arg => pipe(arg(), E.map(ctv => ctv.loadOps))),
         ROA.sequence(E.Applicative),
         E.map(ROA.flatten),
     )

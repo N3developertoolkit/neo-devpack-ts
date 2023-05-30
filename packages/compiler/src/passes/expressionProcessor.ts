@@ -6,7 +6,7 @@ import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option';
 import * as TS from "../TS";
 import { getBooleanConvertOps, getIntegerConvertOps, getStringConvertOps, Operation, pushInt, pushString, isJumpTargetOp } from "../types/Operation";
-import { CompileTimeObject, CompileTimeType, resolve, resolveName, resolveType, Scope } from "../types/CompileTimeObject";
+import { CompileTimeObject, CompileTimeType, CompileTimeValue, GetValueFunc, resolve, resolveName, resolveType, Scope } from "../types/CompileTimeObject";
 import { ParseError, isIntegerLike, isStringLike, isVoidLike, makeParseError } from "../utils";
 import { reduce } from "fp-ts/lib/Foldable";
 
@@ -57,6 +57,13 @@ interface ExpressionContext extends ExpressionHeadContext {
 
     readonly getOps: () => E.Either<ParseError, readonly Operation[]>;
     readonly getStoreOps: () => E.Either<ParseError, readonly Operation[]>;
+}
+
+function makeGetValueFunc(context: ExpressionContext): GetValueFunc {
+    return () => pipe(
+        context.getOps(),
+        E.map(loadOps => <CompileTimeValue>{ node: context.node, loadOps })
+    )
 }
 
 function reduceBigIntLiteral(context: ExpressionHeadContext, node: tsm.BigIntLiteral): E.Either<ParseError, ExpressionContext> {
@@ -542,7 +549,7 @@ function reduceCallExpression(context: ExpressionContext, node: tsm.CallExpressi
             ROA.map(resolveExpression(context.scope)),
             ROA.sequence(E.Applicative)
         )),
-        E.chain(({ invoker, args }) => invoker(context.getOps, args.map(ctx => ctx.getOps))),
+        E.chain(({ invoker, args }) => invoker(makeGetValueFunc(context), args.map(makeGetValueFunc))),
         E.map(makeContextFromCTO(context, node))
     )
 }
@@ -564,7 +571,7 @@ function reduceNewExpression(context: ExpressionContext, node: tsm.NewExpression
             ROA.map(resolveExpression(context.scope)),
             ROA.sequence(E.Applicative)
         )),
-        E.chain(({ invoker, args }) => invoker(context.getOps, args.map(ctx => ctx.getOps))),
+        E.chain(({ invoker, args }) => invoker(makeGetValueFunc(context), args.map(makeGetValueFunc))),
         E.map(makeContextFromCTO(context, node))
     )
 }
