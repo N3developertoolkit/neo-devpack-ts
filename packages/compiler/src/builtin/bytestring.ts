@@ -1,29 +1,43 @@
 import * as tsm from "ts-morph";
-import { flow, identity, pipe } from "fp-ts/lib/function";
+import { flow, pipe } from "fp-ts/lib/function";
 import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option'
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROR from 'fp-ts/ReadonlyRecord';
-import * as S from 'fp-ts/State';
-import * as TS from "../TS";
 
 import { GlobalScopeContext, getVarDeclAndSymbol, makeProperties } from "./types";
-import { CallInvokeResolver, CompileTimeObject, GetValueFunc, InvokeResolver } from "../types/CompileTimeObject";
-import { ParseError, createDiagnostic, getErrorMessage, makeParseError, single } from "../utils";
-import { Operation, isPushDataOp, pushInt, pushString } from "../types/Operation";
+import { CallInvokeResolver, CompileTimeObject, GetValueFunc } from "../types/CompileTimeObject";
+import { createDiagnostic, makeParseError, single } from "../utils";
+import { Operation, isPushDataOp, isPushIntOp } from "../types/Operation";
 import { makePropResolvers } from "../passes/parseDeclarations";
-import { CONST, sc } from "@cityofzion/neon-core";
+import { sc, u } from "@cityofzion/neon-core";
 
 function getCompileTimeString(cto: CompileTimeObject): O.Option<string> {
-    return tsm.Node.isStringLiteral(cto.node)
-        ? O.of(cto.node.getLiteralText())
-        : pipe(
-            cto.loadOps,
-            ROA.filter(op => op.kind !== 'noop'),
-            single,
-            O.chain(O.fromPredicate(isPushDataOp)),
-            O.chain(op => O.tryCatch(() => Buffer.from(op.value).toString()))
-        )
+    if (tsm.Node.isStringLiteral(cto.node)) return O.of(cto.node.getLiteralText());
+
+    return pipe(
+        cto.loadOps,
+        ROA.filter(op => op.kind !== 'noop'),
+        single,
+        O.chain(O.fromPredicate(isPushDataOp)),
+        O.chain(op => O.tryCatch(() => Buffer.from(op.value).toString()))
+    )
+}
+
+function getCompileTimeInteger(cto: CompileTimeObject): O.Option<bigint> {
+    if (tsm.Node.isBigIntLiteral(cto.node)) return O.of(cto.node.getLiteralValue() as bigint);
+    if (tsm.Node.isNumericLiteral(cto.node)) {
+        const value = cto.node.getLiteralValue();
+        return O.tryCatch(() => BigInt(value))
+    }
+
+    return pipe(
+        cto.loadOps,
+        ROA.filter(op => op.kind !== 'noop'),
+        single,
+        O.chain(O.fromPredicate(isPushIntOp)),
+        O.map(op => op.value)
+    );
 }
 
 function getFirstArg(node: tsm.Node) {
@@ -64,7 +78,16 @@ const fromInteger: CallInvokeResolver = (node) => ($this, args) => {
         args,
         getFirstArg(node),
         E.map(arg => {
-            const loadOps = ROA.append<Operation>({ kind: "convert", type: sc.StackItemType.ByteString })(arg.loadOps);
+            const loadOps = pipe(arg,
+                getCompileTimeInteger,
+                O.match(
+                    () => pipe(arg.loadOps, ROA.append<Operation>({ kind: "convert", type: sc.StackItemType.ByteString })),
+                    value => {
+                        const twos = u.BigInteger.fromNumber(value.toString()).toReverseTwos();
+                        return ROA.of<Operation>({ kind: "pushdata", value: Buffer.from(twos, 'hex') });
+                    }
+                )
+            )
             return <CompileTimeObject>{ node: arg.node, loadOps };
         })
     );
@@ -78,14 +101,11 @@ const fromString: CallInvokeResolver = (node) => ($this, args) => {
 }
 
 function makeByteStringObject(ctx: GlobalScopeContext) {
-    const bytestringProps: Record<string, CallInvokeResolver> = {
+    const bytestringProps: ROR.ReadonlyRecord<string, CallInvokeResolver> = {
         fromHex, fromInteger, fromString
     }
 
-    const name = "ByteString";
-    const decl = ctx.declMap.get(name);
-
-    pipe(
+   pipe(
         "ByteString",
         getVarDeclAndSymbol(ctx),
         E.bind('props', ({ node }) => makeProperties<CallInvokeResolver>(node, bytestringProps, makeProperty)),

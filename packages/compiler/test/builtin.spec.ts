@@ -352,16 +352,63 @@ describe("builts-ins", () => {
     })
 
     describe("ByteStringConstructor", () => {
-        it("fromInteger", () => {
-            const contract = /*javascript*/`const $VAR = ByteString.fromInteger(12345);`;
-            const { project, sourceFile } = createTestProject(contract);
-            const scope = createTestGlobalScope(project);
-            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+        describe("fromInteger", () => {
+            it("numeric literal", () => {
+                const contract = /*javascript*/`const $VAR = ByteString.fromInteger(8191);`;
+                const { project, sourceFile } = createTestProject(contract);
+                const scope = createTestGlobalScope(project);
+                const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
 
-            const result = testParseExpression(init, scope);
-            expect(result).to.have.lengthOf(2);
-            expectPushInt(result[0], 12345n);
-            expect(result[1]).deep.equals({ kind: 'convert', type: sc.StackItemType.ByteString })
+                const result = testParseExpression(init, scope);
+                expect(result).to.have.lengthOf(1);
+                expectPushData(result[0], Buffer.from("FF1F", "hex"))
+            });
+
+            it("bigint literal", () => {
+                const contract = /*javascript*/`const $VAR = ByteString.fromInteger(8191n);`;
+                const { project, sourceFile } = createTestProject(contract);
+                const scope = createTestGlobalScope(project);
+                const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+
+                const result = testParseExpression(init, scope);
+                expect(result).to.have.lengthOf(1);
+                expectPushData(result[0], Buffer.from("FF1F", "hex"))
+            });
+
+            it("constant", () => {
+                const contract = /*javascript*/`
+                    const value: number = 8191!;
+                    const $VAR = ByteString.fromInteger(value);`;
+                const { project, sourceFile } = createTestProject(contract);
+                const globalScope = createTestGlobalScope(project);
+                const value = sourceFile.getVariableDeclarationOrThrow('value');
+                const valueCTO = createTestVariable(value, {
+                    loadOps: [{ kind: 'pushint', value: 8191n }]
+                });
+                const scope = createTestScope(globalScope, valueCTO)
+
+                const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+                const result = testParseExpression(init, scope);
+                expect(result).to.have.lengthOf(1);
+                expectPushData(result[0], Buffer.from("FF1F", "hex"))
+            });
+
+            it("non constant", () => {
+                const contract = /*javascript*/`
+                    const value: number = 8191!;
+                    const $VAR = ByteString.fromInteger(value);`;
+                const { project, sourceFile } = createTestProject(contract);
+                const globalScope = createTestGlobalScope(project);
+                const value = sourceFile.getVariableDeclarationOrThrow('value');
+                const valueCTO = createTestVariable(value);
+                const scope = createTestScope(globalScope, valueCTO)
+
+                const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+                const result = testParseExpression(init, scope);
+                expect(result).to.have.lengthOf(2);
+                expect(result[0]).equal(valueCTO.loadOp);
+                expect(result[1]).deep.equals({ kind: "convert", type: sc.StackItemType.ByteString })
+            });
         });
 
         describe("fromHex", () => {
@@ -405,8 +452,8 @@ describe("builts-ins", () => {
 
             it("const string value", () => {
                 const contract = /*javascript*/`
-                const value: string = "";
-                const $VAR = ByteString.fromHex(value);`;
+                    const value: string = "";
+                    const $VAR = ByteString.fromHex(value);`;
                 const { project, sourceFile } = createTestProject(contract);
                 const globalScope = createTestGlobalScope(project);
                 const value = sourceFile.getVariableDeclarationOrThrow('value');

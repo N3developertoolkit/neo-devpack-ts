@@ -99,9 +99,10 @@ export function createTestVariable(node: tsm.Node, options?: CreateTestVariableO
     };
 }
 
-export function expectPushData(op: Operation, value: string) {
+export function expectPushData(op: Operation, value: string | Uint8Array) {
+    value = typeof value === 'string' ? Buffer.from(value, 'utf8') : value;
     expect(op).has.property('kind', 'pushdata');
-    expect(op).has.deep.property('value', Buffer.from(value, 'utf8'));
+    expect(op).has.deep.property('value', value);
 }
 
 export function expectPushInt(op: Operation, value: number | bigint) {
