@@ -7,17 +7,18 @@ import * as ROM from 'fp-ts/ReadonlyMap';
 import * as S from 'fp-ts/State';
 import * as TS from "../TS";
 
-import { CompileTimeObject, CompileTimeType, InvokeResolver, PropertyResolver, Scope, createEmptyScope, createScope } from "../types/CompileTimeObject";
+import { CallInvokeResolver, CompileTimeObject, CompileTimeType, InvokeResolver, PropertyResolver, Scope, createEmptyScope, createScope } from "../types/CompileTimeObject";
 import { LibraryDeclaration } from "../types/LibraryDeclaration";
 import { GlobalScopeContext, parseArguments } from "./common";
-import { createDiagnostic, isVoidLike, makeParseDiagnostic, makeReadOnlyMap } from "../utils";
-import { Operation, parseOperation, pushInt } from "../types/Operation";
+import { createDiagnostic, isVoidLike, makeParseDiagnostic, makeParseError, makeReadOnlyMap } from "../utils";
+import { Operation, parseOperation, pushInt, pushString } from "../types/Operation";
 import { makeCallContract } from "./callContract";
 import { makeRuntime } from "./runtime";
 import { makeStorage } from "./storage";
 import { sc, u } from "@cityofzion/neon-core";
 import { makeByteString } from "./bytestring";
 import { makeError } from "./error";
+import { make } from "fp-ts/lib/Tree";
 
 module REGEX {
     export const match = (regex: RegExp) => (value: string) => O.fromNullable(value.match(regex));
@@ -29,12 +30,37 @@ function makeEnums(ctx: GlobalScopeContext): void {
     const { left: errors, right: objects } = pipe(
         ctx.decls,
         ROA.filterMap(O.fromPredicate(tsm.Node.isEnumDeclaration)),
-        ROA.map(parseEnumDecl),
-        ROA.map(E.mapLeft(makeParseDiagnostic)),
+        ROA.map(makeEnum),
         ROA.separate
     );
     errors.forEach(ctx.addError);
     objects.forEach(ctx.addObject);
+
+    function makeEnum(node: tsm.EnumDeclaration): E.Either<tsm.ts.Diagnostic, CompileTimeObject> {
+        return pipe(
+            node.getMembers(),
+            ROA.map(member => {
+                return pipe(
+                    E.Do,
+                    E.bind('symbol', () => pipe(member, TS.parseSymbol)),
+                    E.bind('op', () => pipe(
+                        member, 
+                        TS.getEnumValue, 
+                        E.map(value => typeof value === 'number' ? pushInt(value) : pushString(value)),
+                        E.mapLeft(makeParseError(member))
+                    )),
+                    E.map(({ op, symbol }) => {
+                        const resolver: PropertyResolver = () => E.of(<CompileTimeObject>{ node: member, symbol, loadOps: [op] });
+                        return [symbol.getName(), resolver] as const;
+                    })
+                )
+            }),
+            ROA.sequence(E.Applicative),
+            E.map(makeReadOnlyMap),
+            E.map(properties => <CompileTimeObject>{ node, loadOps: [], properties }),
+            E.mapLeft(makeParseDiagnostic)
+        )
+    }
 }
 
 function makeNativeContracts(ctx: GlobalScopeContext) {
@@ -147,7 +173,7 @@ function makeOperationFunctions(ctx: GlobalScopeContext) {
     function makeFunction(node: tsm.FunctionDeclaration): E.Either<tsm.ts.Diagnostic, CompileTimeObject> {
         return pipe(
             E.Do,
-            E.bind("symbol", () => pipe(node, parseSymbol)),
+            E.bind("symbol", () => pipe(node, TS.parseSymbol, E.mapLeft(makeParseDiagnostic))),
             // parse the @operations tags into an array of operations
             E.bind("operations", () => pipe(
                 node.getJsDocs(),
@@ -189,16 +215,22 @@ function makeSyscallFunctions(ctx: GlobalScopeContext) {
     function makeFunction(node: tsm.FunctionDeclaration): E.Either<tsm.ts.Diagnostic, CompileTimeObject> {
         return pipe(
             E.Do,
-            E.bind("symbol", () => pipe(node, parseSymbol)),
+            E.bind("symbol", () => pipe(node, TS.parseSymbol, E.mapLeft(makeParseDiagnostic))),
             E.bind("serviceName", () => pipe(
                 node,
                 TS.getTagComment('syscall'),
                 E.fromOption(() => createDiagnostic(`Invalid @syscall tag for ${node.getName()}`, { node }),
                 ))),
             E.map(({ symbol, serviceName }) => {
-                const op = <Operation>{ kind: 'syscall', name: serviceName };
-                const resolver = makeInvokeResolver(node, op);
-                return <CompileTimeObject>{ node, symbol, loadOps: [], call: () => resolver };
+                const call: CallInvokeResolver = (node) => ($this, args) => {
+                    return pipe(
+                        args,
+                        parseArguments,
+                        E.map(ROA.append(<Operation>{ kind: 'syscall', name: serviceName })),
+                        E.map(loadOps => <CompileTimeObject>{ node, symbol, loadOps })
+                    );
+                }
+                return <CompileTimeObject>{ node, symbol, loadOps: [], call };
             }),
         );
     }
@@ -215,7 +247,7 @@ function makeStackItems(ctx: GlobalScopeContext) {
     errors.forEach(ctx.addError);
     types.forEach(ctx.addType);
 
-    function makeStackItemType(node: tsm.InterfaceDeclaration): E.Either<tsm.ts.Diagnostic, CompileTimeType>  {
+    function makeStackItemType(node: tsm.InterfaceDeclaration): E.Either<tsm.ts.Diagnostic, CompileTimeType> {
         const type = node.getType();
         return pipe(
             type.getProperties(),
@@ -233,7 +265,7 @@ function makeStackItems(ctx: GlobalScopeContext) {
                     );
                     return [symbol, resolver] as const;
                 })
-            )), 
+            )),
             ROA.sequence(E.Applicative),
             E.mapLeft(msg => createDiagnostic(msg, { node })),
             E.map(makeReadOnlyMap),
@@ -282,9 +314,9 @@ export function makeGlobalScope(decls: readonly LibraryDeclaration[]): S.State<r
         const context: GlobalScopeContext = {
             decls,
             declMap,
-            addError: (error: string | tsm.ts.Diagnostic) => { 
+            addError: (error: string | tsm.ts.Diagnostic) => {
                 error = typeof error === 'string' ? createDiagnostic(error) : error;
-                errors.push(error); 
+                errors.push(error);
             },
             addObject: (obj: CompileTimeObject) => { objects.push(obj); },
             addType: (type: CompileTimeType) => { types.push(type); }

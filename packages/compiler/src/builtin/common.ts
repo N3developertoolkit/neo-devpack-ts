@@ -32,22 +32,6 @@ export function parseArguments(args: readonly GetValueFunc[]): E.Either<ParseErr
     )
 }
 
-// export function makeInvokeResolver(node: tsm.Node, ops: Operation | readonly Operation[], implicitThis: boolean = false): InvokeResolver {
-//     return ($this, args) => {
-//         const $args = implicitThis ? ROA.prepend($this)(args) : args;
-//         return pipe(
-//             $args,
-//             parseArguments,
-//             E.map(ROA.concat(isArray(ops) ? ops : [ops])),
-//             E.map(loadOps => (<CompileTimeObject>{
-//                 node: node,
-//                 symbol: node.getSymbolOrThrow(),
-//                 loadOps
-//             }))
-//         );
-//     }
-// }
-
 export function getVarDeclAndSymbol(ctx: GlobalScopeContext) {
     return (name: string) => {
         return pipe(

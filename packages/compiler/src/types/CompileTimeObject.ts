@@ -54,13 +54,11 @@ const makeScope =
     (parentScope: O.Option<Scope>) =>
         (ctos: readonly CompileTimeObject[], ctts: readonly CompileTimeType[] = []): Scope => {
 
-            const symbols = pipe(
-                ctos,
-                ROA.filter(cto => !!cto.symbol),
-                ROA.map(cto => [cto.symbol!, cto] as const),
-                entries => new Map(entries),
-                ROM.fromMap,
-            )
+            const symbols = new Map<tsm.Symbol, CompileTimeObject>();
+            for (const cto of ctos) {
+                const symbol = cto.symbol ?? cto.node.getSymbol();
+                if (symbol) symbols.set(symbol, cto);
+            }
             const types = pipe(
                 ctts,
                 ROA.map(ctt => [ctt.type, ctt] as const),

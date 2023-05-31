@@ -155,9 +155,18 @@ export const parseSymbol = (node: tsm.Node): E.Either<ParseError, tsm.Symbol> =>
     );
 };
 
-// export function getTypeId(type: tsm.Node| tsm.Type) {
-//     const $type = type instanceof tsm.Type ? type : type.getType();
-//     const id = ($type.compilerType as any).id as number;
-//     if (typeof id !== 'number') throw new Error(`invalid type id: ${id}`);
-//     return id;
-// }
+export function getEnumValue(member: tsm.EnumMember): E.Either<string, number | string> {
+    const value = member.getValue();
+
+    if (value === undefined) {
+        return E.left(`${member.getParent().getName()}.${member.getName()} undefined value`);
+    }
+
+    if (typeof value === 'number') {
+        return Number.isInteger(value)
+            ? E.of(value)
+            : E.left(`${member.getParent().getName()}.${member.getName()} invalid non-integer numeric literal ${value}`);
+    }
+    
+    return E.of(value);
+}
