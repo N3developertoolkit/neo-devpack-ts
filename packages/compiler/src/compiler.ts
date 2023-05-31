@@ -6,7 +6,7 @@ import * as S from 'fp-ts/State'
 import * as O from 'fp-ts/Option'
 
 import { collectProjectDeclarations } from "./passes/collectProjectDeclarations";
-import { collectArtifacts } from "./passes/collectArtifacts";
+import { collectArtifacts } from "./collectArtifacts";
 import { makeGlobalScope } from "./builtin";
 import { parseProject } from "./passes/sourceFileProcessor";
 import { CompileOptions, CompileArtifacts } from "./types/CompileOptions";

@@ -6,10 +6,10 @@ import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROS from 'fp-ts/ReadonlySet'
 import * as E from 'fp-ts/Either'
 import * as S from 'fp-ts/State'
-import { CallOperation, CallTokenOperation, convertJumpOperationKind, convertJumpTargetOps, convertLoadStoreKind, convertSimpleOperationKind, getOperationSize, isCallOp, isCallTokenOp, isConvertOp, isInitSlotOp, isInitStaticOperation, isJumpOffsetOp, isJumpTargetOp, isLoadStoreOp, isPushBoolOp, isPushDataOp, isPushIntOp, isSimpleOp, isSysCallOp, JumpOffsetOperation, LoadStoreOperation, Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "../types/Operation";
-import { asContractParamType, asReturnType, convertBigInteger, createDiagnostic, E_fromSeparated } from "../utils";
-import { CompiledProject, CompiledProjectArtifacts, CompileOptions, ContractEvent, ContractMethod } from "../types/CompileOptions";
-import { DebugInfoMethod, makeDebugInfo, SequencePoint } from "../types/DebugInfo";
+import { CallOperation, CallTokenOperation, convertJumpOperationKind, convertJumpTargetOps, convertLoadStoreKind, convertSimpleOperationKind, getOperationSize, isCallOp, isCallTokenOp, isConvertOp, isInitSlotOp, isInitStaticOperation, isJumpOffsetOp, isJumpTargetOp, isLoadStoreOp, isPushBoolOp, isPushDataOp, isPushIntOp, isSimpleOp, isSysCallOp, JumpOffsetOperation, LoadStoreOperation, Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
+import { asContractParamType, asReturnType, convertBigInteger, createDiagnostic, E_fromSeparated } from "./utils";
+import { CompiledProject, CompiledProjectArtifacts, CompileOptions, ContractEvent, ContractMethod } from "./types/CompileOptions";
+import { DebugInfoMethod, makeDebugInfo, SequencePoint } from "./types/DebugInfo";
 
 function collectMethodTokens(methods: ReadonlyArray<ContractMethod>): ReadonlyArray<sc.MethodToken> {
     const set = pipe(
