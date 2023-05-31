@@ -9,13 +9,12 @@ import * as TS from "../TS";
 import * as ORD from 'fp-ts/Ord';
 import * as STR from 'fp-ts/string';
 
-import { GlobalScopeContext, getVarDecl, getVarDeclAndSymbol, makeProperties } from "./types";
-import { CompileTimeObject } from "../types/CompileTimeObject";
-import { Operation } from "../types/Operation";
+import { GlobalScopeContext, getVarDecl, getVarDeclAndSymbol, makeInterface, makeMethod, makeProperties, parseArguments } from "./types";
+import { CallInvokeResolver, CompileTimeObject, GetValueFunc, PropertyResolver } from "../types/CompileTimeObject";
+import { Operation, pushInt } from "../types/Operation";
 import { Ord } from "fp-ts/lib/Ord";
-import { makePropResolvers } from "../passes/parseDeclarations";
-import { createDiagnostic } from "../utils";
-import { make } from "fp-ts/lib/Tree";
+import { makeMembers, makePropResolvers } from "../passes/parseDeclarations";
+import { createDiagnostic, makeParseError } from "../utils";
 
 export const enum FindOptions {
     None = 0,
@@ -29,22 +28,10 @@ export const enum FindOptions {
 
 export function makeStorage(ctx: GlobalScopeContext) {
     makeStorageObject(ctx);
+    makeStorageContext(ctx);
 }
 
-function MakeFoosTHing<T>(symbol: tsm.Symbol, value: T, makeCTO: (node: tsm.MethodSignature | tsm.PropertySignature) => CompileTimeObject): E.Either<string, CompileTimeObject> {
-    return pipe(
-        symbol.getValueDeclaration(),
-        O.fromNullable,
-        O.chain(O.fromPredicate(TS.isMethodOrProp)),
-        E.fromOption(() => `could not find property signature for ${symbol.getName()}`),
-        E.map(makeCTO)
-    )
-
-}
-
-
-
-export function makeStorageObject(ctx: GlobalScopeContext) {
+function makeStorageObject(ctx: GlobalScopeContext) {
 
     const storageProps: Record<string, string> = {
         context: "System.Storage.GetContext",
@@ -77,4 +64,97 @@ export function makeStorageObject(ctx: GlobalScopeContext) {
             )
         }
     }
+}
+
+function makeStorageCall(syscall: string): CallInvokeResolver {
+    return (node) => ($this, args) => {
+        return pipe(
+            args,
+            ROA.prepend($this),
+            parseArguments,
+            E.map(ROA.append<Operation>({ kind: "syscall", name: syscall })),
+            E.map(loadOps => <CompileTimeObject>{ node, loadOps })
+        )
+    };
+}
+const callGet: CallInvokeResolver = makeStorageCall("System.Storage.Get");
+const callFind: CallInvokeResolver = makeStorageCall("System.Storage.Find");
+const callPut: CallInvokeResolver = makeStorageCall("System.Storage.Put");
+const callDelete: CallInvokeResolver = makeStorageCall("System.Storage.Delete");
+
+
+// find(prefix: ByteString, options: FindOptions): Iterator<unknown>;
+
+// // with and without RemovePrefix. Default to removing the prefix
+// entries(prefix?: ByteString, keepPrefix?: boolean): Iterator<[ByteString, ByteString]>;
+
+const callEntries: CallInvokeResolver = (node) => ($this, args) => {
+    return E.left(makeParseError(node)("callEntries not implemented"));
+}
+
+// // KeysOnly with and without RemovePrefix, Default to removing the prefix
+// keys(prefix?: ByteString, keepPrefix?: boolean): Iterator<ByteString>;
+
+function makeRemovePrefixFind($true: FindOptions, $false: FindOptions): CallInvokeResolver {
+    // return (arg: GetValueFunc): GetValueFunc => {
+
+    // }
+
+    throw new Error();
+}
+// const callKeys: CallInvokeResolver = (node) => ($this, args) => {
+//     return pipe(
+//         E.Do,
+//         E.bind('prefix', () => pipe(
+//             args, 
+//             ROA.lookup(0), 
+//             E.fromOption(() => makeParseError(node)("invalid prefix"))
+//         )),
+//         E.bind('options', () => pipe(
+//             args, 
+//             ROA.lookup(0), 
+//             E.fromOption(() => makeParseError(node)("invalid keepPrefix")),
+//             E.map(convertRemovePrefixArg(FindOptions.RemovePrefix, FindOptions.None))
+//         )),
+//         E.chain(({ prefix, options }) => parseArguments([$this, prefix, options])),
+//         E.map(ROA.append<Operation>({ kind: "syscall", name: "System.Storage.Find" })),
+//         E.map(loadOps => <CompileTimeObject>{ node, loadOps })
+//     )
+// }
+
+const callValues: CallInvokeResolver = (node) => ($this, args) => {
+    return pipe(
+        args,
+        ROA.head,
+        E.fromOption(() => makeParseError(node)("callValues: expected 1 argument")),
+        E.chain(arg => parseArguments([$this, arg])),
+        E.map(ROA.prepend<Operation>(pushInt(FindOptions.ValuesOnly))),
+        E.map(ROA.append<Operation>({ kind: "syscall", name: "System.Storage.Find" })),
+        E.map(loadOps => <CompileTimeObject>{ node, loadOps })
+    )
+}
+
+function makeAsReadonly(symbol: tsm.Symbol): E.Either<string, PropertyResolver> {
+    return E.left("not implemented")
+}
+
+function makeStorageContext(ctx: GlobalScopeContext) {
+    // makeInterface("StorageContext", {
+    //     get: makeMethod(callGet),
+    //     // find: makeFind,
+    //     // entries: makeEntries,
+    //     // values: makeValues,
+    //     // keys: makeKeys,
+    //     // asReadonly: makeAsReadonly,
+    //     // put: makePut,
+    //     // delete: makeDelete
+    // }, ctx);
+
+    makeInterface("ReadonlyStorageContext", {
+        get: makeMethod(callGet),
+        find: makeMethod(callFind),
+        entries: makeMethod(makeRemovePrefixFind(FindOptions.RemovePrefix, FindOptions.None)),
+        values: makeMethod(callValues),
+        keys: makeMethod(makeRemovePrefixFind(FindOptions.RemovePrefix | FindOptions.KeysOnly, FindOptions.KeysOnly)),
+    }, ctx);
 }

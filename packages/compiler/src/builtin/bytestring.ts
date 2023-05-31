@@ -6,7 +6,7 @@ import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROR from 'fp-ts/ReadonlyRecord';
 import * as TS from "../TS";
 
-import { GlobalScopeContext, getVarDeclAndSymbol, makeInterface, makeProperties } from "./types";
+import { GlobalScopeContext, getVarDeclAndSymbol, makeInterface, makeMethod, makeProperties } from "./types";
 import { CallInvokeResolver, CompileTimeObject, GetValueFunc, PropertyResolver } from "../types/CompileTimeObject";
 import { createDiagnostic, makeParseError, single } from "../utils";
 import { Operation, isPushDataOp, isPushIntOp } from "../types/Operation";
@@ -145,42 +145,20 @@ function makeLength(symbol: tsm.Symbol): E.Either<string, PropertyResolver> {
     )
 }
 
-function makeAsInteger(symbol: tsm.Symbol): E.Either<string, PropertyResolver> {
-
-    const call: CallInvokeResolver = (node) => ($this) => {
-        return pipe(
-            $this(),
-            E.map(cto => cto.loadOps),
-            E.map(ROA.append<Operation>({ kind: "convert", type: sc.StackItemType.Integer })),
-            E.map(loadOps => <CompileTimeObject>{ node, loadOps })
-        )
-    };
-
+const callAsInteger: CallInvokeResolver = (node) => ($this) => {
     return pipe(
-        symbol,
-        TS.getMethodSig,
-        O.map(node => {
-            const resolver: PropertyResolver = ($this) => {
-                return pipe(
-                    $this(),
-                    E.map(loadOps => {
-                        return <CompileTimeObject>{ node: node, loadOps, call };
-                    })
-                )
-            }
-            return resolver;
-        }),
-        E.fromOption(() => `could not find ${symbol.getName()} member`)
-    );
-}
+        $this(),
+        E.map(cto => cto.loadOps),
+        E.map(ROA.append<Operation>({ kind: "convert", type: sc.StackItemType.Integer })),
+        E.map(loadOps => <CompileTimeObject>{ node, loadOps })
+    )
+};
 
 function makeByteStringInterface(ctx: GlobalScopeContext) {
-
-    const members: ROR.ReadonlyRecord<string, (s: tsm.Symbol) => E.Either<string, PropertyResolver>> = {
+    const members = {
         length: makeLength,
-        asInteger: makeAsInteger
+        asInteger: makeMethod(callAsInteger),
     }
-
     makeInterface("ByteString", members, ctx);
 }
 

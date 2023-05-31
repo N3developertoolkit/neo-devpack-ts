@@ -8,7 +8,7 @@ import * as ROA from 'fp-ts/ReadonlyArray';
 import * as ROR from 'fp-ts/ReadonlyRecord';
 import * as STR from 'fp-ts/string';
 
-import { CompileTimeObject, CompileTimeType, GetOpsFunc, GetValueFunc, InvokeResolver, PropertyResolver } from "../types/CompileTimeObject";
+import { CallInvokeResolver, CompileTimeObject, CompileTimeType, GetOpsFunc, GetValueFunc, InvokeResolver, PropertyResolver } from "../types/CompileTimeObject";
 import { LibraryDeclaration } from "../types/LibraryDeclaration";
 import { ParseError, createDiagnostic, isArray, makeReadOnlyMap, single } from "../utils";
 import { Operation } from "../types/Operation";
@@ -82,18 +82,18 @@ export function getVarDeclAndSymbol(ctx: GlobalScopeContext) {
             name,
             getVarDecl(ctx),
             E.bindTo('node'),
-            E.bind('symbol', ({node}) => pipe(node, TS.getSymbol, E.fromOption(() => `could not find symbol for ${name}`))),
+            E.bind('symbol', ({ node }) => pipe(node, TS.getSymbol, E.fromOption(() => `could not find symbol for ${name}`))),
         );
     }
 }
 
 export function makeProperties<T>(
-    node: tsm.Node, 
+    node: tsm.Node,
     fields: ROR.ReadonlyRecord<string, T>,
     makeProperty: (value: T) => (symbol: tsm.Symbol) => E.Either<string, CompileTimeObject>
 ) {
     const type = node.getType();
-    return pipe(   
+    return pipe(
         fields,
         ROR.mapWithIndex((name, value) => pipe(
             type.getProperty(name),
@@ -140,4 +140,22 @@ export function makeInterface(name: string, members: ROR.ReadonlyRecord<string, 
             ctx.addType
         )
     );
+}
+
+
+export function makeMethod(call: CallInvokeResolver) {
+    return (symbol: tsm.Symbol): E.Either<string, PropertyResolver> => {
+        return pipe(
+            symbol,
+            TS.getMethodSig,
+            O.map(node => {
+                const resolver: PropertyResolver = ($this) => pipe(
+                    $this(),
+                    E.map(loadOps => <CompileTimeObject>{ node: node, loadOps, call })
+                )
+                return resolver;
+            }),
+            E.fromOption(() => `could not find ${symbol.getName()} member`)
+        );
+    }
 }
