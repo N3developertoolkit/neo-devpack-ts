@@ -334,3 +334,7 @@ export function asReturnType(type: tsm.Type) {
         ? sc.ContractParamType.Void
         : asContractParamType(type);
 }
+
+export function getScratchFile(project: tsm.Project) {
+    return project.getSourceFile("scratch.ts") || project.createSourceFile("scratch.ts");
+}

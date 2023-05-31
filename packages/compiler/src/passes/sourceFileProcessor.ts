@@ -10,7 +10,7 @@ import { parseContractMethod } from "./functionDeclarationProcessor";
 import { handleVariableStatement } from "./variableStatementProcessor";
 import { Operation } from "../types/Operation";
 import { Scope, CompileTimeObject, createEmptyScope, updateScope, CompileTimeType } from "../types/CompileTimeObject";
-import { makeParseError, ParseError, makeParseDiagnostic, ReduceDispatchMap, dispatchReduce, updateContextErrors } from "../utils";
+import { makeParseError, ParseError, makeParseDiagnostic, ReduceDispatchMap, dispatchReduce, updateContextErrors, getScratchFile } from "../utils";
 import { makeStaticVariable, parseEnumDecl, parseFunctionDecl, parseInterfaceDecl, parseTypeAliasDecl } from "./parseDeclarations";
 
 
@@ -188,23 +188,24 @@ export const parseProject =
                     staticVars: [],
                 }
 
-                const result = pipe(
+                const { errors, events, initializeOps, methods, staticVars } = pipe(
                     project.getSourceFiles(),
                     ROA.filter(src => !src.isDeclarationFile()),
                     ROA.reduce(ctx, reduceSourceFile(globalScope))
                 );
-                const { events, initializeOps: initOps, staticVars } = result
-                let { errors, methods } = result;
 
                 if (ROA.isNonEmpty(staticVars)) {
 
+                    // if there are any static variables, we need to generate an _initialize function
+                    // to declare them + execute any initialization code needed
+
                     const operations = pipe(
-                        initOps,
+                        initializeOps,
                         ROA.prepend<Operation>({ kind: "initstatic", count: staticVars.length }),
                         ROA.append<Operation>({ kind: "return" })
                     );
 
-                    const scratch = project.getSourceFile("scratch.ts") || project.createSourceFile("scratch.ts");
+                    const scratch = getScratchFile(project);
                     const initFunc: tsm.FunctionDeclaration = scratch.addFunction({
                         name: "_initialize",
                         parameters: [],
@@ -212,10 +213,7 @@ export const parseProject =
                         isExported: true
                     })
 
-                    // using [errors, methods] as LHS of assignment creates a strange TS error that claims
-                    // we are using initFunc (below) before it is declared (above). Using a temp variable
-                    // to avoid this error
-                    const result = pipe(
+                    const [$errors, $methods] = pipe(
                         initFunc,
                         TS.parseSymbol,
                         E.map(symbol => {
@@ -232,12 +230,16 @@ export const parseProject =
                             method => ([errors, ROA.append(method)(methods)] as const)
                         )
                     );
-                    [errors, methods] = result;
-                }
 
-                return [
-                    { events, methods, staticVars },
-                    ROA.concat(ROA.map(makeParseDiagnostic)(errors))(diagnostics)
-                ];
+                    return [
+                        { events, methods: $methods, staticVars },
+                        ROA.concat(ROA.map(makeParseDiagnostic)($errors))(diagnostics)
+                    ]
+                } else {
+                    return [
+                        { events, methods, staticVars },
+                        ROA.concat(ROA.map(makeParseDiagnostic)(errors))(diagnostics)
+                    ];
+                }
             }
 

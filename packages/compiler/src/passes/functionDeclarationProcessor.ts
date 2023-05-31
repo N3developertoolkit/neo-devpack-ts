@@ -9,7 +9,7 @@ import * as MONOID from 'fp-ts/Monoid';
 
 import { Scope, createEmptyScope, createScope, updateScope } from "../types/CompileTimeObject";
 import { Operation, getBooleanConvertOps, updateLocation } from "../types/Operation";
-import { E_fromSeparated, ParseError, isVoidLike, makeParseError, updateContextErrors } from "../utils";
+import { E_fromSeparated, ParseError, getScratchFile, isVoidLike, makeParseError, updateContextErrors } from "../utils";
 import { ContractMethod, ContractSlot } from "../types/CompileOptions";
 import { parseExpression } from "./expressionProcessor";
 import { VariableFactory, handleVariableStatement } from "./variableStatementProcessor";
@@ -299,8 +299,7 @@ function adaptCatchVariableDeclaration(node: tsm.CatchClause) {
 
         // if there is no declaration, create an anonymous variable to hold the error
         // it doesn't get added to context scope, but it is added to context locals
-        const project = node.getProject();
-        const scratchFile = project.getSourceFile("scratch.ts") || project.createSourceFile("scratch.ts");
+        const scratchFile = getScratchFile(node.getProject());
         const varStmt = scratchFile.addVariableStatement({
             declarations: [{ name: `_anon_error_${Date.now()}`, type: "any", }]
         });
