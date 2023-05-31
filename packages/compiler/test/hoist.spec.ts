@@ -1,0 +1,103 @@
+import 'mocha';
+import { expect } from 'chai';
+import * as tsm from "ts-morph";
+import * as E from 'fp-ts/Either';
+import * as ROA from 'fp-ts/ReadonlyArray';
+import { createTestProject, createTestVariable, expectPushInt, expectPushData, expectEither, expectResults, createLiteralCTO, createVarDeclCTO } from './testUtils.spec';
+import { hoistEventFunctionDecl, hoistFunctionDecl } from '../src/passes/sourceFileProcessor';
+import { pipe } from 'fp-ts/lib/function';
+import { GetValueFunc } from '../src/types/CompileTimeObject';
+import { CompileTimeObject } from '../src/types/CompileTimeObject';
+import { ParseError, makeParseError } from '../src/utils';
+import { Operation, pushInt, pushString } from '../src/types/Operation';
+
+
+function makeGetValueFunc(value: CompileTimeObject | ParseError): GetValueFunc {
+    return ('message' in value)
+        ? () => E.left(value)
+        : () => E.right(value);
+}
+
+function expectCall(node: tsm.CallExpression, cto: CompileTimeObject, $this: CompileTimeObject | ParseError | undefined, ...args: (CompileTimeObject | ParseError)[]) {
+    if (!cto.call) expect.fail("cto.call is undefined");
+    const $thisGV = $this ? makeGetValueFunc($this) : makeGetValueFunc(makeParseError()("invalid $this"));
+    const argsGV = args.map(makeGetValueFunc);
+    return pipe(
+        cto.call(node)($thisGV, argsGV),
+        E.match(
+            err => expect.fail(err.message),
+            value => value
+        )
+    );
+}
+
+describe("hoist", () => {
+    describe("function", () => {
+        it("should hoist function declaration", () => {
+            const contract = /*javascript*/ `
+            function updateBalance(account: ByteString, amount: bigint): boolean { return true; }
+            const account: ByteString = null!;
+            updateBalance(account, 100n);`;
+            const { sourceFile } = createTestProject(contract);
+
+            const updateDecl = sourceFile.getFunctionOrThrow("updateBalance");
+            const update = pipe(updateDecl, hoistFunctionDecl, expectEither);
+
+            expect(update.node).equals(updateDecl);
+            expect(update.symbol).equals(updateDecl.getSymbolOrThrow());
+            expect(update.loadOps).empty;
+
+            const expr = sourceFile.getStatementByKindOrThrow(tsm.SyntaxKind.ExpressionStatement)
+                .getExpression()
+                .asKindOrThrow(tsm.SyntaxKind.CallExpression);
+            const account = createVarDeclCTO(sourceFile, 'account');
+            const amount = createLiteralCTO(expr.getArguments()[1], 100n);
+
+            const callResult = expectCall(expr, update, undefined, account, amount);
+            expectResults(callResult.loadOps,
+                amount.loadOp,
+                account.loadOp,
+                { kind: 'call', method: update.symbol });
+        });
+    })
+
+
+    describe("@event", () => {
+        it("should hoist event function declaration", () => {
+            const contract = /*javascript*/ `
+                /** @event */
+                declare function Transfer(from: ByteString | null, to: ByteString | null, amount: bigint): void;
+                
+                const from: ByteString = null!;
+                const to: ByteString = null!;
+                Transfer(from, to, 100n);`;
+
+            const { sourceFile } = createTestProject(contract);
+
+            const transferDecl = sourceFile.getFunctionOrThrow("Transfer");
+            const transfer = pipe(transferDecl, hoistEventFunctionDecl, expectEither)
+
+            expect(transfer.node).equals(transferDecl);
+            expect(transfer.symbol).equals(transferDecl.getSymbolOrThrow());
+            expect(transfer.loadOps).empty;
+
+            const expr = sourceFile.getStatementByKindOrThrow(tsm.SyntaxKind.ExpressionStatement)
+                .getExpression()
+                .asKindOrThrow(tsm.SyntaxKind.CallExpression);
+            const from = createVarDeclCTO(sourceFile, 'from');
+            const to = createVarDeclCTO(sourceFile, 'to');
+            const amount = createLiteralCTO(expr.getArguments()[2], 100n);
+
+            const callResult = expectCall(expr, transfer, undefined, from, to, amount);
+            expectResults(callResult.loadOps,
+                amount.loadOp,
+                to.loadOp,
+                from.loadOp,
+                pushInt(3n),
+                { kind: "packarray" },
+                pushString("Transfer"),
+                { kind: 'syscall', name: "System.Runtime.Notify" });
+        });
+
+    })
+})

@@ -37,6 +37,7 @@ function makeEnums(ctx: GlobalScopeContext): void {
     objects.forEach(ctx.addObject);
 
     function makeEnum(node: tsm.EnumDeclaration): E.Either<tsm.ts.Diagnostic, CompileTimeObject> {
+        if (!node.isConstEnum()) return E.left(createDiagnostic("enum must be const", { node }));
         return pipe(
             node.getMembers(),
             ROA.map(member => {

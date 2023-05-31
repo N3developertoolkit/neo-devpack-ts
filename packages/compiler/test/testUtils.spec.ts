@@ -5,11 +5,11 @@ import * as ROA from 'fp-ts/ReadonlyArray';
 import * as ROM from 'fp-ts/ReadonlyMap';
 import * as S from 'fp-ts/State';
 import * as E from 'fp-ts/Either';
-import { createContractProject, isArray } from '../src/utils';
+import { ParseError, createContractProject, isArray } from '../src/utils';
 import { collectProjectDeclarations } from '../src/passes/collectProjectDeclarations';
 import { parseExpression } from '../src/passes/expressionProcessor';
 import { CompileTimeObject, CompileTimeType, InvokeResolver, PropertyResolver, Scope, createEmptyScope, updateScope } from '../src/types/CompileTimeObject';
-import { Operation } from '../src/types/Operation';
+import { Operation, pushInt, pushString } from '../src/types/Operation';
 import { makeGlobalScope } from '../src/builtin'
 
 // import { CompileTimeObject, createEmptyScope, makeCompileTimeObject, updateScope } from '../src/types/CompileTimeObject';
@@ -150,4 +150,43 @@ export function makeFunctionInvoker(node: tsm.Node, ops: Operation | readonly Op
             }))
         );
     }
+}
+
+export function expectEither<T>(value: E.Either<ParseError, T>): T {
+    return pipe(
+        value,
+        E.match(
+            err => expect.fail(err.message),
+            value => value
+        )
+    );
+}
+
+export function expectResults(ops: readonly Operation[], ...args: any[]) {
+    expect(ops).length(args.length);
+    for (const i in ops) {
+        expect(ops[i]).deep.equals(args[i]);
+    }
+}
+
+
+export function createVarDeclCTO(src: tsm.SourceFile, name: string): CompileTimeObject & { loadOp: Operation, storeOp: Operation } {
+    const variable = src.getVariableDeclarationOrThrow(name);
+    return createTestVariable(variable);
+}
+
+export function createLiteralCTO(arg: tsm.Node, value?: string | number | bigint | boolean): CompileTimeObject & { loadOp: Operation } {
+    const loadOp = value === undefined
+        ? <Operation>{ kind: "pushnull" }
+        : typeof value === "string"
+            ? pushString(value)
+            : typeof value === "number" || typeof value === "bigint"
+                ? pushInt(value)
+                : <Operation>{ kind: "pushbool", value }
+
+    return {
+        node: arg,
+        loadOp,
+        loadOps: [loadOp]
+    };
 }
