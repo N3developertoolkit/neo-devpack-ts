@@ -146,19 +146,27 @@ function makeLength(symbol: tsm.Symbol): E.Either<string, PropertyResolver> {
 }
 
 function makeAsInteger(symbol: tsm.Symbol): E.Either<string, PropertyResolver> {
+
+    const call: CallInvokeResolver = (node) => ($this) => {
+        return pipe(
+            $this(),
+            E.map(cto => cto.loadOps),
+            E.map(ROA.append<Operation>({ kind: "convert", type: sc.StackItemType.Integer })),
+            E.map(loadOps => <CompileTimeObject>{ node, loadOps })
+        )
+    };
+
     return pipe(
         symbol,
         TS.getMethodSig,
         O.map(node => {
             const resolver: PropertyResolver = ($this) => {
-                const call: CallInvokeResolver = (node) => (_$this, _args) => {
-                    return pipe(
-                        $this(),
-                        E.map(ROA.append<Operation>({ kind: "convert", type: sc.StackItemType.Integer })),
-                        E.map(loadOps => <CompileTimeObject>{ node, loadOps })
-                    )
-                }
-                return E.of(<CompileTimeObject>{ node: node, loadOps: [], call });
+                return pipe(
+                    $this(),
+                    E.map(loadOps => {
+                        return <CompileTimeObject>{ node: node, loadOps, call };
+                    })
+                )
             }
             return resolver;
         }),
