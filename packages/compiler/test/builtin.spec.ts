@@ -14,7 +14,7 @@ import { parseExpression } from '../src/passes/expressionProcessor';
 import { CompileTimeObject } from '../src/types/CompileTimeObject';
 
 describe("builts-ins", () => {
-    describe.skip("Error", () => {
+    describe("Error", () => {
         it("Error()", () => {
             const contract = /*javascript*/`throw Error();`;
             const { project, sourceFile } = createTestProject(contract);
@@ -24,7 +24,7 @@ describe("builts-ins", () => {
 
             const result = testParseExpression(expr, scope);
             expect(result).to.have.lengthOf(1);
-            expect(result[0]).deep.equals(<Operation>{ kind: 'pushdata', value: Uint8Array.from([]) })
+            expectPushData(result[0], Uint8Array.from([]));
         });
 
         it("Error('message')", () => {
@@ -36,7 +36,7 @@ describe("builts-ins", () => {
 
             const result = testParseExpression(expr, scope);
             expect(result).to.have.lengthOf(1);
-            expect(result[0]).deep.equals(<Operation>{ kind: 'pushdata', value: Buffer.from('message', "utf8") })
+            expectPushData(result[0], "message");
         });
 
         it("new Error()", () => {
@@ -48,7 +48,7 @@ describe("builts-ins", () => {
 
             const result = testParseExpression(expr, scope);
             expect(result).to.have.lengthOf(1);
-            expect(result[0]).deep.equals(<Operation>{ kind: 'pushdata', value: Uint8Array.from([]) })
+            expectPushData(result[0], Uint8Array.from([]));
         });
 
         it("new Error('message')", () => {
@@ -60,7 +60,7 @@ describe("builts-ins", () => {
 
             const result = testParseExpression(expr, scope);
             expect(result).to.have.lengthOf(1);
-            expect(result[0]).deep.equals(<Operation>{ kind: 'pushdata', value: Buffer.from('message', "utf8") })
+            expectPushData(result[0], "message");
         });
     });
 

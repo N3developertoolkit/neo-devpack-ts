@@ -18,6 +18,7 @@ import { makeRuntime } from "./runtime";
 import { makeStorage } from "./storage";
 import { sc, u } from "@cityofzion/neon-core";
 import { makeByteString } from "./bytestring";
+import { makeError } from "./error";
 
 module REGEX {
     export const match = (regex: RegExp) => (value: string) => O.fromNullable(value.match(regex));
@@ -247,10 +248,10 @@ const makerFunctions = [
     // makeOperationFunctions,
     makeStackItems,
     makeSyscallFunctions,
-    // // explicit built ins
+    // explicit built ins
     makeByteString,
     makeCallContract,
-    // makeError,
+    makeError,
     makeRuntime,
     makeStorage
 ]

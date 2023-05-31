@@ -7,22 +7,34 @@ import * as ROR from 'fp-ts/ReadonlyRecord';
 import * as S from 'fp-ts/State';
 import * as TS from "../TS";
 
-import { GlobalScopeContext } from "./types";
-import { CompileTimeObject } from "../types/CompileTimeObject";
-import { createDiagnostic, single } from "../utils";
+import { GlobalScopeContext, getVarDeclAndSymbol } from "./types";
+import { CallInvokeResolver, CompileTimeObject, GetValueFunc, NewInvokeResolver } from "../types/CompileTimeObject";
+import { ParseError, createDiagnostic, single } from "../utils";
+import { pushString } from "../types/Operation";
+
+function invokeError(node: tsm.CallExpression | tsm.NewExpression, args: readonly GetValueFunc[]): E.Either<ParseError, CompileTimeObject> {
+    return pipe(
+        args,
+        ROA.head,
+        O.match(
+            () => E.of(<CompileTimeObject>{ node, loadOps: [pushString("")] }),
+            arg => arg()
+        )
+    )
+}
 
 export function makeError(ctx: GlobalScopeContext) {
-    // pipe(
-    //     ctx.declMap.get("callContract") ?? [],
-    //     ROA.filterMap(O.fromPredicate(tsm.Node.isFunctionDeclaration)),
-    //     single,
-    //     O.bindTo("node"),
-    //     O.bind("symbol", ({ node }) => TS.getSymbol(node)),
-    //     // TODO: real CTO
-    //     O.map(({ node, symbol }) => <CompileTimeObject>{ node, symbol }),
-    //     O.match(
-    //         () => ctx.addError(createDiagnostic("could not find callContract function")),
-    //         ctx.addObject
-    //     )
-    // )
+    const q = pipe(
+        "Error",
+        getVarDeclAndSymbol(ctx),
+        E.map(({ node, symbol }) => {
+            const call: CallInvokeResolver = (node) => ($this, args) => invokeError(node, args)
+            const callNew: NewInvokeResolver = (node) => ($this, args) => invokeError(node, args)
+            return <CompileTimeObject>{ node, symbol, loadOps: [], call, callNew };
+        }),
+        E.match(
+            () => ctx.addError(createDiagnostic("could not find Error declaration")),
+            ctx.addObject
+        )
+    );
 }
