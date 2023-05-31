@@ -6,11 +6,10 @@ import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROR from 'fp-ts/ReadonlyRecord';
 import * as TS from "../TS";
 
-import { GlobalScopeContext, getVarDeclAndSymbol, makeInterface, makeMethod, makeProperties } from "./types";
+import { GlobalScopeContext, getVarDeclAndSymbol, makeInterface, makeMethod, makeProperties } from "./common";
 import { CallInvokeResolver, CompileTimeObject, GetValueFunc, PropertyResolver } from "../types/CompileTimeObject";
 import { createDiagnostic, makeParseError, single } from "../utils";
 import { Operation, isPushDataOp, isPushIntOp } from "../types/Operation";
-import { makePropResolvers } from "../passes/parseDeclarations";
 import { sc, u } from "@cityofzion/neon-core";
 
 function getCompileTimeString(cto: CompileTimeObject): O.Option<string> {
@@ -99,17 +98,13 @@ const fromString: CallInvokeResolver = (node) => (_$this, args) => {
 }
 
 function makeByteStringObject(ctx: GlobalScopeContext) {
-    const props: ROR.ReadonlyRecord<string, CallInvokeResolver> = {
-        fromHex,
-        fromInteger,
-        fromString
-    }
+    const members = { fromHex, fromInteger, fromString }
 
     pipe(
         "ByteString",
         getVarDeclAndSymbol(ctx),
-        E.bind('props', ({ node }) => makeProperties(node, props, makeProperty)),
-        E.map(({ node, symbol, props }) => <CompileTimeObject>{ node, symbol, loadOps: [], properties: makePropResolvers(props) }),
+        E.bind('properties', ({ node }) => makeProperties(node, members, makeProperty)),
+        E.map(({ node, symbol, properties }) => <CompileTimeObject>{ node, symbol, loadOps: [], properties }),
         E.match(
             error => { ctx.addError(createDiagnostic(error)) },
             ctx.addObject

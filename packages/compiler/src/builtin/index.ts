@@ -9,9 +9,8 @@ import * as TS from "../TS";
 
 import { CompileTimeObject, CompileTimeType, InvokeResolver, PropertyResolver, Scope, createEmptyScope, createScope } from "../types/CompileTimeObject";
 import { LibraryDeclaration } from "../types/LibraryDeclaration";
-import { GlobalScopeContext, makeInvokeResolver, parseArguments, parseSymbol } from "./types";
+import { GlobalScopeContext, parseArguments } from "./common";
 import { createDiagnostic, isVoidLike, makeParseDiagnostic, makeReadOnlyMap } from "../utils";
-import { makePropResolvers, parseEnumDecl } from "../passes/parseDeclarations";
 import { Operation, parseOperation, pushInt } from "../types/Operation";
 import { makeCallContract } from "./callContract";
 import { makeRuntime } from "./runtime";
@@ -73,17 +72,18 @@ function makeNativeContracts(ctx: GlobalScopeContext) {
                 O.map(v => u.HexString.fromHex(v, true)),
                 E.fromOption(() => createDiagnostic(`Invalid @nativeContract tag for ${node.getName()}`, { node }))
             )),
-            E.bind('props', ({ hash }) => pipe(
+            E.bind('properties', ({ hash }) => pipe(
                 node.getType().getProperties(),
                 ROA.map(makeNativeContractMember(hash)),
-                ROA.sequence(E.Applicative)
+                ROA.sequence(E.Applicative),
+                E.map(makeReadOnlyMap)
             )),
-            E.map(({ symbol, props }) => <CompileTimeObject>{ node, symbol, loadOps: [], properties: makePropResolvers(props) })
+            E.map(({ symbol, properties }) => <CompileTimeObject>{ node, symbol, loadOps: [], properties })
         );
     }
 
     function makeNativeContractMember(hash: u.HexString) {
-        return (symbol: tsm.Symbol): E.Either<tsm.ts.Diagnostic, CompileTimeObject> => {
+        return (symbol: tsm.Symbol): E.Either<tsm.ts.Diagnostic, readonly [string, PropertyResolver]> => {
             return pipe(
                 symbol.getValueDeclaration(),
                 O.fromNullable,
@@ -124,7 +124,8 @@ function makeNativeContracts(ctx: GlobalScopeContext) {
                         }
                         return <CompileTimeObject>{ node, symbol, loadOps: [], call: () => resolver };
                     }
-                })
+                }),
+                E.map(cto => [symbol.getName(), () => E.of(cto)] as const)
             )
         }
     }

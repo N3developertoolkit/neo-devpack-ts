@@ -635,3 +635,22 @@ export function getBooleanConvertOps(type: tsm.Type): readonly Operation[] {
     // Fallback to convert only if there's not a type specific conversion available.
     return [{ kind: "convert", type: sc.StackItemType.Boolean }];
 }
+
+export function makeConditionalExpression({ condition, whenTrue, whenFalse }: {
+    condition: readonly Operation[];
+    whenTrue: readonly Operation[];
+    whenFalse: readonly Operation[];
+}): readonly Operation[] {
+
+    const falseTarget: Operation = { kind: "noop" };
+    const endTarget: Operation = { kind: "noop" };
+    return pipe(
+        condition,
+        ROA.append({ kind: 'jumpifnot', target: falseTarget } as Operation),
+        ROA.concat(whenTrue),
+        ROA.append({ kind: 'jump', target: endTarget } as Operation),
+        ROA.append(falseTarget as Operation),
+        ROA.concat(whenFalse),
+        ROA.append(endTarget as Operation)
+    );
+}

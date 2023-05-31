@@ -5,29 +5,10 @@ import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option';
 import * as TS from "../TS";
-import { getBooleanConvertOps, getIntegerConvertOps, getStringConvertOps, Operation, pushInt, pushString, isJumpTargetOp } from "../types/Operation";
+import { getBooleanConvertOps, getIntegerConvertOps, getStringConvertOps, Operation, pushInt, pushString, isJumpTargetOp, makeConditionalExpression } from "../types/Operation";
 import { CompileTimeObject, GetValueFunc, resolve, resolveName, resolveType, Scope } from "../types/CompileTimeObject";
 import { ParseError, isIntegerLike, isStringLike, isVoidLike, makeParseError } from "../utils";
 import { reduce } from "fp-ts/lib/Foldable";
-
-export function makeConditionalExpression({ condition, whenTrue, whenFalse }: {
-    condition: readonly Operation[];
-    whenTrue: readonly Operation[];
-    whenFalse: readonly Operation[];
-}): readonly Operation[] {
-
-    const falseTarget: Operation = { kind: "noop" };
-    const endTarget: Operation = { kind: "noop" };
-    return pipe(
-        condition,
-        ROA.append({ kind: 'jumpifnot', target: falseTarget } as Operation),
-        ROA.concat(whenTrue),
-        ROA.append({ kind: 'jump', target: endTarget } as Operation),
-        ROA.append(falseTarget as Operation),
-        ROA.concat(whenFalse),
-        ROA.append(endTarget as Operation)
-    );
-}
 
 function makeExpressionChain(node: tsm.Expression): RNEA.ReadonlyNonEmptyArray<tsm.Expression> {
     return makeChain(RNEA.of(node));

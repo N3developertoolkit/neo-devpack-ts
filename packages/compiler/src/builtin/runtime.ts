@@ -5,31 +5,29 @@ import * as O from 'fp-ts/Option'
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as TS from "../TS";
 
-import { GlobalScopeContext, getVarDecl } from "./types";
+import { GlobalScopeContext, getVarDeclAndSymbol } from "./common";
 import { Operation } from "../types/Operation";
-import { CompileTimeObject } from "../types/CompileTimeObject";
-import { makePropResolvers } from "../passes/parseDeclarations";
-import { createDiagnostic } from "../utils";
+import { CompileTimeObject, PropertyResolver } from "../types/CompileTimeObject";
+import { createDiagnostic, makeReadOnlyMap } from "../utils";
 
 export function makeRuntime(ctx: GlobalScopeContext) {
     pipe(
         "Runtime",
-        getVarDecl(ctx),
-        E.bindTo('node'),
-        E.bind('symbol', ({node}) => pipe(node, TS.getSymbol, E.fromOption(() => "could not find symbol for Runtime"))),
-        E.bind('props', ({ node }) => pipe(
+        getVarDeclAndSymbol(ctx),
+        E.bind('properties', ({ node }) => pipe(
             node.getType().getProperties(),
             ROA.map(makeProperty),
-            ROA.sequence(E.Applicative)
+            ROA.sequence(E.Applicative),
+            E.map(makeReadOnlyMap)
         )),
-        E.map(({ node, symbol, props }) => <CompileTimeObject>{ node, symbol, loadOps: [], properties: makePropResolvers(props) }),
+        E.map(({ node, symbol, properties }) => <CompileTimeObject>{ node, symbol, loadOps: [], properties }),
         E.match(
             error => { ctx.addError(createDiagnostic(error)) },
             ctx.addObject
         )
     )
 
-    function makeProperty(symbol: tsm.Symbol): E.Either<string, CompileTimeObject> {
+    function makeProperty(symbol: tsm.Symbol): E.Either<string, readonly [string, PropertyResolver]> {
         return pipe(
             symbol.getValueDeclaration(),
             O.fromNullable,
@@ -42,7 +40,10 @@ export function makeRuntime(ctx: GlobalScopeContext) {
                 E.fromOption(() => `could not find syscall tag for ${symbol.getName()}`),
                 E.map(name => <Operation>{ kind: 'syscall', name })
             )),
-            E.map(({ node, op }) => <CompileTimeObject>{ node, symbol, loadOps: [op] })
+            E.map(({ node, op }) => {
+               const resolver: PropertyResolver = () => E.of( <CompileTimeObject>{ node, symbol, loadOps: [op] });
+               return [symbol.getName(), resolver] as const;
+            })
         )
     }
 }

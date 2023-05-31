@@ -7,7 +7,7 @@ import * as ROR from 'fp-ts/ReadonlyRecord';
 import * as S from 'fp-ts/State';
 import * as TS from "../TS";
 
-import { GlobalScopeContext, getVarDeclAndSymbol } from "./types";
+import { GlobalScopeContext, getVarDeclAndSymbol } from "./common";
 import { CallInvokeResolver, CompileTimeObject, GetValueFunc, NewInvokeResolver } from "../types/CompileTimeObject";
 import { ParseError, createDiagnostic, single } from "../utils";
 import { pushString } from "../types/Operation";

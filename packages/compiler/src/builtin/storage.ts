@@ -5,12 +5,10 @@ import * as O from 'fp-ts/Option'
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as TS from "../TS";
 
-import { GlobalScopeContext, getVarDeclAndSymbol, makeInterface, makeMethod, makeProperties, parseArguments } from "./types";
+import { GlobalScopeContext, getVarDeclAndSymbol, makeInterface, makeMethod, makeProperties, parseArguments } from "./common";
 import { CallInvokeResolver, CompileTimeObject, GetValueFunc, PropertyResolver } from "../types/CompileTimeObject";
-import { Operation, getBooleanConvertOps, isPushBoolOp, pushInt } from "../types/Operation";
-import { makePropResolvers } from "../passes/parseDeclarations";
+import { Operation, getBooleanConvertOps, isPushBoolOp, makeConditionalExpression, pushInt } from "../types/Operation";
 import { createDiagnostic, makeParseError, single } from "../utils";
-import { makeConditionalExpression } from "../passes/expressionProcessor";
 
 export const enum FindOptions {
     None = 0,
@@ -38,8 +36,8 @@ function makeStorageObject(ctx: GlobalScopeContext) {
         // TODO: $torage => Storage
         "$torage",
         getVarDeclAndSymbol(ctx),
-        E.bind('props', ({ node }) => makeProperties<string>(node, storageProps, makeProperty)),
-        E.map(({ node, symbol, props }) => <CompileTimeObject>{ node, symbol, loadOps: [], properties: makePropResolvers(props) }),
+        E.bind('properties', ({ node }) => makeProperties<string>(node, storageProps, makeProperty)),
+        E.map(({ node, symbol, properties }) => <CompileTimeObject>{ node, symbol, loadOps: [], properties }),
         E.match(
             error => { ctx.addError(createDiagnostic(error)) },
             ctx.addObject

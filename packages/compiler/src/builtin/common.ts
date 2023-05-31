@@ -10,7 +10,7 @@ import * as STR from 'fp-ts/string';
 
 import { CallInvokeResolver, CompileTimeObject, CompileTimeType, GetOpsFunc, GetValueFunc, InvokeResolver, PropertyResolver } from "../types/CompileTimeObject";
 import { LibraryDeclaration } from "../types/LibraryDeclaration";
-import { ParseError, createDiagnostic, isArray, makeReadOnlyMap, single } from "../utils";
+import { ParseError, createDiagnostic, makeReadOnlyMap, single } from "../utils";
 import { Operation } from "../types/Operation";
 
 export interface GlobalScopeContext {
@@ -20,22 +20,6 @@ export interface GlobalScopeContext {
     addObject(obj: CompileTimeObject): void;
     addType(type: CompileTimeType): void;
     addError(error: string | tsm.ts.Diagnostic): void;
-}
-
-export function parseSymbol(node: LibraryDeclaration) {
-    return pipe(
-        node,
-        TS.getSymbol,
-        E.fromOption(() => createDiagnostic(`could not get ${node.getName()} symbol`, { node }))
-    );
-}
-
-export function parseTypeSymbol(node: LibraryDeclaration) {
-    return pipe(
-        node.getType(),
-        TS.getTypeSymbol,
-        E.fromOption(() => createDiagnostic(`could not get ${node.getName()} type symbol`, { node }))
-    );
 }
 
 export function parseArguments(args: readonly GetValueFunc[]): E.Either<ParseError, readonly Operation[]> {
@@ -48,23 +32,23 @@ export function parseArguments(args: readonly GetValueFunc[]): E.Either<ParseErr
     )
 }
 
-export function makeInvokeResolver(node: tsm.Node, ops: Operation | readonly Operation[], implicitThis: boolean = false): InvokeResolver {
-    return ($this, args) => {
-        const $args = implicitThis ? ROA.prepend($this)(args) : args;
-        return pipe(
-            $args,
-            parseArguments,
-            E.map(ROA.concat(isArray(ops) ? ops : [ops])),
-            E.map(loadOps => (<CompileTimeObject>{
-                node: node,
-                symbol: node.getSymbolOrThrow(),
-                loadOps
-            }))
-        );
-    }
-}
+// export function makeInvokeResolver(node: tsm.Node, ops: Operation | readonly Operation[], implicitThis: boolean = false): InvokeResolver {
+//     return ($this, args) => {
+//         const $args = implicitThis ? ROA.prepend($this)(args) : args;
+//         return pipe(
+//             $args,
+//             parseArguments,
+//             E.map(ROA.concat(isArray(ops) ? ops : [ops])),
+//             E.map(loadOps => (<CompileTimeObject>{
+//                 node: node,
+//                 symbol: node.getSymbolOrThrow(),
+//                 loadOps
+//             }))
+//         );
+//     }
+// }
 
-export function getVarDecl(ctx: GlobalScopeContext) {
+export function getVarDeclAndSymbol(ctx: GlobalScopeContext) {
     return (name: string) => {
         return pipe(
             ctx.declMap.get(name),
@@ -72,15 +56,6 @@ export function getVarDecl(ctx: GlobalScopeContext) {
             O.map(ROA.filterMap(O.fromPredicate(tsm.Node.isVariableDeclaration))),
             O.chain(single),
             E.fromOption(() => `could not find ${name} variable`),
-        )
-    }
-}
-
-export function getVarDeclAndSymbol(ctx: GlobalScopeContext) {
-    return (name: string) => {
-        return pipe(
-            name,
-            getVarDecl(ctx),
             E.bindTo('node'),
             E.bind('symbol', ({ node }) => pipe(node, TS.getSymbol, E.fromOption(() => `could not find symbol for ${name}`))),
         );
@@ -91,17 +66,23 @@ export function makeProperties<T>(
     node: tsm.Node,
     fields: ROR.ReadonlyRecord<string, T>,
     makeProperty: (value: T) => (symbol: tsm.Symbol) => E.Either<string, CompileTimeObject>
-) {
+): E.Either<string, ReadonlyMap<string, PropertyResolver>> {
     const type = node.getType();
     return pipe(
         fields,
         ROR.mapWithIndex((name, value) => pipe(
             type.getProperty(name),
             E.fromNullable(`could not find ${tsm.Node.hasName(node) ? node.getName() : "<unknown>"} ${name} property`),
-            E.chain(makeProperty(value))
+            E.chain(makeProperty(value)),
+            E.chain(cto => {
+                if (!cto.symbol) return E.left(`could not find symbol for ${name}"}`);
+                const resolver: PropertyResolver = () => E.of(cto);
+                return E.of([cto.symbol.getName(), resolver] as const);
+            })
         )),
         ROR.collect(STR.Ord)((_k, v) => v),
-        ROA.sequence(E.Applicative)
+        ROA.sequence(E.Applicative),
+        E.map(makeReadOnlyMap)
     );
 }
 
@@ -141,7 +122,6 @@ export function makeInterface(name: string, members: ROR.ReadonlyRecord<string, 
         )
     );
 }
-
 
 export function makeMethod(call: CallInvokeResolver) {
     return (symbol: tsm.Symbol): E.Either<string, PropertyResolver> => {

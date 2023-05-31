@@ -5,7 +5,7 @@ import * as O from 'fp-ts/Option'
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as TS from "../TS";
 
-import { GlobalScopeContext, parseArguments } from "./types";
+import { GlobalScopeContext, parseArguments } from "./common";
 import { CompileTimeObject, InvokeResolver } from "../types/CompileTimeObject";
 import { createDiagnostic, makeParseError, single } from "../utils";
 import { Operation, pushInt } from "../types/Operation";
