@@ -3,18 +3,14 @@ import { pipe } from "fp-ts/lib/function";
 import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option'
 import * as ROA from 'fp-ts/ReadonlyArray'
-import * as ROR from 'fp-ts/ReadonlyRecord';
-import * as ROM from 'fp-ts/ReadonlyMap';
 import * as TS from "../TS";
-import * as ORD from 'fp-ts/Ord';
-import * as STR from 'fp-ts/string';
 
-import { GlobalScopeContext, getVarDecl, getVarDeclAndSymbol, makeInterface, makeMethod, makeProperties, parseArguments } from "./types";
+import { GlobalScopeContext, getVarDeclAndSymbol, makeInterface, makeMethod, makeProperties, parseArguments } from "./types";
 import { CallInvokeResolver, CompileTimeObject, GetValueFunc, PropertyResolver } from "../types/CompileTimeObject";
-import { Operation, pushInt } from "../types/Operation";
-import { Ord } from "fp-ts/lib/Ord";
-import { makeMembers, makePropResolvers } from "../passes/parseDeclarations";
-import { createDiagnostic, makeParseError } from "../utils";
+import { Operation, getBooleanConvertOps, isPushBoolOp, pushInt } from "../types/Operation";
+import { makePropResolvers } from "../passes/parseDeclarations";
+import { createDiagnostic, makeParseError, single } from "../utils";
+import { makeConditionalExpression } from "../passes/expressionProcessor";
 
 export const enum FindOptions {
     None = 0,
@@ -77,50 +73,91 @@ function makeStorageCall(syscall: string): CallInvokeResolver {
         )
     };
 }
+
+function getCompileTimeBoolean(cto: CompileTimeObject): O.Option<boolean> {
+    if (tsm.Node.isTrueLiteral(cto.node) || tsm.Node.isFalseLiteral(cto.node)) {
+        return O.of(cto.node.getLiteralValue());
+    }
+
+    return pipe(
+        cto.loadOps,
+        ROA.filter(op => op.kind !== 'noop'),
+        single,
+        O.chain(O.fromPredicate(isPushBoolOp)),
+        O.map(op => op.value)
+    )
+}
+
 const callGet: CallInvokeResolver = makeStorageCall("System.Storage.Get");
 const callFind: CallInvokeResolver = makeStorageCall("System.Storage.Find");
 const callPut: CallInvokeResolver = makeStorageCall("System.Storage.Put");
 const callDelete: CallInvokeResolver = makeStorageCall("System.Storage.Delete");
 
-
-// find(prefix: ByteString, options: FindOptions): Iterator<unknown>;
-
-// // with and without RemovePrefix. Default to removing the prefix
-// entries(prefix?: ByteString, keepPrefix?: boolean): Iterator<[ByteString, ByteString]>;
-
-const callEntries: CallInvokeResolver = (node) => ($this, args) => {
-    return E.left(makeParseError(node)("callEntries not implemented"));
-}
-
-// // KeysOnly with and without RemovePrefix, Default to removing the prefix
-// keys(prefix?: ByteString, keepPrefix?: boolean): Iterator<ByteString>;
-
 function makeRemovePrefixFind($true: FindOptions, $false: FindOptions): CallInvokeResolver {
-    // return (arg: GetValueFunc): GetValueFunc => {
 
-    // }
-
-    throw new Error();
+    return (node) => ($this, args) => {
+        return pipe(
+            E.Do,
+            // take the prefix argument as is
+            E.bind('prefix', () => pipe(
+                args,
+                ROA.lookup(0),
+                E.fromOption(() => makeParseError(node)("invalid prefix"))
+            )),
+            E.bind('options', () => pipe(
+                args,
+                ROA.lookup(1),
+                O.match(
+                    // if options argument is not provided, return none. 
+                    // the next step in the pipe will convert the none to a false find options
+                    () => E.of(O.none),
+                    keepPrefix => pipe(
+                        keepPrefix(),
+                        E.map(cto => {
+                            const loadOps = pipe(
+                                cto,
+                                // if options argument is provided, check to see if it is a compile time boolean  
+                                getCompileTimeBoolean,
+                                O.match(
+                                    // for non compile time booleans, push operations to convert to boolean
+                                    // and add a conditional expression to convert the boolean to find options
+                                    () => {
+                                        const condition = pipe(
+                                            cto.loadOps,
+                                            ROA.concat(getBooleanConvertOps(cto.node.getType()))
+                                        );
+                                        const whenTrue = pipe(pushInt($true), ROA.of);
+                                        const whenFalse = pipe(pushInt($false), ROA.of);
+                                        return makeConditionalExpression({ condition, whenTrue, whenFalse });
+                                    },
+                                    // for compile time booleans, directly push the appropriate find options
+                                    value => [value ? pushInt($true) : pushInt($false)]
+                                )
+                            );
+                            const $cto = <CompileTimeObject>{ ...cto, loadOps };
+                            return (() => E.of($cto)) as GetValueFunc;
+                        }),
+                        E.map(O.of)
+                    )
+                )
+            )),
+            E.chain(({ prefix, options }) => {
+                return pipe(
+                    options,
+                    O.match(
+                        () => E.of(ROA.of<Operation>(pushInt($false))),
+                        getValue => pipe(getValue(), E.map(cto => cto.loadOps))
+                    ),
+                    E.bindTo('options'),
+                    E.bind('args', () => parseArguments([$this, prefix])),
+                    E.map(({ options, args }) => ROA.concat(args)(options))
+                )
+            }),
+            E.map(ROA.append<Operation>({ kind: "syscall", name: "System.Storage.Find" })),
+            E.map(loadOps => <CompileTimeObject>{ node, loadOps })
+        );
+    }
 }
-// const callKeys: CallInvokeResolver = (node) => ($this, args) => {
-//     return pipe(
-//         E.Do,
-//         E.bind('prefix', () => pipe(
-//             args, 
-//             ROA.lookup(0), 
-//             E.fromOption(() => makeParseError(node)("invalid prefix"))
-//         )),
-//         E.bind('options', () => pipe(
-//             args, 
-//             ROA.lookup(0), 
-//             E.fromOption(() => makeParseError(node)("invalid keepPrefix")),
-//             E.map(convertRemovePrefixArg(FindOptions.RemovePrefix, FindOptions.None))
-//         )),
-//         E.chain(({ prefix, options }) => parseArguments([$this, prefix, options])),
-//         E.map(ROA.append<Operation>({ kind: "syscall", name: "System.Storage.Find" })),
-//         E.map(loadOps => <CompileTimeObject>{ node, loadOps })
-//     )
-// }
 
 const callValues: CallInvokeResolver = (node) => ($this, args) => {
     return pipe(
@@ -135,20 +172,34 @@ const callValues: CallInvokeResolver = (node) => ($this, args) => {
 }
 
 function makeAsReadonly(symbol: tsm.Symbol): E.Either<string, PropertyResolver> {
-    return E.left("not implemented")
+    return pipe(
+        symbol,
+        TS.getPropSig,
+        O.map(node => {
+            const resolver: PropertyResolver = ($this) => {
+                return pipe(
+                    $this(),
+                    E.map(ROA.append<Operation>({kind: "syscall", name: "System.Storage.AsReadOnly"})),
+                    E.map(loadOps => <CompileTimeObject>{ node, symbol, loadOps })
+                );
+            }
+            return resolver;
+        }),
+        E.fromOption(() => `could not find ${symbol.getName()} member`)
+    );
 }
 
 function makeStorageContext(ctx: GlobalScopeContext) {
-    // makeInterface("StorageContext", {
-    //     get: makeMethod(callGet),
-    //     // find: makeFind,
-    //     // entries: makeEntries,
-    //     // values: makeValues,
-    //     // keys: makeKeys,
-    //     // asReadonly: makeAsReadonly,
-    //     // put: makePut,
-    //     // delete: makeDelete
-    // }, ctx);
+    makeInterface("StorageContext", {
+        get: makeMethod(callGet),
+        find: makeMethod(callFind),
+        entries: makeMethod(makeRemovePrefixFind(FindOptions.RemovePrefix, FindOptions.None)),
+        values: makeMethod(callValues),
+        keys: makeMethod(makeRemovePrefixFind(FindOptions.RemovePrefix | FindOptions.KeysOnly, FindOptions.KeysOnly)),
+        asReadonly: makeAsReadonly,
+        put: makeMethod(callPut),
+        delete: makeMethod(callDelete)
+    }, ctx);
 
     makeInterface("ReadonlyStorageContext", {
         get: makeMethod(callGet),
@@ -158,3 +209,4 @@ function makeStorageContext(ctx: GlobalScopeContext) {
         keys: makeMethod(makeRemovePrefixFind(FindOptions.RemovePrefix | FindOptions.KeysOnly, FindOptions.KeysOnly)),
     }, ctx);
 }
+
