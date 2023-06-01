@@ -152,11 +152,17 @@ export function makeFunctionInvoker(node: tsm.Node, ops: Operation | readonly Op
     }
 }
 
-export function expectEither<T>(value: E.Either<ParseError, T>): T {
+export function expectEither<T>(value: E.Either<ParseError | readonly ParseError[], T>): T {
     return pipe(
         value,
         E.match(
-            err => expect.fail(err.message),
+            err => {
+                if (isArray(err)) {
+                    expect.fail(err.map(e => e.message).join(", "));
+                } else {
+                    expect.fail(err.message);
+                }
+            },
             value => value
         )
     );

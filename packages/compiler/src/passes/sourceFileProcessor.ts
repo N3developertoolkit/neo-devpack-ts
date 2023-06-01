@@ -3,84 +3,16 @@ import * as ROA from 'fp-ts/ReadonlyArray'
 import * as TS from '../TS';
 import * as E from "fp-ts/Either";
 import * as S from 'fp-ts/State';
-import * as O from 'fp-ts/Option';
 
 
 import { flow, identity, pipe } from "fp-ts/function";
 import { CompiledProject, ContractEvent, ContractMethod, ContractSlot } from "../types/CompileOptions";
 import { parseContractMethod } from "./functionDeclarationProcessor";
 import { handleVariableStatement } from "./variableStatementProcessor";
-import { Operation, pushInt, pushString } from "../types/Operation";
-import { Scope, CompileTimeObject, createEmptyScope, updateScope, CompileTimeType, CallInvokeResolver, GetValueFunc } from "../types/CompileTimeObject";
+import { Operation } from "../types/Operation";
+import { Scope, CompileTimeObject, createEmptyScope, updateScope, CompileTimeType, NewInvokeResolver, PropertyResolver } from "../types/CompileTimeObject";
 import { makeParseError, ParseError, makeParseDiagnostic, ReduceDispatchMap, dispatchReduce, updateContextErrors, getScratchFile } from "../utils";
 import { makeStaticVariable, parseArguments, parseEnumDecl, parseFunctionDecl, parseInterfaceDecl, parseTypeAliasDecl } from "./parseDeclarations";
-
-
-function $parseArguments(args: readonly GetValueFunc[]): E.Either<ParseError, readonly Operation[]> {
-    return pipe(
-        args,
-        ROA.reverse,
-        ROA.map(arg => pipe(arg(), E.map(ctv => ctv.loadOps))),
-        ROA.sequence(E.Applicative),
-        E.map(ROA.flatten),
-    )
-}
-
-/** @internal */
-export function hoistEventFunctionDecl(node: tsm.FunctionDeclaration): E.Either<ParseError, CompileTimeObject> {
-    if (!node.hasDeclareKeyword()) return E.left(makeParseError(node)('only @event declare functions supported'));
-
-    return pipe(
-        node,
-        TS.parseSymbol,
-        E.bindTo("symbol"),
-        E.bind("eventName", ({ symbol }) => pipe(
-            node,
-            TS.getTag("event"),
-            O.map(tag => tag.getCommentText() ?? symbol.getName()),
-            E.fromOption(() => makeParseError(node)('event name required'))
-        )),
-        E.map(({ eventName, symbol }) => {
-            const call: CallInvokeResolver = (node) => ($this, args) => {
-                return pipe(
-                    args,
-                    $parseArguments,
-                    E.map(ROA.concat<Operation>([
-                        pushInt(args.length),
-                        { kind: 'packarray' },
-                        pushString(eventName),
-                        { kind: 'syscall', name: "System.Runtime.Notify" }
-                    ])),
-                    E.map(loadOps => <CompileTimeObject>{ node, symbol, loadOps })
-                )
-            };
-
-            return <CompileTimeObject>{ node, symbol, loadOps: [], call };
-        })
-    )
-}
-
-/** @internal */
-export function hoistFunctionDecl(node: tsm.FunctionDeclaration): E.Either<ParseError, CompileTimeObject> {
-    return pipe(
-        node,
-        TS.parseSymbol,
-        E.map(symbol => {
-            const call: CallInvokeResolver = (node) => ($this, args) => {
-                return pipe(
-                    args,
-                    $parseArguments,
-                    E.map(ROA.append<Operation>({ kind: 'call', method: symbol })),
-                    E.map(loadOps => <CompileTimeObject>{ node, symbol, loadOps })
-                )
-            };
-
-            return <CompileTimeObject>{ node, symbol, loadOps: [], call };
-        })
-    );
-}
-
-
 
 
 const hoist =

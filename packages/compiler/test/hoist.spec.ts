@@ -4,7 +4,7 @@ import * as tsm from "ts-morph";
 import * as E from 'fp-ts/Either';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import { createTestProject, createTestVariable, expectPushInt, expectPushData, expectEither, expectResults, createLiteralCTO, createVarDeclCTO } from './testUtils.spec';
-import { hoistEventFunctionDecl, hoistFunctionDecl } from '../src/passes/sourceFileProcessor';
+import { hoistEventFunctionDecl, hoistFunctionDecl, hoistVariableStmt } from '../src/passes/hoist';
 import { pipe } from 'fp-ts/lib/function';
 import { GetValueFunc } from '../src/types/CompileTimeObject';
 import { CompileTimeObject } from '../src/types/CompileTimeObject';
@@ -32,8 +32,8 @@ function expectCall(node: tsm.CallExpression, cto: CompileTimeObject, $this: Com
 }
 
 describe("hoist", () => {
-    describe("function", () => {
-        it("should hoist function declaration", () => {
+    describe("function declarations", () => {
+        it("normal function", () => {
             const contract = /*javascript*/ `
             function updateBalance(account: ByteString, amount: bigint): boolean { return true; }
             const account: ByteString = null!;
@@ -59,11 +59,8 @@ describe("hoist", () => {
                 account.loadOp,
                 { kind: 'call', method: update.symbol });
         });
-    })
 
-
-    describe("@event", () => {
-        it("should hoist event function declaration", () => {
+        it("@event function", () => {
             const contract = /*javascript*/ `
                 /** @event */
                 declare function Transfer(from: ByteString | null, to: ByteString | null, amount: bigint): void;
@@ -98,6 +95,54 @@ describe("hoist", () => {
                 pushString("Transfer"),
                 { kind: 'syscall', name: "System.Runtime.Notify" });
         });
-
     })
+
+    describe("variable declaration", () => {
+        it("simple identifier", () => {
+            const contract = /*javascript*/ `const test = 100n;`
+                
+            const { sourceFile } = createTestProject(contract);
+            const varStmt = sourceFile.getVariableStatements()[0];
+
+            const test = sourceFile.getVariableDeclarationOrThrow("test");
+
+            const result = pipe(varStmt, hoistVariableStmt, expectEither);
+
+            expect(result).length(1);
+            expect(result[0].node).equals(test.getNameNode());
+            expect(result[0].kind).equals(tsm.VariableDeclarationKind.Const);
+        })
+
+        it("array binding pattern", () => {
+            const contract = /*javascript*/ `const [test1,test2,,test3] = [1,2,3,4];`
+                
+            const { sourceFile } = createTestProject(contract);
+            const varStmt = sourceFile.getVariableStatements()[0];
+
+            const expected = varStmt.getDeclarations()[0].getNameNode()
+                .asKindOrThrow(tsm.SyntaxKind.ArrayBindingPattern)
+                .getElements()
+                .filter(tsm.Node.isBindingElement)
+                .map(e => e.getNameNode().asKindOrThrow(tsm.SyntaxKind.Identifier))
+                .map(node => ({node, kind: tsm.VariableDeclarationKind.Const}));
+
+            const actual = pipe(varStmt, hoistVariableStmt, expectEither);
+            expect(actual).deep.equals(expected);
+        })
+
+        it("object binding pattern", () => {
+            const contract = /*javascript*/ `const v = {a:1, b:2, c:3, d:4}; const { a, b:z, d} = v;`;
+            const { sourceFile } = createTestProject(contract);
+            const varStmt = sourceFile.getVariableStatements()[1];
+
+            const expected = varStmt.getDeclarations()[0].getNameNode()
+                .asKindOrThrow(tsm.SyntaxKind.ObjectBindingPattern)
+                .getElements()
+                .map(e => e.getNameNode().asKindOrThrow(tsm.SyntaxKind.Identifier))
+                .map(node => ({node, kind: tsm.VariableDeclarationKind.Const}));
+
+            const actual = pipe(varStmt, hoistVariableStmt, expectEither);
+            expect(actual).deep.equals(expected);
+        });
+    });
 })
