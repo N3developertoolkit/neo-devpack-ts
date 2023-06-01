@@ -7,9 +7,9 @@ import * as ROM from 'fp-ts/ReadonlyMap';
 import * as S from 'fp-ts/State';
 import * as TS from "../TS";
 
-import { CallInvokeResolver, CompileTimeObject, CompileTimeType, InvokeResolver, PropertyResolver, Scope, createEmptyScope, createScope } from "../types/CompileTimeObject";
+import { CallInvokeResolver, CompileTimeObject, CompileTimeType, InvokeResolver, PropertyResolver, Scope, createEmptyScope, createScope, parseArguments } from "../types/CompileTimeObject";
 import { LibraryDeclaration } from "../types/LibraryDeclaration";
-import { GlobalScopeContext, parseArguments } from "./common";
+import { GlobalScopeContext } from "./common";
 import { createDiagnostic, isVoidLike, makeParseDiagnostic, makeParseError, makeReadOnlyMap } from "../utils";
 import { Operation, parseOperation, pushInt, pushString } from "../types/Operation";
 import { makeCallContract } from "./callContract";

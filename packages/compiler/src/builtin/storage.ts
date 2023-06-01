@@ -5,8 +5,8 @@ import * as O from 'fp-ts/Option'
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as TS from "../TS";
 
-import { GlobalScopeContext, getVarDeclAndSymbol, makeInterface, makeMethod, makeProperties, parseArguments } from "./common";
-import { CallInvokeResolver, CompileTimeObject, GetValueFunc, PropertyResolver } from "../types/CompileTimeObject";
+import { GlobalScopeContext, getVarDeclAndSymbol, makeInterface, makeMethod, makeProperties } from "./common";
+import { CallInvokeResolver, CompileTimeObject, GetValueFunc, PropertyResolver, parseArguments } from "../types/CompileTimeObject";
 import { Operation, getBooleanConvertOps, isPushBoolOp, makeConditionalExpression, pushInt } from "../types/Operation";
 import { createDiagnostic, makeParseError, single } from "../utils";
 

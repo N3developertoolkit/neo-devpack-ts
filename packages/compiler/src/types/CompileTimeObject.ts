@@ -117,3 +117,12 @@ export const resolveType = (scope: Scope) => (type: tsm.Type): O.Option<CompileT
     );
 };
 
+export function parseArguments(args: readonly GetValueFunc[]): E.Either<ParseError, readonly Operation[]> {
+    return pipe(
+        args,
+        ROA.reverse,
+        ROA.map(arg => pipe(arg(), E.map(ctv => ctv.loadOps))),
+        ROA.sequence(E.Applicative),
+        E.map(ROA.flatten),
+    )
+}

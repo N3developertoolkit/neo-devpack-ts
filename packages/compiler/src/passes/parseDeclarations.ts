@@ -44,39 +44,39 @@ export function makeConstant(node: tsm.Identifier | tsm.BindingElement, symbol: 
     // return cto;
 }
 
-export function parseArguments(scope: Scope) {
-    return (args: readonly tsm.Expression[]) => {
-        return pipe(
-            args,
-            ROA.map(parseExpression(scope)),
-            ROA.sequence(E.Applicative),
-            E.map(ROA.reverse),
-            E.map(ROA.flatten)
-        );
-    };
-}
+// export function parseArguments(scope: Scope) {
+//     return (args: readonly tsm.Expression[]) => {
+//         return pipe(
+//             args,
+//             ROA.map(parseExpression(scope)),
+//             ROA.sequence(E.Applicative),
+//             E.map(ROA.reverse),
+//             E.map(ROA.flatten)
+//         );
+//     };
+// }
 
-export const parseCallExpression = (scope: Scope) => (node: tsm.CallExpression) => {
-    return pipe(
-        node,
-        TS.getArguments,
-        parseArguments(scope),
-    );
-}
+// export const parseCallExpression = (scope: Scope) => (node: tsm.CallExpression) => {
+//     return pipe(
+//         node,
+//         TS.getArguments,
+//         parseArguments(scope),
+//     );
+// }
 
-export const parseMethodCallExpression = (scope: Scope) => (node: tsm.CallExpression) => {
-    const expr = node.getExpression();
-    if (tsm.Node.hasExpression(expr)) {
-        return pipe(
-            node,
-            TS.getArguments,
-            ROA.prepend(expr.getExpression()),
-            parseArguments(scope),
-        );
-    } else {
-        return E.left(makeParseError(node)('invalid method call expression'));
-    }
-}
+// export const parseMethodCallExpression = (scope: Scope) => (node: tsm.CallExpression) => {
+//     const expr = node.getExpression();
+//     if (tsm.Node.hasExpression(expr)) {
+//         return pipe(
+//             node,
+//             TS.getArguments,
+//             ROA.prepend(expr.getExpression()),
+//             parseArguments(scope),
+//         );
+//     } else {
+//         return E.left(makeParseError(node)('invalid method call expression'));
+//     }
+// }
 
 interface MakeCompileTimeObjectOptions {
     symbol?: tsm.Symbol;

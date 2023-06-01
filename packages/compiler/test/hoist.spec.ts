@@ -2,14 +2,13 @@ import 'mocha';
 import { expect } from 'chai';
 import * as tsm from "ts-morph";
 import * as E from 'fp-ts/Either';
-import * as ROA from 'fp-ts/ReadonlyArray';
-import { createTestProject, createTestVariable, expectPushInt, expectPushData, expectEither, expectResults, createLiteralCTO, createVarDeclCTO } from './testUtils.spec';
-import { hoistEventFunctionDecl, hoistFunctionDecl, hoistVariableStmt } from '../src/passes/hoist';
+import { createTestProject, expectEither, expectResults, createLiteralCTO, createVarDeclCTO } from './testUtils.spec';
+import { hoistEventFunctionDecl, hoistFunctionDecl, hoistInterfaceDecl, hoistVariableStmt } from '../src/passes/hoist';
 import { pipe } from 'fp-ts/lib/function';
 import { GetValueFunc } from '../src/types/CompileTimeObject';
 import { CompileTimeObject } from '../src/types/CompileTimeObject';
 import { ParseError, makeParseError } from '../src/utils';
-import { Operation, pushInt, pushString } from '../src/types/Operation';
+import { pushInt, pushString } from '../src/types/Operation';
 
 
 function makeGetValueFunc(value: CompileTimeObject | ParseError): GetValueFunc {
@@ -97,10 +96,22 @@ describe("hoist", () => {
         });
     })
 
+    it("interface declaration", () => {
+        const contract = /*javascript*/ `interface TokenState { owner: ByteString; name: string; description: string; image: string; }`;
+        const { sourceFile } = createTestProject(contract);
+        const tokenState = sourceFile.getInterfaceOrThrow("TokenState");
+
+        const result = pipe(tokenState, hoistInterfaceDecl, expectEither);
+        expect(result.type).equals(tokenState.getType());
+        expect(result.properties).length(4);
+
+        // TODO: validate properties
+    })
+
     describe("variable declaration", () => {
         it("simple identifier", () => {
             const contract = /*javascript*/ `const test = 100n;`
-                
+
             const { sourceFile } = createTestProject(contract);
             const varStmt = sourceFile.getVariableStatements()[0];
 
@@ -115,7 +126,7 @@ describe("hoist", () => {
 
         it("array binding pattern", () => {
             const contract = /*javascript*/ `const [test1,test2,,test3] = [1,2,3,4];`
-                
+
             const { sourceFile } = createTestProject(contract);
             const varStmt = sourceFile.getVariableStatements()[0];
 
@@ -124,7 +135,7 @@ describe("hoist", () => {
                 .getElements()
                 .filter(tsm.Node.isBindingElement)
                 .map(e => e.getNameNode().asKindOrThrow(tsm.SyntaxKind.Identifier))
-                .map(node => ({node, kind: tsm.VariableDeclarationKind.Const}));
+                .map(node => ({ node, kind: tsm.VariableDeclarationKind.Const }));
 
             const actual = pipe(varStmt, hoistVariableStmt, expectEither);
             expect(actual).deep.equals(expected);
@@ -139,7 +150,7 @@ describe("hoist", () => {
                 .asKindOrThrow(tsm.SyntaxKind.ObjectBindingPattern)
                 .getElements()
                 .map(e => e.getNameNode().asKindOrThrow(tsm.SyntaxKind.Identifier))
-                .map(node => ({node, kind: tsm.VariableDeclarationKind.Const}));
+                .map(node => ({ node, kind: tsm.VariableDeclarationKind.Const }));
 
             const actual = pipe(varStmt, hoistVariableStmt, expectEither);
             expect(actual).deep.equals(expected);

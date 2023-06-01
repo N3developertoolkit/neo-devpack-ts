@@ -6,13 +6,13 @@ import * as S from 'fp-ts/State';
 
 
 import { flow, identity, pipe } from "fp-ts/function";
-import { CompiledProject, ContractEvent, ContractMethod, ContractSlot } from "../types/CompileOptions";
+import { CompiledProject, ContractEvent, ContractMethod } from "../types/CompileOptions";
 import { parseContractMethod } from "./functionDeclarationProcessor";
 import { handleVariableStatement } from "./variableStatementProcessor";
 import { Operation } from "../types/Operation";
-import { Scope, CompileTimeObject, createEmptyScope, updateScope, CompileTimeType, NewInvokeResolver, PropertyResolver } from "../types/CompileTimeObject";
+import { Scope, CompileTimeObject, createEmptyScope } from "../types/CompileTimeObject";
 import { makeParseError, ParseError, makeParseDiagnostic, ReduceDispatchMap, dispatchReduce, updateContextErrors, getScratchFile } from "../utils";
-import { makeStaticVariable, parseArguments, parseEnumDecl, parseFunctionDecl, parseInterfaceDecl, parseTypeAliasDecl } from "./parseDeclarations";
+import { makeStaticVariable } from "./parseDeclarations";
 
 
 const hoist =

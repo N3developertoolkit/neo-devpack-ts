@@ -22,16 +22,6 @@ export interface GlobalScopeContext {
     addError(error: string | tsm.ts.Diagnostic): void;
 }
 
-export function parseArguments(args: readonly GetValueFunc[]): E.Either<ParseError, readonly Operation[]> {
-    return pipe(
-        args,
-        ROA.reverse,
-        ROA.map(arg => pipe(arg(), E.map(ctv => ctv.loadOps))),
-        ROA.sequence(E.Applicative),
-        E.map(ROA.flatten),
-    )
-}
-
 export function getVarDeclAndSymbol(ctx: GlobalScopeContext) {
     return (name: string) => {
         return pipe(
