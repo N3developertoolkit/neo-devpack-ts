@@ -22,27 +22,6 @@ declare global {
     // }
     // export const Hash256: Hash256Constructor;
 
-    // // TODO: move to ByteArray.toInteger
-    // /**
-    //  * @operation duplicate 
-    //  * @operation isnull
-    //  * @operation jumpif 3
-    //  * @operation convert Integer 
-    //  * @operation jump 3
-    //  * @operation drop 
-    //  * @operation pushint 0
-    //  */
-    // export function asInteger(value: ByteString | null | undefined): bigint;
-
-    // // TODO: move to ByteArray.fromInteger
-    // /**
-    //  * @operation convert ByteString
-    //  */
-    // export function asByteString(value: bigint): ByteString;
-
-    /**
-     * @operation concat
-     */
     export function concat(value1: StorageType, value2: StorageType): ByteString;
 
     export const enum CallFlags {
