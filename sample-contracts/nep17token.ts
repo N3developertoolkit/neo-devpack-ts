@@ -94,7 +94,7 @@ function createTokens(account: ByteString, amount: bigint) {
 }
 
 function updateTotalSupply(amount: bigint) {
-    const totalSupply = $torage.context.get(TOTAL_SUPPLY_KEY)!.asInteger() + amount;
+    const totalSupply = ($torage.context.get(TOTAL_SUPPLY_KEY)?.asInteger() ?? 0n) + amount;
     $torage.context.put(TOTAL_SUPPLY_KEY, ByteString.fromInteger(totalSupply));
 }
 
