@@ -1,88 +1,27 @@
 import * as tsm from "ts-morph";
-import * as ROA from 'fp-ts/ReadonlyArray'
+import { identity, pipe } from "fp-ts/function";
+import * as ROA from 'fp-ts/ReadonlyArray';
 import * as TS from '../TS';
 import * as E from "fp-ts/Either";
 import * as S from 'fp-ts/State';
+import * as O from 'fp-ts/Option';
+import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 
-
-import { flow, identity, pipe } from "fp-ts/function";
-import { CompiledProject, ContractEvent, ContractMethod } from "../types/CompileOptions";
+import { CompiledProject, ContractEvent, ContractMethod, ContractSlot } from "../types/CompileOptions";
+import { Operation, pushInt, pushString, updateLocation } from "../types/Operation";
+import { CompileTimeObject, Scope, updateScope } from "../types/CompileTimeObject";
+import { makeParseError, ParseError, makeParseDiagnostic, updateContextErrors, getScratchFile, CompileError } from "../utils";
+import { hoistDeclarations } from "./hoistDeclarations";
 import { parseContractMethod } from "./functionDeclarationProcessor";
-import { handleVariableStatement } from "./variableStatementProcessor";
-import { Operation } from "../types/Operation";
-import { Scope, CompileTimeObject, createEmptyScope } from "../types/CompileTimeObject";
-import { makeParseError, ParseError, makeParseDiagnostic, ReduceDispatchMap, dispatchReduce, updateContextErrors, getScratchFile } from "../utils";
-import { makeStaticVariable } from "./parseDeclarations";
+import { parseVariableBinding } from "./parseVariableBinding";
+import { parseExpression } from "./expressionProcessor";
 
-
-const hoist =
-    (context: HoistContext, node: tsm.Node, func: (scope: Scope, cto: CompileTimeObject) => E.Either<string, Scope>) =>
-        (def: E.Either<ParseError, CompileTimeObject>): HoistContext => {
-            return pipe(
-                def,
-                E.chain(flow(
-                    cto => func(context.scope, cto),
-                    E.mapLeft(makeParseError(node))
-                )),
-                E.match(
-                    updateContextErrors(context),
-                    scope => ({ ...context, scope }),
-                )
-            );
-        }
-
-// // TODO: remove E.Either
-// function hoistSymbol(scope: Scope, cto: CompileTimeObject): E.Either<string, Scope> {
-//     return E.of(updateScope(scope)(cto));
-// }
-
-// function hoistType(scope: Scope, cto: CompileTimeType): E.Either<string, Scope> {
-//     return E.of(updateScope(scope)(undefined, cto));
-// }
-
-function hoistDeclaration(context: HoistContext, node: tsm.Node): HoistContext {
-    throw new Error('disabled');
-    // return context;
-
-    // switch (node.getKind()) {
-    //     case tsm.SyntaxKind.InterfaceDeclaration:
-    //         return pipe(node as tsm.InterfaceDeclaration, parseInterfaceDecl, hoist(context, node, hoistType));
-    //     case tsm.SyntaxKind.TypeAliasDeclaration:
-    //         return pipe(node as tsm.TypeAliasDeclaration, parseTypeAliasDecl, hoist(context, node, hoistType));
-    //     case tsm.SyntaxKind.FunctionDeclaration:
-    //         return pipe(node as tsm.FunctionDeclaration, parseFunctionDecl, hoist(context, node, hoistSymbol));
-    //     default:
-    //         return context;
-    // }
-}
-
-interface HoistContext {
-    readonly errors: readonly ParseError[];
-    readonly scope: Scope;
-}
-
-const hoistDeclarations =
-    (parentScope: Scope) =>
-        (node: tsm.Node): E.Either<readonly ParseError[], Scope> => {
-
-            return pipe(
-                node,
-                TS.getChildren,
-                ROA.reduce({
-                    errors: [],
-                    scope: createEmptyScope(parentScope)
-                }, hoistDeclaration),
-                ({ scope, errors }) => errors.length > 0 ? E.left(errors) : E.of(scope)
-            )
-        }
-
-function reduceFunctionDeclaration(context: ParseDeclarationsContext, node: tsm.FunctionDeclaration): ParseDeclarationsContext {
-    const makeError = makeParseError(node);
+function reduceFunctionDeclaration(context: ParseSourceContext, node: tsm.FunctionDeclaration): ParseSourceContext {
     if (node.hasDeclareKeyword()) {
         return pipe(
             node,
             TS.getTag("event"),
-            E.fromOption(() => makeError('only @event declare functions supported')),
+            E.fromOption(() => makeParseError(node)('only @event declare functions supported')),
             E.chain(() => pipe(node, TS.parseSymbol)),
             E.map(symbol => ({ symbol, node } as ContractEvent)),
             E.match(
@@ -102,79 +41,164 @@ function reduceFunctionDeclaration(context: ParseDeclarationsContext, node: tsm.
     )
 }
 
-function reduceVariableStatement(context: ParseDeclarationsContext, node: tsm.VariableStatement): ParseDeclarationsContext {
-
+export function reduceVariableDeclaration(
+    context: ParseSourceContext,
+    node: tsm.VariableDeclaration,
+    kind: tsm.VariableDeclarationKind
+): ParseSourceContext {
     return pipe(
-        node,
-        handleVariableStatement(context.scope)(makeStaticVariable),
+        node.getInitializer(),
+        O.fromNullable,
+        O.match(
+            () => E.of(ROA.empty),
+            init => pipe(
+                init,
+                parseExpression(context.scope)
+            )
+        ),
+        E.bindTo('initOps'),
+        E.mapLeft(ROA.of),
+        E.bind('vars', ({ initOps }) => parseVariableBinding(node, kind, initOps)),
         E.match(
-            updateContextErrors(context),
-            ([scope, vars, ops]) => {
-                const staticVars = ROA.concat(vars)(context.staticVars);
-                const initializeOps = ROA.concat(context.initializeOps)(ops);
-                return { ...context, scope, staticVars, initializeOps } as ParseDeclarationsContext;
+            errors => updateContextErrors(context)(errors),
+            ({ initOps, vars }) => {
+                // create CTOs for all the constant declarations and add them to the scope
+                let scope = pipe(
+                    vars,
+                    ROA.filter(v => !!v.constant),
+                    ROA.map(v => <CompileTimeObject>{ node: v.node, symbol: v.symbol, loadOps: [v.constant] }),
+                    updateScope(context.scope)
+                );
+
+                // create ContractSlots and CTOs for all the non-constant declarations
+                const variables = pipe(
+                    vars,
+                    ROA.filter(v => !v.constant),
+                    ROA.mapWithIndex((index, v) => {
+                        const slotVar = <ContractSlot>{ name: v.symbol.getName(), type: v.node.getType() };
+
+                        const slotIndex = index + context.staticVars.length;
+                        const loadOps = ROA.of(<Operation>{ kind: "loadstatic", index: slotIndex });
+                        const storeOps = ROA.of(<Operation>{ kind: "storestatic", index: slotIndex });
+                        const cto = <CompileTimeObject>{ node: v.node, symbol: v.symbol, loadOps, storeOps };
+
+                        return [slotVar, cto, v.index] as const;
+                    })
+                );
+                if (!ROA.isNonEmpty(variables))
+                    return { ...context, scope };
+
+                // add the variable CTOs to the scope
+                scope = updateScope(context.scope)(variables.map(([_, cto]) => cto));
+
+                // add the contract slots to the array of static variables
+                const staticVars = pipe(
+                    variables,
+                    ROA.map(([slotVar]) => slotVar),
+                    vars => ROA.concat(vars)(context.staticVars)
+                );
+
+                const pickOps = pipe(
+                    variables,
+                    RNEA.matchRight(
+                        (init, [_, lastCTO, lastIndex]) => {
+                            return pipe(
+                                init,
+                                ROA.map(([_, cto, index]) => pipe(
+                                    makePickOps(cto, index),
+                                    ROA.prepend<Operation>({ kind: "duplicate", location: cto.node })
+                                )),
+                                ROA.flatten<Operation>, ROA.concat(pipe(
+                                    makePickOps(lastCTO, lastIndex),
+                                    updateLocation(lastCTO.node)
+                                ))
+                            );
+                        }
+                    )
+                );
+
+                const initializeOps = [...context.initializeOps, ...initOps, ...pickOps];
+                return { ...context, scope, staticVars, initializeOps };
+
+                function makePickOps(cto: CompileTimeObject, index: string | number | undefined): readonly Operation[] {
+                    if (!cto.storeOps)
+                        throw new CompileError('unexpected missing storeOps', cto.node);
+                    if (!index)
+                        return cto.storeOps;
+                    const indexOp = typeof index === 'number' ? pushInt(index) : pushString(index);
+                    return [indexOp, { kind: 'pickitem' }, ...cto.storeOps];
+                }
             }
         )
-    )
+    );
 }
 
-function reduceEnumDeclaration(context: ParseDeclarationsContext, node: tsm.EnumDeclaration): ParseDeclarationsContext {
-    throw new Error('disabled');
-    // return context;
-    // return pipe(
-    //     node,
-    //     parseEnumDecl,
-    //     E.chain(flow(
-    //         updateScope(context.scope),
-    //         E.mapLeft(makeParseError(node))
-    //     )),
-    //     E.match(
-    //         updateContextErrors(context),
-    //         scope => ({ ...context, scope })
-    //     )
-    // )
-}
-
-
-interface ParseSourceContext extends CompiledProject {
+export interface ParseSourceContext extends CompiledProject {
     readonly initializeOps: readonly Operation[];
     readonly errors: readonly ParseError[];
-}
-interface ParseDeclarationsContext extends ParseSourceContext {
     readonly scope: Scope;
 }
 
-const dispatchMap: ReduceDispatchMap<ParseDeclarationsContext> = {
-    [tsm.SyntaxKind.EmptyStatement]: (context, _node) => context,
-    [tsm.SyntaxKind.EndOfFileToken]: (context, _node) => context,
-    [tsm.SyntaxKind.EnumDeclaration]: reduceEnumDeclaration,
-    [tsm.SyntaxKind.FunctionDeclaration]: reduceFunctionDeclaration,
-    [tsm.SyntaxKind.InterfaceDeclaration]: (context, _node) => context,
-    [tsm.SyntaxKind.TypeAliasDeclaration]: (context, _node) => context,
-    [tsm.SyntaxKind.VariableStatement]: reduceVariableStatement,
+function reduceSourceFileNode(context: ParseSourceContext, node: tsm.Node): ParseSourceContext {
+
+    switch (node.getKind()) {
+        case tsm.SyntaxKind.EmptyStatement:
+        case tsm.SyntaxKind.EndOfFileToken:
+            return context;
+        case tsm.SyntaxKind.FunctionDeclaration:
+            return reduceFunctionDeclaration(context, node as tsm.FunctionDeclaration);
+        case tsm.SyntaxKind.VariableStatement: {
+            const varStmt = node as tsm.VariableStatement;
+            const kind = varStmt.getDeclarationKind();
+            for (const decl of varStmt.getDeclarations()) {
+                context = reduceVariableDeclaration(context, decl, kind);
+            }
+            return context;
+        }
+        default: {
+            return pipe(
+                `reduceSourceFileNode unsupported ${node.getKindName()}`,
+                makeParseError(node),
+                updateContextErrors(context)
+            );
+        }
+    }
 }
 
-const reduceDeclaration = dispatchReduce("reduceDeclaration", dispatchMap);
 
 const reduceSourceFile =
-    (scope: Scope) =>
-        (context: ParseSourceContext, node: tsm.SourceFile): ParseSourceContext => {
-            return pipe(
-                node,
-                hoistDeclarations(scope),
-                E.map(scope => {
-                    return pipe(
-                        node,
-                        TS.getChildren,
-                        ROA.reduce({ ...context, scope }, reduceDeclaration)
-                    )
-                }),
-                E.match(
-                    updateContextErrors(context),
-                    identity
+    (context: ParseSourceContext, node: tsm.SourceFile): ParseSourceContext => {
+
+        // let { staticVars } = context;
+
+        // const varFactory = ($var: HoistedVariable): CompileTimeObject => {
+        //     const index = staticVars.length;
+        //     staticVars = ROA.append({ name: $var.symbol.getName(), type: $var.type })(staticVars);
+
+        //     // Specifying storeOps, even if the hoisted variable is const.
+        //     // TS will fail any attempt to write to a const variable, so we don't need to worry about it.
+        //     // We need storeOps to correctly write the variable initialization 
+        //     const loadOps = ROA.of(<Operation>{ kind: "loadstatic", index });
+        //     const storeOps = ROA.of(<Operation>{ kind: "storestatic", index });
+        //     return { node: $var.node, symbol: $var.symbol, loadOps, storeOps };
+        // }
+
+        return pipe(
+            node,
+            hoistDeclarations(context.scope),
+            E.map(scope => {
+                return pipe(
+                    node,
+                    TS.getChildren,
+                    ROA.reduce(<ParseSourceContext>{ ...context, scope }, reduceSourceFileNode)
                 )
+            }),
+            E.match(
+                updateContextErrors(context),
+                identity
             )
-        }
+        )
+    }
 
 export const parseProject =
     (project: tsm.Project) =>
@@ -182,6 +206,7 @@ export const parseProject =
             (diagnostics) => {
 
                 const ctx: ParseSourceContext = {
+                    scope: globalScope,
                     errors: [],
                     events: [],
                     initializeOps: [],
@@ -192,7 +217,7 @@ export const parseProject =
                 const { errors, events, initializeOps, methods, staticVars } = pipe(
                     project.getSourceFiles(),
                     ROA.filter(src => !src.isDeclarationFile()),
-                    ROA.reduce(ctx, reduceSourceFile(globalScope))
+                    ROA.reduce(ctx, reduceSourceFile)
                 );
 
                 if (ROA.isNonEmpty(staticVars)) {

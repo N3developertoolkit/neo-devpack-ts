@@ -3,7 +3,7 @@ import { expect } from 'chai';
 import * as tsm from "ts-morph";
 import * as E from 'fp-ts/Either';
 import { createTestProject, expectEither, expectResults, createLiteralCTO, createVarDeclCTO } from './testUtils.spec';
-import { hoistEventFunctionDecl, hoistFunctionDecl, hoistInterfaceDecl, hoistVariableStmt } from '../src/passes/hoist';
+import { hoistEventFunctionDecl, hoistFunctionDecl, hoistInterfaceDecl } from '../src/passes/hoistDeclarations';
 import { pipe } from 'fp-ts/lib/function';
 import { GetValueFunc } from '../src/types/CompileTimeObject';
 import { CompileTimeObject } from '../src/types/CompileTimeObject';
@@ -30,13 +30,13 @@ function expectCall(node: tsm.CallExpression, cto: CompileTimeObject, $this: Com
     );
 }
 
-describe("hoist", () => {
+describe("hoist declarations", () => {
     describe("function declarations", () => {
         it("normal function", () => {
             const contract = /*javascript*/ `
-            function updateBalance(account: ByteString, amount: bigint): boolean { return true; }
-            const account: ByteString = null!;
-            updateBalance(account, 100n);`;
+                function updateBalance(account: ByteString, amount: bigint): boolean { return true; }
+                const account: ByteString = null!;
+                updateBalance(account, 100n);`;
             const { sourceFile } = createTestProject(contract);
 
             const updateDecl = sourceFile.getFunctionOrThrow("updateBalance");
@@ -108,52 +108,61 @@ describe("hoist", () => {
         // TODO: validate properties
     })
 
-    describe("variable declaration", () => {
-        it("simple identifier", () => {
-            const contract = /*javascript*/ `const test = 100n;`
+//     describe("variable declaration", () => {
+//         it("simple identifier", () => {
+//             const contract = /*javascript*/ `const test = 100n;`
 
-            const { sourceFile } = createTestProject(contract);
-            const varStmt = sourceFile.getVariableStatements()[0];
+//             const { sourceFile } = createTestProject(contract);
+//             const varStmt = sourceFile.getVariableStatements()[0];
 
-            const test = sourceFile.getVariableDeclarationOrThrow("test");
+//             const test = sourceFile.getVariableDeclarationOrThrow("test");
+//             const testName = test.getNameNode();
 
-            const result = pipe(varStmt, hoistVariableStmt, expectEither);
+//             const result = pipe(varStmt, hoistVariableStmt, expectEither);
 
-            expect(result).length(1);
-            expect(result[0].node).equals(test.getNameNode());
-            expect(result[0].kind).equals(tsm.VariableDeclarationKind.Const);
-        })
+//             const kind = tsm.VariableDeclarationKind.Const;
+//             expect(result).length(1);
+//             expect(result[0]).deep.equals({ node: testName, symbol: testName.getSymbolOrThrow(), type: test.getType(), kind });
+//         })
+        
+//         function mapBindingElement(kind: tsm.VariableDeclarationKind)  {
+//             return (element: tsm.BindingElement) => {
+//                 const node = element.getNameNode().asKindOrThrow(tsm.SyntaxKind.Identifier);
+//                 const symbol= element.getSymbolOrThrow();
+//                 const type = node.getType();
 
-        it("array binding pattern", () => {
-            const contract = /*javascript*/ `const [test1,test2,,test3] = [1,2,3,4];`
+//                 return { node, symbol, type, kind };
+//             }
+//         }
 
-            const { sourceFile } = createTestProject(contract);
-            const varStmt = sourceFile.getVariableStatements()[0];
+//         it("array binding pattern", () => {
+//             const contract = /*javascript*/ `const [test1,test2,,test3] = [1,2,3,4];`
 
-            const expected = varStmt.getDeclarations()[0].getNameNode()
-                .asKindOrThrow(tsm.SyntaxKind.ArrayBindingPattern)
-                .getElements()
-                .filter(tsm.Node.isBindingElement)
-                .map(e => e.getNameNode().asKindOrThrow(tsm.SyntaxKind.Identifier))
-                .map(node => ({ node, kind: tsm.VariableDeclarationKind.Const }));
+//             const { sourceFile } = createTestProject(contract);
+//             const varStmt = sourceFile.getVariableStatements()[0];
 
-            const actual = pipe(varStmt, hoistVariableStmt, expectEither);
-            expect(actual).deep.equals(expected);
-        })
+//             const expected = varStmt.getDeclarations()[0].getNameNode()
+//                 .asKindOrThrow(tsm.SyntaxKind.ArrayBindingPattern)
+//                 .getElements()
+//                 .filter(tsm.Node.isBindingElement)
+//                 .map(mapBindingElement(tsm.VariableDeclarationKind.Const));
 
-        it("object binding pattern", () => {
-            const contract = /*javascript*/ `const v = {a:1, b:2, c:3, d:4}; const { a, b:z, d} = v;`;
-            const { sourceFile } = createTestProject(contract);
-            const varStmt = sourceFile.getVariableStatements()[1];
+//             const actual = pipe(varStmt, hoistVariableStmt, expectEither);
+//             expect(actual).deep.equals(expected);
+//         })
 
-            const expected = varStmt.getDeclarations()[0].getNameNode()
-                .asKindOrThrow(tsm.SyntaxKind.ObjectBindingPattern)
-                .getElements()
-                .map(e => e.getNameNode().asKindOrThrow(tsm.SyntaxKind.Identifier))
-                .map(node => ({ node, kind: tsm.VariableDeclarationKind.Const }));
+//         it("object binding pattern", () => {
+//             const contract = /*javascript*/ `const v = {a:1, b:2, c:3, d:4}; const { a, b:z, d} = v;`;
+//             const { sourceFile } = createTestProject(contract);
+//             const varStmt = sourceFile.getVariableStatements()[1];
 
-            const actual = pipe(varStmt, hoistVariableStmt, expectEither);
-            expect(actual).deep.equals(expected);
-        });
-    });
+//             const expected = varStmt.getDeclarations()[0].getNameNode()
+//                 .asKindOrThrow(tsm.SyntaxKind.ObjectBindingPattern)
+//                 .getElements()
+//                 .map(mapBindingElement(tsm.VariableDeclarationKind.Const));
+
+//             const actual = pipe(varStmt, hoistVariableStmt, expectEither);
+//             expect(actual).deep.equals(expected);
+//         });
+//     });
 })

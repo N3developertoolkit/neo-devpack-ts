@@ -220,8 +220,7 @@ export const handleVariableStatement =
     (scope: Scope) =>
         (factory: VariableFactory) =>
             (node: tsm.VariableStatement | tsm.VariableDeclarationList): E.Either<readonly ParseError[], VariableStatementResult> => {
-                throw new Error('disabled');
-                // return E.left(ROA.of(makeParseError(node)(`handleVariableStatement disabled`)));
+                return E.left(ROA.of(makeParseError(node)(`handleVariableStatement disabled`)));
 
                 // const q =  pipe(
                 //     node.getDeclarations(),

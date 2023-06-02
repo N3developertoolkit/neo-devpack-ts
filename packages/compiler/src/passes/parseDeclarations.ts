@@ -16,7 +16,7 @@ import { parseExpression } from "./expressionProcessor";
 import { make } from "fp-ts/lib/Tree";
 
 export function makeLocalVariable(node: tsm.Identifier | tsm.BindingElement, symbol: tsm.Symbol, index: number): CompileTimeObject {
-    throw new Error('disabled');
+    throw new Error('makeLocalVariable disabled');
 
     // const loadOps = [{ kind: "loadlocal", index } as Operation];
     // const storeOps = [{ kind: "storelocal", index } as Operation];
@@ -24,21 +24,20 @@ export function makeLocalVariable(node: tsm.Identifier | tsm.BindingElement, sym
 }
 
 export function makeStaticVariable(node: tsm.Identifier | tsm.BindingElement, symbol: tsm.Symbol, index: number): CompileTimeObject {
-    throw new Error('disabled');
+    throw new Error('makeStaticVariable disabled');
     // const loadOps = [{ kind: "loadstatic", index } as Operation];
     // const storeOps = [{ kind: "loadstatic", index } as Operation];
     // return makeCompileTimeObject(node, symbol, { loadOps, storeOps });
 }
 
 export function makeParameter(node: tsm.ParameterDeclaration, symbol: tsm.Symbol, index: number): CompileTimeObject {
-    throw new Error('disabled');
-    // const loadOps = [{ kind: "loadarg", index } as Operation];
-    // const storeOps = [{ kind: "storearg", index } as Operation];
-    // return makeCompileTimeObject(node, symbol, { loadOps, storeOps });
+    const loadOps = ROA.of<Operation>({ kind: "loadarg", index });
+    const storeOps = ROA.of<Operation>({ kind: "storearg", index });
+    return <CompileTimeObject>{ node, symbol, loadOps, storeOps };
 }
 
 export function makeConstant(node: tsm.Identifier | tsm.BindingElement, symbol: tsm.Symbol, op: Operation): CompileTimeObject {
-    throw new Error('disabled');
+    throw new Error('makeConstant disabled');
     // const cto = makeCompileTimeObject(node, symbol, { loadOps: [op] });
     // (cto as any).isConstant = true;
     // return cto;
@@ -159,7 +158,7 @@ export function parseEnumDecl(decl: tsm.EnumDeclaration): E.Either<ParseError, C
 }
 
 function parseEventFunctionDecl(node: tsm.FunctionDeclaration): E.Either<ParseError, CompileTimeObject> {
-    throw new Error('disabled');
+    throw new Error('parseEventFunctionDecl disabled');
     // return pipe(
     //     E.Do,
     //     E.bind('symbol', () => pipe(node, TS.parseSymbol)),
@@ -197,7 +196,7 @@ export function parseFunctionDecl(node: tsm.FunctionDeclaration) {
         return E.left(makeParseError(node)('invalid declare function'));
     }
 
-    throw new Error('disabled');
+    throw new Error('parseFunctionDecl disabled');
     // return pipe(
     //     node,
     //     TS.parseSymbol,
@@ -215,7 +214,7 @@ function parseInterfaceMembers(node: tsm.Node, members: readonly tsm.TypeElement
         return E.left(makeParseError(node)('only property interface members supported'));
     }
 
-    throw new Error('disabled');
+    throw new Error('parseInterfaceMembers disabled');
 
     // const propsE = TS.hasTag("struct")
     //     ? pipe(
@@ -257,7 +256,7 @@ function parseInterfaceMembers(node: tsm.Node, members: readonly tsm.TypeElement
 }
 
 export function parseTypeAliasDecl(node: tsm.TypeAliasDeclaration) {
-    throw new Error('disabled');
+    throw new Error('parseTypeAliasDecl disabled');
 
     // const type = node.getType();
     // if (type.isTuple()) {

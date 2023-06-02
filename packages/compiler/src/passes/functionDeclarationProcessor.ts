@@ -682,6 +682,9 @@ const makeContractMethod =
 export const parseContractMethod =
     (parentScope: Scope) =>
         (node: tsm.FunctionDeclaration): E.Either<readonly ParseError[], ContractMethod> => {
+            const error = makeParseError(node)("parseContractMethod disabled");
+            return E.left(ROA.of(error));
+            
             return pipe(
                 ROA.empty,
                 pipe(
