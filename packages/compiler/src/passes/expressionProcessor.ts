@@ -525,13 +525,17 @@ function reduceCallExpression(context: ExpressionContext, node: tsm.CallExpressi
         // TODO: Optional Chaining support
         E.fromOption(() => makeParseError(node)(`${context.cto?.symbol?.getName()} not callable`)),
         E.bindTo('invoker'),
-        E.bind('args', () => pipe(
-            node,
-            TS.getArguments,
-            ROA.map(resolveExpression(context.scope)),
-            ROA.sequence(E.Applicative)
-        )),
-        E.chain(({ invoker, args }) => invoker(makeGetValueFunc(context), args.map(makeGetValueFunc))),
+        E.bind('args', () => {
+            return pipe(
+                node,
+                TS.getArguments,
+                ROA.map(resolveExpression(context.scope)),
+                ROA.sequence(E.Applicative)
+            );
+        }),
+        E.chain(({ invoker, args }) => {
+            return invoker(makeGetValueFunc(context), args.map(makeGetValueFunc));
+        }),
         E.map(makeContextFromCTO(context, node))
     )
 }

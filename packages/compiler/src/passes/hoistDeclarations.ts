@@ -8,41 +8,58 @@ import { Operation, pushInt, pushString } from "../types/Operation";
 import { CompileTimeObject, CallInvokeResolver, GetValueFunc, PropertyResolver, CompileTimeType, Scope, createScope, parseArguments, createEmptyScope } from "../types/CompileTimeObject";
 import { makeParseError, makeReadOnlyMap, ParseError } from "../utils";
 
-export function hoistEventFunctionDecl(node: tsm.FunctionDeclaration): E.Either<ParseError, CompileTimeObject> {
-    if (!node.hasDeclareKeyword())
-        return E.left(makeParseError(node)('only @event declare functions supported'));
+export function hoistEventFunctionDecl(node: tsm.FunctionDeclaration) {
+    return (eventName: string): E.Either<ParseError, CompileTimeObject> => {
+        return pipe(
+            node,
+            TS.parseSymbol,
+            E.map(symbol => {
+                const call: CallInvokeResolver = (node) => (_$this, args) => {
+                    return pipe(
+                        args,
+                        parseArguments,
+                        E.map(ROA.concat<Operation>([
+                            pushInt(args.length),
+                            { kind: 'packarray' },
+                            pushString(eventName),
+                            { kind: 'syscall', name: "System.Runtime.Notify" }
+                        ])),
+                        E.map(loadOps => <CompileTimeObject>{ node, symbol, loadOps })
+                    );
+                };
+
+                return <CompileTimeObject>{ node, symbol, loadOps: [], call };
+            })
+        );
+    }
+}
+
+function getEventName(node: tsm.FunctionDeclaration): O.Option<string> {
 
     return pipe(
         node,
-        TS.parseSymbol,
-        E.bindTo("symbol"),
-        E.bind("eventName", ({ symbol }) => pipe(
+        TS.getTag("event"),
+        O.chain(tag => O.fromNullable(tag.getCommentText())),
+        O.alt(() => pipe(
             node,
-            TS.getTag("event"),
-            O.map(tag => tag.getCommentText() ?? symbol.getName()),
-            E.fromOption(() => makeParseError(node)('event name required'))
-        )),
-        E.map(({ eventName, symbol }) => {
-            const call: CallInvokeResolver = (node) => ($this, args) => {
-                return pipe(
-                    args,
-                    parseArguments,
-                    E.map(ROA.concat<Operation>([
-                        pushInt(args.length),
-                        { kind: 'packarray' },
-                        pushString(eventName),
-                        { kind: 'syscall', name: "System.Runtime.Notify" }
-                    ])),
-                    E.map(loadOps => <CompileTimeObject>{ node, symbol, loadOps })
-                );
-            };
-
-            return <CompileTimeObject>{ node, symbol, loadOps: [], call };
-        })
-    );
+            TS.getSymbol,
+            O.map(symbol => symbol.getName())
+        ))
+    )
 }
 
+
+
 export function hoistFunctionDecl(node: tsm.FunctionDeclaration): E.Either<ParseError, CompileTimeObject> {
+    if (node.hasDeclareKeyword()) {
+        return pipe(
+            node,
+            getEventName,
+            E.fromOption(() => makeParseError(node)("only @event declare functions supported")),
+            E.chain(hoistEventFunctionDecl(node))
+        )
+    }
+
     return pipe(
         node,
         TS.parseSymbol,
