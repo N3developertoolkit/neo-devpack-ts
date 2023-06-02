@@ -22,21 +22,21 @@ export function decimals() { return DECIMALS; }
 
 /** @safe */
 export function totalSupply(): bigint {
-    return $torage.context.get(TOTAL_SUPPLY_KEY)!.asInteger();
+    return $torage.context.get(TOTAL_SUPPLY_KEY)?.asInteger() ?? 0n;
 }
 
 /** @safe */
 export function balanceOf(account: ByteString): bigint {
-    if (!account || account.length != 20) throw Error("The argument \"account\" is invalid.");
+    if (!account || account.length != 20) throw new Error("The argument \"account\" is invalid.");
     const key = concat(BALANCE_PREFIX, account);
     const value = $torage.context.get(key);
     return value?.asInteger() ?? 0n;
 }
 
 export function transfer(from: ByteString, to: ByteString, amount: bigint, data: any) {
-    if (!from || from.length != 20) throw Error("The argument \"from\" is invalid.");
-    if (!to || to.length != 20) throw Error("The argument \"to\" is invalid.");
-    if (amount < 0n) throw Error("The amount must be a positive number");
+    if (!from || from.length != 20) throw new Error("The argument \"from\" is invalid.");
+    if (!to || to.length != 20) throw new Error("The argument \"to\" is invalid.");
+    if (amount < 0n) throw new Error("The amount must be a positive number");
     if (!checkWitness(from)) return false;
     if (amount != 0n) {
         if (!updateBalance(from, -amount)) return false;
@@ -47,16 +47,16 @@ export function transfer(from: ByteString, to: ByteString, amount: bigint, data:
 }
 
 export function mint(account: ByteString, amount: bigint): boolean {
-    if (!account || account.length != 20) throw Error("The argument \"account\" is invalid.");
-    if (!checkOwner()) throw Error("Only the contract owner can mint tokens");
+    if (!account || account.length != 20) throw new Error("The argument \"account\" is invalid.");
+    if (!checkOwner()) throw new Error("Only the contract owner can mint tokens");
     createTokens(account, amount);
     return true;
 }
 
 export function burn(account: ByteString, amount: bigint): boolean {
-    if (!account || account.length != 20) throw Error("The argument \"account\" is invalid.");
-    if (amount < 0n) throw Error("amount must be greater than zero");
-    if (!checkOwner()) throw Error("Only the contract owner can burn tokens");
+    if (!account || account.length != 20) throw new Error("The argument \"account\" is invalid.");
+    if (amount < 0n) throw new Error("amount must be greater than zero");
+    if (!checkOwner()) throw new Error("Only the contract owner can burn tokens");
     if (amount != 0n) {
         if (!updateBalance(account, -amount)) return false;
         updateTotalSupply(-amount);
@@ -76,7 +76,7 @@ export function update(nefFile: ByteString, manifest: string) {
     if (checkOwner()) {
         ContractManagement.update(nefFile, manifest);
     } else {
-        throw Error("Only the contract owner can update the contract");
+        throw new Error("Only the contract owner can update the contract");
     }
 }
 
@@ -85,7 +85,7 @@ function checkOwner() {
 }
 
 function createTokens(account: ByteString, amount: bigint) {
-    if (amount < 0n) throw Error("The amount must be a positive number");
+    if (amount < 0n) throw new Error("The amount must be a positive number");
     if (amount !== 0n) {
         updateTotalSupply(amount);
         updateBalance(account, amount);
@@ -94,8 +94,8 @@ function createTokens(account: ByteString, amount: bigint) {
 }
 
 function updateTotalSupply(amount: bigint) {
-    const totalSupply = ($torage.context.get(TOTAL_SUPPLY_KEY)?.asInteger() ?? 0n) + amount;
-    $torage.context.put(TOTAL_SUPPLY_KEY, ByteString.fromInteger(totalSupply));
+    const supply = totalSupply() + amount;
+    $torage.context.put(TOTAL_SUPPLY_KEY, ByteString.fromInteger(supply));
 }
 
 function updateBalance(account: ByteString, amount: bigint): boolean {
