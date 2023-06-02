@@ -19,16 +19,14 @@ export function decimals() { return DECIMALS; }
 
 /** @safe */
 export function totalSupply(): bigint {
-    const value = $torage.context.get(TOTAL_SUPPLY_KEY);
-    return value ? value.asInteger() : 0n;
+    return $torage.context.get(TOTAL_SUPPLY_KEY)?.asInteger() ?? 0n;
 }
 
 /** @safe */
 export function balanceOf(account: ByteString): bigint {
     if (!account || account.length != 20) throw Error("The argument \"account\" is invalid.");
     const key = concat(BALANCE_PREFIX, account);
-    const value = $torage.context.get(key);
-    return value ? value.asInteger() : 0n;
+    return $torage.context.get(key)?.asInteger() ?? 0n;
 }
 
 /** @safe */

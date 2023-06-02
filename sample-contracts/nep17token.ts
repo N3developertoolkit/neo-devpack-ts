@@ -29,8 +29,7 @@ export function totalSupply(): bigint {
 export function balanceOf(account: ByteString): bigint {
     if (!account || account.length != 20) throw new Error("The argument \"account\" is invalid.");
     const key = concat(BALANCE_PREFIX, account);
-    const value = $torage.context.get(key);
-    return value?.asInteger() ?? 0n;
+    return $torage.context.get(key)?.asInteger() ?? 0n;
 }
 
 export function transfer(from: ByteString, to: ByteString, amount: bigint, data: any) {
@@ -99,9 +98,9 @@ function updateTotalSupply(amount: bigint) {
 }
 
 function updateBalance(account: ByteString, amount: bigint): boolean {
-    const key = concat(BALANCE_PREFIX, account);
-    const balance = ($torage.context.get(key)?.asInteger() ?? 0n) + amount;
+    const balance = balanceOf(account) + amount;
     if (balance < 0n) return false;
+    const key = concat(BALANCE_PREFIX, account);
     if (balance === 0n) {
         $torage.context.delete(key);
     } else {
