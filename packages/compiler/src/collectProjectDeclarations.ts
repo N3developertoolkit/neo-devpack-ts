@@ -13,8 +13,8 @@ import * as JSON from "fp-ts/Json";
 import * as ROR from 'fp-ts/ReadonlyRecord';
 import * as STR from 'fp-ts/string';
 
-import { CompileError, createDiagnostic } from "../utils";
-import { LibraryDeclaration } from "../types/LibraryDeclaration";
+import { CompileError, createDiagnostic } from "./utils";
+import { LibraryDeclaration } from "./types/LibraryDeclaration";
 
 function isJsonRecord(json: JSON.Json): json is JSON.JsonRecord {
     return json !== null && typeof json === 'object' && !(json instanceof Array);

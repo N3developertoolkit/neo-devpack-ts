@@ -12,8 +12,8 @@ import { Operation, pushInt, pushString, updateLocation } from "../types/Operati
 import { CompileTimeObject, Scope, updateScope } from "../types/CompileTimeObject";
 import { makeParseError, ParseError, makeParseDiagnostic, updateContextErrors, getScratchFile, CompileError } from "../utils";
 import { hoistDeclarations } from "./hoistDeclarations";
-import { parseContractMethod } from "./functionDeclarationProcessor";
-import { parseVariableBinding } from "./parseVariableBinding";
+import { parseContractMethod } from "./functionProcessor";
+import { ParsedVariable, parseVariableBinding, parseVariableDeclaration, processVarDeclResults } from "./parseVariableBinding";
 import { parseExpression } from "./expressionProcessor";
 
 function reduceFunctionDeclaration(context: ParseSourceContext, node: tsm.FunctionDeclaration): ParseSourceContext {
@@ -41,92 +41,35 @@ function reduceFunctionDeclaration(context: ParseSourceContext, node: tsm.Functi
     )
 }
 
+
 export function reduceVariableDeclaration(
     context: ParseSourceContext,
     node: tsm.VariableDeclaration,
     kind: tsm.VariableDeclarationKind
 ): ParseSourceContext {
     return pipe(
-        node.getInitializer(),
-        O.fromNullable,
-        O.match(
-            () => E.of(ROA.empty),
-            init => pipe(
-                init,
-                parseExpression(context.scope)
-            )
-        ),
-        E.bindTo('initOps'),
-        E.mapLeft(ROA.of),
-        E.bind('vars', ({ initOps }) => parseVariableBinding(node, kind, initOps)),
+        node,
+        parseVariableDeclaration(context.scope, kind),
         E.match(
             errors => updateContextErrors(context)(errors),
-            ({ initOps, vars }) => {
-                // create CTOs for all the constant declarations and add them to the scope
-                let scope = pipe(
-                    vars,
-                    ROA.filter(v => !!v.constant),
-                    ROA.map(v => <CompileTimeObject>{ node: v.node, symbol: v.symbol, loadOps: [v.constant] }),
-                    updateScope(context.scope)
-                );
+            results => {
+                const { scope, variables, ops } = processVarDeclResults(context.scope, makeCTO)(results);
 
-                // create ContractSlots and CTOs for all the non-constant declarations
-                const variables = pipe(
-                    vars,
-                    ROA.filter(v => !v.constant),
-                    ROA.mapWithIndex((index, v) => {
-                        const slotVar = <ContractSlot>{ name: v.symbol.getName(), type: v.node.getType() };
+                const initializeOps = ROA.concat(ops)(context.initializeOps);
 
-                        const slotIndex = index + context.staticVars.length;
-                        const loadOps = ROA.of(<Operation>{ kind: "loadstatic", index: slotIndex });
-                        const storeOps = ROA.of(<Operation>{ kind: "storestatic", index: slotIndex });
-                        const cto = <CompileTimeObject>{ node: v.node, symbol: v.symbol, loadOps, storeOps };
-
-                        return [slotVar, cto, v.index] as const;
-                    })
-                );
-                if (!ROA.isNonEmpty(variables))
-                    return { ...context, scope };
-
-                // add the variable CTOs to the scope
-                scope = updateScope(context.scope)(variables.map(([_, cto]) => cto));
-
-                // add the contract slots to the array of static variables
                 const staticVars = pipe(
                     variables,
-                    ROA.map(([slotVar]) => slotVar),
+                    ROA.map(v => <ContractSlot>{ name: v.symbol.getName(), type: v.node.getType() }),
                     vars => ROA.concat(vars)(context.staticVars)
-                );
+                )
 
-                const pickOps = pipe(
-                    variables,
-                    RNEA.matchRight(
-                        (init, [_, lastCTO, lastIndex]) => {
-                            return pipe(
-                                init,
-                                ROA.map(([_, cto, index]) => pipe(
-                                    makePickOps(cto, index),
-                                    ROA.prepend<Operation>({ kind: "duplicate", location: cto.node })
-                                )),
-                                ROA.flatten<Operation>, ROA.concat(pipe(
-                                    makePickOps(lastCTO, lastIndex),
-                                    updateLocation(lastCTO.node)
-                                ))
-                            );
-                        }
-                    )
-                );
-
-                const initializeOps = [...context.initializeOps, ...initOps, ...pickOps];
                 return { ...context, scope, staticVars, initializeOps };
 
-                function makePickOps(cto: CompileTimeObject, index: string | number | undefined): readonly Operation[] {
-                    if (!cto.storeOps)
-                        throw new CompileError('unexpected missing storeOps', cto.node);
-                    if (!index)
-                        return cto.storeOps;
-                    const indexOp = typeof index === 'number' ? pushInt(index) : pushString(index);
-                    return [indexOp, { kind: 'pickitem' }, ...cto.storeOps];
+                function makeCTO(index: number, v: ParsedVariable): CompileTimeObject {
+                    const slotIndex = index + context.staticVars.length;
+                    const loadOps = ROA.of(<Operation>{ kind: "loadstatic", index: slotIndex });
+                    const storeOps = ROA.of(<Operation>{ kind: "storestatic", index: slotIndex });
+                    return <CompileTimeObject>{ node: v.node, symbol: v.symbol, loadOps, storeOps };
                 }
             }
         )
@@ -168,20 +111,6 @@ function reduceSourceFileNode(context: ParseSourceContext, node: tsm.Node): Pars
 
 const reduceSourceFile =
     (context: ParseSourceContext, node: tsm.SourceFile): ParseSourceContext => {
-
-        // let { staticVars } = context;
-
-        // const varFactory = ($var: HoistedVariable): CompileTimeObject => {
-        //     const index = staticVars.length;
-        //     staticVars = ROA.append({ name: $var.symbol.getName(), type: $var.type })(staticVars);
-
-        //     // Specifying storeOps, even if the hoisted variable is const.
-        //     // TS will fail any attempt to write to a const variable, so we don't need to worry about it.
-        //     // We need storeOps to correctly write the variable initialization 
-        //     const loadOps = ROA.of(<Operation>{ kind: "loadstatic", index });
-        //     const storeOps = ROA.of(<Operation>{ kind: "storestatic", index });
-        //     return { node: $var.node, symbol: $var.symbol, loadOps, storeOps };
-        // }
 
         return pipe(
             node,

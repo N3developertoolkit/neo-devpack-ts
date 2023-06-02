@@ -5,7 +5,7 @@ import * as ROA from 'fp-ts/ReadonlyArray'
 import * as S from 'fp-ts/State'
 import * as O from 'fp-ts/Option'
 
-import { collectProjectDeclarations } from "./passes/collectProjectDeclarations";
+import { collectProjectDeclarations } from "./collectProjectDeclarations";
 import { collectArtifacts } from "./collectArtifacts";
 import { makeGlobalScope } from "./builtin";
 import { parseProject } from "./passes/sourceFileProcessor";

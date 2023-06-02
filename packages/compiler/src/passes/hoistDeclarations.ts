@@ -95,6 +95,58 @@ export function hoistInterfaceDecl(node: tsm.InterfaceDeclaration): E.Either<Par
     )
 }
 
+// export function parseTypeAliasDecl(node: tsm.TypeAliasDeclaration) {
+//     throw new Error('parseTypeAliasDecl disabled');
+
+//     // const type = node.getType();
+//     // if (type.isTuple()) {
+//     //     return pipe(
+//     //         node,
+//     //         TS.parseSymbol,
+//     //         E.map(symbol => makeCompileTimeObject(node, symbol, { loadOps: [] }))
+//     //     )
+//     // }
+
+//     // const typeNode = node.getTypeNode();
+//     // if (tsm.Node.isTypeLiteral(typeNode)) {
+//     //     const members = typeNode.getMembers();
+//     //     return parseInterfaceMembers(node, members);
+//     // }
+
+//     // return E.left(makeParseError(node)('parseTypeAliasDecl not supported for this type alias'));
+// }
+
+// export function parseEnumDecl(decl: tsm.EnumDeclaration): E.Either<ParseError, CompileTimeObject> {
+//     return pipe(
+//         decl.getMembers(),
+//         ROA.map(member => pipe(
+//             E.Do,
+//             E.bind('op', () => pipe(member, getValue, E.mapLeft(e => makeParseError(member)(e)))),
+//             E.bind('symbol', () => pipe(member, TS.parseSymbol)),
+//             E.map(({ op, symbol }) => <CompileTimeObject>{ node: member, symbol, loadOps: [op] })
+//         )),
+//         ROA.sequence(E.Applicative),
+//         E.bindTo('props'),
+//         E.bind('symbol', () => pipe(decl, TS.parseSymbol)),
+//         E.map(({ props, symbol }) => {
+//             return <CompileTimeObject>{ node: decl, symbol, loadOps: [], properties: makePropResolvers(props) };
+//         })
+//     );
+
+//     function getValue(member: tsm.EnumMember): E.Either<string, Operation> {
+//         const value = member.getValue();
+//         if (value === undefined)
+//             return E.left(`${decl.getName()}.${member.getName()} undefined value`);
+//         if (typeof value === 'number') {
+//             return Number.isInteger(value)
+//                 ? E.of(pushInt(value))
+//                 : E.left(`${decl.getName()}.${member.getName()} invalid non-integer numeric literal ${value}`);
+//         }
+//         return E.of(pushString(value));
+//     }
+// }
+
+
 export function hoistDeclarations(
     parentScope: Scope,
     seedCTOs?: readonly CompileTimeObject[]

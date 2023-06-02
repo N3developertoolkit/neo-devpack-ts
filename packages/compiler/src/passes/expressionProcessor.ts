@@ -251,7 +251,7 @@ function reduceBinaryExpression(context: ExpressionHeadContext, node: tsm.Binary
             return () => makeAssignment(left, getOperatorOps(mappedOperator, left, right));
         }
 
-        return () => pipe(getOperatorOps(operator, left, right));
+        return () => getOperatorOps(operator, left, right);
     }
 
     function getOperatorOps(operator: tsm.ts.BinaryOperator, left: ExpressionContext, right: ExpressionContext): E.Either<ParseError, readonly Operation[]> {

@@ -6,7 +6,7 @@ import * as ROM from 'fp-ts/ReadonlyMap';
 import * as S from 'fp-ts/State';
 import * as E from 'fp-ts/Either';
 import { ParseError, createContractProject, isArray } from '../src/utils';
-import { collectProjectDeclarations } from '../src/passes/collectProjectDeclarations';
+import { collectProjectDeclarations } from '../src/collectProjectDeclarations';
 import { parseExpression } from '../src/passes/expressionProcessor';
 import { CompileTimeObject, CompileTimeType, InvokeResolver, PropertyResolver, Scope, createEmptyScope, updateScope } from '../src/types/CompileTimeObject';
 import { Operation, pushInt, pushString } from '../src/types/Operation';
