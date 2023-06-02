@@ -61,64 +61,6 @@ export function hoistFunctionDecl(node: tsm.FunctionDeclaration): E.Either<Parse
     );
 }
 
-// export function hoistVariableStmt(node: tsm.VariableStatement): E.Either<readonly ParseError[], readonly HoistedVariable[]> {
-//     // during the hoisting phase, we're not trying to parse the initializer or bind the load or store operations. 
-//     //  * Initializer will be parsed during the code parsing phase.
-//     //  * Variable Load/Store operations are context sensitive (static vs local vs closure) so collect just context-insensitive information here.
-//     //    Final resolution will happen in top level hoist method
-//     const kind = node.getDeclarationKind();
-//     const declarations = new Array<HoistedVariable>();
-//     const errors = new Array<ParseError>();
-
-//     for (const decl of node.getDeclarations()) {
-//         const name = decl.getNameNode();
-
-//         if (tsm.Node.isIdentifier(name)) {
-//             const symbol = name.getSymbol();
-//             if (!symbol) {
-//                 errors.push(makeParseError(node)(`could not find symbol for ${name.getText()}`));
-//             } else {
-//                 declarations.push({ node: name, symbol, type: decl.getType(), kind });
-//             }
-//         } else if (tsm.Node.isArrayBindingPattern(name)) {
-//             const { left, right } = pipe(
-//                 name.getElements(),
-//                 ROA.filter(tsm.Node.isBindingElement),
-//                 mapBindingElements
-//             );
-//             errors.push(...left);
-//             declarations.push(...right);
-//         } else if (tsm.Node.isObjectBindingPattern(name)) {
-//             const { left, right } = pipe(
-//                 name.getElements(),
-//                 mapBindingElements
-//             );
-//             errors.push(...left);
-//             declarations.push(...right);
-//         } else {
-//             errors.push(makeParseError(node)(`invalid variable declaration kind ${(name as tsm.BindingName).getKindName()}`));
-//         }
-//     }
-
-//     return errors.length === 0 ? E.of(declarations) : E.left(errors);
-
-//     function mapBindingElements(elements: readonly tsm.BindingElement[]) {
-//         return pipe(
-//             elements,
-//             ROA.map(e => {
-//                 return pipe(
-//                     e.getNameNode(),
-//                     name => name.asKind(tsm.SyntaxKind.Identifier),
-//                     E.fromNullable(makeParseError(e)("invalid binding element")),
-//                     E.chain(node => pipe(node, TS.parseSymbol, E.map(symbol => ({ node, symbol })))),
-//                     E.map(({ node, symbol }) => <HoistedVariable>{ node, symbol, type: e.getType(), kind })
-//                 )
-//             }),
-//             ROA.separate
-//         );
-//     }
-// }
-
 export function hoistInterfaceDecl(node: tsm.InterfaceDeclaration): E.Either<ParseError, CompileTimeType> {
     const type = node.getType();
     return pipe(
@@ -170,10 +112,10 @@ export function hoistDeclarations(
             // and processed as they are encountered on the next pass
 
             if (tsm.Node.isFunctionDeclaration(child)) {
-                pipe(child, hoistFunctionDecl, E.match(errors.push, ctos.push));
+                pipe(child, hoistFunctionDecl, E.match(e => errors.push(e), o => ctos.push(o)));
             }
             if (tsm.Node.isInterfaceDeclaration(child)) {
-                pipe(child, hoistInterfaceDecl, E.match(errors.push, ctts.push));
+                pipe(child, hoistInterfaceDecl, E.match(e => errors.push(e), t => ctts.push(t)));
             }
             if (tsm.Node.isTypeAliasDeclaration(child)) {
                 errors.push(makeParseError(child)("type aliases not implemented"));
