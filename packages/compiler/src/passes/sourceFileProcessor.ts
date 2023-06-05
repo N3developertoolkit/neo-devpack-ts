@@ -88,6 +88,11 @@ function reduceSourceFileNode(context: ParseSourceContext, node: tsm.Node): Pars
         case tsm.SyntaxKind.EmptyStatement:
         case tsm.SyntaxKind.EndOfFileToken:
             return context;
+        case tsm.SyntaxKind.EnumDeclaration:
+        case tsm.SyntaxKind.InterfaceDeclaration:
+        case tsm.SyntaxKind.TypeAliasDeclaration:
+            // enums, interfaces, and type aliases are processed during hoisting
+            return context;
         case tsm.SyntaxKind.FunctionDeclaration:
             return reduceFunctionDeclaration(context, node as tsm.FunctionDeclaration);
         case tsm.SyntaxKind.VariableStatement: {

@@ -112,27 +112,6 @@ export function hoistInterfaceDecl(node: tsm.InterfaceDeclaration): E.Either<Par
     )
 }
 
-// export function parseTypeAliasDecl(node: tsm.TypeAliasDeclaration) {
-//     throw new Error('parseTypeAliasDecl disabled');
-
-//     // const type = node.getType();
-//     // if (type.isTuple()) {
-//     //     return pipe(
-//     //         node,
-//     //         TS.parseSymbol,
-//     //         E.map(symbol => makeCompileTimeObject(node, symbol, { loadOps: [] }))
-//     //     )
-//     // }
-
-//     // const typeNode = node.getTypeNode();
-//     // if (tsm.Node.isTypeLiteral(typeNode)) {
-//     //     const members = typeNode.getMembers();
-//     //     return parseInterfaceMembers(node, members);
-//     // }
-
-//     // return E.left(makeParseError(node)('parseTypeAliasDecl not supported for this type alias'));
-// }
-
 // export function parseEnumDecl(decl: tsm.EnumDeclaration): E.Either<ParseError, CompileTimeObject> {
 //     return pipe(
 //         decl.getMembers(),
@@ -187,7 +166,10 @@ export function hoistDeclarations(
                 pipe(child, hoistInterfaceDecl, E.match(e => errors.push(e), t => ctts.push(t)));
             }
             if (tsm.Node.isTypeAliasDeclaration(child)) {
-                errors.push(makeParseError(child)("type aliases not implemented"));
+                const type = child.getType();
+                if (!type.isTuple()) {
+                    errors.push(makeParseError(child)(`type alias type ${type.getText()} not supported`));
+                }
             }
             if (tsm.Node.isEnumDeclaration(child)) {
                 errors.push(makeParseError(child)("enums not implemented"));
