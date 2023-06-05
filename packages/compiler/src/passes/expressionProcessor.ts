@@ -36,7 +36,7 @@ interface ExpressionContext extends ExpressionHeadContext {
     readonly cto?: CompileTimeObject;
 
     readonly getOps: () => E.Either<ParseError, readonly Operation[]>;
-    readonly getStoreOps: () => E.Either<ParseError, readonly Operation[]>;
+    readonly getStoreOps: (valueOps: readonly Operation[]) => E.Either<ParseError, readonly Operation[]>;
 }
 
 function makeGetValueFunc(context: ExpressionContext): GetValueFunc {
@@ -160,7 +160,11 @@ function reduceObjectLiteral(context: ExpressionHeadContext, node: tsm.ObjectLit
                     resolveName(context.scope),
                     E.fromOption(() => makeError(`shorthand property assignment ${name} not found`))
                 )),
-                E.map(makeContextFromCTO(context, node))
+                E.map(cto => {
+                    const getOps = () => E.of(cto.loadOps);
+                    const getStoreOps = () => E.left(makeError(`cannot store to shorthand property assignment`));
+                    return { ...context, node, type: node.getType(), cto, getOps, getStoreOps };
+                })
             )
         }
 
@@ -178,7 +182,24 @@ function reduceIdentifier(context: ExpressionHeadContext, node: tsm.Identifier):
         return E.of({ ...context, node, type: node.getType(), getOps, getStoreOps });
     }
 
-    return pipe(node, resolveSymbol(context))
+    return pipe(
+        node,
+        TS.parseSymbol,
+        E.chain(symbol => pipe(
+            symbol,
+            resolve(context.scope),
+            E.fromOption(() => makeParseError(node)(`failed to resolve ${symbol.getName()}`))
+        )),
+        E.map(cto => {
+            const getOps = () => E.of(cto.loadOps);
+            const getStoreOps = (valueOps: readonly Operation[]) => {
+                return cto.storeOps
+                    ? pipe(valueOps, ROA.concat(cto.storeOps), E.of)
+                    : E.left(makeParseError(node)(`symbol ${cto.symbol?.getName()} has no storeOps`));
+            };
+            return { ...context, node, type: node.getType(), cto, getOps, getStoreOps };
+        })
+    )
 }
 
 function reduceConditionalExpression(context: ExpressionHeadContext, node: tsm.ConditionalExpression): E.Either<ParseError, ExpressionContext> {
@@ -238,14 +259,11 @@ function reduceBinaryExpression(context: ExpressionHeadContext, node: tsm.Binary
 
     function makeAssignment(left: ExpressionContext, right: E.Either<ParseError, readonly Operation[]>): E.Either<ParseError, readonly Operation[]> {
         return pipe(
-            E.Do,
-            E.bind('left', () => left.getStoreOps()),
-            E.bind('right', () => right),
-            E.map(({ left, right }) => pipe(
-                right,
-                ROA.append<Operation>({ kind: 'duplicate' }),
-                ROA.concat(left),
-            ))
+            right,
+            E.map(ROA.append<Operation>({ kind: 'duplicate' })),
+            E.chain(right => {
+                return left.getStoreOps(right);
+            })
         )
     }
 
@@ -406,16 +424,10 @@ function reducePostfixUnaryExpression(context: ExpressionHeadContext, node: tsm.
         resolveExpression(context.scope),
         E.map(context => {
             const getStoreOps = () => E.left(makeParseError(node)(`store unary expression not supported`));
-            const getOps = () => pipe(
-                E.Do,
-                E.bind("load", () => context.getOps()),
-                E.bind("store", () => context.getStoreOps()),
-                E.map(({ load, store }) => pipe(
-                    load,
-                    ROA.append<Operation>({ kind: "duplicate" }),
-                    ROA.append<Operation>({ kind }),
-                    ROA.concat(store))
-                )
+            const getOps = () =>  pipe(
+                context.getOps(),
+                E.map(ROA.concat<Operation>([{ kind: "duplicate" }, { kind }])),
+                E.chain(valueOps => context.getStoreOps(valueOps)),
             )
             return { ...context, node, type: node.getType(), getOps, getStoreOps };
         })
@@ -438,16 +450,10 @@ function reducePrefixUnaryExpression(context: ExpressionHeadContext, node: tsm.P
                 resolveExpression(context.scope),
                 E.map(context => {
                     const getStoreOps = () => E.left(makeParseError(node)(`store unary expression not supported`));
-                    const getOps = () => pipe(
-                        E.Do,
-                        E.bind("load", () => context.getOps()),
-                        E.bind("store", () => context.getStoreOps()),
-                        E.map(({ load, store }) => pipe(
-                            load,
-                            ROA.append<Operation>({ kind }),
-                            ROA.append<Operation>({ kind: "duplicate" }),
-                            ROA.concat(store))
-                        )
+                    const getOps = () =>  pipe(
+                        context.getOps(),
+                        E.map(ROA.concat<Operation>([{ kind }, { kind: "duplicate" }])),
+                        E.chain(valueOps => context.getStoreOps(valueOps)),
                     )
                     return { ...context, node, type: node.getType(), getOps, getStoreOps };
                 })
@@ -544,7 +550,11 @@ function reduceCallExpression(context: ExpressionContext, node: tsm.CallExpressi
         E.chain(({ invoker, args }) => {
             return invoker(makeGetValueFunc(context), args.map(makeGetValueFunc));
         }),
-        E.map(makeContextFromCTO(context, node))
+        E.map(cto => {
+            const getOps = () => E.of(cto.loadOps);
+            const getStoreOps = () => E.left(makeParseError(node)(`cannot store to call expression`));
+            return { ...context, node, type: node.getType(), cto, getOps, getStoreOps };
+        })
     )
 }
 
@@ -566,7 +576,11 @@ function reduceNewExpression(context: ExpressionContext, node: tsm.NewExpression
             ROA.sequence(E.Applicative)
         )),
         E.chain(({ invoker, args }) => invoker(makeGetValueFunc(context), args.map(makeGetValueFunc))),
-        E.map(makeContextFromCTO(context, node))
+        E.map(cto => {
+            const getOps = () => E.of(cto.loadOps);
+            const getStoreOps = () => E.left(makeParseError(node)(`cannot store to new expression`));
+            return { ...context, node, type: node.getType(), cto, getOps, getStoreOps };
+        })
     )
 }
 
@@ -600,7 +614,15 @@ function reducePropertyAccessExpression(context: ExpressionContext, node: tsm.Pr
             }
             return cto;
         }),
-        E.map(makeContextFromCTO(context, node))
+        E.map(cto => {
+            const getOps = () => E.of(cto.loadOps);
+            const getStoreOps = (valueOps: readonly Operation[]) => {
+                return cto.storeOps
+                    ? pipe(valueOps, ROA.concat(cto.storeOps), E.of)
+                    : E.left(makeParseError(node)(`symbol ${cto.symbol?.getName()} has no storeOps`));
+            };
+            return { ...context, node, type: node.getType(), cto, getOps, getStoreOps };
+        })
     )
 }
 
@@ -627,40 +649,6 @@ function reduceExpressionTail(node: tsm.Expression) {
                 return E.left(makeParseError(node)(`reduceExpressionTail ${node.getKindName()} not supported`));
         }
     };
-}
-
-function resolveSymbol(context: ExpressionHeadContext) {
-    return (node: tsm.Identifier | tsm.ShorthandPropertyAssignment) => {
-        const makeError = makeParseError(node);
-        return pipe(
-            node,
-            TS.parseSymbol,
-            E.chain(symbol => pipe(
-                symbol,
-                resolve(context.scope),
-                E.fromOption(() => makeError(`failed to resolve ${symbol.getName()}`))
-            )),
-            E.map(makeContextFromCTO(context, node))
-        )
-    }
-}
-
-function makeContextFromCTO(context: ExpressionHeadContext, node: tsm.Node) {
-    return (cto: CompileTimeObject) => {
-        const getOps = () => E.of(cto.loadOps);
-        const getStoreOps = () => cto.storeOps
-            ? E.of(cto.storeOps)
-            : E.left(makeParseError(node)(`symbol ${cto.symbol?.getName()} has no storeOps`));
-
-        return <ExpressionContext>{
-            ...context,
-            node,
-            type: cto.node.getType(),
-            cto,
-            getOps,
-            getStoreOps
-        }
-    }
 }
 
 function resolveExpression(scope: Scope) {
