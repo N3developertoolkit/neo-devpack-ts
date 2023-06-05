@@ -605,11 +605,7 @@ function reducePropertyAccessExpression(context: ExpressionContext, node: tsm.Pr
             if (node.hasQuestionDotToken()) {
                 const loadOps = pipe(
                     cto.loadOps,
-                    ROA.concat<Operation>([
-                        { kind: "duplicate" },
-                        { kind: "isnull" },
-                        { kind: "jumpif", target: context.endTarget }
-                    ]))
+                    ROA.concat(optionalChainOps(context)))
                 return { ...cto, loadOps } as CompileTimeObject
             }
             return cto;
@@ -626,8 +622,42 @@ function reducePropertyAccessExpression(context: ExpressionContext, node: tsm.Pr
     )
 }
 
+function optionalChainOps(context: ExpressionContext): readonly Operation[] {
+    return [
+        { kind: "duplicate" },
+        { kind: "isnull" },
+        { kind: "jumpif", target: context.endTarget }
+    ]
+}
+
 function reduceElementAccessExpression(context: ExpressionContext, node: tsm.ElementAccessExpression): E.Either<ParseError, ExpressionContext> {
-    return E.left(makeParseError(node)(`reduceElementAccessExpression ${node.getKindName()} not implemented`));
+    const chainOps = node.hasQuestionDotToken() ? optionalChainOps(context) : [];
+    return pipe(
+        node.getArgumentExpression(),
+        E.fromNullable(makeParseError(node)(`element access expression has no argument expression`)),
+        E.chain(parseExpression(context.scope)),
+        E.chain(argExprOps => {
+            return pipe(
+                context.getOps(),
+                E.map(ROA.concat(argExprOps)),
+                E.map(ops => {
+                    const getOps = () => pipe(
+                        ops, 
+                        ROA.append<Operation>({ kind: "pickitem" }), 
+                        ROA.concat(chainOps),
+                        E.of
+                    );
+                    const getStoreOps = (valueOps: readonly Operation[]) => pipe(
+                        ops, 
+                        ROA.concat<Operation>(valueOps),
+                        ROA.append<Operation>({ kind: "setitem" }),
+                        E.of
+                    )
+                    return { ...context, node, type: node.getType(), getOps, getStoreOps };
+                })
+            )
+        })
+    )
 }
 
 function reduceExpressionTail(node: tsm.Expression) {
