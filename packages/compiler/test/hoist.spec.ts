@@ -3,7 +3,7 @@ import { expect } from 'chai';
 import * as tsm from "ts-morph";
 import * as E from 'fp-ts/Either';
 import { createTestProject, expectEither, expectResults, createLiteralCTO, createVarDeclCTO } from './testUtils.spec';
-import { hoistEventFunctionDecl, hoistFunctionDecl, hoistInterfaceDecl } from '../src/passes/hoistDeclarations';
+import { hoistFunctionDecl, hoistInterfaceDecl } from '../src/passes/hoistDeclarations';
 import { pipe } from 'fp-ts/lib/function';
 import { GetValueFunc } from '../src/types/CompileTimeObject';
 import { CompileTimeObject } from '../src/types/CompileTimeObject';
@@ -71,7 +71,7 @@ describe("hoist declarations", () => {
             const { sourceFile } = createTestProject(contract);
 
             const transferDecl = sourceFile.getFunctionOrThrow("Transfer");
-            const transfer = pipe(transferDecl, hoistEventFunctionDecl, expectEither)
+            const transfer = pipe(transferDecl, hoistFunctionDecl, expectEither)
 
             expect(transfer.node).equals(transferDecl);
             expect(transfer.symbol).equals(transferDecl.getSymbolOrThrow());

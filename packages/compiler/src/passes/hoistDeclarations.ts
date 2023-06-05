@@ -8,7 +8,7 @@ import { Operation, pushInt, pushString } from "../types/Operation";
 import { CompileTimeObject, CallInvokeResolver, GetValueFunc, PropertyResolver, CompileTimeType, Scope, createScope, parseArguments, createEmptyScope } from "../types/CompileTimeObject";
 import { makeParseError, makeReadOnlyMap, ParseError } from "../utils";
 
-export function hoistEventFunctionDecl(node: tsm.FunctionDeclaration) {
+function hoistEventFunctionDecl(node: tsm.FunctionDeclaration) {
     return (eventName: string): E.Either<ParseError, CompileTimeObject> => {
         return pipe(
             node,
