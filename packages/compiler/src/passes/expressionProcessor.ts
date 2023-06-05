@@ -8,7 +8,6 @@ import * as TS from "../TS";
 import { getBooleanConvertOps, getIntegerConvertOps, getStringConvertOps, Operation, pushInt, pushString, isJumpTargetOp, makeConditionalExpression } from "../types/Operation";
 import { CompileTimeObject, GetValueFunc, resolve, resolveName, resolveType, Scope } from "../types/CompileTimeObject";
 import { ParseError, isIntegerLike, isStringLike, isVoidLike, makeParseError } from "../utils";
-import { reduce } from "fp-ts/lib/Foldable";
 
 function makeExpressionChain(node: tsm.Expression): RNEA.ReadonlyNonEmptyArray<tsm.Expression> {
     return makeChain(RNEA.of(node));
@@ -170,6 +169,15 @@ function reduceObjectLiteral(context: ExpressionHeadContext, node: tsm.ObjectLit
 }
 
 function reduceIdentifier(context: ExpressionHeadContext, node: tsm.Identifier): E.Either<ParseError, ExpressionContext> {
+
+    if (node.getType().isUndefined()) {
+        // even though there is a SyntaxKind.UndefinedKeyword, the compiler processes "undefined" as an identifier
+        // so check the identifier type instead of the node kind
+        const getOps = () => E.of(ROA.of(<Operation>{ kind: "pushnull" }))
+        const getStoreOps = () => E.left(makeParseError(node)(`cannot store to undefined literal`));
+        return E.of({ ...context, node, type: node.getType(), getOps, getStoreOps });
+    }
+
     return pipe(node, resolveSymbol(context))
 }
 
