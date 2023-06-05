@@ -36,13 +36,15 @@ export function tokensOf(account: ByteString) {
     return $torage.context.keys(prefix, true)
 }
 
-/** @struct */
-interface TokenState {
-    owner: ByteString;
-    name: string;
-    description: string;
-    image: string;
-}
+// /** @struct */
+// interface TokenState {
+//     owner: ByteString;
+//     name: string;
+//     description: string;
+//     image: string;
+// }
+
+type TokenState = [ByteString, string, string, string];
 
 export function transfer(to: ByteString, tokenId: ByteString, data: any) {
     if (!to || to.length != 20) throw Error("The argument \"to\" is invalid.");
@@ -53,14 +55,14 @@ export function transfer(to: ByteString, tokenId: ByteString, data: any) {
         return false;
     }
     const token = StdLib.deserialize(serialzied) as TokenState;
-    const owner = token.owner;
+    const [owner] = token;
     if (!checkWitness(owner)) {
         log("only token owner can transfer");
         return false;
     }
 
     if (owner !== to) {
-        token.owner = to;
+        token[0] = to;
         $torage.context.put(key, StdLib.serialize(token));
         updateBalance(owner, tokenId, -1n);
         updateBalance(to, tokenId, 1n);
@@ -84,9 +86,8 @@ export function ownerof(tokenId: ByteString) {
     const key = concat(TOKEN_PREFIX, tokenId);
     const serialzied = $torage.context.get(key);
     if (serialzied) {
-        // const { owner } = StdLib.deserialize(serialzied) as TokenState;
-        const token = StdLib.deserialize(serialzied) as TokenState;
-        return token.owner;
+        const [owner] = StdLib.deserialize(serialzied) as TokenState;
+        return owner;
     } else {
         return null;
     }
@@ -107,7 +108,7 @@ export function mint(owner: ByteString, name: string, description: string, image
     const idString = concat(SYMBOL, ByteString.fromInteger(id));
     const tokenId = CryptoLib.sha256(idString);
 
-    const tokenState: TokenState = { owner, name, description, image };
+    const tokenState: TokenState = [owner, name, description, image ];
     const serializedState = StdLib.serialize(tokenState);
     const tokenKey = concat(TOKEN_PREFIX, tokenId);
     $torage.context.put(tokenKey, serializedState);
@@ -122,17 +123,17 @@ export function properties(tokenId: ByteString) {
     const key = concat(TOKEN_PREFIX, tokenId);
     const serialzied = $torage.context.get(key);
     
-    // if (serialzied) {
-    //     const token = StdLib.deserialize(serialzied) as TokenState;
-    //     const map = new Map<string, any>();
-    //     map.set("owner", token.owner);
-    //     map.set("name", token.name);
-    //     map.set("description", token.description);
-    //     map.set("image", token.image);
-    //     return map;
-    // } else {
-        return null;
-    // }
+    if (serialzied) {
+        const [owner, name, description, image] = StdLib.deserialize(serialzied) as TokenState;
+        const map = new Map<string, any>();
+        map.set("owner", owner);
+        map.set("name", name);
+        map.set("description", description);
+        map.set("image", image);
+        return map;
+    } else {
+        return undefined;
+    }
 }
 
 export function _deploy(_data: any, update: boolean): void {
