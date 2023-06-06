@@ -294,8 +294,6 @@ function adaptCatchVariableDeclaration(node: tsm.CatchClause) {
             return updateContextErrors(context)(makeParseError(node)(message));
         }
 
-        return returnError("adaptCatchVariableDeclaration disabled");
-
         // const decl = node.getVariableDeclaration();
         // if (decl) {
         //     // if there's a variable declaration, update the context scope
@@ -408,36 +406,6 @@ function adaptTryStatement(node: tsm.TryStatement): S.State<AdaptStatementContex
     }
 }
 
-function adaptIncrementor(node: tsm.ForStatement): S.State<AdaptStatementContext, readonly Operation[]> {
-    return context => {
-        const incr = node.getIncrementor();
-        if (incr === undefined) { return [[], context]; }
-
-        let [ops, $context] = adaptExpression(incr)(context);
-        ops = updateLocation(incr)(ops);
-        return [ops, $context];
-    }
-}
-
-function adaptCondition(node: tsm.ForStatement, startTarget: Operation): S.State<AdaptStatementContext, readonly Operation[]> {
-    return context => {
-        const cond = node.getCondition();
-        if (cond === undefined) {
-            const ops = ROA.of<Operation>({ kind: 'jump', target: startTarget });
-            return [ops, context];
-        }
-
-        let [ops, $context] = adaptExpression(cond)(context);
-        ops = pipe(
-            ops,
-            updateLocation(cond),
-            ROA.append<Operation>({ kind: 'jumpif', target: startTarget })
-        );
-
-        return [ops, $context];
-    }
-}
-
 function adaptForStatement(node: tsm.ForStatement): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
 
@@ -466,7 +434,7 @@ function adaptForStatement(node: tsm.ForStatement): S.State<AdaptStatementContex
         );
 
         let incrOps: readonly Operation[] = ROA.empty;
-        [incrOps, $context] = adaptIncrementor(node)($context);
+        [incrOps, $context] = adaptIncrementor()($context);
         ops = pipe(
             ops,
             ROA.concat(incrOps),
@@ -474,7 +442,7 @@ function adaptForStatement(node: tsm.ForStatement): S.State<AdaptStatementContex
         )
 
         let condOps: readonly Operation[] = ROA.empty;
-        [condOps, $context] = adaptCondition(node, startTarget)($context);
+        [condOps, $context] = adaptCondition(startTarget)($context);
         ops = pipe(
             ops,
             ROA.concat(condOps),
@@ -483,6 +451,36 @@ function adaptForStatement(node: tsm.ForStatement): S.State<AdaptStatementContex
 
         $context = popLoopTargets($context, context);
         return [ops, $context];
+
+        function adaptIncrementor(): S.State<AdaptStatementContext, readonly Operation[]> {
+            return context => {
+                const incr = node.getIncrementor();
+                if (incr === undefined) { return [[], context]; }
+        
+                let [ops, $context] = adaptExpression(incr)(context);
+                ops = updateLocation(incr)(ops);
+                return [ops, $context];
+            }
+        }
+        
+        function adaptCondition(startTarget: Operation): S.State<AdaptStatementContext, readonly Operation[]> {
+            return context => {
+                const cond = node.getCondition();
+                if (cond === undefined) {
+                    const ops = ROA.of<Operation>({ kind: 'jump', target: startTarget });
+                    return [ops, context];
+                }
+        
+                let [ops, $context] = adaptExpression(cond)(context);
+                ops = pipe(
+                    ops,
+                    updateLocation(cond),
+                    ROA.append<Operation>({ kind: 'jumpif', target: startTarget })
+                );
+        
+                return [ops, $context];
+            }
+        }
     }
 }
 
