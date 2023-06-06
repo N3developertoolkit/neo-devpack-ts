@@ -143,10 +143,6 @@ function convertCall(
     return E.of({ opCode: sc.OpCode.CALL_L, operand: new Uint8Array(buffer) });
 }
 
-// neon-js hasn't added the PUSHT (0x08) or PUSHF (0x09) opcodes yet
-const PUSHT = 0x08 as sc.OpCode;
-const PUSHF = 0x09 as sc.OpCode;
-
 function convertOperations(
     contractOps: ReadonlyArray<{ address: number; op: Operation; }>,
     tokens: ReadonlyArray<sc.MethodToken>,
@@ -169,7 +165,7 @@ function convertOperations(
         else if (isInitStaticOperation(op)) return E.of(createIns(sc.OpCode.INITSSLOT, [op.count]));
         else if (isJumpOffsetOp(op)) return E.of(convertJump(index, address, op, contractOps));
         else if (isLoadStoreOp(op)) return E.of(convertLoadStore(op));
-        else if (isPushBoolOp(op)) return E.of(createIns(op.value ? PUSHT : PUSHF));
+        else if (isPushBoolOp(op)) return E.of(createIns(op.value ? sc.OpCode.PUSHT : sc.OpCode.PUSHF));
         else if (isPushDataOp(op)) return convertPushData(op);
         else if (isPushIntOp(op)) return E.of(convertPushInt(op));
         else if (isSimpleOp(op)) return E.of(createIns(convertSimpleOperationKind(op.kind)));

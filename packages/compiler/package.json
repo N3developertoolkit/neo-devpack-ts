@@ -11,8 +11,8 @@
     "clean": "tsc --build tsconfig.json --clean"
   },
   "dependencies": {
-    "@cityofzion/neon-core": "^5.3.0",
-    "fp-ts": "^2.13.1",
+    "@cityofzion/neon-core": "^5.4.0",
+    "fp-ts": "^2.16.0",
     "ts-morph": "^18.0.0"
   }
 }
