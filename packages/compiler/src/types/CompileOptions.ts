@@ -1,7 +1,7 @@
 import * as tsm from "ts-morph";
 import { sc } from "@cityofzion/neon-core";
 import { Operation } from "./Operation";
-import type { DebugInfo, SlotVariable } from "./DebugInfo";
+import type { DebugInfo } from "./DebugInfo";
 
 export interface CompileOptions {
     readonly addressVersion: number;
@@ -10,11 +10,17 @@ export interface CompileOptions {
     readonly standards: ReadonlyArray<string>;
 }
 
+export interface ContractVariable {
+    name: string;
+    type: tsm.Type;
+    index: number;
+}
+
 export interface ContractMethod {
     symbol: tsm.Symbol;
     node: tsm.FunctionDeclaration;
     operations: readonly Operation[];
-    variables: readonly SlotVariable[];
+    variables: readonly ContractVariable[];
 }
 
 export interface ContractEvent {
@@ -25,7 +31,7 @@ export interface ContractEvent {
 export interface CompiledProject {
     readonly methods: readonly ContractMethod[];
     readonly events: readonly ContractEvent[];
-    readonly staticVars: readonly SlotVariable[];
+    readonly staticVars: readonly ContractVariable[];
 }
 
 export interface CompiledProjectArtifacts {

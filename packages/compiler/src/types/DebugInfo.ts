@@ -5,74 +5,60 @@ import { pipe } from "fp-ts/function";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as ROS from 'fp-ts/ReadonlySet'
 import * as FP from 'fp-ts'
-import type { Location } from "./Operation";
+import * as ORD from 'fp-ts/Ord';
+import { Location, getOperationSize } from "./Operation";
 import { asContractParamType, asReturnType } from "../utils";
-
-export interface SlotVariable {
-    name: string;
-    type: tsm.Type;
-    index: number;
-}
+import { CompiledProject, ContractEvent, ContractMethod, ContractVariable } from "./CompileOptions";
 
 export interface SequencePoint {
     address: number;
     location: Location,
 }
 
+export interface DebugInfoEvent {
+    readonly id: string;
+    readonly name: string;
+    readonly params?: readonly string[];
+}
+
 export interface DebugInfoMethod {
-    readonly name: string,
-    readonly range: { readonly start: number, readonly end: number },
-    readonly parameters: ReadonlyArray<SlotVariable>;
-    readonly returnType: tsm.Type,
-    readonly variables: ReadonlyArray<SlotVariable>;
-    readonly sequencePoints: ReadonlyArray<SequencePoint>;
+    readonly id: string;
+    readonly name: string;
+    // range format: "{start-address}-{end-address}
+    readonly range: string;
+    readonly params?: readonly string[];
+    readonly "return"?: string;
+    readonly variables?: readonly string[];
+    // sequence point format: "{address}[{document-index}]{start-line}:{start-column}-{end-line}:{end-column}"
+    readonly "sequence-points"?: readonly string[];
 }
 
 export interface DebugInfo {
-    readonly hash: Uint8Array,
-    readonly methods: ReadonlyArray<DebugInfoMethod>
-    toJson(): DebugInfoJson
+    readonly hash: string; // hex-encoded UInt160
+    readonly documents?: readonly string[]; // file paths
+    readonly "document-root"?: string;
+    readonly events?: readonly DebugInfoEvent[];
+    readonly methods?: readonly DebugInfoMethod[];
+    readonly "static-variables"?: readonly string[];
 }
 
-function asSlotVarString(v: SlotVariable): string {
+function asSlotVarString(v: ContractVariable): string {
     const type = asContractParamType(v.type);
     return `${v.name},${sc.ContractParamType[type]},${v.index}`
 }
 
-const asSeqPointString =
-    (docs: ReadonlyArray<tsm.SourceFile>) =>
-        (sp: SequencePoint): string => {
-            const index = docs.indexOf(asSourceFile(sp));
-            if (index < 0) throw new Error("asSeqPointString");
-            const src = docs[index];
-            const [start, end] = tsm.Node.isNode(sp.location)
-                ? [src.getLineAndColumnAtPos(sp.location.getStart()), src.getLineAndColumnAtPos(sp.location.getEnd())]
-                : [src.getLineAndColumnAtPos(sp.location.start.getStart()), src.getLineAndColumnAtPos(sp.location.end.getEnd())]
-            return `${sp.address}[${index}]${start.line}:${start.column}-${end.line}:${end.column}`
-        }
-
-const toDebugMethodJson =
-    (docs: ReadonlyArray<tsm.SourceFile>) =>
-        (method: DebugInfoMethod): DebugMethodJson => {
-            const params = method.parameters.length > 0
-                ? method.parameters.map(asSlotVarString)
-                : undefined;
-            const variables = method.variables.length > 0 
-                ? method.variables.map(asSlotVarString)
-                : undefined
-            const sequencePoints = method.sequencePoints.length > 0
-                ? method.sequencePoints.map(asSeqPointString(docs))
-                : undefined
-            return {
-                id: method.name,
-                name: ',' + method.name,
-                range: `${method.range.start}-${method.range.end}`,
-                params,
-                variables,
-                return: sc.ContractParamType[asReturnType(method.returnType)],
-                "sequence-points": sequencePoints
-            }
-        }
+function asSeqPointString(docs: ReadonlyArray<tsm.SourceFile>) {
+    return (sp: SequencePoint): string => {
+        const index = docs.indexOf(asSourceFile(sp));
+        if (index < 0)
+            throw new Error("asSeqPointString");
+        const src = docs[index];
+        const [start, end] = tsm.Node.isNode(sp.location)
+            ? [src.getLineAndColumnAtPos(sp.location.getStart()), src.getLineAndColumnAtPos(sp.location.getEnd())]
+            : [src.getLineAndColumnAtPos(sp.location.start.getStart()), src.getLineAndColumnAtPos(sp.location.end.getEnd())];
+        return `${sp.address}[${index}]${start.line}:${start.column}-${end.line}:${end.column}`;
+    };
+}
 
 function asSourceFile(sp: SequencePoint) {
     return tsm.Node.isNode(sp.location)
@@ -80,15 +66,74 @@ function asSourceFile(sp: SequencePoint) {
         : sp.location.start.getSourceFile()
 }
 
-function toDebugInfoJson(hash: Buffer, methods: ReadonlyArray<DebugInfoMethod>): DebugInfoJson {
+function asContractVariable(index: number, node: tsm.ParameterDeclaration): ContractVariable {
+    return { name: node.getName(), type: node.getType(), index }
+}
 
-    const sourceOrd: FP.ord.Ord<tsm.SourceFile> = {
-        equals: (x, y) => FP.string.Ord.equals(x.getFilePath(), y.getFilePath()),
-        compare: (x, y) => FP.string.Ord.compare(x.getFilePath(), y.getFilePath())
-    };
+function getParameters(node: tsm.FunctionDeclaration) {
+    return pipe(node.getParameters(), ROA.mapWithIndex(asContractVariable), ROA.map(asSlotVarString));
+}
 
-    const docs = pipe(methods,
-        ROA.map(m => m.sequencePoints),
+function makeDebugInfoMethod(docs: readonly tsm.SourceFile[]) {
+    return ({ method, range, sequencePoints }: MethodDebugInfo): DebugInfoMethod => {
+        const name = method.symbol.getName();
+        return {
+            id: name,
+            name: `,${name}`,
+            range: `${range.start}-${range.end}`,
+            params: getParameters(method.node),
+            variables: pipe(method.variables, ROA.map(asSlotVarString)),
+            return: sc.ContractParamType[asReturnType(method.node.getReturnType())],
+            "sequence-points": pipe(sequencePoints, ROA.map(asSeqPointString(docs)))
+        }
+    }
+}
+
+function makeDebugInfoEvent(event: ContractEvent): DebugInfoEvent {
+    return {
+        id: event.symbol.getName(),
+        name: `,` + event.symbol.getName(),
+        params: getParameters(event.node)
+    }
+}
+
+const sourceOrd: ORD.Ord<tsm.SourceFile> = {
+    equals: (x, y) => FP.string.Ord.equals(x.getFilePath(), y.getFilePath()),
+    compare: (x, y) => FP.string.Ord.compare(x.getFilePath(), y.getFilePath())
+};
+
+interface MethodDebugInfo {
+    readonly method: ContractMethod,
+    readonly range: { readonly start: number, readonly end: number },
+    readonly sequencePoints: readonly SequencePoint[];
+}
+
+function collectMethodDebugInfo(methods: readonly ContractMethod[]): readonly MethodDebugInfo[] {
+    let address = 0;
+    const infoArray = new Array<MethodDebugInfo>();
+    for (const method of methods) {
+        const start = address;
+        let end = address;
+        const sequencePoints = new Array<SequencePoint>();
+        for (const op of method.operations) {
+            end = address;
+            if (op.location) {
+                sequencePoints.push({ address, location: op.location })
+            }
+            address += getOperationSize(op);
+        }
+        infoArray.push({ method, range: { start, end }, sequencePoints })
+    }
+    return infoArray;
+}
+
+export function makeDebugInfo(project: CompiledProject, nef: sc.NEF): DebugInfo {
+
+    const hash = Buffer.from(u.hash160(nef.script), 'hex').reverse();
+    const methodInfos = collectMethodDebugInfo(project.methods);
+    const docs = pipe(
+        methodInfos,
+        ROA.map(v => v.sequencePoints),
         ROA.flatten,
         ROA.map(asSourceFile),
         ROS.fromReadonlyArray(sourceOrd),
@@ -97,46 +142,9 @@ function toDebugInfoJson(hash: Buffer, methods: ReadonlyArray<DebugInfoMethod>):
 
     return {
         hash: `0x${hash.toString('hex')}`,
-        documents: docs.map(v => v.getFilePath().substring(1)),
-        methods: methods
-            .map(toDebugMethodJson(docs))
-            .filter(j => j["sequence-points"] !== undefined && j["sequence-points"].length !== 0),
-        events: [],
-        "static-variables": [],
+        documents: pipe(docs, ROA.map(v => v.getFilePath().substring(1))),
+        methods: pipe(methodInfos, ROA.map(makeDebugInfoMethod(docs))),
+        events: pipe(project.events, ROA.map(makeDebugInfoEvent)),
+        "static-variables": pipe(project.staticVars, ROA.map(asSlotVarString)),
     }
-}
-export function makeDebugInfo(nef: sc.NEF, methods: ReadonlyArray<DebugInfoMethod>): DebugInfo {
-    const hash = Buffer.from(u.hash160(nef.script), 'hex').reverse();
-    return {
-        hash,
-        methods,
-        toJson: () => toDebugInfoJson(hash, methods),
-    }
-}
-
-interface DebugEventJson {
-    id: string;
-    name: string;
-    params?: string[];
-}
-
-interface DebugMethodJson {
-    id: string;
-    name: string;
-    // format: "{start-address}-{end-address}
-    range: string; 
-    params?: string[];
-    "return"?: string;
-    variables?: string[];
-    // format: "{address}[{document-index}]{start-line}:{start-column}-{end-line}:{end-column}"
-    "sequence-points"?: string[]; 
-}
-
-interface DebugInfoJson {
-    hash: string; // hex-encoded UInt160
-    documents?: string[]; // file paths
-    "document-root"?: string;
-    events?: ReadonlyArray<DebugEventJson>;
-    methods?: ReadonlyArray<DebugMethodJson>;
-    "static-variables"?: string[];
 }

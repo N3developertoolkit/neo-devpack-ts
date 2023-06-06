@@ -107,8 +107,8 @@ function main() {
 
             if (debugInfo) {
                 const debugInfoPath = join(outputPath, `${contractName}.debug.json`);
-                const jsonDebugInfo = debugInfo.toJson();
-                jsonDebugInfo.documents = jsonDebugInfo.documents?.map(d => join(REPO_ROOT, d));
+                const documents = debugInfo.documents?.map(d => join(REPO_ROOT, d));
+                const jsonDebugInfo = { ...debugInfo, documents };
                 const $debugInfo = JSON.stringify(jsonDebugInfo, null, 4);
                 writeFileSync(debugInfoPath, $debugInfo);
                 console.log(green, "Wrote: " + debugInfoPath);

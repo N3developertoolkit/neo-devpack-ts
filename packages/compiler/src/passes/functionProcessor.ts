@@ -9,10 +9,9 @@ import * as TS from '../TS';
 import { CompileTimeObject, Scope, createEmptyScope, createScope, updateScope } from "../types/CompileTimeObject";
 import { Operation, getBooleanConvertOps, updateLocation } from "../types/Operation";
 import { CompileError, E_fromSeparated, ParseError, isVoidLike, makeParseError, updateContextErrors } from "../utils";
-import { ContractMethod } from "../types/CompileOptions";
+import { ContractMethod, ContractVariable } from "../types/CompileOptions";
 import { parseExpression } from "./expressionProcessor";
 import { ParsedVariable, parseVariableDeclaration, processVarDeclResults } from "./parseVariableBinding";
-import { SlotVariable } from "../types/DebugInfo";
 
 function adaptExpression(node: tsm.Expression, convertOps: readonly Operation[] = []): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
@@ -522,7 +521,7 @@ function adaptStatement(node: tsm.Statement): S.State<AdaptStatementContext, rea
 
 interface ParseBodyResult {
     readonly operations: readonly Operation[];
-    readonly locals: readonly SlotVariable[];
+    readonly locals: readonly ContractVariable[];
 }
 
 function parseBody({ scope, body }: { scope: Scope, body: tsm.Node }): E.Either<readonly ParseError[], ParseBodyResult> {

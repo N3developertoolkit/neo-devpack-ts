@@ -318,12 +318,16 @@ export function asContractParamType(type: tsm.Type): sc.ContractParamType {
 
     const typeSymbol = type.getAliasSymbol() ?? type.getSymbolOrThrow();
     const typeFQN = typeSymbol.getFullyQualifiedName();
-    if (typeFQN === "global.ByteStringInstance") {
+    if (typeFQN === "global.ByteString") {
         return sc.ContractParamType.ByteArray;
     }
 
     if (typeFQN === "Iterator") {
         return sc.ContractParamType.InteropInterface;
+    }
+    
+    if (typeFQN === "Map") {
+        return sc.ContractParamType.Map;
     }
 
     return sc.ContractParamType.Any;

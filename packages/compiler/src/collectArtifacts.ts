@@ -9,7 +9,7 @@ import * as S from 'fp-ts/State'
 import { CallOperation, CallTokenOperation, convertJumpOperationKind, convertJumpTargetOps, convertLoadStoreKind, convertSimpleOperationKind, getOperationSize, isCallOp, isCallTokenOp, isConvertOp, isInitSlotOp, isInitStaticOperation, isJumpOffsetOp, isJumpTargetOp, isLoadStoreOp, isPushBoolOp, isPushDataOp, isPushIntOp, isSimpleOp, isSysCallOp, JumpOffsetOperation, LoadStoreOperation, Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
 import { asContractParamType, asReturnType, convertBigInteger, createDiagnostic, E_fromSeparated } from "./utils";
 import { CompiledProject, CompiledProjectArtifacts, CompileOptions, ContractEvent, ContractMethod } from "./types/CompileOptions";
-import { DebugInfoMethod, makeDebugInfo, SequencePoint } from "./types/DebugInfo";
+import { makeDebugInfo } from "./types/DebugInfo";
 
 function collectMethodTokens(methods: ReadonlyArray<ContractMethod>): ReadonlyArray<sc.MethodToken> {
     const set = pipe(
@@ -245,48 +245,6 @@ function collectManifestEvents(
     )
 }
 
-function collectDebugMethods(
-    methods: ReadonlyArray<ContractMethod>
-): readonly DebugInfoMethod[] {
-    let address = 0;
-
-    return pipe(
-        methods,
-        ROA.map(method => {
-            const start = address;
-            let end = start;
-            const sequencePoints = new Array<SequencePoint>();
-            for (const op of method.operations) {
-                end = address;
-                if (op.location) {
-                    sequencePoints.push({ address, location: op.location })
-                }
-                address += getOperationSize(op);
-            }
-            const parameters = method.node.getParameters().map((p, index) => ({
-                name: p.getName(),
-                type: p.getType(),
-                index
-            }));
-
-            const variables = method.variables.map((v, index) => ({
-                ...v,
-                index
-            }));
-
-            return {
-                name: method.symbol.getName(),
-                range: { start, end },
-                parameters,
-                returnType: method.node.getReturnType(),
-                variables,
-                sequencePoints
-            } as DebugInfoMethod;
-        })
-    )
-}
-
-
 function collectPermissions(
     tokens: readonly sc.MethodToken[],
     options: CompileOptions
@@ -350,10 +308,7 @@ export const collectArtifacts =
                         tokens: tokens.map(t => t.export()),
                     })),
                     E.bindTo('nef'),
-                    E.bind('debugInfo', ({ nef }) => {
-                        const debugMethods = [...collectDebugMethods(methods)];
-                        return E.of(makeDebugInfo(nef, debugMethods));
-                    }),
+                    E.bind('debugInfo', ({ nef }) => E.of(makeDebugInfo(compiledProject, nef))),
                     E.bind('manifest', () => {
                         return pipe(
                             collectManifestMethods(methods, methodAddressMap),
