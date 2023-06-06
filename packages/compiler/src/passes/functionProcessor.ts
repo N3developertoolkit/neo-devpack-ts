@@ -90,7 +90,7 @@ function adaptExpressionStatement(node: tsm.ExpressionStatement): S.State<AdaptS
     const expr = node.getExpression();
     return context => {
 
-        const dropOps: readonly Operation[] = isVoidLike(expr.getType()) ? ROA.empty : ROA.of({ kind: 'drop' });
+        const dropOps = isVoidLike(expr.getType()) ? ROA.empty : ROA.of<Operation>({ kind: 'drop' });
         let [ops, $context] = adaptExpression(expr)(context);
         ops = pipe(ops,
             updateLocation(node),
@@ -157,8 +157,8 @@ function adaptVariableDeclaration(node: tsm.VariableDeclaration, kind: tsm.Varia
                         vars => ROA.concat(vars)(context.locals)
                     )
 
-                    return [ops, {...context, scope, locals }]
-    
+                    return [ops, { ...context, scope, locals }]
+
                     function makeCTO(index: number, v: ParsedVariable): CompileTimeObject {
                         const slotIndex = index + context.locals.length;
                         const loadOps = ROA.of(<Operation>{ kind: "loadlocal", index: slotIndex });
@@ -168,6 +168,19 @@ function adaptVariableDeclaration(node: tsm.VariableDeclaration, kind: tsm.Varia
                 }
             )
         )
+    }
+}
+
+function adaptVariableDeclarationList(node: tsm.VariableDeclarationList): S.State<AdaptStatementContext, readonly Operation[]> {
+    return context => {
+        const kind = node.getDeclarationKind();
+        let ops: readonly Operation[] = ROA.empty;
+        for (const decl of node.getDeclarations()) {
+            let declOps: readonly Operation[];
+            [declOps, context] = adaptVariableDeclaration(decl, kind)(context);
+            ops = ROA.concat(declOps)(ops);
+        }
+        return [ops, context];
     }
 }
 
@@ -395,36 +408,6 @@ function adaptTryStatement(node: tsm.TryStatement): S.State<AdaptStatementContex
     }
 }
 
-function adaptForInitializer(node?: tsm.VariableDeclarationList | tsm.Expression): S.State<AdaptStatementContext, readonly Operation[]> {
-    return context => {
-
-        const error = makeParseError(node)(`adaptForInitializer disabled`);
-        const errors = ROA.append(error)(context.errors);
-        return [ROA.empty, { ...context, errors }];
-
-
-
-        // if (node === undefined) { return [[], context]; }
-
-        // if (tsm.Node.isVariableDeclarationList(node)) {
-        //     const factory: VariableFactory = (element, symbol, index) => makeLocalVariable(element, symbol, index + context.locals.length);
-        //     return pipe(
-        //         node,
-        //         handleVariableStatement(context.scope)(factory),
-        //         E.match(
-        //             error => [ROA.empty, updateContextErrors(context)(error)],
-        //             ([scope, vars, ops]) => {
-        //                 const locals = ROA.concat(vars)(context.locals);
-        //                 return [ops, { ...context, locals, scope }];
-        //             }
-        //         )
-        //     );
-        // }
-
-        // return adaptExpression(node)(context);
-    }
-}
-
 function adaptIncrementor(node: tsm.ForStatement): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
         const incr = node.getIncrementor();
@@ -459,7 +442,11 @@ function adaptForStatement(node: tsm.ForStatement): S.State<AdaptStatementContex
     return context => {
 
         const init = node.getInitializer();
-        let [ops, $context] = adaptForInitializer(init)(context);
+        let [ops, $context] = init === undefined 
+            ? [[], context]
+            : tsm.Node.isVariableDeclarationList(init)
+                ? adaptVariableDeclarationList(init)(context)
+                : adaptExpression(init)(context);
         ops = init ? updateLocation(init)(ops) : ops;
 
         const startTarget = { kind: 'noop' } as Operation;
@@ -523,17 +510,7 @@ function adaptStatement(node: tsm.Statement): S.State<AdaptStatementContext, rea
             case tsm.SyntaxKind.ReturnStatement: return adaptReturnStatement(node as tsm.ReturnStatement)(context);
             case tsm.SyntaxKind.ThrowStatement: return adaptThrowStatement(node as tsm.ThrowStatement)(context);
             case tsm.SyntaxKind.TryStatement: return adaptTryStatement(node as tsm.TryStatement)(context);
-            case tsm.SyntaxKind.VariableStatement: {
-                const varStmt = node as tsm.VariableStatement;
-                const kind = varStmt.getDeclarationKind();
-                let ops: readonly Operation[] = ROA.empty;
-                for (const decl of varStmt.getDeclarations()) {
-                    let declOps: readonly Operation[];
-                    [declOps, context] = adaptVariableDeclaration(decl, kind)(context);
-                    ops = ROA.concat(declOps)(ops);
-                }
-                return [ops, context];
-            }
+            case tsm.SyntaxKind.VariableStatement: return adaptVariableDeclarationList((node as tsm.VariableStatement).getDeclarationList())(context);
             case tsm.SyntaxKind.WhileStatement: return adaptWhileStatement(node as tsm.WhileStatement)(context);
             case tsm.SyntaxKind.SwitchStatement:
             case tsm.SyntaxKind.ForInStatement:
@@ -601,7 +578,7 @@ function parseFunctionDeclaration(parentScope: Scope) {
             ROA.separate,
             E_fromSeparated,
             // Note, not using hoistDeclarations here because none of the hoisted declarations 
-            // are supported inside functions (yet)
+            // are supported inside functions at this time
             E.map(params => createScope(parentScope)(params)),
             E.bindTo('scope'),
             E.bind('body', () => pipe(
