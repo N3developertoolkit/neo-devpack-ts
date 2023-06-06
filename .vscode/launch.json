@@ -13,103 +13,15 @@
                 "<node_internals>/**"
             ],
             "program": "${workspaceFolder}/packages/compiler/src/main.ts",
+            "args": [
+                "${workspaceFolder}/sample-contracts/helloworld.ts",
+                "-o",
+                "express/out"
+            ],
             "outFiles": [
                 "${workspaceFolder}/**/*.js"
             ]
         },
-        {
-            "type": "neo-contract",
-            "name": "NEO: register",
-            "request": "launch",
-            "program": "${workspaceFolder}/express/out/registrar.nef",
-            "neo-express": "${workspaceFolder}/express/default.neo-express",
-            "checkpoint": "${workspaceFolder}/express/out/registrar-sample-registered.neoxp-checkpoint",
-            "invocation": {
-                "operation": "register",
-                "args": [
-                    "sample-domain",
-                ]
-            },
-            "signers": [
-                "@owen"
-            ]
-        },
-        {
-            "type": "neo-contract",
-            "name": "NEO: deploy nep17token",
-            "request": "launch",
-            "program": "${workspaceFolder}/express/out/nep17token.nef",
-            "neo-express": "${workspaceFolder}/express/default.neo-express",
-            "invocation": "deploy",
-            "deploy-signer": "@owen"
-        },
-        {
-            "type": "neo-contract",
-            "name": "NEO: nep17token.totalSupply",
-            "request": "launch",
-            "program": "${workspaceFolder}/express/out/nep17token.nef",
-            "neo-express": "${workspaceFolder}/express/default.neo-express",
-            "checkpoint": "${workspaceFolder}/express/out/nep17-deployed.neoxp-checkpoint",
-            "invocation": {
-                "operation": "totalSupply",
-                "args": [
-                ]
-            },
-            "signers": [
-                "@owen"
-            ]
-        },
-        {
-            "type": "neo-contract",
-            "name": "NEO: nep17token.balanceOf",
-            "request": "launch",
-            "program": "${workspaceFolder}/express/out/nep17token.nef",
-            "neo-express": "${workspaceFolder}/express/default.neo-express",
-            "checkpoint": "${workspaceFolder}/express/out/nep17-deployed.neoxp-checkpoint",
-            "invocation": {
-                "operation": "balanceOf",
-                "args": [
-                    "@owen"
-                ]
-            },
-            "signers": [
-                "@owen"
-            ]
-        },
-        {
-            "type": "neo-contract",
-            "name": "NEO: helloworld.save",
-            "request": "launch",
-            "program": "${workspaceFolder}/express/out/helloworld.nef",
-            "neo-express": "${workspaceFolder}/express/default.neo-express",
-            "invocation": {
-                "operation": "save",
-                "args": [
-                    "lorem ipsum",
-                    "@owen"
-                ]
-            },
-            "signers": [
-                "@owen"
-            ]
-        },
-        {
-            "type": "neo-contract",
-            "name": "NEO: helloworld.load",
-            "request": "launch",
-            "program": "${workspaceFolder}/express/out/helloworld.nef",
-            "neo-express": "${workspaceFolder}/express/default.neo-express",
-            "checkpoint": "${workspaceFolder}/express/out/helloworld.neoxp-checkpoint",
-            "invocation": {
-                "operation": "load",
-                "args": [
-                ]
-            },
-            "signers": [
-                "@owen"
-            ]
-        },
-        
         {
             "args": [
                 "--timeout",

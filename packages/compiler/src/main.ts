@@ -1,17 +1,142 @@
-import { join, basename } from "path";
+import { join, basename, isAbsolute } from "path";
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { Node, ts } from "ts-morph";
 import { sc } from "@cityofzion/neon-core";
 import { createContractProject, hasErrors, toDiagnostic } from "./utils";
-import { compile } from "./compiler";
+import { DEFAULT_ADDRESS_VALUE, compile } from "./compiler";
 import { CompileOptions, ContractMethod } from "./types/CompileOptions";
 import { JumpOffsetOperation, Location, Operation, convertJumpTargetOps } from "./types/Operation";
 import * as E from 'fp-ts/lib/Either';
 import { pipe } from "fp-ts/lib/function";
+import { Command, InvalidArgumentError, OptionValues } from 'commander';
 
-const REPO_ROOT = join(__dirname, "../../..");
-const FILENAME = "./sample-contracts/nep11token.ts";
-const OUTPUT_DIR = "./express/out";
+import * as fs from 'fs/promises'
+
+const program = new Command();
+program
+    .name('neotsc')
+    .description('NEO N3 Smart Contract Compiler for TypeScript')
+    .version('0.8.0')
+    .argument('<contract-file>', 'TypeScript contract file')
+    .option('-o, --output <path>', 'specifies the output directory')
+    .option('--base-name <value>', "specifies the base name of the output files")
+    .option('--contract-name <value>', "specifies the contract name")
+    .option('--dump-ops', 'dump the compiled contract to the console')
+    // TODO: enable these options when optimization and inlining are implemented
+    // .option('--no-optimize', "instruct the compiler not to optimize the code")
+    // .option('--no-inline', "instruct the compiler not to insert inline code")
+    .option<number>('--address-version <value>', 'indicates the address version used by the compiler', parseAddressVersion, DEFAULT_ADDRESS_VALUE)
+    .option('--standards <values...>')
+    .parse(process.argv);
+
+// interface CompilerOptionValues extends OptionValues {
+//     output?: string;
+//     baseName?: string;
+//     contractName?: string;
+//     dumpOps?: boolean;
+//     optimize?: boolean;
+//     inline?: boolean;
+//     addressVersion?: number;
+//     standards?: readonly string[];
+// }
+
+const options = program.opts();
+main(program.args, options);
+
+function parseAddressVersion(value: string, previous: number): number {
+    const parsedValue = parseInt(value, 10);
+    if (isNaN(parsedValue))
+        throw new InvalidArgumentError('Not a number.');
+    return parsedValue;
+}
+
+async function main(args: readonly string[], cliOptions: OptionValues): Promise<void> {
+
+    if (args.length !== 1) {
+        throw new InvalidArgumentError('only a single contract file is currently supported');
+    }
+
+    const baseName = cliOptions.baseName ?? basename(args[0], '.ts');
+    const contractName = cliOptions.contractName ?? baseName;
+    let outputFolder = cliOptions.output ?? process.cwd();
+    if (!isAbsolute(outputFolder)) {
+        outputFolder = join(process.cwd(), outputFolder);
+    }
+
+    const options: Partial<CompileOptions> = {
+        addressVersion: cliOptions.addressVersion,
+        inline: cliOptions.inline,
+        optimize: cliOptions.optimize,
+        standards: cliOptions.standards,
+    }
+
+    const project = createContractProject();
+    for (const arg of args) {
+        const source = await fs.readFile(arg, 'utf8');
+        project.createSourceFile(arg, source);
+    }
+
+    project.resolveSourceFileDependencies();
+    const preEmitDiags = project.getPreEmitDiagnostics();
+    if (preEmitDiags.length > 0) {
+        printDiagnostics(preEmitDiags.map(d => d.compilerObject));
+    } else {
+        try {
+            const { diagnostics, compiledProject, nef, manifest, debugInfo } = compile(project, contractName, options);
+
+            if (diagnostics.length > 0) printDiagnostics(diagnostics);
+
+            if (hasErrors(diagnostics)) return;
+
+            if (compiledProject && cliOptions.dumpOps) {
+                for (const method of compiledProject.methods) {
+                    dumpContractMethod(method);
+                }
+            }
+
+            if (nef || manifest || debugInfo) {
+                await fs.mkdir(outputFolder, { recursive: true });
+            }
+
+            if (nef) {
+                const nefPath = join(outputFolder, `${baseName}.nef`);
+                await fs.writeFile(nefPath, Buffer.from(nef.serialize(), 'hex'));
+                console.log(green, "Wrote: " + nefPath);
+            }
+
+            if (manifest) {
+                const manifestPath = join(outputFolder, `${baseName}.manifest.json`);
+                await fs.writeFile(manifestPath, JSON.stringify(manifest.toJson(), null, 4));
+                console.log(green, "Wrote: " + manifestPath);
+            }
+
+            if (debugInfo) {
+                const debugInfoPath = join(outputFolder, `${baseName}.debug.json`);
+                // const documents = debugInfo.documents?.map(d => join(REPO_ROOT, d));
+                // const jsonDebugInfo = { ...debugInfo, documents };
+                await fs.writeFile(debugInfoPath, JSON.stringify(debugInfo, null, 4));
+                console.log(green, "Wrote: " + debugInfoPath);
+            }
+        } catch (error) {
+            printDiagnostics([toDiagnostic(error)]);
+        }
+    }
+}
+
+function printDiagnostics(diags: ReadonlyArray<ts.Diagnostic>) {
+    const formatHost: ts.FormatDiagnosticsHost = {
+        getCurrentDirectory: () => ts.sys.getCurrentDirectory(),
+        getNewLine: () => ts.sys.newLine,
+        getCanonicalFileName: (fileName: string) => ts.sys.useCaseSensitiveFileNames
+            ? fileName : fileName.toLowerCase()
+    }
+
+    const msg = ts.formatDiagnosticsWithColorAndContext(diags, formatHost);
+    console.log(msg);
+}
+// const REPO_ROOT = join(__dirname, "../../..");
+// const FILENAME = "./sample-contracts/nep11token.ts";
+// const OUTPUT_DIR = "./express/out";
 
 enum AnsiEscapeSequences {
     Black = "\u001b[30m",
@@ -41,86 +166,74 @@ export const yellow = `${AnsiEscapeSequences.BrightYellow}%s${AnsiEscapeSequence
 export const blue = `${AnsiEscapeSequences.BrightBlue}%s${AnsiEscapeSequences.Reset}`;
 export const invert = `${AnsiEscapeSequences.Invert}%s${AnsiEscapeSequences.Reset}`;
 
-function printDiagnostics(diags: ReadonlyArray<ts.Diagnostic>) {
-    const formatHost: ts.FormatDiagnosticsHost = {
-        getCurrentDirectory: () => ts.sys.getCurrentDirectory(),
-        getNewLine: () => ts.sys.newLine,
-        getCanonicalFileName: (fileName: string) => ts.sys.useCaseSensitiveFileNames
-            ? fileName : fileName.toLowerCase()
-    }
 
-    const msg = ts.formatDiagnosticsWithColorAndContext(diags, formatHost);
-    console.log(msg);
-}
 
-function main() {
-    const project = createContractProject();
 
-    // load test contract
-    const contractName = basename(FILENAME, ".ts");
-    const contractPath = join(REPO_ROOT, FILENAME);
-    const contractSource = readFileSync(contractPath, 'utf8');
-    project.createSourceFile(FILENAME, contractSource);
-    project.resolveSourceFileDependencies();
+// function oldmain() {
+//     const project = createContractProject();
 
-    // console.time('getPreEmitDiagnostics');
-    const diagnostics = project.getPreEmitDiagnostics();
-    // console.timeEnd('getPreEmitDiagnostics')
+//     // load test contract
+//     const contractName = basename(FILENAME, ".ts");
+//     const contractPath = join(REPO_ROOT, FILENAME);
+//     const contractSource = readFileSync(contractPath, 'utf8');
+//     project.createSourceFile(FILENAME, contractSource);
+//     project.resolveSourceFileDependencies();
 
-    if (diagnostics.length > 0) {
-        printDiagnostics(diagnostics.map(d => d.compilerObject));
-    } else {
-        try {
+//     // console.time('getPreEmitDiagnostics');
+//     const diagnostics = project.getPreEmitDiagnostics();
+//     // console.timeEnd('getPreEmitDiagnostics')
 
-            const options: Partial<CompileOptions> = contractName.startsWith('nep17')
-                ? { standards: ["NEP-17"] }
-                : contractName.startsWith('nep11')
-                    ? { standards: ["NEP-11"] }
-                    : {}
-            const { diagnostics, compiledProject, nef, manifest, debugInfo } = compile(project, contractName, options);
+//     if (diagnostics.length > 0) {
+//         printDiagnostics(diagnostics.map(d => d.compilerObject));
+//     } else {
+//         try {
 
-            if (diagnostics.length > 0) printDiagnostics(diagnostics);
+//             const options: Partial<CompileOptions> = contractName.startsWith('nep17')
+//                 ? { standards: ["NEP-17"] }
+//                 : contractName.startsWith('nep11')
+//                     ? { standards: ["NEP-11"] }
+//                     : {}
+//             const { diagnostics, compiledProject, nef, manifest, debugInfo } = compile(project, contractName, options);
 
-            if (hasErrors(diagnostics)) return;
+//             if (diagnostics.length > 0) printDiagnostics(diagnostics);
 
-            for (const m of compiledProject?.methods ?? []) {
-                dumpContractMethod(m);
-            }
+//             if (hasErrors(diagnostics)) return;
 
-            const outputPath = join(REPO_ROOT, OUTPUT_DIR);
-            if ((nef || manifest || debugInfo) && !existsSync(outputPath))
-                mkdirSync(outputPath);
+//             for (const m of compiledProject?.methods ?? []) {
+//                 dumpContractMethod(m);
+//             }
 
-            if (nef) {
-                const nefPath = join(outputPath, `${contractName}.nef`);
-                const $nef = Buffer.from(nef.serialize(), 'hex');
-                writeFileSync(nefPath, $nef);
-                console.log(green, "Wrote: " + nefPath);
-            }
+//             const outputPath = join(REPO_ROOT, OUTPUT_DIR);
+//             if ((nef || manifest || debugInfo) && !existsSync(outputPath))
+//                 mkdirSync(outputPath);
 
-            if (manifest) {
-                const manifestPath = join(outputPath, `${contractName}.manifest.json`);
-                const $manifest = JSON.stringify(manifest.toJson(), null, 4);
-                writeFileSync(manifestPath, $manifest);
-                console.log(green, "Wrote: " + manifestPath);
-            }
+//             if (nef) {
+//                 const nefPath = join(outputPath, `${contractName}.nef`);
+//                 const $nef = Buffer.from(nef.serialize(), 'hex');
+//                 writeFileSync(nefPath, $nef);
+//                 console.log(green, "Wrote: " + nefPath);
+//             }
 
-            if (debugInfo) {
-                const debugInfoPath = join(outputPath, `${contractName}.debug.json`);
-                const documents = debugInfo.documents?.map(d => join(REPO_ROOT, d));
-                const jsonDebugInfo = { ...debugInfo, documents };
-                const $debugInfo = JSON.stringify(jsonDebugInfo, null, 4);
-                writeFileSync(debugInfoPath, $debugInfo);
-                console.log(green, "Wrote: " + debugInfoPath);
-            }
-        } catch (error) {
-            printDiagnostics([toDiagnostic(error)]);
-        }
-    }
-}
+//             if (manifest) {
+//                 const manifestPath = join(outputPath, `${contractName}.manifest.json`);
+//                 const $manifest = JSON.stringify(manifest.toJson(), null, 4);
+//                 writeFileSync(manifestPath, $manifest);
+//                 console.log(green, "Wrote: " + manifestPath);
+//             }
 
-main();
-
+//             if (debugInfo) {
+//                 const debugInfoPath = join(outputPath, `${contractName}.debug.json`);
+//                 const documents = debugInfo.documents?.map(d => join(REPO_ROOT, d));
+//                 const jsonDebugInfo = { ...debugInfo, documents };
+//                 const $debugInfo = JSON.stringify(jsonDebugInfo, null, 4);
+//                 writeFileSync(debugInfoPath, $debugInfo);
+//                 console.log(green, "Wrote: " + debugInfoPath);
+//             }
+//         } catch (error) {
+//             printDiagnostics([toDiagnostic(error)]);
+//         }
+//     }
+// }
 
 function dumpContractMethod(method: ContractMethod) {
 
