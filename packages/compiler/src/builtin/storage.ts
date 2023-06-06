@@ -33,8 +33,7 @@ function makeStorageObject(ctx: GlobalScopeContext) {
     }
 
     return pipe(
-        // TODO: $torage => Storage
-        "$torage",
+        "Storage",
         getVarDeclAndSymbol(ctx),
         E.bind('properties', ({ node }) => makeProperties<string>(node, storageProps, makeProperty)),
         E.map(({ node, symbol, properties }) => <CompileTimeObject>{ node, symbol, loadOps: [], properties }),

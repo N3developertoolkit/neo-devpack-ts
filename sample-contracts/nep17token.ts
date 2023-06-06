@@ -22,14 +22,14 @@ export function decimals() { return DECIMALS; }
 
 /** @safe */
 export function totalSupply(): bigint {
-    return $torage.context.get(TOTAL_SUPPLY_KEY)?.asInteger() ?? 0n;
+    return Storage.context.get(TOTAL_SUPPLY_KEY)?.asInteger() ?? 0n;
 }
 
 /** @safe */
 export function balanceOf(account: ByteString): bigint {
     if (!account || account.length != 20) throw new Error("The argument \"account\" is invalid.");
     const key = concat(BALANCE_PREFIX, account);
-    return $torage.context.get(key)?.asInteger() ?? 0n;
+    return Storage.context.get(key)?.asInteger() ?? 0n;
 }
 
 export function transfer(from: ByteString, to: ByteString, amount: bigint, data: any) {
@@ -67,7 +67,7 @@ export function burn(account: ByteString, amount: bigint): boolean {
 export function _deploy(_data: any, update: boolean): void {
     if (update) return;
     const tx = Runtime.scriptContainer as Transaction;
-    $torage.context.put(OWNER_KEY, tx.sender);
+    Storage.context.put(OWNER_KEY, tx.sender);
     createTokens(tx.sender, INITIAL_SUPPLY * (10n ** DECIMALS))
 }
 
@@ -80,7 +80,7 @@ export function update(nefFile: ByteString, manifest: string) {
 }
 
 function checkOwner() {
-    return checkWitness($torage.context.get(OWNER_KEY)!);
+    return checkWitness(Storage.context.get(OWNER_KEY)!);
 }
 
 function createTokens(account: ByteString, amount: bigint) {
@@ -94,7 +94,7 @@ function createTokens(account: ByteString, amount: bigint) {
 
 function updateTotalSupply(amount: bigint) {
     const supply = totalSupply() + amount;
-    $torage.context.put(TOTAL_SUPPLY_KEY, ByteString.fromInteger(supply));
+    Storage.context.put(TOTAL_SUPPLY_KEY, ByteString.fromInteger(supply));
 }
 
 function updateBalance(account: ByteString, amount: bigint): boolean {
@@ -102,9 +102,9 @@ function updateBalance(account: ByteString, amount: bigint): boolean {
     if (balance < 0n) return false;
     const key = concat(BALANCE_PREFIX, account);
     if (balance === 0n) {
-        $torage.context.delete(key);
+        Storage.context.delete(key);
     } else {
-        $torage.context.put(key, ByteString.fromInteger(balance));
+        Storage.context.put(key, ByteString.fromInteger(balance));
     }
     return true;
 }

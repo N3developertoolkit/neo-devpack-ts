@@ -470,14 +470,13 @@ describe("builts-ins", () => {
         });
     }
 
-    // TODO: $torage => Storage
     describe("StorageConstructor", () => {
         const properties = [
             ["context", "System.Storage.GetContext"],
             ["readonlyContext", "System.Storage.GetReadOnlyContext"],
         ]
 
-        properties.forEach(([property, syscall]) => { testSyscallProperty("$torage", property, syscall) });
+        properties.forEach(([property, syscall]) => { testSyscallProperty("Storage", property, syscall) });
     })
 
     describe("ByteStringConstructor", () => {
@@ -671,7 +670,7 @@ describe("builts-ins", () => {
         it("get", () => {
             const contract = /*javascript*/`
                 const key: ByteString = null!;
-                const $VAR = $torage.context.get(key);`;
+                const $VAR = Storage.context.get(key);`;
             const { project, sourceFile } = createTestProject(contract);
             const globalScope = createTestGlobalScope(project);
 
@@ -690,7 +689,7 @@ describe("builts-ins", () => {
 
         it("asReadonly", () => {
             const contract = /*javascript*/`
-                const $VAR = $torage.context.asReadonly;`;
+                const $VAR = Storage.context.asReadonly;`;
             const { project, sourceFile } = createTestProject(contract);
             const scope = createTestGlobalScope(project);
 
@@ -706,7 +705,7 @@ describe("builts-ins", () => {
             const contract = /*javascript*/`
                 const key: ByteString = null!;
                 const value: ByteString = null!;
-                $torage.context.put(key, value);`;
+                Storage.context.put(key, value);`;
             const { project, sourceFile } = createTestProject(contract);
             const globalScope = createTestGlobalScope(project);
 
@@ -731,7 +730,7 @@ describe("builts-ins", () => {
         it("delete", () => {
             const contract = /*javascript*/`
                 const key: ByteString = null!;
-                $torage.context.delete(key);`;
+                Storage.context.delete(key);`;
             const { project, sourceFile } = createTestProject(contract);
             const globalScope = createTestGlobalScope(project);
 
@@ -754,7 +753,7 @@ describe("builts-ins", () => {
         it("get", () => {
             const contract = /*javascript*/`
                 const key: ByteString = null!;
-                const $VAR = $torage.readonlyContext.get(key);`;
+                const $VAR = Storage.readonlyContext.get(key);`;
             const { project, sourceFile } = createTestProject(contract);
             const globalScope = createTestGlobalScope(project);
 
@@ -774,7 +773,7 @@ describe("builts-ins", () => {
         it("find", () => {
             const contract = /*javascript*/`
                 const prefix: ByteString = null!;
-                const $VAR = $torage.readonlyContext.find(prefix, FindOptions.None);`;
+                const $VAR = Storage.readonlyContext.find(prefix, FindOptions.None);`;
             const { project, sourceFile } = createTestProject(contract);
             const globalScope = createTestGlobalScope(project);
 
@@ -795,7 +794,7 @@ describe("builts-ins", () => {
         it("values", () => {
             const contract = /*javascript*/`
                 const prefix: ByteString = null!;
-                const $VAR = $torage.readonlyContext.values(prefix);`;
+                const $VAR = Storage.readonlyContext.values(prefix);`;
             const { project, sourceFile } = createTestProject(contract);
             const globalScope = createTestGlobalScope(project);
 
@@ -816,7 +815,7 @@ describe("builts-ins", () => {
         it("keys remove prefix literal", () => {
             const contract = /*javascript*/`
                 const prefix: ByteString = null!;
-                const $VAR = $torage.readonlyContext.keys(prefix, true);`;
+                const $VAR = Storage.readonlyContext.keys(prefix, true);`;
             const { project, sourceFile } = createTestProject(contract);
             const globalScope = createTestGlobalScope(project);
 
@@ -837,7 +836,7 @@ describe("builts-ins", () => {
         it("keys dont remove prefix literal", () => {
             const contract = /*javascript*/`
                 const prefix: ByteString = null!;
-                const $VAR = $torage.readonlyContext.keys(prefix, false);`;
+                const $VAR = Storage.readonlyContext.keys(prefix, false);`;
             const { project, sourceFile } = createTestProject(contract);
             const globalScope = createTestGlobalScope(project);
 
@@ -859,7 +858,7 @@ describe("builts-ins", () => {
         it("keys no remove prefix param", () => {
             const contract = /*javascript*/`
                 const prefix: ByteString = null!;
-                const $VAR = $torage.readonlyContext.keys(prefix);`;
+                const $VAR = Storage.readonlyContext.keys(prefix);`;
             const { project, sourceFile } = createTestProject(contract);
             const globalScope = createTestGlobalScope(project);
 

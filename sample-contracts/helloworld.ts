@@ -10,25 +10,25 @@ const OWNER_KEY = ByteString.fromHex("0xFF");
 
 /** @safe */
 export function get() { 
-    return $torage.context.get(VALUE_KEY);
+    return Storage.context.get(VALUE_KEY);
 }
 
 export function set(value: ByteString) {
-    $torage.context.put(VALUE_KEY, value);
+    Storage.context.put(VALUE_KEY, value);
 }
 
 export function remove() {
-    $torage.context.delete(VALUE_KEY);
+    Storage.context.delete(VALUE_KEY);
 } 
 
 export function _deploy(_data: any, update: boolean): void { 
     if (update) return;
     const tx = Runtime.scriptContainer as Transaction;
-    $torage.context.put(OWNER_KEY, tx.sender);
+    Storage.context.put(OWNER_KEY, tx.sender);
 }
 
 export function update(nefFile: ByteString, manifest: string) {
-    const owner = $torage.context.get(OWNER_KEY);
+    const owner = Storage.context.get(OWNER_KEY);
     if (owner && checkWitness(owner)) {
         ContractManagement.update(nefFile, manifest);
     } else {

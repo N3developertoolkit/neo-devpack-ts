@@ -1,3 +1,6 @@
+/// <reference no-default-lib="true"/>
+/// <reference lib="es2020" />
+
 declare global {
 
     export interface ByteString { 
@@ -45,7 +48,7 @@ declare global {
         PickField1 = 32, // Indicates that only the field 1 of the deserialized values need to be returned. This flag must be set together with <see cref="DeserializeValues"/>.
     }
 
-    export const $torage: StorageConstructor;
+    export const Storage: StorageConstructor;
 
     export interface StorageConstructor {
         readonly context: StorageContext;
