@@ -4,17 +4,14 @@ import * as ROA from 'fp-ts/ReadonlyArray';
 import * as TS from '../TS';
 import * as E from "fp-ts/Either";
 import * as S from 'fp-ts/State';
-import * as O from 'fp-ts/Option';
-import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 
-import { CompiledProject, ContractEvent, ContractMethod, ContractSlot } from "../types/CompileOptions";
-import { Operation, pushInt, pushString, updateLocation } from "../types/Operation";
-import { CompileTimeObject, Scope, updateScope } from "../types/CompileTimeObject";
-import { makeParseError, ParseError, makeParseDiagnostic, updateContextErrors, getScratchFile, CompileError } from "../utils";
+import { CompiledProject, ContractEvent, ContractMethod } from "../types/CompileOptions";
+import { Operation } from "../types/Operation";
+import { CompileTimeObject, Scope } from "../types/CompileTimeObject";
+import { makeParseError, ParseError, makeParseDiagnostic, updateContextErrors, getScratchFile } from "../utils";
 import { hoistDeclarations } from "./hoistDeclarations";
 import { parseContractMethod } from "./functionProcessor";
-import { ParsedVariable, parseVariableBinding, parseVariableDeclaration, processVarDeclResults } from "./parseVariableBinding";
-import { parseExpression } from "./expressionProcessor";
+import { ParsedVariable, parseVariableDeclaration, processVarDeclResults } from "./parseVariableBinding";
 
 function reduceFunctionDeclaration(context: ParseSourceContext, node: tsm.FunctionDeclaration): ParseSourceContext {
     if (node.hasDeclareKeyword()) {
@@ -54,12 +51,14 @@ export function reduceVariableDeclaration(
             errors => updateContextErrors(context)(errors),
             results => {
                 const { scope, variables, ops } = processVarDeclResults(context.scope, makeCTO)(results);
-
                 const initializeOps = ROA.concat(ops)(context.initializeOps);
-
                 const staticVars = pipe(
                     variables,
-                    ROA.map(v => <ContractSlot>{ name: v.symbol.getName(), type: v.node.getType() }),
+                    ROA.mapWithIndex((index, v) => ({ 
+                        name: v.symbol.getName(), 
+                        type: v.node.getType(), 
+                        index: index + context.staticVars.length 
+                    })),
                     vars => ROA.concat(vars)(context.staticVars)
                 )
 

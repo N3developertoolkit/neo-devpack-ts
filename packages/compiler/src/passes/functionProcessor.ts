@@ -8,10 +8,11 @@ import * as TS from '../TS';
 
 import { CompileTimeObject, Scope, createEmptyScope, createScope } from "../types/CompileTimeObject";
 import { Operation, getBooleanConvertOps, updateLocation } from "../types/Operation";
-import { E_fromSeparated, ParseError, getScratchFile, isVoidLike, makeParseError, updateContextErrors } from "../utils";
-import { ContractMethod, ContractSlot } from "../types/CompileOptions";
+import { E_fromSeparated, ParseError, isVoidLike, makeParseError, updateContextErrors } from "../utils";
+import { ContractMethod } from "../types/CompileOptions";
 import { parseExpression } from "./expressionProcessor";
 import { ParsedVariable, parseVariableDeclaration, processVarDeclResults } from "./parseVariableBinding";
+import { SlotVariable } from "../types/DebugInfo";
 
 function adaptExpression(node: tsm.Expression, convertOps: readonly Operation[] = []): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
@@ -153,7 +154,7 @@ function adaptVariableDeclaration(node: tsm.VariableDeclaration, kind: tsm.Varia
 
                     const locals = pipe(
                         variables,
-                        ROA.map(v => <ContractSlot>{ name: v.symbol.getName(), type: v.node.getType() }),
+                        ROA.map(v => <LocalVariable>{ name: v.symbol.getName(), type: v.node.getType() }),
                         vars => ROA.concat(vars)(context.locals)
                     )
 
@@ -290,9 +291,10 @@ function adaptWhileStatement(node: tsm.WhileStatement): S.State<AdaptStatementCo
 function adaptCatchVariableDeclaration(node: tsm.CatchClause) {
     return (context: AdaptStatementContext): AdaptStatementContext => {
 
-        function returnError(message: string) {
-            return updateContextErrors(context)(makeParseError(node)(message));
-        }
+        return updateContextErrors(context)(makeParseError(node)("adaptCatchVariableDeclaration disabled"));
+        // function returnError(message: string) {
+        //     return updateContextErrors(context)(makeParseError(node)(message));
+        // }
 
         // const decl = node.getVariableDeclaration();
         // if (decl) {
@@ -324,25 +326,9 @@ function adaptCatchVariableDeclaration(node: tsm.CatchClause) {
 
         // if there is no declaration, create an anonymous variable to hold the error
         // it doesn't get added to context scope, but it is added to context locals
-        const scratchFile = getScratchFile(node.getProject());
-        const varStmt = scratchFile.addVariableStatement({
-            declarations: [{ name: `_anon_error_${Date.now()}`, type: "any", }]
-        });
 
-        return pipe(
-            varStmt.getDeclarations(),
-            ROA.lookup(0),
-            O.match(
-                () => {
-                    const error = makeParseError(node)('failed to retrieve scratch variable declaration');
-                    return updateContextErrors(context)(error);
-                },
-                decl => {
-                    const locals = ROA.append({ name: "#error", type: decl.getType() })(context.locals);
-                    return ({ ...context, locals });
-                }
-            )
-        )
+        // const locals = pipe(context.locals, ROA.append<LocalVariable>({ name: `#var${context.locals.length}` }))
+        // return { ...context, locals };
     }
 }
 
@@ -484,9 +470,14 @@ function adaptForStatement(node: tsm.ForStatement): S.State<AdaptStatementContex
     }
 }
 
+export interface LocalVariable {
+    name: string;
+    type?: tsm.Type;
+}
+
 interface AdaptStatementContext {
     readonly errors: readonly ParseError[];
-    readonly locals: readonly ContractSlot[];
+    readonly locals: readonly LocalVariable[];
     readonly scope: Scope;
     readonly returnTarget: Operation;
     readonly breakTargets: readonly Operation[];
@@ -529,7 +520,7 @@ function adaptStatement(node: tsm.Statement): S.State<AdaptStatementContext, rea
 
 interface ParseBodyResult {
     readonly operations: readonly Operation[];
-    readonly locals: readonly ContractSlot[];
+    readonly locals: readonly SlotVariable[];
 }
 
 function parseBody({ scope, body }: { scope: Scope, body: tsm.Node }): E.Either<readonly ParseError[], ParseBodyResult> {
@@ -547,7 +538,12 @@ function parseBody({ scope, body }: { scope: Scope, body: tsm.Node }): E.Either<
         ? E.left(errors)
         : E.of({
             operations: ROA.append<Operation>(context.returnTarget)(operations),
-            locals
+            locals: pipe(
+                locals, 
+                ROA.mapWithIndex((index, local) => [index, local] as const),
+                ROA.filter(([, local]) => local.type !== undefined),
+                ROA.map(([index, local]) => ({ name: local.name, type: local.type!, index }))
+            )
         });
 
     function adaptBody(context: AdaptStatementContext): [readonly Operation[], AdaptStatementContext] {
