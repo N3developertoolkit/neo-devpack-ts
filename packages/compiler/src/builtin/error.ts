@@ -24,7 +24,7 @@ function invokeError(node: tsm.CallExpression | tsm.NewExpression, args: readonl
 }
 
 export function makeError(ctx: GlobalScopeContext) {
-    const q = pipe(
+    pipe(
         "Error",
         getVarDeclAndSymbol(ctx),
         E.map(({ node, symbol }) => {

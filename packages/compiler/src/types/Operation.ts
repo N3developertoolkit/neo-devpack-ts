@@ -65,11 +65,14 @@ export const simpleOperationKinds = [
     'packstruct',
     'packarray',
     'newemptyarray',
+    'newemptymap',
     'size',
     'haskey',
     'pickitem',
     'append',
     'setitem',
+    'removeitem',
+    'clearitems',
 
     // types
     'isnull',
@@ -83,6 +86,7 @@ export function convertSimpleOperationKind(kind: SimpleOperationKind) {
         case "add": return sc.OpCode.ADD;
         case "append": return sc.OpCode.APPEND;
         case "concat": return sc.OpCode.CAT;
+        case "clearitems": return sc.OpCode.CLEARITEMS;
         case "drop": return sc.OpCode.DROP;
         case "duplicate": return sc.OpCode.DUP;
         case "equal": return sc.OpCode.EQUAL;
@@ -94,6 +98,7 @@ export function convertSimpleOperationKind(kind: SimpleOperationKind) {
         case "multiply": return sc.OpCode.MUL;
         case "negate": return sc.OpCode.NEGATE;
         case "newemptyarray": return sc.OpCode.NEWARRAY0;
+        case "newemptymap": return sc.OpCode.NEWMAP;
         case "noop": return sc.OpCode.NOP;
         case "not": return sc.OpCode.NOT;
         case "notequal": return sc.OpCode.NOTEQUAL;
@@ -105,6 +110,7 @@ export function convertSimpleOperationKind(kind: SimpleOperationKind) {
         case "power": return sc.OpCode.POW;
         case "pushnull": return sc.OpCode.PUSHNULL;
         case "return": return sc.OpCode.RET;
+        case "removeitem": return sc.OpCode.REMOVE;
         case "rotate": return sc.OpCode.ROT;
         case "setitem": return sc.OpCode.SETITEM;
         case 'size': return sc.OpCode.SIZE;

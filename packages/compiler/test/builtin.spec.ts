@@ -6,14 +6,143 @@ import * as ROA from 'fp-ts/ReadonlyArray';
 
 import { sc, u } from "@cityofzion/neon-core";
 
-import { createTestProject, createTestGlobalScope, testParseExpression, createTestVariable, createTestScope, expectPushData, expectPushInt } from './testUtils.spec';
-import { CallTokenOperation, Operation } from '../src/types/Operation';
+import { createTestProject, createTestGlobalScope, testParseExpression, createTestVariable, createTestScope, expectPushData, expectPushInt, expectResults } from './testUtils.spec';
+import { CallTokenOperation, Operation, pushInt, pushString } from '../src/types/Operation';
 import { FindOptions } from '../src/builtin/storage';
 import { pipe } from 'fp-ts/lib/function';
 import { parseExpression } from '../src/passes/expressionProcessor';
 import { CompileTimeObject } from '../src/types/CompileTimeObject';
 
 describe("builts-ins", () => {
+    describe("Map", () => {
+        it("new Map()", () => {
+            const contract = /*javascript*/`const $VAR = new Map<string, any>();`;
+            const { project, sourceFile } = createTestProject(contract);
+            const scope = createTestGlobalScope(project);
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+
+            expectResults(result, { kind: 'newemptymap' });
+        });
+
+        it("Map.set", () => {
+            const contract = /*javascript*/`const map: Map<string, any> = null!; map.set("test", 42);`;
+            const { project, sourceFile } = createTestProject(contract);
+            const globalScope = createTestGlobalScope(project);
+
+            const $map = sourceFile.getVariableDeclarationOrThrow('map');
+            const mapCTO = createTestVariable($map);
+            const scope = createTestScope(globalScope, mapCTO);
+
+            const expr = sourceFile.getStatements()[1].asKindOrThrow(tsm.SyntaxKind.ExpressionStatement).getExpression();
+            const result = testParseExpression(expr, scope);
+
+            expectResults(result,
+                mapCTO.loadOp,
+                pushString("test"),
+                pushInt(42),
+                { kind: 'setitem' }
+            );
+        });
+
+        
+        it("Map.clear", () => {
+            const contract = /*javascript*/`const map: Map<string, any> = null!; map.clear();`;
+            const { project, sourceFile } = createTestProject(contract);
+            const globalScope = createTestGlobalScope(project);
+
+            const $map = sourceFile.getVariableDeclarationOrThrow('map');
+            const mapCTO = createTestVariable($map);
+            const scope = createTestScope(globalScope, mapCTO);
+
+            const expr = sourceFile.getStatements()[1].asKindOrThrow(tsm.SyntaxKind.ExpressionStatement).getExpression();
+            const result = testParseExpression(expr, scope);
+
+            expectResults(result,
+                mapCTO.loadOp,
+                { kind: 'clearitems' }
+            );
+        });
+
+        
+        it("Map.delete", () => {
+            const contract = /*javascript*/`const map: Map<string, any> = null!; map.delete("test");`;
+            const { project, sourceFile } = createTestProject(contract);
+            const globalScope = createTestGlobalScope(project);
+
+            const $map = sourceFile.getVariableDeclarationOrThrow('map');
+            const mapCTO = createTestVariable($map);
+            const scope = createTestScope(globalScope, mapCTO);
+
+            const expr = sourceFile.getStatements()[1].asKindOrThrow(tsm.SyntaxKind.ExpressionStatement).getExpression();
+            const result = testParseExpression(expr, scope);
+
+            expectResults(result,
+                mapCTO.loadOp,
+                pushString("test"),
+                { kind: 'removeitem' }
+            );
+        });
+
+        it("Map.get", () => {
+            const contract = /*javascript*/`const map: Map<string, any> = null!; const $VAR = map.get("test");`;
+            const { project, sourceFile } = createTestProject(contract);
+            const globalScope = createTestGlobalScope(project);
+
+            const $map = sourceFile.getVariableDeclarationOrThrow('map');
+            const mapCTO = createTestVariable($map);
+            const scope = createTestScope(globalScope, mapCTO);
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+
+            expectResults(result,
+                mapCTO.loadOp,
+                pushString("test"),
+                { kind: 'pickitem' }
+            );
+        });
+
+        it("Map.has", () => {
+            const contract = /*javascript*/`const map: Map<string, any> = null!; const $VAR = map.has("test");`;
+            const { project, sourceFile } = createTestProject(contract);
+            const globalScope = createTestGlobalScope(project);
+
+            const $map = sourceFile.getVariableDeclarationOrThrow('map');
+            const mapCTO = createTestVariable($map);
+            const scope = createTestScope(globalScope, mapCTO);
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+
+            expectResults(result,
+                mapCTO.loadOp,
+                pushString("test"),
+                { kind: 'haskey' }
+            );
+        });
+
+        
+        it("Map.size", () => {
+            const contract = /*javascript*/`const map: Map<string, any> = null!; const $VAR = map.size;`;
+            const { project, sourceFile } = createTestProject(contract);
+            const globalScope = createTestGlobalScope(project);
+
+            const $map = sourceFile.getVariableDeclarationOrThrow('map');
+            const mapCTO = createTestVariable($map);
+            const scope = createTestScope(globalScope, mapCTO);
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+
+            expectResults(result,
+                mapCTO.loadOp,
+                { kind: 'size' }
+            );
+        });
+    });
+
     describe("Error", () => {
         it("Error()", () => {
             const contract = /*javascript*/`throw Error();`;

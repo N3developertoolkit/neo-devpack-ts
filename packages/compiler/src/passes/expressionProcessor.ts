@@ -185,11 +185,16 @@ function reduceIdentifier(context: ExpressionHeadContext, node: tsm.Identifier):
     return pipe(
         node,
         TS.parseSymbol,
-        E.chain(symbol => pipe(
-            symbol,
-            resolve(context.scope),
-            E.fromOption(() => makeParseError(node)(`failed to resolve ${symbol.getName()}`))
-        )),
+        E.chain(symbol => {
+            return pipe(
+                symbol,
+                resolve(context.scope),
+                O.alt(() => {
+                    return resolveName(context.scope)(symbol.getName());
+                }),
+                E.fromOption(() => makeParseError(node)(`failed to resolve ${symbol.getName()}`))
+            );
+        }),
         E.map(cto => {
             const getOps = () => E.of(cto.loadOps);
             const getStoreOps = (valueOps: readonly Operation[]) => {
@@ -562,20 +567,26 @@ function reduceNewExpression(context: ExpressionContext, node: tsm.NewExpression
     return pipe(
         context.cto?.callNew ? context.cto.callNew(node) : undefined,
         O.fromNullable,
-        O.alt(() => pipe(
-            context.type,
-            resolveType(context.scope),
-            O.chain(ctt => O.fromNullable(ctt.callNew))
-        )),
+        O.alt(() => {
+            return pipe(
+                context.type,
+                resolveType(context.scope),
+                O.chain(ctt => O.fromNullable(ctt.callNew))
+            );
+        }),
         E.fromOption(() => makeParseError(node)(`${context.cto?.symbol?.getName()} not constructable`)),
         E.bindTo('invoker'),
-        E.bind('args', () => pipe(
-            node,
-            TS.getArguments,
-            ROA.map(resolveExpression(context.scope)),
-            ROA.sequence(E.Applicative)
-        )),
-        E.chain(({ invoker, args }) => invoker(makeGetValueFunc(context), args.map(makeGetValueFunc))),
+        E.bind('args', () => {
+            return pipe(
+                node,
+                TS.getArguments,
+                ROA.map(resolveExpression(context.scope)),
+                ROA.sequence(E.Applicative)
+            );
+        }),
+        E.chain(({ invoker, args }) => {
+            return invoker(makeGetValueFunc(context), args.map(makeGetValueFunc));
+        }),
         E.map(cto => {
             const getOps = () => E.of(cto.loadOps);
             const getStoreOps = () => E.left(makeParseError(node)(`cannot store to new expression`));
@@ -588,19 +599,43 @@ function reducePropertyAccessExpression(context: ExpressionContext, node: tsm.Pr
     return pipe(
         node,
         TS.parseSymbol,
-        E.chain(symbol => pipe(
-            // first, try to resolve the property on the object
-            context.cto?.properties?.get(symbol.getName()),
-            O.fromNullable,
-            // if the object doesn't have the property, try and resolve the property on the type
-            O.alt(() => pipe(
-                context.type,
-                resolveType(context.scope),
-                O.chain(ctt => O.fromNullable(ctt.properties?.get(symbol)))
-            )),
-            E.fromOption(() => makeParseError(node)(`failed to resolve ${symbol.getName()}`))
-        )),
-        E.chain(resolver => resolver(context.getOps)),
+        E.chain(symbol => {
+            return pipe(
+                // first, try to resolve the property on the object
+                context.cto?.properties?.get(symbol.getName()),
+                O.fromNullable,
+                // if the object doesn't have the property, try and resolve the property on the type
+                O.alt(() => {
+                    return pipe(
+                        context.type,
+                        resolveType(context.scope),
+                        O.chain(ctt => {
+                            return pipe(
+                                // first, try and resolve the type property by symbol
+                                ctt.properties?.get(symbol),
+                                O.fromNullable,
+                                O.alt(() => {
+                                    // Properties of concrete generic types don't appear to have the
+                                    // same symbol instances as their target type properties.
+                                    // So try to resolve type property by name if resolving by symbol fails.
+                                    const name  = symbol.getName();
+                                    for (const [key, value] of ctt.properties?.entries() ?? []) {
+                                        if (key.getName() === name) {
+                                            return O.some(value);
+                                        }
+                                    }
+                                    return O.none;
+                                })
+                            )
+                        }),
+                    );
+                }),
+                E.fromOption(() => makeParseError(node)(`failed to resolve "${symbol.getName()}" property`))
+            );
+        }),
+        E.chain(resolver => {
+            return resolver(context.getOps);
+        }),
         E.map(cto => {
             if (node.hasQuestionDotToken()) {
                 const loadOps = pipe(

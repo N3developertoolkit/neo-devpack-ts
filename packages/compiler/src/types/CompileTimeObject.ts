@@ -110,10 +110,20 @@ export const resolveType = (scope: Scope) => (type: tsm.Type): O.Option<CompileT
     return pipe(
         scope.types.get(type),
         O.fromNullable,
-        O.alt(() => pipe(
-            scope.parentScope,
-            O.chain(p => resolveType(p)(type))
-        ))
+        O.alt(() => {
+            // if type is a concrete generic type, try to resolve it's target type
+            const targetType = type.getTargetType();
+            return targetType && targetType !== type 
+                ? O.fromNullable(scope.types.get(targetType))
+                : O.none;
+        }),
+        O.alt(() => {
+            // if the type isn't in the current scope, try to resolve it in the parent scope
+            return pipe(
+                scope.parentScope,
+                O.chain(p => resolveType(p)(type))
+            );
+        })
     );
 };
 

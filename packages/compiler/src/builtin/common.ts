@@ -22,7 +22,7 @@ export interface GlobalScopeContext {
     addError(error: string | tsm.ts.Diagnostic): void;
 }
 
-export function getVarDeclAndSymbol(ctx: GlobalScopeContext) {
+export function getVarDecl(ctx: GlobalScopeContext) {
     return (name: string) => {
         return pipe(
             ctx.declMap.get(name),
@@ -30,6 +30,15 @@ export function getVarDeclAndSymbol(ctx: GlobalScopeContext) {
             O.map(ROA.filterMap(O.fromPredicate(tsm.Node.isVariableDeclaration))),
             O.chain(single),
             E.fromOption(() => `could not find ${name} variable`),
+        );
+    }
+}
+
+export function getVarDeclAndSymbol(ctx: GlobalScopeContext) {
+    return (name: string) => {
+        return pipe(
+            name,
+            getVarDecl(ctx),
             E.bindTo('node'),
             E.bind('symbol', ({ node }) => pipe(node, TS.getSymbol, E.fromOption(() => `could not find symbol for ${name}`))),
         );

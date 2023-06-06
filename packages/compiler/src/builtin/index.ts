@@ -17,6 +17,7 @@ import { makeStorage } from "./storage";
 import { sc, u } from "@cityofzion/neon-core";
 import { makeByteString } from "./bytestring";
 import { makeError } from "./error";
+import { makeMap } from "./map";
 
 module REGEX {
     export const match = (regex: RegExp) => (value: string) => O.fromNullable(value.match(regex));
@@ -195,14 +196,15 @@ function makeStackItems(ctx: GlobalScopeContext) {
 }
 
 const makerFunctions = [
-    makeEnums,
-    makeNativeContracts,
-    makeStackItems,
     makeByteString,
-    makeFunctions,
+    makeEnums,
     makeError,
+    makeFunctions,
+    makeMap,
+    makeNativeContracts,
     makeRuntime,
-    makeStorage
+    makeStackItems,
+    makeStorage,
 ]
 
 export function makeGlobalScope(decls: readonly LibraryDeclaration[]): S.State<readonly tsm.ts.Diagnostic[], Scope> {
