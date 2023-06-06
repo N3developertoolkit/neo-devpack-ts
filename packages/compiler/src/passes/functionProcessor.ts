@@ -144,6 +144,11 @@ function adaptVariableDeclaration(node: tsm.VariableDeclaration, kind: tsm.Varia
             E.match(
                 errors => [ROA.empty, updateContextErrors(context)(errors)],
                 results => {
+                    const init = node.getInitializer();
+                    if (init) {
+                        const initOps = pipe(results.initOps, updateLocation(init));
+                        results = { ...results, initOps };
+                    }
                     const { scope, variables, ops } = processVarDeclResults(context.scope, makeCTO)(results);
 
                     const locals = pipe(
