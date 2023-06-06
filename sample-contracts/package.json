@@ -1,9 +1,0 @@
-{
-  "name": "sample-contracts",
-  "version": "1.0.0",
-  "author": "neo-project",
-  "license": "MIT",
-  "scripts": {
-    "test": "tsc --build tsconfig.json"
-  }
-}

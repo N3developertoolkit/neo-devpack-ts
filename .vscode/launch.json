@@ -13,8 +13,9 @@
                 "<node_internals>/**"
             ],
             "program": "${workspaceFolder}/packages/compiler/src/main.ts",
+            "cwd": "${workspaceFolder}/samples/helloworld",
             "args": [
-                "${workspaceFolder}/sample-contracts/helloworld.ts",
+                "helloworld.ts",
                 "-o",
                 "express/out"
             ],

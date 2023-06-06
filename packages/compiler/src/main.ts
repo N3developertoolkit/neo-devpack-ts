@@ -71,7 +71,8 @@ async function main(args: readonly string[], cliOptions: OptionValues): Promise<
     }
 
     const project = createContractProject();
-    for (const arg of args) {
+    for (let arg of args) {
+        if (!isAbsolute(arg)) { arg = join(process.cwd(), arg); }
         const source = await fs.readFile(arg, 'utf8');
         project.createSourceFile(arg, source);
     }
