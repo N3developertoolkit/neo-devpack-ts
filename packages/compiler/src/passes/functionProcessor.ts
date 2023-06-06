@@ -6,9 +6,9 @@ import * as O from 'fp-ts/Option';
 import * as S from 'fp-ts/State';
 import * as TS from '../TS';
 
-import { CompileTimeObject, Scope, createEmptyScope, createScope } from "../types/CompileTimeObject";
+import { CompileTimeObject, Scope, createEmptyScope, createScope, updateScope } from "../types/CompileTimeObject";
 import { Operation, getBooleanConvertOps, updateLocation } from "../types/Operation";
-import { E_fromSeparated, ParseError, isVoidLike, makeParseError, updateContextErrors } from "../utils";
+import { CompileError, E_fromSeparated, ParseError, isVoidLike, makeParseError, updateContextErrors } from "../utils";
 import { ContractMethod } from "../types/CompileOptions";
 import { parseExpression } from "./expressionProcessor";
 import { ParsedVariable, parseVariableDeclaration, processVarDeclResults } from "./parseVariableBinding";
@@ -288,63 +288,65 @@ function adaptWhileStatement(node: tsm.WhileStatement): S.State<AdaptStatementCo
     }
 }
 
-function adaptCatchVariableDeclaration(node: tsm.CatchClause) {
-    return (context: AdaptStatementContext): AdaptStatementContext => {
-
-        return updateContextErrors(context)(makeParseError(node)("adaptCatchVariableDeclaration disabled"));
-        // function returnError(message: string) {
-        //     return updateContextErrors(context)(makeParseError(node)(message));
-        // }
-
-        // const decl = node.getVariableDeclaration();
-        // if (decl) {
-        //     // if there's a variable declaration, update the context scope
-        //     // to include the new variable and update the context locals
-        //     if (decl.getInitializer()) {
-        //         return returnError('catch variable must not have an initializer');
-        //     }
-
-        //     const name = decl.getNameNode();
-        //     if (!tsm.Node.isIdentifier(name)) {
-        //         return returnError('catch variable must be a simple identifier');
-        //     }
-
-        //     return pipe(
-        //         E.Do,
-        //         E.bind('symbol', () => TS.parseSymbol(name)),
-        //         E.bind('localvar', ({ symbol }) => E.of(makeLocalVariable(name, symbol, context.locals.length))),
-        //         E.bind('scope', ({ localvar }) => E.of(updateScope(context.scope)(localvar))),
-        //         E.match(
-        //             updateContextErrors(context),
-        //             ({ symbol, localvar: { node }, scope }) => {
-        //                 const locals = ROA.append({ name: symbol.getName(), type: node.getType() })(context.locals);
-        //                 return ({ ...context, locals, scope });
-        //             }
-        //         )
-        //     )
-        // }
-
-        // if there is no declaration, create an anonymous variable to hold the error
-        // it doesn't get added to context scope, but it is added to context locals
-
-        // const locals = pipe(context.locals, ROA.append<LocalVariable>({ name: `#var${context.locals.length}` }))
-        // return { ...context, locals };
-    }
-}
-
 function adaptCatchClause(node: tsm.CatchClause): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
 
-        let $context = adaptCatchVariableDeclaration(node)(context);
+        let $context = adaptCatchVariableDeclaration()(context);
+        if ($context.locals.length !== context.locals.length + 1) {
+            throw new CompileError("expected adaptCatchVariableDeclaration to declare a local variable", node)
+        }
+
         let blockOps;
         [blockOps, $context] = adaptBlock(node.getBlock())($context);
 
         let operations = pipe(
             blockOps,
-            ROA.prepend<Operation>({ kind: 'storelocal', index: context.locals.length, location: node.getFirstChildByKind(tsm.SyntaxKind.CatchKeyword) }),
+            // add an operation to store the error object in the catch variable
+            ROA.prepend<Operation>({ 
+                kind: 'storelocal', 
+                index: context.locals.length, 
+                location: node.getFirstChildByKind(tsm.SyntaxKind.CatchKeyword) 
+            }),
         )
 
+        // swap back in the scope from the original context
         return [operations, { ...$context, scope: context.scope }];
+    }
+
+    function adaptCatchVariableDeclaration() {
+        return (context: AdaptStatementContext): AdaptStatementContext => {
+            const decl = node.getVariableDeclaration();
+            if (decl) {
+                if (decl.getInitializer()) {
+                    return updateContextErrors(context)(makeParseError(node)("catch variable must not have an initializer"));
+                }
+                const name = decl.getNameNode();
+                if (tsm.Node.isIdentifier(name)) {
+                    return pipe(
+                        name,
+                        TS.parseSymbol,
+                        E.match(
+                            updateContextErrors(context), 
+                            symbol => {
+                                const slotIndex = context.locals.length;
+                                const loadOps = ROA.of(<Operation>{ kind: "loadlocal", index: slotIndex });
+                                const storeOps = ROA.of(<Operation>{ kind: "storelocal", index: slotIndex });
+                                const cto = <CompileTimeObject>{ node: name, symbol: symbol, loadOps, storeOps };
+                                const scope = updateScope(context.scope)(cto);
+                                const locals = ROA.append<LocalVariable>({ name: symbol.getName(), type: name.getType() })(context.locals);
+                                return { ...context, scope, locals };
+                            }
+                        )
+                    )
+                } else {
+                    return updateContextErrors(context)(makeParseError(node)("catch variable must be a simple identifier"));
+                }
+            }
+    
+            // if there is no declaration, create an anonymous variable to hold the error
+            const locals = pipe(context.locals, ROA.append<LocalVariable>({ name: `#var${context.locals.length}` }))
+            return { ...context, locals };
+        }
     }
 }
 
