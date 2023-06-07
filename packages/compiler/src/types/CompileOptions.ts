@@ -3,13 +3,6 @@ import { sc } from "@cityofzion/neon-core";
 import { Operation } from "./Operation";
 import type { DebugInfo } from "./DebugInfo";
 
-export interface CompileOptions {
-    readonly addressVersion: number;
-    readonly inline: boolean;
-    readonly optimize: boolean;
-    readonly standards: ReadonlyArray<string>;
-}
-
 export interface ContractVariable {
     name: string;
     type: tsm.Type;
@@ -48,8 +41,3 @@ export interface CompileArtifacts {
     readonly debugInfo?: DebugInfo;
 }
 
-export interface CompileContext {
-    readonly diagnostics: Array<tsm.ts.Diagnostic>;
-    readonly options: Readonly<Required<CompileOptions>>;
-    readonly project: tsm.Project;
-}

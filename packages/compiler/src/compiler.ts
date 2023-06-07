@@ -1,30 +1,92 @@
 import * as tsm from "ts-morph";
 import { PathLike, accessSync } from 'fs';
-import { pipe } from "fp-ts/lib/function";
+import { identity, pipe } from "fp-ts/lib/function";
 import * as ROA from 'fp-ts/ReadonlyArray'
+import * as ROS from 'fp-ts/ReadonlySet'
 import * as S from 'fp-ts/State'
 import * as O from 'fp-ts/Option'
+import * as TS from './TS'
+import * as E from 'fp-ts/Either'
+import * as STR from 'fp-ts/string'
 
 import { collectProjectDeclarations } from "./collectProjectDeclarations";
 import { collectArtifacts } from "./collectArtifacts";
 import { makeGlobalScope } from "./builtin";
 import { parseProject } from "./passes/sourceFileProcessor";
-import { CompileOptions, CompileArtifacts } from "./types/CompileOptions";
+import { CompileArtifacts } from "./types/CompileOptions";
+import { createDiagnostic } from "./utils";
 
 export const DEFAULT_ADDRESS_VALUE = 53;
 
+export interface CompilerOptions {
+    readonly baseName: string;
+    readonly contractName?: string;
+    readonly standards?: ReadonlyArray<string>;
+    // readonly addressVersion?: number;
+    // readonly inline?: boolean;
+    // readonly optimize?: boolean;
+}
+
 export function compile(
     project: tsm.Project,
-    contractName: string,
-    options?: Partial<CompileOptions>
+    options: CompilerOptions
 ): CompileArtifacts {
 
-    const $options: CompileOptions = {
-        addressVersion: options?.addressVersion ?? DEFAULT_ADDRESS_VALUE,
-        inline: options?.inline ?? false,
-        optimize: options?.optimize ?? false,
-        standards: options?.standards ?? [],
+    const jsdocableNodes = pipe(
+        project.getSourceFiles(),
+        ROA.filter(src => !src.isDeclarationFile()),
+        ROA.chain(src => src.forEachChildAsArray()),
+        ROA.filterMap(O.fromPredicate(tsm.Node.isJSDocable))
+    )
+
+    const contractName = pipe(
+        // if the contract name is specified in options, use it
+        options.contractName,
+        O.fromNullable,
+        // if the contract name is not specified, look for a contract tag to use instead
+        O.alt(() => {
+            return pipe(
+                jsdocableNodes,
+                ROA.map(TS.getTagComment('contract')),
+                ROA.filterMap(identity),
+                ROA.head,
+            );
+        }),
+        // if the contract name is not specified in options or a JSDoc tag, 
+        // fallback to using the base name
+        O.getOrElse(() => options.baseName),
+    )
+
+    if (contractName.length === 0) {
+        const diagnostics = ROA.of(createDiagnostic("Contract name is not specified"));
+        return { diagnostics };
     }
+
+    // const extras = pipe(
+    //     docableNodes,
+    //     ROA.chain(TS.getTagComments('extra')),
+    // )
+
+    const { left: ignoredStandards, right: standards } = pipe(
+        // get all the standards specified in options and doc tags
+        jsdocableNodes,
+        ROA.chain(TS.getTagComments('standard')),
+        ROA.concat(options.standards ?? []),
+        // remove duplicates
+        ROA.uniq(STR.Eq),
+        // standards must start with "NEP-" and be followed by an integer
+        ROA.map(std => {
+            if (std.startsWith('NEP-')) {
+                const nep = parseInt(std.slice(4));
+                if (!isNaN(nep)) {
+                    return E.of(std);
+                }
+            }
+            // warn about invalid standards, but don't fail compilation
+            return E.left(createDiagnostic(`ignoring invalid NEP standard ${std}`, { category: tsm.DiagnosticCategory.Warning }));
+        }),
+        ROA.separate
+    )
 
     let [{ compiledProject, artifacts }, diagnostics] = pipe(
         project.getPreEmitDiagnostics(),
@@ -34,19 +96,11 @@ export function compile(
             S.chain(makeGlobalScope),
             S.chain(parseProject(project)),
             S.bindTo('compiledProject'),
-            S.bind('artifacts', ({ compiledProject }) => collectArtifacts(contractName, $options)(compiledProject))
+            S.bind('artifacts', ({ compiledProject }) => collectArtifacts({ contractName, standards })(compiledProject))
         ),
     );
 
+    diagnostics = ROA.concat(diagnostics)(ignoredStandards);
     return { diagnostics, compiledProject, ...artifacts };
-}
-
-function exists(rootPath: PathLike) {
-    try {
-        accessSync(rootPath);
-        return true;
-    } catch {
-        return false;
-    }
 }
 

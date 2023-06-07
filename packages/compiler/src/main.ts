@@ -3,8 +3,8 @@ import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { Node, ts } from "ts-morph";
 import { sc } from "@cityofzion/neon-core";
 import { createContractProject, hasErrors, toDiagnostic } from "./utils";
-import { DEFAULT_ADDRESS_VALUE, compile } from "./compiler";
-import { CompileOptions, ContractMethod } from "./types/CompileOptions";
+import { CompilerOptions, DEFAULT_ADDRESS_VALUE, compile } from "./compiler";
+import { ContractMethod } from "./types/CompileOptions";
 import { JumpOffsetOperation, Location, Operation, convertJumpTargetOps } from "./types/Operation";
 import * as E from 'fp-ts/lib/Either';
 import { pipe } from "fp-ts/lib/function";
@@ -21,53 +21,45 @@ program
     .option('-o, --output <path>', 'specifies the output directory')
     .option('--base-name <value>', "specifies the base name of the output files")
     .option('--contract-name <value>', "specifies the contract name")
+    .option('--standards <values...>', "spectfies the NEP standards to be listed in the manifest")
     .option('--dump-ops', 'dump the compiled contract to the console')
     // TODO: enable these options when optimization and inlining are implemented
     // .option('--no-optimize', "instruct the compiler not to optimize the code")
     // .option('--no-inline', "instruct the compiler not to insert inline code")
-    .option<number>('--address-version <value>', 'indicates the address version used by the compiler', parseAddressVersion, DEFAULT_ADDRESS_VALUE)
-    .option('--standards <values...>')
+    // .option<number>('--address-version <value>', 'indicates the address version used by the compiler', parseAddressVersion, DEFAULT_ADDRESS_VALUE)
     .parse(process.argv);
 
-// interface CompilerOptionValues extends OptionValues {
-//     output?: string;
-//     baseName?: string;
-//     contractName?: string;
-//     dumpOps?: boolean;
-//     optimize?: boolean;
-//     inline?: boolean;
-//     addressVersion?: number;
-//     standards?: readonly string[];
-// }
+interface CompilerOptionValues extends OptionValues {
+    output?: string;
+    baseName?: string;
+    contractName?: string;
+    standards?: readonly string[];
+    dumpOps?: boolean;
+    // optimize?: boolean;
+    // inline?: boolean;
+    // addressVersion?: number;
+}
 
 const options = program.opts();
 main(program.args, options);
 
-function parseAddressVersion(value: string, previous: number): number {
-    const parsedValue = parseInt(value, 10);
-    if (isNaN(parsedValue))
-        throw new InvalidArgumentError('Not a number.');
-    return parsedValue;
-}
+// function parseAddressVersion(value: string, previous: number): number {
+//     const parsedValue = parseInt(value, 10);
+//     if (isNaN(parsedValue))
+//         throw new InvalidArgumentError('Not a number.');
+//     return parsedValue;
+// }
 
-async function main(args: readonly string[], cliOptions: OptionValues): Promise<void> {
+async function main(args: readonly string[], options: CompilerOptionValues): Promise<void> {
 
     if (args.length !== 1) {
         throw new InvalidArgumentError('only a single contract file is currently supported');
     }
 
-    const baseName = cliOptions.baseName ?? basename(args[0], '.ts');
-    const contractName = cliOptions.contractName ?? baseName;
-    let outputFolder = cliOptions.output ?? process.cwd();
+    const baseName = options.baseName ?? basename(args[0], '.ts');
+    let outputFolder = options.output ?? process.cwd();
     if (!isAbsolute(outputFolder)) {
         outputFolder = join(process.cwd(), outputFolder);
-    }
-
-    const options: Partial<CompileOptions> = {
-        addressVersion: cliOptions.addressVersion,
-        inline: cliOptions.inline,
-        optimize: cliOptions.optimize,
-        standards: cliOptions.standards,
     }
 
     const project = createContractProject();
@@ -83,13 +75,18 @@ async function main(args: readonly string[], cliOptions: OptionValues): Promise<
         printDiagnostics(preEmitDiags.map(d => d.compilerObject));
     } else {
         try {
-            const { diagnostics, compiledProject, nef, manifest, debugInfo } = compile(project, contractName, options);
+            const compilerOptions: CompilerOptions = {
+                baseName,
+                contractName: options.contractName,
+                standards: options.standards,
+            }
+            const { diagnostics, compiledProject, nef, manifest, debugInfo } = compile(project, compilerOptions);
 
             if (diagnostics.length > 0) printDiagnostics(diagnostics);
 
             if (hasErrors(diagnostics)) return;
 
-            if (compiledProject && cliOptions.dumpOps) {
+            if (compiledProject && options.dumpOps) {
                 for (const method of compiledProject.methods) {
                     dumpContractMethod(method);
                 }

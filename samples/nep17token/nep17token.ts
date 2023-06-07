@@ -1,10 +1,10 @@
-// /**
-//  * @contract TankToken
-//  * @extra Author "Harry Pierson"
-//  * @extra Email "harrypierson@hotmail.com"
-//  * @extra Description "this is a prototype NEP-17 contract written in TypeScript"
-//  * @standard "NEP-17"
-//  */
+/**
+ * @contract TankToken
+ * @extra Author "Harry Pierson"
+ * @extra Email "harrypierson@hotmail.com"
+ * @extra Description "this is a prototype NEP-17 contract written in TypeScript"
+ * @standard NEP-17
+ */
 
 const SYMBOL = "TANK";
 const DECIMALS = 4n;

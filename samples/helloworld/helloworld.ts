@@ -1,5 +1,5 @@
 /**
- * @contract Test Contract
+ * @contract HelloWorldContract
  * @extra Author "Harry Pierson"
  * @extra Email "harrypierson@hotmail.com"
  * @extra Description "this is a prototype contract written in TypeScript"

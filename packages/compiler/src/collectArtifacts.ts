@@ -8,7 +8,7 @@ import * as E from 'fp-ts/Either'
 import * as S from 'fp-ts/State'
 import { CallOperation, CallTokenOperation, convertJumpOperationKind, convertJumpTargetOps, convertLoadStoreKind, convertSimpleOperationKind, getOperationSize, isCallOp, isCallTokenOp, isConvertOp, isInitSlotOp, isInitStaticOperation, isJumpOffsetOp, isJumpTargetOp, isLoadStoreOp, isPushBoolOp, isPushDataOp, isPushIntOp, isSimpleOp, isSysCallOp, JumpOffsetOperation, LoadStoreOperation, Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
 import { asContractParamType, asReturnType, convertBigInteger, createDiagnostic, E_fromSeparated } from "./utils";
-import { CompiledProject, CompiledProjectArtifacts, CompileOptions, ContractEvent, ContractMethod } from "./types/CompileOptions";
+import { CompiledProject, CompiledProjectArtifacts, ContractEvent, ContractMethod } from "./types/CompileOptions";
 import { makeDebugInfo } from "./types/DebugInfo";
 
 function collectMethodTokens(methods: ReadonlyArray<ContractMethod>): ReadonlyArray<sc.MethodToken> {
@@ -243,7 +243,7 @@ function collectManifestEvents(
 
 function collectPermissions(
     tokens: readonly sc.MethodToken[],
-    options: CompileOptions
+    standards: readonly string[],
 ): sc.ContractPermission[] {
 
     const map = new Map<string, ReadonlySet<string>>();
@@ -256,10 +256,10 @@ function collectPermissions(
     }
 
     // TODO: user specified mechanism (source declarative or cli parameter) mechanism to add permissions
-    if (options.standards.includes('NEP-17')) {
+    if (standards.includes('NEP-17')) {
         map.set("*", new Set(["onNEP17Payment"]))
     }
-    if (options.standards.includes('NEP-11')) {
+    if (standards.includes('NEP-11')) {
         map.set("*", new Set(["onNEP11Payment"]))
     }
 
@@ -271,10 +271,16 @@ function collectPermissions(
     })
 }
 
+export interface CollectArtifactOptions {
+    readonly contractName: string;
+    readonly standards?: readonly string[];
+}
+
 export const collectArtifacts =
-    (name: string, options: CompileOptions) =>
+    (options: CollectArtifactOptions) =>
         (compiledProject: CompiledProject): S.State<readonly tsm.ts.Diagnostic[], Partial<CompiledProjectArtifacts>> =>
             diagnostics => {
+                const { contractName, standards = [] } = options;
                 const { left:jumpConvertErrors, right: methods} = pipe(
                     compiledProject.methods,
                     ROA.map(method => pipe(
@@ -315,9 +321,9 @@ export const collectArtifacts =
                                         methods: ROA.toArray(methods),
                                         events: ROA.toArray(events)
                                     }),
-                                    name,
-                                    permissions: collectPermissions(tokens, options),
-                                    supportedStandards: [...options.standards],
+                                    name: contractName,
+                                    permissions: collectPermissions(tokens, standards),
+                                    supportedStandards: [...standards],
                                     trusts: []
                                 });
                             }

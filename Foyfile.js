@@ -12,7 +12,12 @@ task('clean', async ctx => {
   await ctx.exec('git clean -dxf', { cwd: './samples' });
 })
 
-const samples = ["helloworld", "nep11token", "nep17token", "registrar"];
+const samples = [
+  "helloworld", 
+  "nep11token", 
+  "nep17token", 
+  // "registrar"
+];
 
 async function buildSample(ctx, sample) {
   const cwd = path.join(__dirname, "samples", sample);

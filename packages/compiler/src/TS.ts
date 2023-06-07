@@ -2,7 +2,7 @@ import * as tsm from "ts-morph";
 import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option';
 import * as ROA from 'fp-ts/ReadonlyArray'
-import { pipe } from "fp-ts/lib/function";
+import { identity, pipe } from "fp-ts/lib/function";
 import { ParseError, makeParseError } from "./utils";
 
 export function getSymbol(node: tsm.Node) { return O.fromNullable(node.getSymbol()); }
@@ -47,6 +47,18 @@ export const getTag = (tagName: string) => (node: tsm.JSDocableNode): O.Option<t
     return O.none;
 };
 
+
+export const getTags = (tagName: string) => (node: tsm.JSDocableNode): readonly tsm.JSDocTag[] => {
+    let tags = [];
+    for (const doc of node.getJsDocs()) {
+        for (const tag of doc.getTags()) {
+            if (tag.getTagName() === tagName)
+                tags.push(tag);
+        }
+    }
+    return tags;
+};
+
 export const hasTag = (tagName: string) => (node: tsm.JSDocableNode) => O.isSome(getTag(tagName)(node));
 
 export const getTagComment = (tagName: string) => (node: tsm.JSDocableNode) => pipe(
@@ -55,6 +67,14 @@ export const getTagComment = (tagName: string) => (node: tsm.JSDocableNode) => p
     O.chain(tag => O.fromNullable(tag.getCommentText()))
 );
 
+export const getTagComments = (tagName: string) => (node: tsm.JSDocableNode) => {
+    return pipe(
+        node,
+        getTags(tagName),
+        ROA.map(tag => O.fromNullable(tag.getCommentText())),
+        ROA.filterMap(identity)
+    )
+}
 export const getExpression =
     (node: tsm.Expression): O.Option<tsm.Expression> =>
         tsm.Node.hasExpression(node)

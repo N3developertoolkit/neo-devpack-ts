@@ -13,11 +13,11 @@
                 "<node_internals>/**"
             ],
             "program": "${workspaceFolder}/packages/compiler/src/main.ts",
-            "cwd": "${workspaceFolder}/samples/helloworld",
+            "cwd": "${workspaceFolder}/samples/nep17token",
             "args": [
-                "helloworld.ts",
+                "nep17token.ts",
                 "-o",
-                "express/out"
+                "./out"
             ],
             "outFiles": [
                 "${workspaceFolder}/**/*.js"
