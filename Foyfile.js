@@ -1,9 +1,23 @@
 const { task, logger, fs, setGlobalOptions } = require('foy')
 const path = require('path');
+var nbgv = require('nerdbank-gitversioning')
 
 setGlobalOptions({ loading: false }) 
 
+task('setversion', async ctx => {
+  const compilerPath = path.join(__dirname, "packages", "compiler")
+  const fxPath = path.join(__dirname, "packages", "framework")
+
+  await nbgv.setPackageVersion(__dirname);
+  await nbgv.setPackageVersion(compilerPath);
+  await nbgv.setPackageVersion(fxPath);
+})
+
 task('build', async ctx => {
+
+  const version = await nbgv.getVersion();
+  logger.warn(`Version: ${version.version} (${version.commit})`);
+  // 
   await ctx.exec('tsc --build tsconfig.json');
 })
 
