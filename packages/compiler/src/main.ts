@@ -41,8 +41,8 @@ interface CompilerOptionValues extends OptionValues {
     // addressVersion?: number;
 }
 
-// const options = program.opts();
-// main(program.args, options);
+const options = program.opts();
+main(program.args, options);
 
 // function parseAddressVersion(value: string, previous: number): number {
 //     const parsedValue = parseInt(value, 10);
