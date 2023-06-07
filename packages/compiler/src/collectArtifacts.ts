@@ -3,24 +3,23 @@ import { sc, u } from "@cityofzion/neon-core";
 
 import { flow, pipe } from "fp-ts/function";
 import * as ROA from 'fp-ts/ReadonlyArray'
-import * as ROS from 'fp-ts/ReadonlySet'
 import * as E from 'fp-ts/Either'
 import * as S from 'fp-ts/State'
+import * as ROR from 'fp-ts/ReadonlyRecord'
 import { CallOperation, CallTokenOperation, convertJumpOperationKind, convertJumpTargetOps, convertLoadStoreKind, convertSimpleOperationKind, getOperationSize, isCallOp, isCallTokenOp, isConvertOp, isInitSlotOp, isInitStaticOperation, isJumpOffsetOp, isJumpTargetOp, isLoadStoreOp, isPushBoolOp, isPushDataOp, isPushIntOp, isSimpleOp, isSysCallOp, JumpOffsetOperation, LoadStoreOperation, Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
 import { asContractParamType, asReturnType, convertBigInteger, createDiagnostic, E_fromSeparated } from "./utils";
 import { CompiledProject, CompiledProjectArtifacts, ContractEvent, ContractMethod } from "./types/CompileOptions";
 import { makeDebugInfo } from "./types/DebugInfo";
 
 function collectMethodTokens(methods: ReadonlyArray<ContractMethod>): ReadonlyArray<sc.MethodToken> {
-    const set = pipe(
+    return pipe(
         methods,
         ROA.map(m => m.operations),
         ROA.flatten,
         ROA.filter(isCallTokenOp),
         ROA.map(m => m.token),
-        ROS.fromReadonlyArray({ equals: (x, y) => x.hash === y.hash && x.method === y.method }),
+        ROA.uniq({ equals: (x, y) => x.hash === y.hash && x.method === y.method }),
     )
-    return [...set.values()];
 }
 
 function* genOperationAddresses(
@@ -274,13 +273,14 @@ function collectPermissions(
 export interface CollectArtifactOptions {
     readonly contractName: string;
     readonly standards?: readonly string[];
+    readonly extras?: readonly (readonly [string, string])[]
 }
 
 export const collectArtifacts =
     (options: CollectArtifactOptions) =>
         (compiledProject: CompiledProject): S.State<readonly tsm.ts.Diagnostic[], Partial<CompiledProjectArtifacts>> =>
             diagnostics => {
-                const { contractName, standards = [] } = options;
+                const { contractName } = options;
                 const { left:jumpConvertErrors, right: methods} = pipe(
                     compiledProject.methods,
                     ROA.map(method => pipe(
@@ -316,6 +316,8 @@ export const collectArtifacts =
                             collectManifestMethods(methods, methodAddressMap),
                             E.map(methods => {
                                 const events = collectManifestEvents(compiledProject.events);
+                                const standards = ROA.toArray(options.standards ?? []);
+                                const extra = ROR.fromEntries(options.extras ?? []);
                                 return new sc.ContractManifest({
                                     abi: new sc.ContractAbi({
                                         methods: ROA.toArray(methods),
@@ -323,8 +325,9 @@ export const collectArtifacts =
                                     }),
                                     name: contractName,
                                     permissions: collectPermissions(tokens, standards),
-                                    supportedStandards: [...standards],
-                                    trusts: []
+                                    supportedStandards: standards,
+                                    trusts: [],
+                                    extra,
                                 });
                             }
                             )

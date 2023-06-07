@@ -3,9 +3,6 @@ import { sc, u } from "@cityofzion/neon-core";
 
 import { pipe } from "fp-ts/function";
 import * as ROA from 'fp-ts/ReadonlyArray'
-import * as ROS from 'fp-ts/ReadonlySet'
-import * as FP from 'fp-ts'
-import * as ORD from 'fp-ts/Ord';
 import { Location, getOperationSize } from "./Operation";
 import { asContractParamType, asReturnType } from "../utils";
 import { CompiledProject, ContractEvent, ContractMethod, ContractVariable } from "./CompileOptions";
@@ -97,11 +94,6 @@ function makeDebugInfoEvent(event: ContractEvent): DebugInfoEvent {
     }
 }
 
-const sourceOrd: ORD.Ord<tsm.SourceFile> = {
-    equals: (x, y) => FP.string.Ord.equals(x.getFilePath(), y.getFilePath()),
-    compare: (x, y) => FP.string.Ord.compare(x.getFilePath(), y.getFilePath())
-};
-
 interface MethodDebugInfo {
     readonly method: ContractMethod,
     readonly range: { readonly start: number, readonly end: number },
@@ -136,8 +128,7 @@ export function makeDebugInfo(project: CompiledProject, nef: sc.NEF): DebugInfo 
         ROA.map(v => v.sequencePoints),
         ROA.flatten,
         ROA.map(asSourceFile),
-        ROS.fromReadonlyArray(sourceOrd),
-        ROS.toReadonlyArray(sourceOrd)
+        ROA.uniq({ equals: (x, y) => x.getFilePath() === y.getFilePath() })
     );
 
     return {

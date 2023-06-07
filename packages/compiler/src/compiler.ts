@@ -1,8 +1,6 @@
 import * as tsm from "ts-morph";
-import { PathLike, accessSync } from 'fs';
 import { identity, pipe } from "fp-ts/lib/function";
 import * as ROA from 'fp-ts/ReadonlyArray'
-import * as ROS from 'fp-ts/ReadonlySet'
 import * as S from 'fp-ts/State'
 import * as O from 'fp-ts/Option'
 import * as TS from './TS'
@@ -62,11 +60,6 @@ export function compile(
         return { diagnostics };
     }
 
-    // const extras = pipe(
-    //     docableNodes,
-    //     ROA.chain(TS.getTagComments('extra')),
-    // )
-
     const { left: ignoredStandards, right: standards } = pipe(
         // get all the standards specified in options and doc tags
         jsdocableNodes,
@@ -88,6 +81,23 @@ export function compile(
         ROA.separate
     )
 
+    const extras = pipe(
+        jsdocableNodes,
+        ROA.chain(TS.getTagComments('extra')),
+        ROA.map(extra => {
+            const index = extra.trim().indexOf(':');
+            // if there is no colon, treat the whole string as the value
+            if (index < 0) { return ["", extra] as const; }
+            const key = extra.slice(0, index).trim();
+            const value = extra.slice(index + 1).trim();
+            return [key, value] as const;
+        }),
+        // filter out extras without a key
+        ROA.filter(([ key ]) => key.length > 0),
+        // filter out extras with duplicate keys
+        ROA.uniq({ equals: (a, b) => a[0] === b[0], })
+    )
+
     let [{ compiledProject, artifacts }, diagnostics] = pipe(
         project.getPreEmitDiagnostics(),
         ROA.map(d => d.compilerObject),
@@ -96,7 +106,7 @@ export function compile(
             S.chain(makeGlobalScope),
             S.chain(parseProject(project)),
             S.bindTo('compiledProject'),
-            S.bind('artifacts', ({ compiledProject }) => collectArtifacts({ contractName, standards })(compiledProject))
+            S.bind('artifacts', ({ compiledProject }) => collectArtifacts({ contractName, standards, extras })(compiledProject))
         ),
     );
 

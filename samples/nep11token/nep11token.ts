@@ -1,8 +1,8 @@
 /**
  * @contract HovercraftToken
- * @extra Author "Harry Pierson"
- * @extra Email "harrypierson@hotmail.com"
- * @extra Description "this is a prototype NEP-11 contract written in TypeScript"
+ * @extra Author: Harry Pierson
+ * @extra Email: harrypierson@hotmail.com
+ * @extra Description: this is a prototype NEP-11 contract written in TypeScript
  * @standard NEP-11
  */
 

@@ -1,8 +1,8 @@
 /**
  * @contract HelloWorldContract
- * @extra Author "Harry Pierson"
- * @extra Email "harrypierson@hotmail.com"
- * @extra Description "this is a prototype contract written in TypeScript"
+ * @extra Author: Harry Pierson
+ * @extra Email: harrypierson@hotmail.com
+ * @extra Description: this is a prototype contract written in TypeScript
  */
 
 const VALUE_KEY = ByteString.fromHex("0x00");

@@ -1,8 +1,8 @@
 /**
  * @contract TankToken
- * @extra Author "Harry Pierson"
- * @extra Email "harrypierson@hotmail.com"
- * @extra Description "this is a prototype NEP-17 contract written in TypeScript"
+ * @extra Author: Harry Pierson
+ * @extra Email: harrypierson@hotmail.com
+ * @extra Description: this is a prototype NEP-17 contract written in TypeScript
  * @standard NEP-17
  */
 
