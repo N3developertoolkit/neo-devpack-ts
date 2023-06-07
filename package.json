@@ -7,11 +7,10 @@
     "packages/framework"
   ],
   "scripts": {
-    "setup": "npm install && dotnet tool restore --tool-manifest ./express/.config/dotnet-tools.json",
-    "build": "tsc --build tsconfig.json",
-    "compile": "node ./packages/compiler/lib/main.js",
-    "batch-nep17": "cd express && dotnet neoxp batch ./nep17.batch --reset",
-    "clean": "tsc --build tsconfig.json --clean",
+    "setup": "foy setup",
+    "build": "foy build",
+    "clean": "foy clean",
+    "samples": "foy samples",
     "madge": "madge -c  --extensions ts ./packages/compiler/src",
     "test": "mocha"
   },
@@ -21,6 +20,7 @@
     "@types/mocha": "^10.0.1",
     "@types/node": "^18.16.16",
     "chai": "^4.3.7",
+    "foy": "^0.2.20",
     "madge": "^6.1.0",
     "mocha": "^10.2.0",
     "ts-node": "^10.9.1",
