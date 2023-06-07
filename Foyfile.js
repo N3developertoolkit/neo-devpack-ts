@@ -4,6 +4,15 @@ var nbgv = require('nerdbank-gitversioning')
 
 setGlobalOptions({ loading: false }) 
 
+// build a list of all the samples from the samples directory
+const sampleDir = path.posix.join(__dirname, "samples")
+const samples = fs.readdirSync(sampleDir)
+  .filter(x => !x.startsWith("_"))
+  .map(x => path.join(sampleDir, x))
+  .filter(x => fs.statSync(x).isDirectory())
+  .map(x => path.basename(x))
+
+
 task('setversion', async ctx => {
   const compilerPath = path.join(__dirname, "packages", "compiler")
   const fxPath = path.join(__dirname, "packages", "framework")
@@ -23,13 +32,6 @@ task('clean', async ctx => {
   await ctx.exec('tsc --build tsconfig.json --clean', { cwd: __dirname });
   await ctx.exec('git clean -dxf', { cwd: path.join(__dirname, "samples") });
 })
-
-const samples = [
-  "helloworld", 
-  "nep11token", 
-  "nep17token", 
-  // "registrar"
-];
 
 async function buildSample(ctx, sample) {
   const cwd = path.join(__dirname, "samples", sample);
