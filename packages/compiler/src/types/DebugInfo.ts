@@ -5,39 +5,8 @@ import { pipe } from "fp-ts/function";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import { Location, getOperationSize } from "./Operation";
 import { asContractParamType, asReturnType } from "../utils";
-import { CompiledProject, ContractEvent, ContractMethod, ContractVariable } from "./CompileOptions";
+import { CompiledProject, ContractEvent, ContractMethod, ContractVariable, DebugInfo, DebugInfoEvent, DebugInfoMethod, SequencePoint } from "./CompileOptions";
 
-export interface SequencePoint {
-    address: number;
-    location: Location,
-}
-
-export interface DebugInfoEvent {
-    readonly id: string;
-    readonly name: string;
-    readonly params?: readonly string[];
-}
-
-export interface DebugInfoMethod {
-    readonly id: string;
-    readonly name: string;
-    // range format: "{start-address}-{end-address}
-    readonly range: string;
-    readonly params?: readonly string[];
-    readonly "return"?: string;
-    readonly variables?: readonly string[];
-    // sequence point format: "{address}[{document-index}]{start-line}:{start-column}-{end-line}:{end-column}"
-    readonly "sequence-points"?: readonly string[];
-}
-
-export interface DebugInfo {
-    readonly hash: string; // hex-encoded UInt160
-    readonly documents?: readonly string[]; // file paths
-    readonly "document-root"?: string;
-    readonly events?: readonly DebugInfoEvent[];
-    readonly methods?: readonly DebugInfoMethod[];
-    readonly "static-variables"?: readonly string[];
-}
 
 function asSlotVarString(v: ContractVariable): string {
     const type = asContractParamType(v.type);

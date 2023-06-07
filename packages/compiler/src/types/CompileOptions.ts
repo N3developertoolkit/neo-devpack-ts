@@ -1,7 +1,6 @@
 import * as tsm from "ts-morph";
 import { sc } from "@cityofzion/neon-core";
-import { Operation } from "./Operation";
-import type { DebugInfo } from "./DebugInfo";
+import { Location, Operation } from "./Operation";
 
 export interface ContractVariable {
     name: string;
@@ -41,3 +40,34 @@ export interface CompileArtifacts {
     readonly debugInfo?: DebugInfo;
 }
 
+export interface SequencePoint {
+    address: number;
+    location: Location,
+}
+
+export interface DebugInfoEvent {
+    readonly id: string;
+    readonly name: string;
+    readonly params?: readonly string[];
+}
+
+export interface DebugInfoMethod {
+    readonly id: string;
+    readonly name: string;
+    // range format: "{start-address}-{end-address}
+    readonly range: string;
+    readonly params?: readonly string[];
+    readonly "return"?: string;
+    readonly variables?: readonly string[];
+    // sequence point format: "{address}[{document-index}]{start-line}:{start-column}-{end-line}:{end-column}"
+    readonly "sequence-points"?: readonly string[];
+}
+
+export interface DebugInfo {
+    readonly hash: string; // hex-encoded UInt160
+    readonly documents?: readonly string[]; // file paths
+    readonly "document-root"?: string;
+    readonly events?: readonly DebugInfoEvent[];
+    readonly methods?: readonly DebugInfoMethod[];
+    readonly "static-variables"?: readonly string[];
+}
