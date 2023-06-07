@@ -615,8 +615,9 @@ export function getBooleanConvertOps(type: tsm.Type): readonly Operation[] {
     const byteStringToBooleanConvertOps = [
         { kind: 'duplicate' },
         { kind: 'isnull' },
-        { kind: "jumpifnot", offset: 3 },
-        { kind: 'pushbool', value: true },
+        { kind: "jumpifnot", offset: 4 },
+        { kind: 'drop' },
+        { kind: 'pushbool', value: false },
         { kind: "jump", offset: 4 },
         { kind: 'size' },
         { kind: 'pushint', value: 0n },
