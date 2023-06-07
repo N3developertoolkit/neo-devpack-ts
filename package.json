@@ -1,6 +1,7 @@
 {
   "name": "@neo-project/neo-devpack-ts",
   "author": "neo-project",
+  "version": "0.0.0-placeholder",
   "license": "MIT",
   "workspaces": [
     "packages/compiler",
