@@ -301,10 +301,10 @@ function adaptCatchClause(node: tsm.CatchClause): S.State<AdaptStatementContext,
         let operations = pipe(
             blockOps,
             // add an operation to store the error object in the catch variable
-            ROA.prepend<Operation>({ 
-                kind: 'storelocal', 
-                index: context.locals.length, 
-                location: node.getFirstChildByKind(tsm.SyntaxKind.CatchKeyword) 
+            ROA.prepend<Operation>({
+                kind: 'storelocal',
+                index: context.locals.length,
+                location: node.getFirstChildByKind(tsm.SyntaxKind.CatchKeyword)
             }),
         )
 
@@ -325,7 +325,7 @@ function adaptCatchClause(node: tsm.CatchClause): S.State<AdaptStatementContext,
                         name,
                         TS.parseSymbol,
                         E.match(
-                            updateContextErrors(context), 
+                            updateContextErrors(context),
                             symbol => {
                                 const slotIndex = context.locals.length;
                                 const loadOps = ROA.of(<Operation>{ kind: "loadlocal", index: slotIndex });
@@ -341,7 +341,7 @@ function adaptCatchClause(node: tsm.CatchClause): S.State<AdaptStatementContext,
                     return updateContextErrors(context)(makeParseError(node)("catch variable must be a simple identifier"));
                 }
             }
-    
+
             // if there is no declaration, create an anonymous variable to hold the error
             const locals = pipe(context.locals, ROA.append<LocalVariable>({ name: `#var${context.locals.length}` }))
             return { ...context, locals };
@@ -396,14 +396,7 @@ function adaptTryStatement(node: tsm.TryStatement): S.State<AdaptStatementContex
 function adaptForStatement(node: tsm.ForStatement): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
 
-        const init = node.getInitializer();
-        let [ops, $context] = init === undefined 
-            ? [[], context]
-            : tsm.Node.isVariableDeclarationList(init)
-                ? adaptVariableDeclarationList(init)(context)
-                : adaptExpression(init)(context);
-        ops = init ? updateLocation(init)(ops) : ops;
-
+        let [ops, $context] = adaptInitializer()(context);
         const startTarget = { kind: 'noop' } as Operation;
         const conditionTarget = { kind: 'noop' } as Operation;
         const breakTarget = { kind: 'noop' } as Operation;
@@ -439,17 +432,27 @@ function adaptForStatement(node: tsm.ForStatement): S.State<AdaptStatementContex
         $context = popLoopTargets($context, context);
         return [ops, $context];
 
+        function adaptInitializer(): S.State<AdaptStatementContext, readonly Operation[]> {
+            return context => {
+                const init = node.getInitializer();
+                const [ops, $context] = init === undefined
+                    ? [[], context]
+                    : tsm.Node.isVariableDeclarationList(init)
+                        ? adaptVariableDeclarationList(init)(context)
+                        : adaptExpression(init)(context);
+                return init ? [updateLocation(init)(ops), $context] : [ops, $context];
+            }
+        }
         function adaptIncrementor(): S.State<AdaptStatementContext, readonly Operation[]> {
             return context => {
                 const incr = node.getIncrementor();
                 if (incr === undefined) { return [[], context]; }
-        
+
                 let [ops, $context] = adaptExpression(incr)(context);
                 ops = updateLocation(incr)(ops);
                 return [ops, $context];
             }
         }
-        
         function adaptCondition(startTarget: Operation): S.State<AdaptStatementContext, readonly Operation[]> {
             return context => {
                 const cond = node.getCondition();
@@ -457,17 +460,33 @@ function adaptForStatement(node: tsm.ForStatement): S.State<AdaptStatementContex
                     const ops = ROA.of<Operation>({ kind: 'jump', target: startTarget });
                     return [ops, context];
                 }
-        
+
                 let [ops, $context] = adaptExpression(cond)(context);
                 ops = pipe(
                     ops,
                     updateLocation(cond),
                     ROA.append<Operation>({ kind: 'jumpif', target: startTarget })
                 );
-        
+
                 return [ops, $context];
             }
         }
+    }
+}
+
+// function adaptForInStatement(node: tsm.ForInStatement): S.State<AdaptStatementContext, readonly Operation[]> {
+//     return context => {
+//         const error = makeParseError(node)(`adaptForInStatement not implemented`);
+//         const errors = ROA.append(error)(context.errors);
+//         return [ROA.empty, { ...context, errors }];
+//     }
+// }
+
+function adaptForOfStatement(node: tsm.ForOfStatement): S.State<AdaptStatementContext, readonly Operation[]> {
+    return context => {
+        const error = makeParseError(node)(`adaptForOfStatement not implemented`);
+        const errors = ROA.append(error)(context.errors);
+        return [ROA.empty, { ...context, errors }];
     }
 }
 
@@ -495,6 +514,7 @@ function adaptStatement(node: tsm.Statement): S.State<AdaptStatementContext, rea
             case tsm.SyntaxKind.DoStatement: return adaptDoStatement(node as tsm.DoStatement)(context);
             case tsm.SyntaxKind.EmptyStatement: return adaptEmptyStatement(node as tsm.EmptyStatement)(context);
             case tsm.SyntaxKind.ExpressionStatement: return adaptExpressionStatement(node as tsm.ExpressionStatement)(context);
+            case tsm.SyntaxKind.ForOfStatement: return adaptForOfStatement(node as tsm.ForOfStatement)(context);
             case tsm.SyntaxKind.ForStatement: return adaptForStatement(node as tsm.ForStatement)(context);
             case tsm.SyntaxKind.IfStatement: return adaptIfStatement(node as tsm.IfStatement)(context);
             case tsm.SyntaxKind.ReturnStatement: return adaptReturnStatement(node as tsm.ReturnStatement)(context);
@@ -502,13 +522,11 @@ function adaptStatement(node: tsm.Statement): S.State<AdaptStatementContext, rea
             case tsm.SyntaxKind.TryStatement: return adaptTryStatement(node as tsm.TryStatement)(context);
             case tsm.SyntaxKind.VariableStatement: return adaptVariableDeclarationList((node as tsm.VariableStatement).getDeclarationList())(context);
             case tsm.SyntaxKind.WhileStatement: return adaptWhileStatement(node as tsm.WhileStatement)(context);
-            case tsm.SyntaxKind.SwitchStatement:
             case tsm.SyntaxKind.ForInStatement:
-            case tsm.SyntaxKind.ForOfStatement: {
+            case tsm.SyntaxKind.SwitchStatement: {
                 const error = makeParseError(node)(`adaptStatement ${node.getKindName()} support coming in future release`);
                 const errors = ROA.append(error)(context.errors);
                 return [ROA.empty, { ...context, errors }];
-
             }
             default: {
                 const error = makeParseError(node)(`adaptStatement ${node.getKindName()} not supported`);
@@ -540,7 +558,7 @@ function parseBody({ scope, body }: { scope: Scope, body: tsm.Node }): E.Either<
         : E.of({
             operations: ROA.append<Operation>(context.returnTarget)(operations),
             locals: pipe(
-                locals, 
+                locals,
                 ROA.mapWithIndex((index, local) => [index, local] as const),
                 ROA.filter(([, local]) => local.type !== undefined),
                 ROA.map(([index, local]) => ({ name: local.name, type: local.type!, index }))
