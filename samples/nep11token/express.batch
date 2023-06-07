@@ -1,0 +1,2 @@
+transfer 10000 gas genesis owen
+contract deploy ./out/nep11token.nef owen

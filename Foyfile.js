@@ -1,5 +1,7 @@
-const { task, logger   } = require('foy')
+const { task, logger, fs, setGlobalOptions } = require('foy')
 const path = require('path');
+
+setGlobalOptions({ loading: false }) 
 
 task('setup', async ctx => {
   await ctx.exec('npm install');
@@ -21,6 +23,11 @@ async function buildSample(ctx, sample) {
   const cwd = path.join(__dirname, "samples", sample);
   const compilerPath = path.posix.join(__dirname, "packages/compiler/lib/main.js").replace(/\\/g, '/');
   await ctx.exec(`node ${compilerPath} ${sample}.ts -o ./out`, { cwd });
+
+  const batchPath = path.posix.join(cwd, "express.batch");
+  if (fs.existsSync(batchPath)) {
+    await ctx.exec(`dotnet neoxp batch -r express.batch`, { cwd });
+  }
 }
 
 samples.forEach(sample => {
@@ -31,7 +38,6 @@ samples.forEach(sample => {
 
 task('samples', ['build'], async ctx => {
   for (const sample of samples) {
-    logger.warn(`Building ${sample}...`);
     await buildSample(ctx, sample);
   }
 })

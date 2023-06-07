@@ -37,6 +37,24 @@
       }
     }
   ],
-  "wallets": [],
+  "wallets": [
+    {
+      "name": "owen",
+      "accounts": [
+        {
+          "private-key": "94865bc8dcb2bcff84d1f1978d308437a97f7992ea4f68d643aee355bca72924",
+          "script-hash": "NTRvtWNZyoMDAxPs1JskzE4Hb2YW6SAWdX",
+          "label": null,
+          "is-default": true,
+          "contract": {
+            "script": "0c210365fa8a8f541e290225e157353410bb251660a9738d4457b81647bc54c96ddf4e4156e7b327",
+            "parameters": [
+              "Signature"
+            ]
+          }
+        }
+      ]
+    }
+  ],
   "settings": {}
 }
