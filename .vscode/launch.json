@@ -24,6 +24,25 @@
             ]
         },
         {
+            "type": "neo-contract",
+            "name": "NEO: deploy helloworld",
+            "request": "launch",
+            "program": "${workspaceFolder}/samples/helloworld/out/helloworld.nef",
+            "neo-express": "${workspaceFolder}/samples/helloworld/default.neo-express",
+            "invocation": "deploy",
+            "deploy-signer": "@owen"
+        },
+        {
+            "type": "neo-contract",
+            "name": "NEO: deploy nep17",
+            "request": "launch",
+            "program": "${workspaceFolder}/samples/nep17token/out/nep17token.nef",
+            "neo-express": "${workspaceFolder}/samples/nep17token/default.neo-express",
+            "invocation": "deploy",
+            "deploy-signer": "@owen"
+        },
+
+        {
             "args": [
                 "--timeout",
                 "999999",

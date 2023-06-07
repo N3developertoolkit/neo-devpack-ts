@@ -1,2 +1,4 @@
 transfer 10000 gas genesis owen
 contract deploy ./out/registrar.nef owen
+contract run registrar register "sample-domain" -a owen
+checkpoint create ./out/registrar-sample-registered -f
