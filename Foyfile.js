@@ -3,11 +3,6 @@ const path = require('path');
 
 setGlobalOptions({ loading: false }) 
 
-task('setup', async ctx => {
-  await ctx.exec('npm install');
-  await ctx.exec('dotnet tool restore');
-});
-
 task('build', async ctx => {
   await ctx.exec('tsc --build tsconfig.json');
 })

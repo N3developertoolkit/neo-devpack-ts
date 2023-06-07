@@ -7,7 +7,7 @@
     "packages/framework"
   ],
   "scripts": {
-    "setup": "foy setup",
+    "setup": "npm install && dotnet tool restore",
     "build": "foy build",
     "clean": "foy clean",
     "samples": "foy samples",
