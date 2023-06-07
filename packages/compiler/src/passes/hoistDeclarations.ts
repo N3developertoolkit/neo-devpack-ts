@@ -9,6 +9,7 @@ import { CompileTimeObject, CallInvokeResolver, GetValueFunc, PropertyResolver, 
 import { makeParseError, makeReadOnlyMap, ParseError } from "../utils";
 
 function hoistEventFunctionDecl(node: tsm.FunctionDeclaration) {
+    const paramCount = node.getParameters().length;
     return (eventName: string): E.Either<ParseError, CompileTimeObject> => {
         return pipe(
             node,
@@ -17,7 +18,7 @@ function hoistEventFunctionDecl(node: tsm.FunctionDeclaration) {
                 const call: CallInvokeResolver = (node) => (_$this, args) => {
                     return pipe(
                         args,
-                        parseArguments,
+                        parseArguments(paramCount),
                         E.map(ROA.concat<Operation>([
                             pushInt(args.length),
                             { kind: 'packarray' },
@@ -60,6 +61,7 @@ export function hoistFunctionDecl(node: tsm.FunctionDeclaration): E.Either<Parse
         )
     }
 
+    const paramCount = node.getParameters().length;
     return pipe(
         node,
         TS.parseSymbol,
@@ -67,7 +69,7 @@ export function hoistFunctionDecl(node: tsm.FunctionDeclaration): E.Either<Parse
             const call: CallInvokeResolver = (node) => ($this, args) => {
                 return pipe(
                     args,
-                    parseArguments,
+                    parseArguments(paramCount),
                     E.map(ROA.append<Operation>({ kind: 'call', method: symbol })),
                     E.map(loadOps => <CompileTimeObject>{ node, symbol, loadOps })
                 );

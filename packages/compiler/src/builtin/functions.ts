@@ -6,7 +6,7 @@ import * as ROA from 'fp-ts/ReadonlyArray'
 import * as TS from "../TS";
 
 import { GlobalScopeContext } from "./common";
-import { CallInvokeResolver, CompileTimeObject, InvokeResolver, parseArguments } from "../types/CompileTimeObject";
+import { CallInvokeResolver, CompileTimeObject, parseArguments } from "../types/CompileTimeObject";
 import { createDiagnostic, makeParseDiagnostic, makeParseError, single } from "../utils";
 import { Operation, pushInt } from "../types/Operation";
 
@@ -30,6 +30,7 @@ function makeSyscallFunctions(ctx: GlobalScopeContext) {
     objects.forEach(ctx.addObject);
 
     function makeFunction(node: tsm.FunctionDeclaration): E.Either<tsm.ts.Diagnostic, CompileTimeObject> {
+        const paramCount = node.getParameters().length;
         return pipe(
             E.Do,
             E.bind("symbol", () => pipe(node, TS.parseSymbol, E.mapLeft(makeParseDiagnostic))),
@@ -42,7 +43,7 @@ function makeSyscallFunctions(ctx: GlobalScopeContext) {
                 const call: CallInvokeResolver = (node) => ($this, args) => {
                     return pipe(
                         args,
-                        parseArguments,
+                        parseArguments(paramCount),
                         E.map(ROA.append(<Operation>{ kind: 'syscall', name: serviceName })),
                         E.map(loadOps => <CompileTimeObject>{ node, symbol, loadOps })
                     );
@@ -60,11 +61,11 @@ function makeConcat(ctx: GlobalScopeContext) {
         O.bindTo("node"),
         O.bind("symbol", ({ node }) => TS.getSymbol(node)),
         O.map(({ node, symbol }) => {
+            const paramCount = node.getParameters().length;
             const call: CallInvokeResolver = (node) => ($this, args) => {
-
                 return pipe(
                     args,
-                    parseArguments,
+                    parseArguments(paramCount),
                     E.map(ROA.append(<Operation>{ kind: 'concat' })),
                     E.map(loadOps => <CompileTimeObject>{ node, symbol, loadOps })
                 );
@@ -96,7 +97,7 @@ function makeCallContract(ctx: GlobalScopeContext) {
 
                 return pipe(
                     targetArgs,
-                    parseArguments,
+                    parseArguments(),
                     E.map(ROA.concat<Operation>([
                         pushInt(targetArgs.length),
                         { kind: 'packarray' },
@@ -104,7 +105,7 @@ function makeCallContract(ctx: GlobalScopeContext) {
                     E.bindTo('targetOps'),
                     E.bind('callOps', () => pipe(
                         callArgs,
-                        parseArguments,
+                        parseArguments(),
                         E.map(ROA.append<Operation>({ kind: "syscall", name: "System.Contract.Call" })),
                     )),
                     E.map(({ targetOps, callOps }) => ROA.concat<Operation>(callOps)(targetOps)),

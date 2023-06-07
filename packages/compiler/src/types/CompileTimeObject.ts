@@ -9,6 +9,7 @@ import * as STR from 'fp-ts/string';
 
 import { Operation } from "./Operation";
 import { CompileError, ParseError, isArray } from "../utils";
+import { UpdateBundleProject } from "@ts-morph/common/lib/typescript";
 
 export type GetOpsFunc = () => E.Either<ParseError, readonly Operation[]>;
 export type GetValueFunc = () => E.Either<ParseError, CompileTimeObject>;
@@ -113,7 +114,7 @@ export const resolveType = (scope: Scope) => (type: tsm.Type): O.Option<CompileT
         O.alt(() => {
             // if type is a concrete generic type, try to resolve it's target type
             const targetType = type.getTargetType();
-            return targetType && targetType !== type 
+            return targetType && targetType !== type
                 ? O.fromNullable(scope.types.get(targetType))
                 : O.none;
         }),
@@ -127,12 +128,22 @@ export const resolveType = (scope: Scope) => (type: tsm.Type): O.Option<CompileT
     );
 };
 
-export function parseArguments(args: readonly GetValueFunc[]): E.Either<ParseError, readonly Operation[]> {
-    return pipe(
-        args,
-        ROA.reverse,
-        ROA.map(arg => pipe(arg(), E.map(ctv => ctv.loadOps))),
-        ROA.sequence(E.Applicative),
-        E.map(ROA.flatten),
-    )
+export function parseArguments(paramCount?: number) {
+    return (args: readonly GetValueFunc[]): E.Either<ParseError, readonly Operation[]> => {
+        const argCount = args.length;
+        // add a pushnull operation for any missing arguments
+        const missingArgOps = paramCount && paramCount > argCount
+            ? ROA.makeBy(paramCount - argCount, () => <Operation>{ kind: 'pushnull' })
+            : ROA.empty;
+
+        return pipe(
+            // remove any excess arguments
+            args.slice(0, paramCount),
+            ROA.reverse,
+            ROA.map(arg => pipe(arg(), E.map(ctv => ctv.loadOps))),
+            ROA.sequence(E.Applicative),
+            E.map(ROA.flatten),
+            E.map(ops => ROA.concat(ops)(missingArgOps))
+        )
+    }
 }

@@ -25,7 +25,7 @@
         },
         {
             "type": "neo-contract",
-            "name": "NEO: deploy helloworld",
+            "name": "NEO: helloworld deploy",
             "request": "launch",
             "program": "${workspaceFolder}/samples/helloworld/out/helloworld.nef",
             "neo-express": "${workspaceFolder}/samples/helloworld/default.neo-express",
@@ -34,14 +34,52 @@
         },
         {
             "type": "neo-contract",
-            "name": "NEO: deploy nep17",
+            "name": "NEO: nep17 deploy",
             "request": "launch",
             "program": "${workspaceFolder}/samples/nep17token/out/nep17token.nef",
             "neo-express": "${workspaceFolder}/samples/nep17token/default.neo-express",
             "invocation": "deploy",
             "deploy-signer": "@owen"
         },
-
+        {
+            "type": "neo-contract",
+            "name": "NEO: nep17 transfer",
+            "request": "launch",
+            "program": "${workspaceFolder}/samples/nep17token/out/nep17token.nef",
+            "neo-express": "${workspaceFolder}/samples/nep17token/default.neo-express",
+            "checkpoint": "${workspaceFolder}/samples/nep17token/out/nep17-deployed.neoxp-checkpoint",
+            "invocation": {
+                "operation": "transfer",
+                "args": ["@owen", "@alice", 100000000, null]
+            },
+            "signers": ["@owen"]
+        },
+        {
+            "type": "neo-contract",
+            "name": "NEO: nep17 mint",
+            "request": "launch",
+            "program": "${workspaceFolder}/samples/nep17token/out/nep17token.nef",
+            "neo-express": "${workspaceFolder}/samples/nep17token/default.neo-express",
+            "checkpoint": "${workspaceFolder}/samples/nep17token/out/nep17-deployed.neoxp-checkpoint",
+            "invocation": {
+                "operation": "mint",
+                "args": ["@alice", 100000000]
+            },
+            "signers": ["@owen"]
+        },
+        {
+            "type": "neo-contract",
+            "name": "NEO: nep17 burn",
+            "request": "launch",
+            "program": "${workspaceFolder}/samples/nep17token/out/nep17token.nef",
+            "neo-express": "${workspaceFolder}/samples/nep17token/default.neo-express",
+            "checkpoint": "${workspaceFolder}/samples/nep17token/out/nep17-deployed.neoxp-checkpoint",
+            "invocation": {
+                "operation": "burn",
+                "args": ["@owen", 100000000]
+            },
+            "signers": ["@owen"]
+        },
         {
             "args": [
                 "--timeout",

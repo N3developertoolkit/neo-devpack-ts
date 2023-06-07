@@ -64,7 +64,7 @@ function makeStorageCall(syscall: string): CallInvokeResolver {
         return pipe(
             args,
             ROA.prepend($this),
-            parseArguments,
+            parseArguments(),
             E.map(ROA.append<Operation>({ kind: "syscall", name: syscall })),
             E.map(loadOps => <CompileTimeObject>{ node, loadOps })
         )
@@ -146,7 +146,8 @@ function makeRemovePrefixFind($true: FindOptions, $false: FindOptions): CallInvo
                         getValue => pipe(getValue(), E.map(cto => cto.loadOps))
                     ),
                     E.bindTo('options'),
-                    E.bind('args', () => parseArguments([$this, prefix])),
+                    // System.Storage.Find take 2 arguments
+                    E.bind('args', () => parseArguments()([$this, prefix])),
                     E.map(({ options, args }) => ROA.concat(args)(options))
                 )
             }),
@@ -161,7 +162,7 @@ const callValues: CallInvokeResolver = (node) => ($this, args) => {
         args,
         ROA.head,
         E.fromOption(() => makeParseError(node)("callValues: expected 1 argument")),
-        E.chain(arg => parseArguments([$this, arg])),
+        E.chain(arg => parseArguments()([$this, arg])),
         E.map(ROA.prepend<Operation>(pushInt(FindOptions.ValuesOnly))),
         E.map(ROA.append<Operation>({ kind: "syscall", name: "System.Storage.Find" })),
         E.map(loadOps => <CompileTimeObject>{ node, loadOps })

@@ -60,7 +60,7 @@ export function burn(account: ByteString, amount: bigint): boolean {
         if (!updateBalance(account, -amount)) return false;
         updateTotalSupply(-amount);
     }
-    postTransfer(account, null, amount, null);
+    postTransfer(account, undefined, amount);
     return true;
 }
 
@@ -89,8 +89,8 @@ function createTokens(account: ByteString, amount: bigint) {
         updateTotalSupply(amount);
         updateBalance(account, amount);
     }
-    postTransfer(null, account, amount, null);
-}
+    postTransfer(undefined, account, amount);
+} 
 
 function updateTotalSupply(amount: bigint) {
     const supply = totalSupply() + amount;
@@ -110,9 +110,9 @@ function updateBalance(account: ByteString, amount: bigint): boolean {
 }
 
 /** @event */
-declare function Transfer(from: ByteString | null, to: ByteString | null, amount: bigint): void;
+declare function Transfer(from: ByteString | undefined, to: ByteString | undefined, amount: bigint): void;
 
-function postTransfer(from: ByteString | null, to: ByteString | null, amount: bigint, data: any) {
+function postTransfer(from: ByteString | undefined, to: ByteString | undefined, amount: bigint, data?: any) {
     Transfer(from, to, amount);
     if (to) {
         const contract = ContractManagement.getContract(to);
