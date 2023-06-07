@@ -14,16 +14,14 @@ task('setversion', async ctx => {
 })
 
 task('build', async ctx => {
-
   const version = await nbgv.getVersion();
-  logger.warn(`Version: ${version.version} (${version.commit})`);
-  // 
-  await ctx.exec('tsc --build tsconfig.json');
+  logger.info(`Version: ${version.version}`);
+  await ctx.exec('tsc --build tsconfig.json', { cwd: __dirname });
 })
 
 task('clean', async ctx => {
-  await ctx.exec('tsc --build tsconfig.json --clean');
-  await ctx.exec('git clean -dxf', { cwd: './samples' });
+  await ctx.exec('tsc --build tsconfig.json --clean', { cwd: __dirname });
+  await ctx.exec('git clean -dxf', { cwd: path.join(__dirname, "samples") });
 })
 
 const samples = [
@@ -38,7 +36,7 @@ async function buildSample(ctx, sample) {
   const compilerPath = path.posix.join(__dirname, "packages/compiler/lib/main.js").replace(/\\/g, '/');
   await ctx.exec(`node ${compilerPath} ${sample}.ts -o ./out`, { cwd });
 
-  const batchPath = path.posix.join(cwd, "express.batch");
+  const batchPath = path.join(cwd, "express.batch");
   if (fs.existsSync(batchPath)) {
     await ctx.exec(`dotnet neoxp batch -r express.batch`, { cwd });
   }
