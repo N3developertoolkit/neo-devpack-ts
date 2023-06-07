@@ -9,14 +9,15 @@ import { JumpOffsetOperation, Location, Operation, convertJumpTargetOps } from "
 import * as E from 'fp-ts/lib/Either';
 import { pipe } from "fp-ts/lib/function";
 import { Command, InvalidArgumentError, OptionValues } from 'commander';
-
 import * as fs from 'fs/promises'
+
+const packageJsonVersion = require('../package.json').version;
 
 const program = new Command();
 program
     .name('neotsc')
     .description('NEO N3 Smart Contract Compiler for TypeScript')
-    .version('0.8.0')
+    .version(packageJsonVersion)
     .argument('<contract-file>', 'TypeScript contract file')
     .option('-o, --output <path>', 'specifies the output directory')
     .option('--base-name <value>', "specifies the base name of the output files")
@@ -40,8 +41,8 @@ interface CompilerOptionValues extends OptionValues {
     // addressVersion?: number;
 }
 
-const options = program.opts();
-main(program.args, options);
+// const options = program.opts();
+// main(program.args, options);
 
 // function parseAddressVersion(value: string, previous: number): number {
 //     const parsedValue = parseInt(value, 10);
