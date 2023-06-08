@@ -1,13 +1,9 @@
 import 'mocha';
 import { expect } from 'chai';
 import * as tsm from "ts-morph";
-import * as ROA from 'fp-ts/ReadonlyArray';
-import { createTestProject, expectEither, createVarDeclCTO, expectPushInt } from './testUtils.spec';
-import { pushInt } from '../src/types/Operation';
-import { BoundVariable, BoundVariables, IdentifierBinding, isIdentifierBinding, parseVariableBinding, readVariableBinding } from '../src/passes/parseVariableBinding';
+import { createTestProject, expectEither } from './testUtils.spec';
+import { NestedVariableBindings, IdentifierBinding, flattenNestedVaribleBinding, isIdentifierBinding, readNestedVariableBinding } from '../src/passes/parseVariableBinding';
 import { pipe } from 'fp-ts/lib/function';
-import { isArray } from '../src/utils';
-import { execPath } from 'process';
 
 describe("read Variable Binding", () => {
     it("identifier declaration", () => {
@@ -16,7 +12,7 @@ describe("read Variable Binding", () => {
 
         const test = sourceFile.getVariableDeclarationOrThrow("test");
 
-        let result = pipe(test, readVariableBinding, expectEither);
+        let result = pipe(test, readNestedVariableBinding, expectEither);
         expect(isIdentifierBinding(result)).true;
         result = result as IdentifierBinding;
         expect(result.node).equals(test.getNameNode());
@@ -32,7 +28,7 @@ describe("read Variable Binding", () => {
             .asKindOrThrow(tsm.SyntaxKind.ExpressionStatement)
             .getExpressionIfKindOrThrow(tsm.SyntaxKind.BinaryExpression);
 
-        let result = pipe(expr.getLeft(), readVariableBinding, expectEither);
+        let result = pipe(expr.getLeft(), readNestedVariableBinding, expectEither);
         expect(isIdentifierBinding(result)).true;
         result = result as IdentifierBinding;
         expect(result.node).equals(expr.getLeft());
@@ -53,7 +49,7 @@ describe("read Variable Binding", () => {
         const b = (elements[1] as tsm.BindingElement).getNameNode().asKindOrThrow(tsm.SyntaxKind.Identifier);
         const d = (elements[3] as tsm.BindingElement).getNameNode().asKindOrThrow(tsm.SyntaxKind.Identifier);
 
-        let result = pipe(decl, readVariableBinding, expectEither);
+        let result = pipe(decl, readNestedVariableBinding, expectEither);
         expect(isIdentifierBinding(result)).false;
         expect(result).deep.equals([
             [{ node: a, symbol: a.getSymbolOrThrow() }, 0],
@@ -77,7 +73,7 @@ describe("read Variable Binding", () => {
         const left = expr.getLeft().asKindOrThrow(tsm.SyntaxKind.ArrayLiteralExpression);
         const elements = left.getElements();
 
-        const result = pipe(expr.getLeft(), readVariableBinding, expectEither);
+        const result = pipe(expr.getLeft(), readNestedVariableBinding, expectEither);
         expect(isIdentifierBinding(result)).false;
         expect(result).deep.equals([
             [{ node: elements[0], symbol: decls[0].getSymbolOrThrow() }, 0],
@@ -96,9 +92,9 @@ describe("read Variable Binding", () => {
         const expectedIndexes = ['a', 'c', 'd'];
         expect(expected).lengthOf(expectedIndexes.length);
 
-        let result = pipe(decl, readVariableBinding, expectEither);
+        let result = pipe(decl, readNestedVariableBinding, expectEither);
         expect(isIdentifierBinding(result)).false;
-        result = result as BoundVariables;
+        result = result as NestedVariableBindings;
         expect(result).lengthOf(expectedIndexes.length);
         for (const i in result) {
             let [actual, index] = result[i];
@@ -128,9 +124,9 @@ describe("read Variable Binding", () => {
         const expectedIndexes = ['a', 'c', 'd'];
         expect(decls).lengthOf(expectedIndexes.length);
 
-        let result = pipe(decl, readVariableBinding, expectEither);
+        let result = pipe(decl, readNestedVariableBinding, expectEither);
         expect(isIdentifierBinding(result)).false;
-        result = result as BoundVariables;
+        result = result as NestedVariableBindings;
         expect(result).lengthOf(expectedIndexes.length);
         for (const i in result) {
             let [actual, index] = result[i];
@@ -142,4 +138,17 @@ describe("read Variable Binding", () => {
             expect(actual.symbol.getName()).equals(decls[i].getSymbolOrThrow().getName());
         }
     });
+
+    it("nested", () => {
+        const contract = /*javascript*/`const o = {a: 'a', b: 'b', c: [1,2,3]}; const {a, c: [d, , e]} = o;`;
+        const { sourceFile } = createTestProject(contract);
+        const children = sourceFile.forEachChildAsArray();
+        const decl = children[1].asKindOrThrow(tsm.SyntaxKind.VariableStatement).getDeclarations()[0];
+
+        let result = pipe(decl, readNestedVariableBinding, expectEither);
+        const flat = flattenNestedVaribleBinding(result);
+        
+        // TODO: add verification 
+
+    })
 });

@@ -226,14 +226,14 @@ function readIdentifier(node: tsm.Identifier): E.Either<readonly ParseError[], I
     )
 }
 
-function readArray(elements: readonly (tsm.Expression | tsm.BindingElement)[]): E.Either<readonly ParseError[], BoundVariable> {
+function readArrayBinding(elements: readonly (tsm.Expression | tsm.BindingElement)[]): E.Either<readonly ParseError[], NestedVariableBinding> {
     const { left, right: vars } = pipe(
         elements,
         ROA.mapWithIndex((index, element) => [element, index] as const),
         ROA.filter(([element]) => !tsm.Node.isOmittedExpression(element)),
         ROA.map(([element, index]) => pipe(
             element,
-            readVariableBinding,
+            readNestedVariableBinding,
             E.map($var => [$var, index] as const)
         )),
         ROA.separate
@@ -243,13 +243,13 @@ function readArray(elements: readonly (tsm.Expression | tsm.BindingElement)[]): 
     return E.of(vars);
 }
 
-function readObjectBindingPattern(node: tsm.ObjectBindingPattern): E.Either<readonly ParseError[], BoundVariable> {
+function readObjectBindingPattern(node: tsm.ObjectBindingPattern): E.Either<readonly ParseError[], NestedVariableBinding> {
     const { left, right: vars } = pipe(
         node.getElements(),
         ROA.map(element => {
             return pipe(
                 E.Do,
-                E.bind('$var', () => pipe(element.getNameNode(), readVariableBinding)),
+                E.bind('$var', () => pipe(element.getNameNode(), readNestedVariableBinding)),
                 E.bind('index', () => pipe(
                     element.getPropertyNameNode(),
                     O.fromNullable,
@@ -270,8 +270,7 @@ function readObjectBindingPattern(node: tsm.ObjectBindingPattern): E.Either<read
     return E.of(vars);
 }
 
-function readObjectLiteralExpression(node: tsm.ObjectLiteralExpression): E.Either<readonly ParseError[], BoundVariable> {
-
+function readObjectLiteralExpression(node: tsm.ObjectLiteralExpression): E.Either<readonly ParseError[], NestedVariableBinding> {
     const { left, right: vars } = pipe(
         node.getProperties(),
         ROA.map(readObjectLiteralProperty),
@@ -298,7 +297,7 @@ function readObjectLiteralExpression(node: tsm.ObjectLiteralExpression): E.Eithe
                 prop.getInitializer(),
                 E.fromNullable(makeParseError(prop)(`expected initializer for property assignment`)),
                 E.mapLeft(ROA.of),
-                E.chain(readVariableBinding),
+                E.chain(readNestedVariableBinding),
                 E.bindTo('$var'),
                 E.bind('index', () => {
                     return pipe(
@@ -325,23 +324,37 @@ export interface IdentifierBinding {
     readonly symbol: tsm.Symbol;
 }
 
-export type BoundVariables = readonly (readonly [BoundVariable, number | string])[];
-export type BoundVariable = IdentifierBinding | BoundVariables;
+export type NestedVariableBindings = readonly (readonly [NestedVariableBinding, number | string])[];
+export type NestedVariableBinding = IdentifierBinding | NestedVariableBindings;
 
-export function isIdentifierBinding(value: BoundVariable): value is IdentifierBinding {
+export function isIdentifierBinding(value: NestedVariableBinding): value is IdentifierBinding {
     return !Array.isArray(value);
 }
 
-export function readVariableBinding(
+export function readNestedVariableBinding(
     node: tsm.BindingElement | tsm.BindingName | tsm.Expression | tsm.VariableDeclaration
-): E.Either<readonly ParseError[], BoundVariable> {
+): E.Either<readonly ParseError[], NestedVariableBinding> {
 
-    if (tsm.Node.isVariableDeclaration(node)) return readVariableBinding(node.getNameNode());
+    if (tsm.Node.isVariableDeclaration(node)) return readNestedVariableBinding(node.getNameNode());
     if (tsm.Node.isIdentifier(node)) return readIdentifier(node);
-    if (tsm.Node.isBindingElement(node)) return readVariableBinding(node.getNameNode());
-    if (tsm.Node.isArrayBindingPattern(node)) return pipe(node.getElements(), readArray);
-    if (tsm.Node.isArrayLiteralExpression(node)) return pipe(node.getElements(), readArray);
+    if (tsm.Node.isBindingElement(node)) return readNestedVariableBinding(node.getNameNode());
+    if (tsm.Node.isArrayBindingPattern(node)) return pipe(node.getElements(), readArrayBinding);
+    if (tsm.Node.isArrayLiteralExpression(node)) return pipe(node.getElements(), readArrayBinding);
     if (tsm.Node.isObjectBindingPattern(node)) return readObjectBindingPattern(node);
     if (tsm.Node.isObjectLiteralExpression(node)) return readObjectLiteralExpression(node);
     return pipe(makeParseError(node)(`readBoundVariables ${node.getKindName()} unsupported`), ROA.of, E.left);
+}
+
+export type VariableBinding = { 
+    readonly identifier: IdentifierBinding,
+    readonly index: readonly (number | string)[]
+}
+
+export function flattenNestedVaribleBinding($var: NestedVariableBinding, index: readonly (number | string)[] = []): readonly VariableBinding[] {
+    if (isIdentifierBinding($var)) return [ { identifier: $var, index } ];
+
+    return pipe(
+        $var,
+        ROA.chain(([$var, i]) => flattenNestedVaribleBinding($var, pipe(index, ROA.append(i))))
+    )
 }
