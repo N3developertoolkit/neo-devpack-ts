@@ -132,8 +132,6 @@ function makeNativeContracts(ctx: GlobalScopeContext) {
                         return <CompileTimeObject>{ node, symbol, loadOps: [{ kind: 'calltoken', token }] };
                     } else {
                         const paramCount = node.getParameters().length;
-                        // token.parametersCount field is dependent on the number of arguments,
-                        // so can't use makeInvokeResolver here
                         const resolver: InvokeResolver = ($this, args) => {
                             const token = new sc.MethodToken({
                                 hash: hash.toString(),

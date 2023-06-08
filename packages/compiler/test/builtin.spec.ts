@@ -308,9 +308,10 @@ describe("builts-ins", () => {
             const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
 
             const result = testParseExpression(init, scope);
-            expect(result).to.have.lengthOf(2);
-            expectPushData(result[0], "test");
-            expectCallToken(result[1], "0xacce6fd80d44e1796aa0c2c625e9e4e0ce39efc0", "atoi", 1, true);
+            expect(result).to.have.lengthOf(3);
+            expect(result[0]).deep.equals({ kind: 'pushnull'});
+            expectPushData(result[1], "test");
+            expectCallToken(result[2], "0xacce6fd80d44e1796aa0c2c625e9e4e0ce39efc0", "atoi", 2, true);
         })
 
         it("optional param method provided", () => {
