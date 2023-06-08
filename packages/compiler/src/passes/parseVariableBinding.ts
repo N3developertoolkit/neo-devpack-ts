@@ -5,11 +5,12 @@ import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray';
 import * as TS from '../TS';
 import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option';
-import { flow, pipe } from "fp-ts/function";
+import { flow, identity, pipe } from "fp-ts/function";
 import { Operation, pushInt, pushString, updateLocation } from "../types/Operation";
 import { CompileError, makeParseError, ParseError, single } from "../utils";
 import { parseExpression } from "./expressionProcessor";
 import { CompileTimeObject, Scope, updateScope } from "../types/CompileTimeObject";
+import { mapLeft } from "fp-ts/lib/EitherT";
 
 function isPushOp(op: Operation) {
     return op.kind === "pushbool"
@@ -123,7 +124,7 @@ export function parseVariableBinding(
 }
 
 interface ParseVarDeclResults {
-    readonly initOps: readonly Operation[]; 
+    readonly initOps: readonly Operation[];
     readonly variables: readonly ParsedVariable[];
 }
 
@@ -147,7 +148,7 @@ export function parseVariableDeclaration(scope: Scope, kind: tsm.VariableDeclara
 }
 
 export function processVarDeclResults(scope: Scope, makeCTO: (index: number, v: ParsedVariable) => CompileTimeObject) {
-    return ({initOps, variables: resultVariables}: ParseVarDeclResults) => {
+    return ({ initOps, variables: resultVariables }: ParseVarDeclResults) => {
         // create CTOs for all the constant parsed variables and add them to the scope
         scope = pipe(
             resultVariables,
@@ -165,10 +166,10 @@ export function processVarDeclResults(scope: Scope, makeCTO: (index: number, v: 
                 variables,
                 RNEA.mapWithIndex((index, v) => [makeCTO(index, v), v.index] as const)
             );
-    
+
             // add the variable CTOs to the scope
             scope = pipe(varCTOs, ROA.map(([cto]) => cto), updateScope(scope))
-    
+
             // create the pick operations for the variable CTOs
             const pickOps = pipe(
                 varCTOs,
@@ -191,11 +192,11 @@ export function processVarDeclResults(scope: Scope, makeCTO: (index: number, v: 
 
             // combine the initialization operations with the pick operations
             const ops = ROA.concat(pickOps)(initOps);
-   
+
             return { scope, variables, ops };
-        } else {    
+        } else {
             return { scope, variables: [], ops: [] };
-        } 
+        }
 
         function makePickOps(cto: CompileTimeObject, index: string | number | undefined): readonly Operation[] {
             if (!cto.storeOps)
@@ -206,4 +207,141 @@ export function processVarDeclResults(scope: Scope, makeCTO: (index: number, v: 
             return [indexOp, { kind: 'pickitem' }, ...cto.storeOps];
         }
     }
+}
+
+
+
+
+
+
+
+
+
+function readIdentifier(node: tsm.Identifier): E.Either<readonly ParseError[], IdentifierBinding> {
+    return pipe(
+        node,
+        TS.parseSymbol,
+        E.map(symbol => <IdentifierBinding>{ node, symbol }),
+        E.mapLeft(ROA.of)
+    )
+}
+
+function readArray(elements: readonly (tsm.Expression | tsm.BindingElement)[]): E.Either<readonly ParseError[], BoundVariable> {
+    const { left, right: vars } = pipe(
+        elements,
+        ROA.mapWithIndex((index, element) => [element, index] as const),
+        ROA.filter(([element]) => !tsm.Node.isOmittedExpression(element)),
+        ROA.map(([element, index]) => pipe(
+            element,
+            readVariableBinding,
+            E.map($var => [$var, index] as const)
+        )),
+        ROA.separate
+    )
+    const errors = pipe(left, ROA.flatten);
+    if (errors.length > 0) return E.left(errors);
+    return E.of(vars);
+}
+
+function readObjectBindingPattern(node: tsm.ObjectBindingPattern): E.Either<readonly ParseError[], BoundVariable> {
+    const { left, right: vars } = pipe(
+        node.getElements(),
+        ROA.map(element => {
+            return pipe(
+                E.Do,
+                E.bind('$var', () => pipe(element.getNameNode(), readVariableBinding)),
+                E.bind('index', () => pipe(
+                    element.getPropertyNameNode(),
+                    O.fromNullable,
+                    O.chain(TS.getSymbol),
+                    O.alt(() => pipe(element.getNameNode(), TS.getSymbol)),
+                    O.map(symbol => symbol.getName()),
+                    E.fromOption(() => ROA.of(makeParseError(element)(`could not find property symbol for object binding element`)))
+                )),
+                E.map(({ $var, index }) => {
+                    return [$var, index] as const;
+                })
+            )
+        }),
+        ROA.separate
+    )
+    const errors = pipe(left, ROA.flatten);
+    if (errors.length > 0) return E.left(errors);
+    return E.of(vars);
+}
+
+function readObjectLiteralExpression(node: tsm.ObjectLiteralExpression): E.Either<readonly ParseError[], BoundVariable> {
+
+    const { left, right: vars } = pipe(
+        node.getProperties(),
+        ROA.map(readObjectLiteralProperty),
+        ROA.separate
+    );
+
+    const errors = pipe(left, ROA.flatten);
+    if (errors.length > 0) return E.left(errors);
+    return E.of(vars);
+
+    function readObjectLiteralProperty(prop: tsm.ObjectLiteralElementLike) {
+        if (tsm.Node.isShorthandPropertyAssignment(prop)) {
+            // for shorthand property assignments, the index is the same as the property name
+            return pipe(
+                prop.getNameNode(),
+                readIdentifier,
+                E.map($var => [$var, $var.symbol.getName()] as const)
+            );
+        }
+        if (tsm.Node.isPropertyAssignment(prop)) {
+            // for property assignments, read the initializer as a bound variable 
+            // and read the name node as the index
+            return pipe(
+                prop.getInitializer(),
+                E.fromNullable(makeParseError(prop)(`expected initializer for property assignment`)),
+                E.mapLeft(ROA.of),
+                E.chain(readVariableBinding),
+                E.bindTo('$var'),
+                E.bind('index', () => {
+                    return pipe(
+                        prop.getNameNode().asKind(tsm.SyntaxKind.Identifier),
+                        E.fromNullable(makeParseError(prop.getNameNode())(`expected identifier for property name node`)),
+                        E.chain(TS.parseSymbol),
+                        E.map(symbol => symbol.getName()),
+                        E.mapLeft(ROA.of)
+                    );
+                }),
+                E.map(({ $var, index }) => [$var, index] as const)
+            );
+        }
+        return pipe(
+            makeParseError(prop)(`unsupoorted property kind ${prop.getKindName()}`),
+            ROA.of,
+            E.left
+        );
+    }
+}
+
+export interface IdentifierBinding {
+    readonly node: tsm.Identifier;
+    readonly symbol: tsm.Symbol;
+}
+
+export type BoundVariables = readonly (readonly [BoundVariable, number | string])[];
+export type BoundVariable = IdentifierBinding | BoundVariables;
+
+export function isIdentifierBinding(value: BoundVariable): value is IdentifierBinding {
+    return !Array.isArray(value);
+}
+
+export function readVariableBinding(
+    node: tsm.BindingElement | tsm.BindingName | tsm.Expression | tsm.VariableDeclaration
+): E.Either<readonly ParseError[], BoundVariable> {
+
+    if (tsm.Node.isVariableDeclaration(node)) return readVariableBinding(node.getNameNode());
+    if (tsm.Node.isIdentifier(node)) return readIdentifier(node);
+    if (tsm.Node.isBindingElement(node)) return readVariableBinding(node.getNameNode());
+    if (tsm.Node.isArrayBindingPattern(node)) return pipe(node.getElements(), readArray);
+    if (tsm.Node.isArrayLiteralExpression(node)) return pipe(node.getElements(), readArray);
+    if (tsm.Node.isObjectBindingPattern(node)) return readObjectBindingPattern(node);
+    if (tsm.Node.isObjectLiteralExpression(node)) return readObjectLiteralExpression(node);
+    return pipe(makeParseError(node)(`readBoundVariables ${node.getKindName()} unsupported`), ROA.of, E.left);
 }
