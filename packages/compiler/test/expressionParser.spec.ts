@@ -5,9 +5,9 @@ import * as tsm from 'ts-morph';
 import { identity, pipe } from 'fp-ts/function';
 import * as E from 'fp-ts/Either';
 import * as ROA from 'fp-ts/ReadonlyArray';
-import { parseExpression } from '../src/passes/expressionProcessor';
+import { flattenNestedAssignmentBinding, parseExpression, readAssignmentExpression } from '../src/passes/expressionProcessor';
 import { CompileTimeObject, CompileTimeType, InvokeResolver, createEmptyScope } from '../src/types/CompileTimeObject';
-import { createPropResolver, createPropResolvers, createTestProject, createTestScope, createTestVariable, expectPushData, makeFunctionInvoker as createFunctionInvoker, testParseExpression, expectPushInt, expectResults, createTestGlobalScope } from "./testUtils.spec";
+import { createPropResolver, createPropResolvers, createTestProject, createTestScope, createTestVariable, expectPushData, makeFunctionInvoker as createFunctionInvoker, testParseExpression, expectPushInt, expectResults, createTestGlobalScope, expectEither, createVarDeclCTO } from "./testUtils.spec";
 import { isArray, makeParseError } from '../src/utils';
 import { Operation, pushInt, pushString } from '../src/types/Operation';
 import { sc } from '@cityofzion/neon-core';
@@ -212,7 +212,148 @@ describe("expression parser", () => {
 
     describe.skip("binary", () => {
         // TODO: add tests
+
     });
+
+    describe("read assignment", () => {
+        it ("identifier", () => {
+            const contract = /*javascript*/ `let a; a = 42;`
+            const { sourceFile } = createTestProject(contract);
+            const a = createVarDeclCTO(sourceFile, 'a');
+            const scope = createTestScope(undefined, a);
+
+            const expr = sourceFile.forEachChildAsArray()[1]
+                .asKindOrThrow(tsm.SyntaxKind.ExpressionStatement)
+                .getExpressionIfKindOrThrow(tsm.SyntaxKind.BinaryExpression);
+            const result = pipe(expr.getLeft(), readAssignmentExpression(scope), expectEither, flattenNestedAssignmentBinding);
+            expect(result).length(1);
+            expect(result[0].cto).equals(a);
+            expect(result[0].index).empty;
+
+        })
+
+        it("array literal", () => {
+            const contract = /*javascript*/ `let a, b, d; [a,b,,d] = [1,2,3,4];`
+            const { sourceFile } = createTestProject(contract);
+
+            const a = createVarDeclCTO(sourceFile, 'a');
+            const b = createVarDeclCTO(sourceFile, 'b');
+            const d = createVarDeclCTO(sourceFile, 'd');
+            const scope = createTestScope(undefined, [a, b, d]);
+
+            const expr = sourceFile.forEachChildAsArray()[1]
+                .asKindOrThrow(tsm.SyntaxKind.ExpressionStatement)
+                .getExpressionIfKindOrThrow(tsm.SyntaxKind.BinaryExpression);
+            const result = pipe(expr.getLeft(), readAssignmentExpression(scope), expectEither, flattenNestedAssignmentBinding);
+
+            expect(result).length(3);
+            expect(result[0].cto).equals(a);
+            expect(result[0].index).deep.equals([0]);
+            expect(result[1].cto).equals(b);
+            expect(result[1].index).deep.equals([1]);
+            expect(result[2].cto).equals(d);
+            expect(result[2].index).deep.equals([3]);
+        })
+
+        
+        it("nested array literal", () => {
+            const contract = /*javascript*/ `let a, b, c; [a,,[b,,c]] = [1,7, [2,3,4]];`
+            const { sourceFile } = createTestProject(contract);
+
+            const a = createVarDeclCTO(sourceFile, 'a');
+            const b = createVarDeclCTO(sourceFile, 'b');
+            const c = createVarDeclCTO(sourceFile, 'c');
+            const scope = createTestScope(undefined, [a, b, c]);
+
+            const expr = sourceFile.forEachChildAsArray()[1]
+                .asKindOrThrow(tsm.SyntaxKind.ExpressionStatement)
+                .getExpressionIfKindOrThrow(tsm.SyntaxKind.BinaryExpression);
+            const result = pipe(expr.getLeft(), readAssignmentExpression(scope), expectEither, flattenNestedAssignmentBinding);
+
+            expect(result).length(3);
+            expect(result[0].cto).equals(a);
+            expect(result[0].index).deep.equals([0]);
+            expect(result[1].cto).equals(b);
+            expect(result[1].index).deep.equals([2, 0]);
+            expect(result[2].cto).equals(c);
+            expect(result[2].index).deep.equals([2, 2]);
+        })
+
+        it("object literal", () => {
+            // since curly braces deliniate blocks and objects, not sure TS supports directly assigning to an object literal
+            // however, it is absolutely possible to destructure via an object literal in a for loop initializer 
+            const contract = /*javascript*/`let foo = {a:1, b:2, c:3, d:4}; let a,z,d; for ({ a, c:z, d} of [foo]) {}; `;
+            const { sourceFile } = createTestProject(contract);
+
+            const a = createVarDeclCTO(sourceFile, 'a');
+            const z = createVarDeclCTO(sourceFile, 'z');
+            const d = createVarDeclCTO(sourceFile, 'd');
+            const scope = createTestScope(undefined, [a, z, d]);
+
+            const children = sourceFile.forEachChildAsArray();
+            const expr = children[2].asKindOrThrow(tsm.SyntaxKind.ForOfStatement).getInitializer();
+            expect(tsm.Node.isExpression(expr)).true;
+            const result = pipe(expr as tsm.Expression, readAssignmentExpression(scope), expectEither, flattenNestedAssignmentBinding);
+
+
+            expect(result).length(3);
+            expect(result[0].cto).equals(a);
+            expect(result[0].index).deep.equals(['a']);
+            expect(result[1].cto).equals(z);
+            expect(result[1].index).deep.equals(['c']);
+            expect(result[2].cto).equals(d);
+            expect(result[2].index).deep.equals(['d']);
+        });
+
+        it("nested object literal", () => {
+            // since curly braces deliniate blocks and objects, not sure TS supports directly assigning to an object literal
+            // however, it is absolutely possible to destructure via an object literal in a for loop initializer 
+            const contract = /*javascript*/`let foo = {a:1, b:2, c:{x:10, y:11, z: 12}, d:4}; let a,w,z; for ({ a, c:{x:w, z}} of [foo]) {}; `;
+            const { sourceFile } = createTestProject(contract);
+
+            const a = createVarDeclCTO(sourceFile, 'a');
+            const z = createVarDeclCTO(sourceFile, 'z');
+            const w = createVarDeclCTO(sourceFile, 'w');
+            const scope = createTestScope(undefined, [a, z, w]);
+
+            const children = sourceFile.forEachChildAsArray();
+            const expr = children[2].asKindOrThrow(tsm.SyntaxKind.ForOfStatement).getInitializer();
+            expect(tsm.Node.isExpression(expr)).true;
+            const result = pipe(expr as tsm.Expression, readAssignmentExpression(scope), expectEither, flattenNestedAssignmentBinding);
+
+
+            expect(result).length(3);
+            expect(result[0].cto).equals(a);
+            expect(result[0].index).deep.equals(['a']);
+            expect(result[1].cto).equals(w);
+            expect(result[1].index).deep.equals(['c', 'x']);
+            expect(result[2].cto).equals(z);
+            expect(result[2].index).deep.equals(['c', 'z']);
+        });
+
+        it("nested array and object literal", () => {
+            const contract = /*javascript*/ `let foo = {a:1, b:2, c:3, d:4}; let a,z,d; [a,,{b:z, d}] = [1,2, foo];`;
+            const { sourceFile } = createTestProject(contract);
+
+            const a = createVarDeclCTO(sourceFile, 'a');
+            const z = createVarDeclCTO(sourceFile, 'z');
+            const d = createVarDeclCTO(sourceFile, 'd');
+            const scope = createTestScope(undefined, [a, z, d]);
+
+            const expr = sourceFile.forEachChildAsArray()[2]
+                .asKindOrThrow(tsm.SyntaxKind.ExpressionStatement)
+                .getExpressionIfKindOrThrow(tsm.SyntaxKind.BinaryExpression);
+            const result = pipe(expr.getLeft(), readAssignmentExpression(scope), expectEither, flattenNestedAssignmentBinding);
+
+            expect(result).length(3);
+            expect(result[0].cto).equals(a);
+            expect(result[0].index).deep.equals([0]);
+            expect(result[1].cto).equals(z);
+            expect(result[1].index).deep.equals([2, "b"]);
+            expect(result[2].cto).equals(d);
+            expect(result[2].index).deep.equals([2, "d"]);
+        })
+    })
 
     describe("element access", () => {
         it("load number indexer", () => {

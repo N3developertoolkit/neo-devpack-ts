@@ -6,9 +6,10 @@ import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option';
 import { pipe } from "fp-ts/function";
 import { Operation, pushInt, pushString, updateLocation } from "../types/Operation";
-import { CompileError, makeParseError, ParseError, single } from "../utils";
+import { makeParseError, ParseError, single } from "../utils";
 import { parseExpression } from "./expressionProcessor";
 import { CompileTimeObject, Scope, updateScope } from "../types/CompileTimeObject";
+import { CompileTimeObjectWithIndex, NamedCompileTimeObjectWithIndex } from "./common";
 
 function isPushOp(op: Operation) {
     return op.kind === "pushbool"
@@ -16,12 +17,6 @@ function isPushOp(op: Operation) {
         || op.kind === "pushint"
         || op.kind === "pushnull";
 }
-
-type CompileTimeObjectWithIndex = {
-    cto: CompileTimeObject;
-    name: string;
-    index: readonly (string | number)[];
-};
 
 export function generateStoreOps(variables: readonly CompileTimeObjectWithIndex[]): E.Either<ParseError, readonly Operation[]> {
     // generate store operations for each indexed CTO
@@ -50,9 +45,9 @@ export function generateStoreOps(variables: readonly CompileTimeObjectWithIndex[
     )
 
     // map the index array to pickitem operations and concat with the CTO's store operations
-    function makeStoreOps({ cto, name, index }: CompileTimeObjectWithIndex): E.Either<ParseError, readonly Operation[]> {
+    function makeStoreOps({ cto, index }: CompileTimeObjectWithIndex): E.Either<ParseError, readonly Operation[]> {
         if (!cto.storeOps) {
-            return E.left(makeParseError(cto.node)(`variable ${name} does not have store ops`));
+            return E.left(makeParseError(cto.node)(`variable does not have store ops`));
         }
 
         return pipe(
@@ -72,7 +67,7 @@ export function updateDeclarationScope(
     variables: readonly ParsedVariable[],
     scope: Scope,
     ctoFactory: (node: tsm.Identifier, symbol: tsm.Symbol, index: number) => CompileTimeObject
-): { scope: Scope; variables: readonly CompileTimeObjectWithIndex[]; } {
+): { scope: Scope; variables: readonly NamedCompileTimeObjectWithIndex[]; } {
     // create CTOs for all the ParsedConstants and add them to the scope
     scope = pipe(
         variables,
@@ -215,60 +210,6 @@ function readObjectBindingPattern(node: tsm.ObjectBindingPattern): E.Either<read
     if (errors.length > 0) return E.left(errors);
     return E.of(vars);
 }
-
-
-// Originally, I thought I could use basically the same code for handling both var decl bindings
-// and array/object literal assignment. However, literal assignment supports element and property
-// assignment, so the binding code is not sufficient. 
-
-// function readObjectLiteralExpression(node: tsm.ObjectLiteralExpression): E.Either<readonly ParseError[], NestedVariableBinding> {
-//     const { left, right: vars } = pipe(
-//         node.getProperties(),
-//         ROA.map(readObjectLiteralProperty),
-//         ROA.separate
-//     );
-
-//     const errors = pipe(left, ROA.flatten);
-//     if (errors.length > 0) return E.left(errors);
-//     return E.of(vars);
-
-//     function readObjectLiteralProperty(prop: tsm.ObjectLiteralElementLike) {
-//         if (tsm.Node.isShorthandPropertyAssignment(prop)) {
-//             // for shorthand property assignments, the index is the same as the property name
-//             return pipe(
-//                 prop.getNameNode(),
-//                 readIdentifier,
-//                 E.map($var => [$var, $var.symbol.getName()] as const)
-//             );
-//         }
-//         if (tsm.Node.isPropertyAssignment(prop)) {
-//             // for property assignments, read the initializer as a bound variable 
-//             // and read the name node as the index
-//             return pipe(
-//                 prop.getInitializer(),
-//                 E.fromNullable(makeParseError(prop)(`expected initializer for property assignment`)),
-//                 E.mapLeft(ROA.of),
-//                 E.chain(readNestedVariableBinding),
-//                 E.bindTo('$var'),
-//                 E.bind('index', () => {
-//                     return pipe(
-//                         prop.getNameNode().asKind(tsm.SyntaxKind.Identifier),
-//                         E.fromNullable(makeParseError(prop.getNameNode())(`expected identifier for property name node`)),
-//                         E.chain(TS.parseSymbol),
-//                         E.map(symbol => symbol.getName()),
-//                         E.mapLeft(ROA.of)
-//                     );
-//                 }),
-//                 E.map(({ $var, index }) => [$var, index] as const)
-//             );
-//         }
-//         return pipe(
-//             makeParseError(prop)(`unsupoorted property kind ${prop.getKindName()}`),
-//             ROA.of,
-//             E.left
-//         );
-//     }
-// }
 
 export interface IdentifierBinding {
     readonly node: tsm.Identifier;

@@ -8,6 +8,7 @@ import * as TS from "../TS";
 import { getBooleanConvertOps, getIntegerConvertOps, getStringConvertOps, Operation, pushInt, pushString, isJumpTargetOp, makeConditionalExpression } from "../types/Operation";
 import { CompileTimeObject, GetValueFunc, resolve, resolveName, resolveType, Scope } from "../types/CompileTimeObject";
 import { ParseError, isIntegerLike, isStringLike, isVoidLike, makeParseError } from "../utils";
+import { CompileTimeObjectWithIndex } from "./common";
 
 function makeExpressionChain(node: tsm.Expression): RNEA.ReadonlyNonEmptyArray<tsm.Expression> {
     return makeChain(RNEA.of(node));
@@ -184,17 +185,7 @@ function reduceIdentifier(context: ExpressionHeadContext, node: tsm.Identifier):
 
     return pipe(
         node,
-        TS.parseSymbol,
-        E.chain(symbol => {
-            return pipe(
-                symbol,
-                resolve(context.scope),
-                O.alt(() => {
-                    return resolveName(context.scope)(symbol.getName());
-                }),
-                E.fromOption(() => makeParseError(node)(`failed to resolve ${symbol.getName()}`))
-            );
-        }),
+        resolveIdentifier(context.scope),
         E.map(cto => {
             const getOps = () => E.of(cto.loadOps);
             const getStoreOps = (valueOps: readonly Operation[]) => {
@@ -429,7 +420,7 @@ function reducePostfixUnaryExpression(context: ExpressionHeadContext, node: tsm.
         resolveExpression(context.scope),
         E.map(context => {
             const getStoreOps = () => E.left(makeParseError(node)(`store unary expression not supported`));
-            const getOps = () =>  pipe(
+            const getOps = () => pipe(
                 context.getOps(),
                 E.map(ROA.concat<Operation>([{ kind: "duplicate" }, { kind }])),
                 E.chain(valueOps => context.getStoreOps(valueOps)),
@@ -455,7 +446,7 @@ function reducePrefixUnaryExpression(context: ExpressionHeadContext, node: tsm.P
                 resolveExpression(context.scope),
                 E.map(context => {
                     const getStoreOps = () => E.left(makeParseError(node)(`store unary expression not supported`));
-                    const getOps = () =>  pipe(
+                    const getOps = () => pipe(
                         context.getOps(),
                         E.map(ROA.concat<Operation>([{ kind }, { kind: "duplicate" }])),
                         E.chain(valueOps => context.getStoreOps(valueOps)),
@@ -618,7 +609,7 @@ function reducePropertyAccessExpression(context: ExpressionContext, node: tsm.Pr
                                     // Properties of concrete generic types don't appear to have the
                                     // same symbol instances as their target type properties.
                                     // So try to resolve type property by name if resolving by symbol fails.
-                                    const name  = symbol.getName();
+                                    const name = symbol.getName();
                                     for (const [key, value] of ctt.properties?.entries() ?? []) {
                                         if (key.getName() === name) {
                                             return O.some(value);
@@ -677,13 +668,13 @@ function reduceElementAccessExpression(context: ExpressionContext, node: tsm.Ele
                 E.map(ROA.concat(argExprOps)),
                 E.map(ops => {
                     const getOps = () => pipe(
-                        ops, 
-                        ROA.append<Operation>({ kind: "pickitem" }), 
+                        ops,
+                        ROA.append<Operation>({ kind: "pickitem" }),
                         ROA.concat(chainOps),
                         E.of
                     );
                     const getStoreOps = (valueOps: readonly Operation[]) => pipe(
-                        ops, 
+                        ops,
                         ROA.concat<Operation>(valueOps),
                         ROA.append<Operation>({ kind: "setitem" }),
                         E.of
@@ -756,5 +747,107 @@ export function parseExpression(scope: Scope) {
             resolveExpression(scope),
             E.chain(ctx => ctx.getOps())
         );
+    }
+}
+
+
+function resolveIdentifier(scope: Scope) {
+    return (node: tsm.Identifier): E.Either<ParseError, CompileTimeObject> => {
+        return pipe(
+            node,
+            TS.parseSymbol,
+            E.chain(symbol => {
+                return pipe(
+                    symbol,
+                    resolve(scope),
+                    O.alt(() => {
+                        return resolveName(scope)(symbol.getName());
+                    }),
+                    E.fromOption(() => makeParseError(node)(`failed to resolve ${symbol.getName()}`)),
+                );
+            }),
+        );
+    }
+}
+
+export function flattenNestedAssignmentBinding(binding: NestedAssignmentBinding, index: readonly (number | string)[] = []): readonly CompileTimeObjectWithIndex[] {
+    if (isCTO(binding)) return [{ cto: binding, index }];
+    return pipe(
+        binding,
+        ROA.chain(([binding, i]) => flattenNestedAssignmentBinding(binding, pipe(index, ROA.append(i))))
+    )
+}
+
+type NestedAssignmentBindings = readonly (readonly [NestedAssignmentBinding, number | string])[];
+type NestedAssignmentBinding = CompileTimeObject | NestedAssignmentBindings;
+
+function isCTO(binding: NestedAssignmentBinding): binding is CompileTimeObject {
+    return !Array.isArray(binding);
+}
+
+export function readAssignmentExpression(scope: Scope) {
+    return (node: tsm.Expression): E.Either<ParseError, NestedAssignmentBinding> => {
+
+        if (tsm.Node.isIdentifier(node)) return readIdentifierAssignment(node, scope);
+        if (tsm.Node.isArrayLiteralExpression(node)) return readArrayLiteralAssignment(node, scope);
+        if (tsm.Node.isObjectLiteralExpression(node)) return readObjectLiteralAssignment(node, scope);
+
+        return E.left(makeParseError(node)(`readAssignmentExpression ${node.getKindName()} not implemented`));
+    }
+}
+
+function readIdentifierAssignment(node: tsm.Identifier, scope: Scope): E.Either<ParseError, NestedAssignmentBinding> {
+    return pipe(node, resolveIdentifier(scope))
+}
+
+function readArrayLiteralAssignment(node: tsm.ArrayLiteralExpression, scope: Scope): E.Either<ParseError, NestedAssignmentBinding> {
+    return pipe(
+        node.getElements(),
+        ROA.mapWithIndex((index, element) => [element, index] as const),
+        ROA.filter(([element]) => !tsm.Node.isOmittedExpression(element)),
+        ROA.map(([element, index]) => {
+            return pipe(
+                element,
+                readAssignmentExpression(scope),
+                E.map(binding => [binding, index] as const)
+            );
+        }),
+        ROA.sequence(E.Applicative),
+    )
+}
+function readObjectLiteralAssignment(node: tsm.ObjectLiteralExpression, scope: Scope): E.Either<ParseError, NestedAssignmentBinding> {
+    return pipe(
+        node.getProperties(),
+        ROA.map(readObjectLiteralAssignmentProperty(scope)),
+        ROA.sequence(E.Applicative),
+    )
+}
+
+function readObjectLiteralAssignmentProperty(scope: Scope) {
+    return (node: tsm.ObjectLiteralElementLike): E.Either<ParseError, readonly [NestedAssignmentBinding, string]> => {
+        if (tsm.Node.isShorthandPropertyAssignment(node)) {
+            // for shorthand property assignments, the index is the name
+            return pipe(
+                E.Do,
+                E.bind('name', () => pipe(node, TS.parseSymbol, E.map(symbol => symbol.getName()))),
+                E.bind('binding', () => readIdentifierAssignment(node.getNameNode(), scope)),
+                E.map(({ name, binding }) => [binding, name] as const)
+            );
+        }
+        if (tsm.Node.isPropertyAssignment(node)) {
+            return pipe(
+                E.Do,
+                E.bind('name', () => pipe(node, TS.parseSymbol, E.map(symbol => symbol.getName()))),
+                E.bind('binding', () => {
+                    return pipe(
+                        node.getInitializer(),
+                        E.fromNullable(makeParseError(node)(`expected initializer for property assignment`)),
+                        E.chain(readAssignmentExpression(scope)),
+                    )
+                }),
+                E.map(({ name, binding }) => [binding, name] as const)
+            )
+        }
+        return E.left(makeParseError(node)(`readObjectLiteralProperty ${node.getKindName()} not supported`));
     }
 }
