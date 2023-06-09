@@ -59,24 +59,37 @@ export function reduceVariableDeclaration(
         )),
         E.match(
             errors => updateContextErrors(context)(errors),
-            ({initOps, parsedVariables}) => {
+            ({ initOps, parsedVariables }) => {
                 const { scope, variables } = updateDeclarationScope(parsedVariables, context.scope, ctoFactory);
-                const storeOps = generateStoreOps(variables);
-                const initializeOps = pipe(context.initializeOps, ROA.concat(initOps), ROA.concat(storeOps));
-                const staticVars = pipe(
+                return pipe(
                     variables,
-                    ROA.mapWithIndex((index, v) => <ContractVariable>{ 
-                        name: v.name, 
-                        type: v.cto.node.getType(), 
-                        index: index + context.staticVars.length 
+                    generateStoreOps,
+                    E.map(storeOps => {
+                        const initializeOps = pipe(
+                            context.initializeOps,
+                            ROA.concat(initOps),
+                            ROA.concat(storeOps)
+                        );
+                        const staticVars = pipe(
+                            context.staticVars,
+                            ROA.concat(pipe(
+                                variables,
+                                ROA.mapWithIndex((index, v) => <ContractVariable>{
+                                    name: v.name,
+                                    type: v.cto.node.getType(),
+                                    index: index + context.staticVars.length
+                                }),
+                            ))
+                        )
+                        return <ParseSourceContext>{
+                            ...context,
+                            scope,
+                            staticVars,
+                            initializeOps
+                        };
                     }),
+                    E.match(updateContextErrors(context), identity)
                 )
-
-                return <ParseSourceContext>{ 
-                    ...context, 
-                    scope, 
-                    staticVars: pipe(context.staticVars, ROA.concat(staticVars)), initializeOps 
-                };
 
                 function ctoFactory(node: tsm.Identifier, symbol: tsm.Symbol, index: number): CompileTimeObject {
                     const slotIndex = index + context.staticVars.length;

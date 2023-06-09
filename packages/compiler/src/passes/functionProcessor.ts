@@ -153,21 +153,24 @@ function adaptVariableDeclaration(node: tsm.VariableDeclaration, kind: tsm.Varia
                 errors => [ROA.empty, updateContextErrors(context)(errors)],
                 ({ initOps, parsedVariables }) => {
                     const { scope, variables } = updateDeclarationScope(parsedVariables, context.scope, ctoFactory);
-                    const storeOps = generateStoreOps(variables);
-                    const ops = pipe(initOps, ROA.concat(storeOps));
-                    const locals = pipe(
+                    return pipe(
                         variables,
-                        ROA.map(v => <LocalVariable>{ name: v.name, type: v.cto.node.getType() }),
+                        generateStoreOps,
+                        E.map(storeOps => ROA.concat(storeOps)(initOps)),
+                        E.match(
+                            error => [ROA.empty, updateContextErrors(context)(error)],
+                            ops => {
+                                const locals = pipe(
+                                    context.locals,
+                                    ROA.concat(pipe(
+                                        variables,
+                                        ROA.map(v => <LocalVariable>{ name: v.name, type: v.cto.node.getType() }),
+                                    ))
+                                )
+                                return [ops, { ...context, scope, locals }];
+                            }
+                        )
                     )
-
-                    return [
-                        ops,
-                        {
-                            ...context,
-                            scope,
-                            locals: pipe(context.locals, ROA.concat(locals))
-                        }
-                    ]
 
                     function ctoFactory(node: tsm.Identifier, symbol: tsm.Symbol, index: number): CompileTimeObject {
                         const slotIndex = index + context.locals.length;

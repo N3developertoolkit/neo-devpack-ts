@@ -17,48 +17,52 @@ function isPushOp(op: Operation) {
         || op.kind === "pushnull";
 }
 
-type CompileTimeObjectWithIndex = { 
-    cto: CompileTimeObject; 
+type CompileTimeObjectWithIndex = {
+    cto: CompileTimeObject;
     name: string;
-    index: readonly (string | number)[]; 
+    index: readonly (string | number)[];
 };
 
-export function generateStoreOps(variables: readonly CompileTimeObjectWithIndex[]): readonly Operation[] {
-    
+export function generateStoreOps(variables: readonly CompileTimeObjectWithIndex[]): E.Either<ParseError, readonly Operation[]> {
     // generate store operations for each indexed CTO
-    // the store ops are generated from the CTO's index + store ops, with each variable except the last
+    // the store ops are generated from each CTO's index + store ops, with each variable except the last
     // getting a duplicate copy of the initialization value (generated elsewhere)
     return pipe(
         variables,
         ROA.matchRight(
-            () => ROA.empty,
+            () => E.of(ROA.empty),
             (init, last) => {
                 return pipe(
                     init,
                     ROA.map(item => pipe(
                         makeStoreOps(item),
-                        ROA.prepend<Operation>({ kind: "duplicate", location: item.cto.node })
+                        E.map(ROA.append<Operation>({ kind: "duplicate", location: item.cto.node })),
                     )),
-                    ROA.flatten<Operation>,
-                    ROA.concat(pipe(
+                    ROA.append(pipe(
                         makeStoreOps(last),
-                        updateLocation(last.cto.node)
-                    ))
+                        E.map(updateLocation(last.cto.node))
+                    )),
+                    ROA.sequence(E.Applicative),
+                    E.map(ROA.flatten)
                 )
             }
         )
     )
 
     // map the index array to pickitem operations and concat with the CTO's store operations
-    function makeStoreOps({ cto, index }: CompileTimeObjectWithIndex): readonly Operation[] {
-        if (!cto.storeOps) throw new CompileError('unexpected missing storeOps', cto.node);
+    function makeStoreOps({ cto, name, index }: CompileTimeObjectWithIndex): E.Either<ParseError, readonly Operation[]> {
+        if (!cto.storeOps) {
+            return E.left(makeParseError(cto.node)(`variable ${name} does not have store ops`));
+        }
+
         return pipe(
             index,
             ROA.chain(index => {
                 const indexStoreOp = typeof index === 'number' ? pushInt(index) : pushString(index);
                 return ROA.fromArray<Operation>([indexStoreOp, { kind: 'pickitem' }]);
             }),
-            ROA.concat(cto.storeOps)
+            ROA.concat(cto.storeOps),
+            E.of
         )
     }
 }
@@ -82,10 +86,10 @@ export function updateDeclarationScope(
     const $variables = pipe(
         variables,
         ROA.filterMap(O.fromPredicate(isVariableBinding)),
-        ROA.mapWithIndex((index, variable) => ({ 
-            cto: ctoFactory(variable.node, variable.symbol, index), 
+        ROA.mapWithIndex((index, variable) => ({
+            cto: ctoFactory(variable.node, variable.symbol, index),
             name: variable.symbol.getName(),
-            index: variable.index 
+            index: variable.index
         })),
     )
 
