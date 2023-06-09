@@ -19,203 +19,134 @@ function isPushOp(op: Operation) {
         || op.kind === "pushnull";
 }
 
-export interface ParsedVariable {
+// update scope + generate store operations for variable bindings
+export function processParsedVariables(
+    variables: readonly ParsedVariable[],
+    scope: Scope,
+    ctoFactory: (node: tsm.Identifier, symbol: tsm.Symbol, index: number) => CompileTimeObject
+): { readonly storeOps: readonly Operation[]; readonly scope: Scope; variables: readonly VariableBinding[]} {
+    // create CTOs for all the ParsedConstants and add them to the scope
+    scope = pipe(
+        variables,
+        ROA.filterMap(O.fromPredicate(isParsedConstant)),
+        ROA.map(v => <CompileTimeObject>{ node: v.node, symbol: v.symbol, loadOps: [v.constant] }),
+        updateScope(scope)
+    )
+
+    // map all the variable bindings to CTOs via cto factory. 
+    // attach binding index to the CTO for use in generating pick operations
+    const varCTOs = pipe(
+        variables,
+        ROA.filterMap(O.fromPredicate(isVariableBinding)),
+        ROA.mapWithIndex((index, variable) => ({ cto: ctoFactory(variable.node, variable.symbol, index), variable })),
+    )
+
+    // add all the variable CTOs to the scope
+    scope = pipe(
+        varCTOs,
+        ROA.map(({ cto }) => cto),
+        updateScope(scope)
+    )
+
+    // create the pick operations for the variable CTOs
+    const storeOps = pipe(
+        varCTOs,
+        ROA.matchRight(
+            () => ROA.empty,
+            (init, last) => {
+                return pipe(
+                    init,
+                    ROA.map(item => pipe(
+                        makePickOps(item),
+                        ROA.prepend<Operation>({ kind: "duplicate", location: item.cto.node })
+                    )),
+                    ROA.flatten<Operation>,
+                    ROA.concat(pipe(
+                        makePickOps(last),
+                        updateLocation(last.cto.node)
+                    ))
+                )
+            }
+        )
+    )
+
+    return { storeOps, scope, variables: pipe(varCTOs, ROA.map(({ variable } ) => variable)) };
+
+    // map the index array to pickitem operations and concat with the store operations
+    function makePickOps(
+        { cto, variable }: { cto: CompileTimeObject; variable: VariableBinding; }
+    ): readonly Operation[] {
+        if (!cto.storeOps) throw new CompileError('unexpected missing storeOps', cto.node);
+        return pipe(
+            variable.index,
+            ROA.chain(index => {
+                const indexOp = typeof index === 'number' ? pushInt(index) : pushString(index);
+                return ROA.fromArray<Operation>([indexOp, { kind: 'pickitem' }]);
+            }),
+            ROA.concat(cto.storeOps)
+        )
+    }
+}
+
+export interface ParsedConstant {
     readonly node: tsm.Identifier;
     readonly symbol: tsm.Symbol;
-    readonly constant?: Operation;
-    readonly index?: number | string;
+    readonly constant: Operation;
 }
 
-function parseIdentifierBinding(
-    node: tsm.Identifier,
-    kind: tsm.VariableDeclarationKind,
-    initOps: readonly Operation[]
-): E.Either<readonly ParseError[], readonly ParsedVariable[]> {
-    return pipe(
-        initOps,
-        O.fromPredicate(() => kind === tsm.VariableDeclarationKind.Const),
-        O.chain(flow(
-            ROA.filter(op => op.kind != 'noop'),
-            single,
-            O.chain(O.fromPredicate(isPushOp))
-        )),
-        E.of,
-        E.bindTo('constant'),
-        E.bind('symbol', () => TS.parseSymbol(node)),
-        E.map(({ constant, symbol }) => pipe(
-            constant,
-            O.match(
-                () => <ParsedVariable>{ node, symbol },
-                constant => <ParsedVariable>{ node, symbol, constant }
-            )
-        )),
-        E.map(ROA.of),
-        E.mapLeft(ROA.of)
-    );
+export type ParsedVariable = ParsedConstant | VariableBinding;
+
+export function isParsedConstant(v: ParsedVariable): v is ParsedConstant {
+    return 'constant' in v;
 }
 
-function parseArrayBinding(node: tsm.ArrayBindingPattern): E.Either<readonly ParseError[], readonly ParsedVariable[]> {
-    const { left, right } = pipe(
-        node.getElements(),
-        // associated index with each element
-        ROA.mapWithIndex((index, element) => [element, index] as const),
-        // filter out the omitted elements
-        ROA.filter(([element]) => tsm.Node.isBindingElement(element)),
-        ROA.map(([element, index]) => {
-            return pipe(
-                (element as tsm.BindingElement).getNameNode().asKind(tsm.SyntaxKind.Identifier),
-                E.fromNullable(makeParseError(element)(`could not find identifier for array binding element`)),
-                E.bindTo('node'),
-                E.bind('symbol', ({ node }) => TS.parseSymbol(node)),
-                E.map(({ node, symbol }) => <ParsedVariable>{ node, symbol, index })
-            );
-        }),
-        ROA.separate
-    );
-
-    return left.length > 0 ? E.left(left) : E.right(right);
+export function isVariableBinding(v: ParsedVariable): v is VariableBinding {
+    return 'index' in v;
 }
 
-function parseObjectBinding(node: tsm.ObjectBindingPattern): E.Either<readonly ParseError[], readonly ParsedVariable[]> {
-    const { left, right } = pipe(
-        node.getElements(),
-        ROA.map(element => {
-            return pipe(
-                E.Do,
-                E.bind('node', () => pipe(
-                    element.getNameNode().asKind(tsm.SyntaxKind.Identifier),
-                    E.fromNullable(makeParseError(element)(`could not find identifier for object binding element`))
-                )),
-                E.bind('symbol', ({ node }) => pipe(node, TS.parseSymbol)),
-                E.bind('index', ({ node }) => pipe(
-                    element.getPropertyNameNode(),
-                    O.fromNullable,
-                    O.chain(TS.getSymbol),
-                    O.alt(() => pipe(node.getSymbol(), O.fromNullable)),
-                    O.map(symbol => symbol.getName()),
-                    E.fromOption(() => makeParseError(element)(`could not find property symbol for object binding element`))
-                )),
-                E.map(value => value as ParsedVariable)
-            );
-        }),
-        ROA.separate
-    );
-    return left.length > 0 ? E.left(left) : E.right(right);
-}
-
+// parseVariableBinding broken out for test purposes
 export function parseVariableBinding(
     node: tsm.VariableDeclaration,
     kind: tsm.VariableDeclarationKind,
-    initOps: readonly Operation[]
+    initOp: O.Option<Operation>
 ): E.Either<readonly ParseError[], readonly ParsedVariable[]> {
-    const name = node.getNameNode();
-    switch (name.getKind()) {
-        case tsm.SyntaxKind.Identifier:
-            return parseIdentifierBinding(name as tsm.Identifier, kind, initOps);
-        case tsm.SyntaxKind.ArrayBindingPattern:
-            return parseArrayBinding(name as tsm.ArrayBindingPattern);
-        case tsm.SyntaxKind.ObjectBindingPattern:
-            return parseObjectBinding(name as tsm.ObjectBindingPattern);
-        default: {
-            const error = makeParseError(name)(`unsupported variable declaration name ${name.getKindName()}`);
-            return E.left(ROA.of(error));
-        }
-    }
+    return pipe(
+        node.getNameNode(),
+        readNestedVariableBinding,
+        E.map(flattenNestedVaribleBinding),
+        E.map(variables => {
+            return pipe(
+                initOp,
+                O.chain(O.fromPredicate(isPushOp)),
+                O.chain(O.fromPredicate(() => kind == tsm.VariableDeclarationKind.Const)),
+                O.chain(initOp => {
+                    return variables.length === 1
+                        ? pipe(
+                            { node: variables[0].node, symbol: variables[0].symbol, constant: initOp } as ParsedVariable,
+                            ROA.of,
+                            O.some)
+                        : O.none
+                }),
+                O.getOrElse(() => variables as readonly ParsedVariable[])
+            )
+        })
+    )
 }
 
-interface ParseVarDeclResults {
-    readonly initOps: readonly Operation[];
-    readonly variables: readonly ParsedVariable[];
-}
-
+// parse the variable declaration, returning an array of parsed constants and variables 
 export function parseVariableDeclaration(scope: Scope, kind: tsm.VariableDeclarationKind) {
-    return (node: tsm.VariableDeclaration): E.Either<readonly ParseError[], ParseVarDeclResults> => {
+    return (node: tsm.VariableDeclaration): E.Either<readonly ParseError[], readonly ParsedVariable[]> => {
         return pipe(
             node.getInitializer(),
             O.fromNullable,
-            O.match(
-                () => E.of(ROA.empty),
-                init => pipe(
-                    init,
-                    parseExpression(scope)
-                )
-            ),
-            E.bindTo('initOps'),
+            O.map(parseExpression(scope)),
+            O.match(() => E.of(O.none), E.map(O.some)),
+            E.map(O.chain(single)),
             E.mapLeft(ROA.of),
-            E.bind('variables', ({ initOps }) => parseVariableBinding(node, kind, initOps)),
-        );
+            E.chain(initOp => parseVariableBinding(node, kind, initOp))
+        )
     }
 }
-
-export function processVarDeclResults(scope: Scope, makeCTO: (index: number, v: ParsedVariable) => CompileTimeObject) {
-    return ({ initOps, variables: resultVariables }: ParseVarDeclResults) => {
-        // create CTOs for all the constant parsed variables and add them to the scope
-        scope = pipe(
-            resultVariables,
-            ROA.filter(v => !!v.constant),
-            ROA.map(v => <CompileTimeObject>{ node: v.node, symbol: v.symbol, loadOps: [v.constant] }),
-            updateScope(scope)
-        );
-
-        // create an array of all the non-constant parsed variables
-        const variables = pipe(resultVariables, ROA.filter(v => !v.constant));
-
-        if (ROA.isNonEmpty(variables)) {
-            // create CTOs for all the non-constant variables
-            const varCTOs = pipe(
-                variables,
-                RNEA.mapWithIndex((index, v) => [makeCTO(index, v), v.index] as const)
-            );
-
-            // add the variable CTOs to the scope
-            scope = pipe(varCTOs, ROA.map(([cto]) => cto), updateScope(scope))
-
-            // create the pick operations for the variable CTOs
-            const pickOps = pipe(
-                varCTOs,
-                RNEA.matchRight(
-                    (init, [lastCTO, lastIndex]) => {
-                        return pipe(
-                            init,
-                            ROA.map(([cto, index]) => pipe(
-                                makePickOps(cto, index),
-                                ROA.prepend<Operation>({ kind: "duplicate", location: cto.node })
-                            )),
-                            ROA.flatten<Operation>, ROA.concat(pipe(
-                                makePickOps(lastCTO, lastIndex),
-                                updateLocation(lastCTO.node)
-                            ))
-                        );
-                    }
-                )
-            );
-
-            // combine the initialization operations with the pick operations
-            const ops = ROA.concat(pickOps)(initOps);
-
-            return { scope, variables, ops };
-        } else {
-            return { scope, variables: [], ops: [] };
-        }
-
-        function makePickOps(cto: CompileTimeObject, index: string | number | undefined): readonly Operation[] {
-            if (!cto.storeOps)
-                throw new CompileError('unexpected missing storeOps', cto.node);
-            if (!index)
-                return cto.storeOps;
-            const indexOp = typeof index === 'number' ? pushInt(index) : pushString(index);
-            return [indexOp, { kind: 'pickitem' }, ...cto.storeOps];
-        }
-    }
-}
-
-
-
-
-
-
-
-
 
 function readIdentifier(node: tsm.Identifier): E.Either<readonly ParseError[], IdentifierBinding> {
     return pipe(
@@ -331,11 +262,10 @@ export function isIdentifierBinding(value: NestedVariableBinding): value is Iden
     return !Array.isArray(value);
 }
 
+// 
 export function readNestedVariableBinding(
-    node: tsm.BindingElement | tsm.BindingName | tsm.Expression | tsm.VariableDeclaration
+    node: tsm.BindingElement | tsm.BindingName | tsm.Expression
 ): E.Either<readonly ParseError[], NestedVariableBinding> {
-
-    if (tsm.Node.isVariableDeclaration(node)) return readNestedVariableBinding(node.getNameNode());
     if (tsm.Node.isIdentifier(node)) return readIdentifier(node);
     if (tsm.Node.isBindingElement(node)) return readNestedVariableBinding(node.getNameNode());
     if (tsm.Node.isArrayBindingPattern(node)) return pipe(node.getElements(), readArrayBinding);
@@ -345,13 +275,14 @@ export function readNestedVariableBinding(
     return pipe(makeParseError(node)(`readBoundVariables ${node.getKindName()} unsupported`), ROA.of, E.left);
 }
 
-export type VariableBinding = { 
-    readonly identifier: IdentifierBinding,
+export type VariableBinding = {
+    readonly node: tsm.Identifier;
+    readonly symbol: tsm.Symbol;
     readonly index: readonly (number | string)[]
 }
 
 export function flattenNestedVaribleBinding($var: NestedVariableBinding, index: readonly (number | string)[] = []): readonly VariableBinding[] {
-    if (isIdentifierBinding($var)) return [ { identifier: $var, index } ];
+    if (isIdentifierBinding($var)) return [{ node: $var.node, symbol: $var.symbol, index }];
 
     return pipe(
         $var,

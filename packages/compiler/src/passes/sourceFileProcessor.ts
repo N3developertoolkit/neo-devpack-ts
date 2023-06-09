@@ -3,15 +3,17 @@ import { identity, pipe } from "fp-ts/function";
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as TS from '../TS';
 import * as E from "fp-ts/Either";
+import * as O from 'fp-ts/Option';
 import * as S from 'fp-ts/State';
 
-import { CompiledProject, ContractEvent, ContractMethod } from "../types/CompileOptions";
+import { CompiledProject, ContractEvent, ContractMethod, ContractVariable } from "../types/CompileOptions";
 import { Operation } from "../types/Operation";
 import { CompileTimeObject, Scope } from "../types/CompileTimeObject";
 import { makeParseError, ParseError, makeParseDiagnostic, updateContextErrors, getScratchFile } from "../utils";
 import { hoistDeclarations } from "./hoistDeclarations";
 import { parseContractMethod } from "./functionProcessor";
-import { ParsedVariable, parseVariableDeclaration, processVarDeclResults } from "./parseVariableBinding";
+import { ParsedVariable, isParsedConstant, isVariableBinding, parseVariableDeclaration, processParsedVariables } from "./parseVariableBinding";
+import { parseExpression } from "./expressionProcessor";
 
 function reduceFunctionDeclaration(context: ParseSourceContext, node: tsm.FunctionDeclaration): ParseSourceContext {
     if (node.hasDeclareKeyword()) {
@@ -47,28 +49,36 @@ export function reduceVariableDeclaration(
     return pipe(
         node,
         parseVariableDeclaration(context.scope, kind),
+        E.bindTo('parsedVariables'),
+        E.bind('initOps', () => pipe(
+            node.getInitializer(),
+            O.fromNullable,
+            O.map(parseExpression(context.scope)),
+            O.getOrElse(() => E.of(ROA.empty as readonly Operation[])),
+            E.mapLeft(ROA.of)
+        )),
         E.match(
             errors => updateContextErrors(context)(errors),
-            results => {
-                const { scope, variables, ops } = processVarDeclResults(context.scope, makeCTO)(results);
-                const initializeOps = ROA.concat(ops)(context.initializeOps);
+            ({initOps, parsedVariables}) => {
+
+                const { storeOps, scope, variables } = processParsedVariables(parsedVariables, context.scope, ctoFactory)
+                const initializeOps = pipe(context.initializeOps, ROA.concat(initOps), ROA.concat(storeOps));
                 const staticVars = pipe(
                     variables,
-                    ROA.mapWithIndex((index, v) => ({ 
+                    ROA.mapWithIndex((index, v) => <ContractVariable>{ 
                         name: v.symbol.getName(), 
                         type: v.node.getType(), 
                         index: index + context.staticVars.length 
-                    })),
-                    vars => ROA.concat(vars)(context.staticVars)
+                    }),
                 )
 
-                return { ...context, scope, staticVars, initializeOps };
+                return <ParseSourceContext>{ ...context, scope, staticVars: pipe(context.staticVars, ROA.concat(staticVars)), initializeOps };
 
-                function makeCTO(index: number, v: ParsedVariable): CompileTimeObject {
+                function ctoFactory(node: tsm.Identifier, symbol: tsm.Symbol, index: number): CompileTimeObject {
                     const slotIndex = index + context.staticVars.length;
                     const loadOps = ROA.of(<Operation>{ kind: "loadstatic", index: slotIndex });
                     const storeOps = ROA.of(<Operation>{ kind: "storestatic", index: slotIndex });
-                    return <CompileTimeObject>{ node: v.node, symbol: v.symbol, loadOps, storeOps };
+                    return <CompileTimeObject>{ node, symbol, loadOps, storeOps };
                 }
             }
         )

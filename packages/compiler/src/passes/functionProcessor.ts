@@ -11,7 +11,7 @@ import { Operation, getBooleanConvertOps, updateLocation } from "../types/Operat
 import { CompileError, E_fromSeparated, ParseError, isVoidLike, makeParseError, updateContextErrors } from "../utils";
 import { ContractMethod, ContractVariable } from "../types/CompileOptions";
 import { parseExpression } from "./expressionProcessor";
-import { ParsedVariable, parseVariableDeclaration, processVarDeclResults } from "./parseVariableBinding";
+import { ParsedVariable, parseVariableDeclaration, processParsedVariables } from "./parseVariableBinding";
 
 function adaptExpression(node: tsm.Expression, convertOps: readonly Operation[] = []): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
@@ -141,29 +141,32 @@ function adaptVariableDeclaration(node: tsm.VariableDeclaration, kind: tsm.Varia
         return pipe(
             node,
             parseVariableDeclaration(context.scope, kind),
+            E.bindTo('parsedVariables'),
+            E.bind('initOps', () => pipe(
+                node.getInitializer(),
+                O.fromNullable,
+                O.map(parseExpression(context.scope)),
+                O.getOrElse(() => E.of(ROA.empty as readonly Operation[])),
+                E.mapLeft(ROA.of)
+            )),
             E.match(
                 errors => [ROA.empty, updateContextErrors(context)(errors)],
-                results => {
-                    const init = node.getInitializer();
-                    if (init) {
-                        const initOps = pipe(results.initOps, updateLocation(init));
-                        results = { ...results, initOps };
-                    }
-                    const { scope, variables, ops } = processVarDeclResults(context.scope, makeCTO)(results);
+                ({initOps, parsedVariables}) => {
 
+                    const { storeOps, scope, variables } = processParsedVariables(parsedVariables, context.scope, ctoFactory)
+                    const ops = pipe(initOps, ROA.concat(storeOps));
                     const locals = pipe(
                         variables,
                         ROA.map(v => <LocalVariable>{ name: v.symbol.getName(), type: v.node.getType() }),
-                        vars => ROA.concat(vars)(context.locals)
                     )
 
-                    return [ops, { ...context, scope, locals }]
+                    return [ops, { ...context, scope, locals: pipe(context.locals, ROA.concat(locals)) }]
 
-                    function makeCTO(index: number, v: ParsedVariable): CompileTimeObject {
+                    function ctoFactory(node: tsm.Identifier, symbol: tsm.Symbol, index: number): CompileTimeObject {
                         const slotIndex = index + context.locals.length;
                         const loadOps = ROA.of(<Operation>{ kind: "loadlocal", index: slotIndex });
                         const storeOps = ROA.of(<Operation>{ kind: "storelocal", index: slotIndex });
-                        return <CompileTimeObject>{ node: v.node, symbol: v.symbol, loadOps, storeOps };
+                        return <CompileTimeObject>{ node, symbol, loadOps, storeOps };
                     }
                 }
             )

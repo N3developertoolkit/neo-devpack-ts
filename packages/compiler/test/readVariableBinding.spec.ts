@@ -10,20 +10,20 @@ describe("read Variable Binding", () => {
         const contract = /*javascript*/ `const test = 42;`
         const { sourceFile } = createTestProject(contract);
 
-        const test = sourceFile.getVariableDeclarationOrThrow("test");
+        const decl = sourceFile.getVariableDeclarationOrThrow("test");
 
-        let result = pipe(test, readNestedVariableBinding, expectEither);
+        let result = pipe(decl.getNameNode(), readNestedVariableBinding, expectEither);
         expect(isIdentifierBinding(result)).true;
         result = result as IdentifierBinding;
-        expect(result.node).equals(test.getNameNode());
-        expect(result.symbol).equals(test.getSymbolOrThrow());
+        expect(result.node).equals(decl.getNameNode());
+        expect(result.symbol).equals(decl.getSymbolOrThrow());
     })
 
     it("identifier assignment", () => {
         const contract = /*javascript*/ `let test = 42; test = 43;`
         const { sourceFile } = createTestProject(contract);
 
-        const test = sourceFile.getVariableDeclarationOrThrow("test");
+        const decl = sourceFile.getVariableDeclarationOrThrow("test");
         const expr = sourceFile.forEachChildAsArray()[1]
             .asKindOrThrow(tsm.SyntaxKind.ExpressionStatement)
             .getExpressionIfKindOrThrow(tsm.SyntaxKind.BinaryExpression);
@@ -32,7 +32,7 @@ describe("read Variable Binding", () => {
         expect(isIdentifierBinding(result)).true;
         result = result as IdentifierBinding;
         expect(result.node).equals(expr.getLeft());
-        expect(result.symbol).equals(test.getNameNode().getSymbolOrThrow());
+        expect(result.symbol).equals(decl.getNameNode().getSymbolOrThrow());
     })
 
     it("array binding declaration", () => {
@@ -49,7 +49,7 @@ describe("read Variable Binding", () => {
         const b = (elements[1] as tsm.BindingElement).getNameNode().asKindOrThrow(tsm.SyntaxKind.Identifier);
         const d = (elements[3] as tsm.BindingElement).getNameNode().asKindOrThrow(tsm.SyntaxKind.Identifier);
 
-        let result = pipe(decl, readNestedVariableBinding, expectEither);
+        let result = pipe(decl.getNameNode(), readNestedVariableBinding, expectEither);
         expect(isIdentifierBinding(result)).false;
         expect(result).deep.equals([
             [{ node: a, symbol: a.getSymbolOrThrow() }, 0],
@@ -92,7 +92,7 @@ describe("read Variable Binding", () => {
         const expectedIndexes = ['a', 'c', 'd'];
         expect(expected).lengthOf(expectedIndexes.length);
 
-        let result = pipe(decl, readNestedVariableBinding, expectEither);
+        let result = pipe(decl.getNameNode(), readNestedVariableBinding, expectEither);
         expect(isIdentifierBinding(result)).false;
         result = result as NestedVariableBindings;
         expect(result).lengthOf(expectedIndexes.length);
@@ -145,7 +145,7 @@ describe("read Variable Binding", () => {
         const children = sourceFile.forEachChildAsArray();
         const decl = children[1].asKindOrThrow(tsm.SyntaxKind.VariableStatement).getDeclarations()[0];
 
-        let result = pipe(decl, readNestedVariableBinding, expectEither);
+        let result = pipe(decl.getNameNode(), readNestedVariableBinding, expectEither);
         const flat = flattenNestedVaribleBinding(result);
         
         // TODO: add verification 
