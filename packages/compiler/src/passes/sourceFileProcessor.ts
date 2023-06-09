@@ -12,7 +12,7 @@ import { CompileTimeObject, Scope } from "../types/CompileTimeObject";
 import { makeParseError, ParseError, makeParseDiagnostic, updateContextErrors, getScratchFile } from "../utils";
 import { hoistDeclarations } from "./hoistDeclarations";
 import { parseContractMethod } from "./functionProcessor";
-import { ParsedVariable, isParsedConstant, isVariableBinding, parseVariableDeclaration, processParsedVariables } from "./parseVariableBinding";
+import { generateStoreOps, parseVariableDeclaration, updateDeclarationScope } from "./parseVariableBinding";
 import { parseExpression } from "./expressionProcessor";
 
 function reduceFunctionDeclaration(context: ParseSourceContext, node: tsm.FunctionDeclaration): ParseSourceContext {
@@ -60,19 +60,23 @@ export function reduceVariableDeclaration(
         E.match(
             errors => updateContextErrors(context)(errors),
             ({initOps, parsedVariables}) => {
-
-                const { storeOps, scope, variables } = processParsedVariables(parsedVariables, context.scope, ctoFactory)
+                const { scope, variables } = updateDeclarationScope(parsedVariables, context.scope, ctoFactory);
+                const storeOps = generateStoreOps(variables);
                 const initializeOps = pipe(context.initializeOps, ROA.concat(initOps), ROA.concat(storeOps));
                 const staticVars = pipe(
                     variables,
                     ROA.mapWithIndex((index, v) => <ContractVariable>{ 
-                        name: v.symbol.getName(), 
-                        type: v.node.getType(), 
+                        name: v.name, 
+                        type: v.cto.node.getType(), 
                         index: index + context.staticVars.length 
                     }),
                 )
 
-                return <ParseSourceContext>{ ...context, scope, staticVars: pipe(context.staticVars, ROA.concat(staticVars)), initializeOps };
+                return <ParseSourceContext>{ 
+                    ...context, 
+                    scope, 
+                    staticVars: pipe(context.staticVars, ROA.concat(staticVars)), initializeOps 
+                };
 
                 function ctoFactory(node: tsm.Identifier, symbol: tsm.Symbol, index: number): CompileTimeObject {
                     const slotIndex = index + context.staticVars.length;

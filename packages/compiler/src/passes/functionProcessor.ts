@@ -11,7 +11,7 @@ import { Operation, getBooleanConvertOps, updateLocation } from "../types/Operat
 import { CompileError, E_fromSeparated, ParseError, isVoidLike, makeParseError, updateContextErrors } from "../utils";
 import { ContractMethod, ContractVariable } from "../types/CompileOptions";
 import { parseExpression } from "./expressionProcessor";
-import { ParsedVariable, parseVariableDeclaration, processParsedVariables } from "./parseVariableBinding";
+import { parseVariableDeclaration, generateStoreOps, updateDeclarationScope } from "./parseVariableBinding";
 
 function adaptExpression(node: tsm.Expression, convertOps: readonly Operation[] = []): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
@@ -151,16 +151,23 @@ function adaptVariableDeclaration(node: tsm.VariableDeclaration, kind: tsm.Varia
             )),
             E.match(
                 errors => [ROA.empty, updateContextErrors(context)(errors)],
-                ({initOps, parsedVariables}) => {
-
-                    const { storeOps, scope, variables } = processParsedVariables(parsedVariables, context.scope, ctoFactory)
+                ({ initOps, parsedVariables }) => {
+                    const { scope, variables } = updateDeclarationScope(parsedVariables, context.scope, ctoFactory);
+                    const storeOps = generateStoreOps(variables);
                     const ops = pipe(initOps, ROA.concat(storeOps));
                     const locals = pipe(
                         variables,
-                        ROA.map(v => <LocalVariable>{ name: v.symbol.getName(), type: v.node.getType() }),
+                        ROA.map(v => <LocalVariable>{ name: v.name, type: v.cto.node.getType() }),
                     )
 
-                    return [ops, { ...context, scope, locals: pipe(context.locals, ROA.concat(locals)) }]
+                    return [
+                        ops,
+                        {
+                            ...context,
+                            scope,
+                            locals: pipe(context.locals, ROA.concat(locals))
+                        }
+                    ]
 
                     function ctoFactory(node: tsm.Identifier, symbol: tsm.Symbol, index: number): CompileTimeObject {
                         const slotIndex = index + context.locals.length;
