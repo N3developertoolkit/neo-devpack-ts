@@ -1,4 +1,20 @@
-# neo-devpack-ts
+# Neo Devpack for TypeScript
+
+<p align="left">
+  <a href="https://github.com/ngdenterprise/neo-devpack-ts/releases/tag/0.8.9-preview">
+    <img src="https://img.shields.io/badge/preview-v0.8.9-orange">
+  </a>
+  <a href="https://github.com/ngdenterprise/neo-devpack-ts/blob/main/LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT-blue.svg">
+  </a>
+</p>
+
+This repo contains a new Neo N3 TypeScript smart contract compiler. In other words, the tool in this repo 
+allows you to write Neo N3 Smart Contracts using TypeScript. This tool joins the larger family of Neo 
+N3 smart contract compilers including [C#](https://github.com/neo-project/neo-devpack-dotnet),
+[Java](https://neow3j.io/#/neo-n3/smart_contract_development/introduction), 
+[Python](https://github.com/CityOfZion/neo3-boa)
+and [Go](https://github.com/nspcc-dev/neo-go/blob/master/docs/compiler.md).
 
 > Note, this project is under active development. It is not yet packaged as a stand alone tool.
 > If you wish to try it with your own contract, please see the [Samples](#samples) section below.
