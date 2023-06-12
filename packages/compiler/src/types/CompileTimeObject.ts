@@ -11,10 +11,8 @@ import { Operation } from "./Operation";
 import { CompileError, ParseError, isArray } from "../utils";
 
 export type GetOpsFunc = () => E.Either<ParseError, readonly Operation[]>;
-export type GetValueFunc = () => E.Either<ParseError, CompileTimeObject>;
-
 export type PropertyResolver = ($this: GetOpsFunc) => E.Either<ParseError, CompileTimeObject>;
-export type InvokeResolver = ($this: GetValueFunc, args: readonly GetValueFunc[]) => E.Either<ParseError, CompileTimeObject>;
+export type InvokeResolver = ($this: GetOpsFunc, args: readonly GetOpsFunc[]) => E.Either<ParseError, CompileTimeObject>;
 export type CallInvokeResolver = (node: tsm.CallExpression) => InvokeResolver;
 export type NewInvokeResolver = (node: tsm.NewExpression) => InvokeResolver;
 
@@ -128,7 +126,7 @@ export const resolveType = (scope: Scope) => (type: tsm.Type): O.Option<CompileT
 };
 
 export function parseArguments(paramCount?: number) {
-    return (args: readonly GetValueFunc[]): E.Either<ParseError, readonly Operation[]> => {
+    return (args: readonly GetOpsFunc[]): E.Either<ParseError, readonly Operation[]> => {
         const argCount = args.length;
         // add a pushnull operation for any missing arguments
         const missingArgOps = paramCount && paramCount > argCount
@@ -139,7 +137,7 @@ export function parseArguments(paramCount?: number) {
             // remove any excess arguments
             args.slice(0, paramCount),
             ROA.reverse,
-            ROA.map(arg => pipe(arg(), E.map(ctv => ctv.loadOps))),
+            ROA.map(arg => arg()),
             ROA.sequence(E.Applicative),
             E.map(ROA.flatten),
             E.map(ops => ROA.concat(ops)(missingArgOps))

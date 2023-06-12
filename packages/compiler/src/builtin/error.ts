@@ -1,25 +1,23 @@
 import * as tsm from "ts-morph";
-import { flow, identity, pipe } from "fp-ts/lib/function";
+import { pipe } from "fp-ts/lib/function";
 import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option'
 import * as ROA from 'fp-ts/ReadonlyArray'
-import * as ROR from 'fp-ts/ReadonlyRecord';
-import * as S from 'fp-ts/State';
-import * as TS from "../TS";
 
 import { GlobalScopeContext, getVarDeclAndSymbol } from "./common";
-import { CallInvokeResolver, CompileTimeObject, GetValueFunc, NewInvokeResolver } from "../types/CompileTimeObject";
-import { ParseError, createDiagnostic, single } from "../utils";
-import { pushString } from "../types/Operation";
+import { CallInvokeResolver, CompileTimeObject, GetOpsFunc, NewInvokeResolver } from "../types/CompileTimeObject";
+import { ParseError, createDiagnostic } from "../utils";
+import { Operation, pushString } from "../types/Operation";
 
-function invokeError(node: tsm.CallExpression | tsm.NewExpression, args: readonly GetValueFunc[]): E.Either<ParseError, CompileTimeObject> {
+function invokeError(node: tsm.CallExpression | tsm.NewExpression, args: readonly GetOpsFunc[]): E.Either<ParseError, CompileTimeObject> {
     return pipe(
         args,
         ROA.head,
         O.match(
-            () => E.of(<CompileTimeObject>{ node, loadOps: [pushString("")] }),
+            () => pipe(pushString(""), ROA.of<Operation>, E.of),
             arg => arg()
-        )
+        ),
+        E.map(loadOps => <CompileTimeObject>{ node, loadOps })
     )
 }
 

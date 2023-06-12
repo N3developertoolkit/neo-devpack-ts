@@ -5,16 +5,16 @@ import * as E from 'fp-ts/Either';
 import { createTestProject, expectEither, expectResults, createLiteralCTO, createVarDeclCTO } from './testUtils.spec';
 import { hoistFunctionDecl, hoistInterfaceDecl } from '../src/passes/hoistDeclarations';
 import { pipe } from 'fp-ts/lib/function';
-import { GetValueFunc } from '../src/types/CompileTimeObject';
+import { GetOpsFunc } from '../src/types/CompileTimeObject';
 import { CompileTimeObject } from '../src/types/CompileTimeObject';
 import { ParseError, makeParseError } from '../src/utils';
 import { pushInt, pushString } from '../src/types/Operation';
 
 
-function makeGetValueFunc(value: CompileTimeObject | ParseError): GetValueFunc {
+function makeGetValueFunc(value: CompileTimeObject | ParseError): GetOpsFunc {
     return ('message' in value)
         ? () => E.left(value)
-        : () => E.right(value);
+        : () => E.right(value.loadOps);
 }
 
 function expectCall(node: tsm.CallExpression, cto: CompileTimeObject, $this: CompileTimeObject | ParseError | undefined, ...args: (CompileTimeObject | ParseError)[]) {

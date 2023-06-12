@@ -6,7 +6,7 @@ import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option';
 import * as TS from "../TS";
 import { getBooleanConvertOps, getIntegerConvertOps, getStringConvertOps, Operation, pushInt, pushString, isJumpTargetOp, makeConditionalExpression } from "../types/Operation";
-import { CompileTimeObject, GetValueFunc, resolve, resolveName, resolveType, Scope } from "../types/CompileTimeObject";
+import { CompileTimeObject, GetOpsFunc, resolve, resolveName, resolveType, Scope } from "../types/CompileTimeObject";
 import { ParseError, isIntegerLike, isStringLike, isVoidLike, makeParseError } from "../utils";
 import { CompileTimeObjectWithIndex } from "./common";
 
@@ -40,11 +40,8 @@ interface ExpressionContext extends ExpressionHeadContext {
     readonly getStoreOps: (valueOps: readonly Operation[]) => E.Either<ParseError, readonly Operation[]>;
 }
 
-function makeGetValueFunc(context: ExpressionContext): GetValueFunc {
-    return () => pipe(
-        context.getOps(),
-        E.map(loadOps => <CompileTimeObject>{ node: context.node, loadOps })
-    )
+function makeGetValueFunc(context: ExpressionContext): GetOpsFunc {
+    return () => context.getOps();
 }
 
 function reduceBigIntLiteral(context: ExpressionHeadContext, node: tsm.BigIntLiteral): E.Either<ParseError, ExpressionContext> {

@@ -6,9 +6,9 @@ import * as ROA from 'fp-ts/ReadonlyArray'
 import * as TS from "../TS";
 
 import { GlobalScopeContext, getVarDeclAndSymbol, makeInterface, makeMethod, makeProperties } from "./common";
-import { CallInvokeResolver, CompileTimeObject, GetValueFunc, PropertyResolver, parseArguments } from "../types/CompileTimeObject";
+import { CallInvokeResolver, CompileTimeObject, GetOpsFunc, PropertyResolver, parseArguments } from "../types/CompileTimeObject";
 import { Operation, getBooleanConvertOps, isPushBoolOp, makeConditionalExpression, pushInt } from "../types/Operation";
-import { createDiagnostic, makeParseError, single } from "../utils";
+import { ParseError, createDiagnostic, makeParseError, single } from "../utils";
 
 export const enum FindOptions {
     None = 0,
@@ -71,13 +71,9 @@ function makeStorageCall(syscall: string): CallInvokeResolver {
     };
 }
 
-function getCompileTimeBoolean(cto: CompileTimeObject): O.Option<boolean> {
-    if (tsm.Node.isTrueLiteral(cto.node) || tsm.Node.isFalseLiteral(cto.node)) {
-        return O.of(cto.node.getLiteralValue());
-    }
-
+function getCompileTimeBoolean(ops: readonly Operation[]): O.Option<boolean> {
     return pipe(
-        cto.loadOps,
+        ops,
         ROA.filter(op => op.kind !== 'noop'),
         single,
         O.chain(O.fromPredicate(isPushBoolOp)),
@@ -93,6 +89,33 @@ const callDelete: CallInvokeResolver = makeStorageCall("System.Storage.Delete");
 function makeRemovePrefixFind($true: FindOptions, $false: FindOptions): CallInvokeResolver {
 
     return (node) => ($this, args) => {
+
+        const q = pipe(
+            E.Do,
+            // take the prefix argument as is
+            E.bind('prefix', () => pipe(
+                args,
+                ROA.lookup(0),
+                E.fromOption(() => makeParseError(node)("invalid prefix")),
+            )),
+            E.bind('options', () => pipe(
+                args,
+                ROA.lookup(1),
+                O.match(
+                    () => E.of<ParseError, O.Option<GetOpsFunc>>(O.none),
+                    keepPrefix => {
+
+
+                        return E.of(O.none);
+                    }
+                        
+                ),
+                // E.fromOption(() => makeParseError(node)("invalid prefix"))
+            )),
+        );
+
+
+
         return pipe(
             E.Do,
             // take the prefix argument as is
@@ -110,9 +133,9 @@ function makeRemovePrefixFind($true: FindOptions, $false: FindOptions): CallInvo
                     () => E.of(O.none),
                     keepPrefix => pipe(
                         keepPrefix(),
-                        E.map(cto => {
+                        E.map(ops => {
                             const loadOps = pipe(
-                                cto,
+                                ops,
                                 // if options argument is provided, check to see if it is a compile time boolean  
                                 getCompileTimeBoolean,
                                 O.match(
@@ -120,8 +143,8 @@ function makeRemovePrefixFind($true: FindOptions, $false: FindOptions): CallInvo
                                     // and add a conditional expression to convert the boolean to find options
                                     () => {
                                         const condition = pipe(
-                                            cto.loadOps,
-                                            ROA.concat(getBooleanConvertOps(cto.node.getType()))
+                                            ops,
+                                            ROA.concat(getBooleanConvertOps(node.getType()))
                                         );
                                         const whenTrue = pipe(pushInt($true), ROA.of);
                                         const whenFalse = pipe(pushInt($false), ROA.of);
@@ -131,8 +154,7 @@ function makeRemovePrefixFind($true: FindOptions, $false: FindOptions): CallInvo
                                     value => [value ? pushInt($true) : pushInt($false)]
                                 )
                             );
-                            const $cto = <CompileTimeObject>{ ...cto, loadOps };
-                            return (() => E.of($cto)) as GetValueFunc;
+                            return (() => E.of(loadOps)) as GetOpsFunc;
                         }),
                         E.map(O.of)
                     )
@@ -143,7 +165,7 @@ function makeRemovePrefixFind($true: FindOptions, $false: FindOptions): CallInvo
                     options,
                     O.match(
                         () => E.of(ROA.of<Operation>(pushInt($false))),
-                        getValue => pipe(getValue(), E.map(cto => cto.loadOps))
+                        getValue => getValue(),
                     ),
                     E.bindTo('options'),
                     // System.Storage.Find take 2 arguments

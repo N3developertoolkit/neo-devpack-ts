@@ -5,7 +5,7 @@ import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option';
 import { pipe } from "fp-ts/function";
 import { Operation, pushInt, pushString } from "../types/Operation";
-import { CompileTimeObject, CallInvokeResolver, GetValueFunc, PropertyResolver, CompileTimeType, Scope, createScope, parseArguments, createEmptyScope } from "../types/CompileTimeObject";
+import { CompileTimeObject, CallInvokeResolver, PropertyResolver, CompileTimeType, Scope, createScope, parseArguments, createEmptyScope } from "../types/CompileTimeObject";
 import { makeParseError, makeReadOnlyMap, ParseError } from "../utils";
 
 function hoistEventFunctionDecl(node: tsm.FunctionDeclaration) {

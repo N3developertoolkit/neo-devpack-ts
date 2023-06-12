@@ -3,20 +3,17 @@ import { flow, pipe } from "fp-ts/lib/function";
 import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option'
 import * as ROA from 'fp-ts/ReadonlyArray'
-import * as ROR from 'fp-ts/ReadonlyRecord';
 import * as TS from "../TS";
 
 import { GlobalScopeContext, getVarDeclAndSymbol, makeInterface, makeMethod, makeProperties } from "./common";
-import { CallInvokeResolver, CompileTimeObject, GetValueFunc, PropertyResolver } from "../types/CompileTimeObject";
+import { CallInvokeResolver, CompileTimeObject, GetOpsFunc, PropertyResolver } from "../types/CompileTimeObject";
 import { createDiagnostic, makeParseError, single } from "../utils";
 import { Operation, isPushDataOp, isPushIntOp } from "../types/Operation";
 import { sc, u } from "@cityofzion/neon-core";
 
-function getCompileTimeString(cto: CompileTimeObject): O.Option<string> {
-    if (tsm.Node.isStringLiteral(cto.node)) return O.of(cto.node.getLiteralText());
-
+function getCompileTimeString(ops: readonly Operation[]): O.Option<string> {
     return pipe(
-        cto.loadOps,
+        ops,
         ROA.filter(op => op.kind !== 'noop'),
         single,
         O.chain(O.fromPredicate(isPushDataOp)),
@@ -24,15 +21,9 @@ function getCompileTimeString(cto: CompileTimeObject): O.Option<string> {
     )
 }
 
-function getCompileTimeInteger(cto: CompileTimeObject): O.Option<bigint> {
-    if (tsm.Node.isBigIntLiteral(cto.node)) return O.of(cto.node.getLiteralValue() as bigint);
-    if (tsm.Node.isNumericLiteral(cto.node)) {
-        const value = cto.node.getLiteralValue();
-        return O.tryCatch(() => BigInt(value))
-    }
-
+function getCompileTimeInteger(ops: readonly Operation[]): O.Option<bigint> {
     return pipe(
-        cto.loadOps,
+        ops,
         ROA.filter(op => op.kind !== 'noop'),
         single,
         O.chain(O.fromPredicate(isPushIntOp)),
@@ -41,7 +32,7 @@ function getCompileTimeInteger(cto: CompileTimeObject): O.Option<bigint> {
 }
 
 function getFirstArg(node: tsm.Node) {
-    return (args: readonly GetValueFunc[]) => {
+    return (args: readonly GetOpsFunc[]) => {
         return pipe(
             args,
             ROA.head,
@@ -77,24 +68,28 @@ const fromInteger: CallInvokeResolver = (node) => (_$this, args) => {
     return pipe(
         args,
         getFirstArg(node),
-        E.map(arg => {
-            const loadOps = pipe(arg,
+        E.map(ops => {
+            const loadOps = pipe(ops,
                 getCompileTimeInteger,
                 O.match(
-                    () => pipe(arg.loadOps, ROA.append<Operation>({ kind: "convert", type: sc.StackItemType.ByteString })),
+                    () => pipe(ops, ROA.append<Operation>({ kind: "convert", type: sc.StackItemType.ByteString })),
                     value => {
                         const twos = u.BigInteger.fromNumber(value.toString()).toReverseTwos();
                         return ROA.of<Operation>({ kind: "pushdata", value: Buffer.from(twos, 'hex') });
                     }
                 )
             )
-            return <CompileTimeObject>{ node: arg.node, loadOps };
+            return <CompileTimeObject>{ node, loadOps };
         })
     );
 }
 
 const fromString: CallInvokeResolver = (node) => (_$this, args) => {
-    return pipe(args, getFirstArg(node));
+    return pipe(
+        args, 
+        getFirstArg(node),
+        E.map(loadOps =><CompileTimeObject>{ node, loadOps })
+    );
 }
 
 function makeByteStringObject(ctx: GlobalScopeContext) {
@@ -143,7 +138,6 @@ function makeLength(symbol: tsm.Symbol): E.Either<string, PropertyResolver> {
 const callAsInteger: CallInvokeResolver = (node) => ($this) => {
     return pipe(
         $this(),
-        E.map(cto => cto.loadOps),
         E.map(ROA.append<Operation>({ kind: "convert", type: sc.StackItemType.Integer })),
         E.map(loadOps => <CompileTimeObject>{ node, loadOps })
     )
