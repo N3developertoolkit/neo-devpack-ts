@@ -10,22 +10,6 @@ import { CompileTimeObject, GetOpsFunc, resolve, resolveName, resolveType, Scope
 import { ParseError, isIntegerLike, isStringLike, isVoidLike, makeParseError } from "../utils";
 import { CompileTimeObjectWithIndex } from "./common";
 
-function makeExpressionChain(node: tsm.Expression): RNEA.ReadonlyNonEmptyArray<tsm.Expression> {
-    return makeChain(RNEA.of(node));
-
-    function makeChain(chain: RNEA.ReadonlyNonEmptyArray<tsm.Expression>): RNEA.ReadonlyNonEmptyArray<tsm.Expression> {
-        return pipe(
-            chain,
-            RNEA.head,
-            TS.getExpression,
-            O.match(
-                () => chain,
-                expr => pipe(chain, ROA.prepend(expr), makeChain)
-            )
-        )
-    }
-}
-
 interface ExpressionHeadContext {
     readonly scope: Scope,
     readonly endTarget: Operation;
@@ -38,10 +22,6 @@ interface ExpressionContext extends ExpressionHeadContext {
 
     readonly getOps: () => E.Either<ParseError, readonly Operation[]>;
     readonly getStoreOps: (valueOps: readonly Operation[]) => E.Either<ParseError, readonly Operation[]>;
-}
-
-function makeGetValueFunc(context: ExpressionContext): GetOpsFunc {
-    return () => context.getOps();
 }
 
 function reduceBigIntLiteral(context: ExpressionHeadContext, node: tsm.BigIntLiteral): E.Either<ParseError, ExpressionContext> {
@@ -541,7 +521,7 @@ function reduceCallExpression(context: ExpressionContext, node: tsm.CallExpressi
             );
         }),
         E.chain(({ invoker, args }) => {
-            return invoker(makeGetValueFunc(context), args.map(makeGetValueFunc));
+            return invoker(() => context.getOps(), args.map(arg => () => arg.getOps()));
         }),
         E.map(cto => {
             const getOps = () => E.of(cto.loadOps);
@@ -573,7 +553,7 @@ function reduceNewExpression(context: ExpressionContext, node: tsm.NewExpression
             );
         }),
         E.chain(({ invoker, args }) => {
-            return invoker(makeGetValueFunc(context), args.map(makeGetValueFunc));
+            return invoker(() => context.getOps(), args.map(arg => () => arg.getOps()));
         }),
         E.map(cto => {
             const getOps = () => E.of(cto.loadOps);
@@ -735,6 +715,22 @@ function resolveExpression(scope: Scope) {
             })
         )
     }
+
+    function makeExpressionChain(node: tsm.Expression): RNEA.ReadonlyNonEmptyArray<tsm.Expression> {
+        return makeChain(RNEA.of(node));
+
+        function makeChain(chain: RNEA.ReadonlyNonEmptyArray<tsm.Expression>): RNEA.ReadonlyNonEmptyArray<tsm.Expression> {
+            return pipe(
+                chain,
+                RNEA.head,
+                TS.getExpression,
+                O.match(
+                    () => chain,
+                    expr => pipe(chain, ROA.prepend(expr), makeChain)
+                )
+            )
+        }
+    }
 }
 
 export function parseExpression(scope: Scope) {
@@ -746,6 +742,49 @@ export function parseExpression(scope: Scope) {
         );
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 function resolveIdentifier(scope: Scope) {
