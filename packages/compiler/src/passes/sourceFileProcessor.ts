@@ -63,6 +63,7 @@ export function reduceVariableDeclaration(
                 const { scope, variables } = updateDeclarationScope(parsedVariables, context.scope, ctoFactory);
                 return pipe(
                     variables,
+                    ROA.map(c => ({ node: c.cto.node, getStoreOps: c.cto.storeOps, index: c.index })),
                     generateStoreOps,
                     E.map(storeOps => {
                         const initializeOps = pipe(

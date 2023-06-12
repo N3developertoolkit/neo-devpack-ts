@@ -155,6 +155,7 @@ function adaptVariableDeclaration(node: tsm.VariableDeclaration, kind: tsm.Varia
                     const { scope, variables } = updateDeclarationScope(parsedVariables, context.scope, ctoFactory);
                     return pipe(
                         variables,
+                        ROA.map(c => ({ node: c.cto.node, getStoreOps: c.cto.storeOps, index: c.index })),
                         generateStoreOps,
                         E.map(storeOps => ROA.concat(storeOps)(initOps)),
                         E.match(

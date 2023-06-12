@@ -8,7 +8,6 @@ import * as TS from "../TS";
 import { getBooleanConvertOps, getIntegerConvertOps, getStringConvertOps, Operation, pushInt, pushString, isJumpTargetOp, makeConditionalExpression } from "../types/Operation";
 import { CompileTimeObject, GetOpsFunc, resolve, resolveName, resolveType, Scope } from "../types/CompileTimeObject";
 import { ParseError, isIntegerLike, isStringLike, isVoidLike, makeParseError } from "../utils";
-import { CompileTimeObjectWithIndex } from "./common";
 
 interface ExpressionHeadContext {
     readonly scope: Scope,
@@ -162,8 +161,18 @@ function reduceIdentifier(context: ExpressionHeadContext, node: tsm.Identifier):
 
     return pipe(
         node,
-        resolveIdentifier(context.scope),
-        E.map(cto => {
+        TS.parseSymbol,
+        E.chain(symbol => {
+            return pipe(
+                symbol,
+                resolve(context.scope),
+                O.alt(() => {
+                    return resolveName(context.scope)(symbol.getName());
+                }),
+                E.fromOption(() => makeParseError(node)(`failed to resolve ${symbol.getName()}`)),
+            );
+        }),
+    E.map(cto => {
             const getOps = () => E.of(cto.loadOps);
             const getStoreOps = (valueOps: readonly Operation[]) => {
                 return cto.storeOps
@@ -174,6 +183,8 @@ function reduceIdentifier(context: ExpressionHeadContext, node: tsm.Identifier):
         })
     )
 }
+
+
 
 function reduceConditionalExpression(context: ExpressionHeadContext, node: tsm.ConditionalExpression): E.Either<ParseError, ExpressionContext> {
     return pipe(
@@ -787,103 +798,85 @@ export function parseExpression(scope: Scope) {
 
 
 
-function resolveIdentifier(scope: Scope) {
-    return (node: tsm.Identifier): E.Either<ParseError, CompileTimeObject> => {
-        return pipe(
-            node,
-            TS.parseSymbol,
-            E.chain(symbol => {
-                return pipe(
-                    symbol,
-                    resolve(scope),
-                    O.alt(() => {
-                        return resolveName(scope)(symbol.getName());
-                    }),
-                    E.fromOption(() => makeParseError(node)(`failed to resolve ${symbol.getName()}`)),
-                );
-            }),
-        );
-    }
-}
 
-export function flattenNestedAssignmentBinding(binding: NestedAssignmentBinding, index: readonly (number | string)[] = []): readonly CompileTimeObjectWithIndex[] {
-    if (isCTO(binding)) return [{ cto: binding, index }];
-    return pipe(
-        binding,
-        ROA.chain(([binding, i]) => flattenNestedAssignmentBinding(binding, pipe(index, ROA.append(i))))
-    )
-}
+// export function flattenNestedAssignmentBinding(binding: NestedAssignmentBinding, index: readonly (number | string)[] = []): readonly CompileTimeObjectWithIndex[] {
+//     if (isCTO(binding)) return [{ cto: binding, index }];
+//     return pipe(
+//         binding,
+//         ROA.chain(([binding, i]) => flattenNestedAssignmentBinding(binding, pipe(index, ROA.append(i))))
+//     )
+// }
 
-type NestedAssignmentBindings = readonly (readonly [NestedAssignmentBinding, number | string])[];
-type NestedAssignmentBinding = CompileTimeObject | NestedAssignmentBindings;
+// type NestedAssignmentBindings = readonly (readonly [NestedAssignmentBinding, number | string])[];
+// type NestedAssignmentBinding = CompileTimeObject | NestedAssignmentBindings;
 
-function isCTO(binding: NestedAssignmentBinding): binding is CompileTimeObject {
-    return !Array.isArray(binding);
-}
+// function isCTO(binding: NestedAssignmentBinding): binding is CompileTimeObject {
+//     return !Array.isArray(binding);
+// }
 
-export function readAssignmentExpression(scope: Scope) {
-    return (node: tsm.Expression): E.Either<ParseError, NestedAssignmentBinding> => {
+// export function readAssignmentExpression(scope: Scope) {
+//     return (node: tsm.Expression): E.Either<ParseError, NestedAssignmentBinding> => {
 
-        if (tsm.Node.isIdentifier(node)) return readIdentifierAssignment(node, scope);
-        if (tsm.Node.isArrayLiteralExpression(node)) return readArrayLiteralAssignment(node, scope);
-        if (tsm.Node.isObjectLiteralExpression(node)) return readObjectLiteralAssignment(node, scope);
+//         if (tsm.Node.isIdentifier(node)) return readIdentifierAssignment(node, scope);
+//         if (tsm.Node.isArrayLiteralExpression(node)) return readArrayLiteralAssignment(node, scope);
+//         if (tsm.Node.isObjectLiteralExpression(node)) return readObjectLiteralAssignment(node, scope);
 
-        return E.left(makeParseError(node)(`readAssignmentExpression ${node.getKindName()} not implemented`));
-    }
-}
+//         return E.left(makeParseError(node)(`readAssignmentExpression ${node.getKindName()} not implemented`));
+//     }
+// }
 
-function readIdentifierAssignment(node: tsm.Identifier, scope: Scope): E.Either<ParseError, NestedAssignmentBinding> {
-    return pipe(node, resolveIdentifier(scope))
-}
+// function readIdentifierAssignment(node: tsm.Identifier, scope: Scope): E.Either<ParseError, NestedAssignmentBinding> {
+//     return pipe(node, resolveIdentifier(scope))
+// }
 
-function readArrayLiteralAssignment(node: tsm.ArrayLiteralExpression, scope: Scope): E.Either<ParseError, NestedAssignmentBinding> {
-    return pipe(
-        node.getElements(),
-        ROA.mapWithIndex((index, element) => [element, index] as const),
-        ROA.filter(([element]) => !tsm.Node.isOmittedExpression(element)),
-        ROA.map(([element, index]) => {
-            return pipe(
-                element,
-                readAssignmentExpression(scope),
-                E.map(binding => [binding, index] as const)
-            );
-        }),
-        ROA.sequence(E.Applicative),
-    )
-}
-function readObjectLiteralAssignment(node: tsm.ObjectLiteralExpression, scope: Scope): E.Either<ParseError, NestedAssignmentBinding> {
-    return pipe(
-        node.getProperties(),
-        ROA.map(readObjectLiteralAssignmentProperty(scope)),
-        ROA.sequence(E.Applicative),
-    )
-}
+// function readArrayLiteralAssignment(node: tsm.ArrayLiteralExpression, scope: Scope): E.Either<ParseError, NestedAssignmentBinding> {
+//     return pipe(
+//         node.getElements(),
+//         ROA.mapWithIndex((index, element) => [element, index] as const),
+//         ROA.filter(([element]) => !tsm.Node.isOmittedExpression(element)),
+//         ROA.map(([element, index]) => {
+//             return pipe(
+//                 element,
+//                 readAssignmentExpression(scope),
+//                 E.map(binding => [binding, index] as const)
+//             );
+//         }),
+//         ROA.sequence(E.Applicative),
+//     )
+// }
+// function readObjectLiteralAssignment(node: tsm.ObjectLiteralExpression, scope: Scope): E.Either<ParseError, NestedAssignmentBinding> {
+//     return pipe(
+//         node.getProperties(),
+//         ROA.map(readObjectLiteralAssignmentProperty(scope)),
+//         ROA.sequence(E.Applicative),
+//     )
+// }
 
-function readObjectLiteralAssignmentProperty(scope: Scope) {
-    return (node: tsm.ObjectLiteralElementLike): E.Either<ParseError, readonly [NestedAssignmentBinding, string]> => {
-        if (tsm.Node.isShorthandPropertyAssignment(node)) {
-            // for shorthand property assignments, the index is the name
-            return pipe(
-                E.Do,
-                E.bind('name', () => pipe(node, TS.parseSymbol, E.map(symbol => symbol.getName()))),
-                E.bind('binding', () => readIdentifierAssignment(node.getNameNode(), scope)),
-                E.map(({ name, binding }) => [binding, name] as const)
-            );
-        }
-        if (tsm.Node.isPropertyAssignment(node)) {
-            return pipe(
-                E.Do,
-                E.bind('name', () => pipe(node, TS.parseSymbol, E.map(symbol => symbol.getName()))),
-                E.bind('binding', () => {
-                    return pipe(
-                        node.getInitializer(),
-                        E.fromNullable(makeParseError(node)(`expected initializer for property assignment`)),
-                        E.chain(readAssignmentExpression(scope)),
-                    )
-                }),
-                E.map(({ name, binding }) => [binding, name] as const)
-            )
-        }
-        return E.left(makeParseError(node)(`readObjectLiteralProperty ${node.getKindName()} not supported`));
-    }
-}
+// function readObjectLiteralAssignmentProperty(scope: Scope) {
+//     return (node: tsm.ObjectLiteralElementLike): E.Either<ParseError, readonly [NestedAssignmentBinding, string]> => {
+//         if (tsm.Node.isShorthandPropertyAssignment(node)) {
+//             // for shorthand property assignments, the index is the name
+//             return pipe(
+//                 E.Do,
+//                 E.bind('name', () => pipe(node, TS.parseSymbol, E.map(symbol => symbol.getName()))),
+//                 E.bind('binding', () => readIdentifierAssignment(node.getNameNode(), scope)),
+//                 E.map(({ name, binding }) => [binding, name] as const)
+//             );
+//         }
+//         if (tsm.Node.isPropertyAssignment(node)) {
+//             return pipe(
+//                 E.Do,
+//                 E.bind('name', () => pipe(node, TS.parseSymbol, E.map(symbol => symbol.getName()))),
+//                 E.bind('binding', () => {
+//                     return pipe(
+//                         node.getInitializer(),
+//                         E.fromNullable(makeParseError(node)(`expected initializer for property assignment`)),
+//                         E.chain(readAssignmentExpression(scope)),
+//                     )
+//                 }),
+//                 E.map(({ name, binding }) => [binding, name] as const)
+//             )
+//         }
+//         return E.left(makeParseError(node)(`readObjectLiteralProperty ${node.getKindName()} not supported`));
+//     }
+// }

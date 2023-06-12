@@ -9,7 +9,6 @@ import { Operation, pushInt, pushString, updateLocation } from "../types/Operati
 import { makeParseError, ParseError, single } from "../utils";
 import { parseExpression } from "./expressionProcessor";
 import { CompileTimeObject, Scope, updateScope } from "../types/CompileTimeObject";
-import { CompileTimeObjectWithIndex, NamedCompileTimeObjectWithIndex } from "./common";
 
 function isPushOp(op: Operation) {
     return op.kind === "pushbool"
@@ -18,7 +17,13 @@ function isPushOp(op: Operation) {
         || op.kind === "pushnull";
 }
 
-export function generateStoreOps(variables: readonly CompileTimeObjectWithIndex[]): E.Either<ParseError, readonly Operation[]> {
+export interface StoreOpVariable {
+    readonly node: tsm.Node;
+    readonly index: readonly (string | number)[];
+    readonly storeOps?: ReadonlyArray<Operation>;
+}
+
+export function generateStoreOps(variables: readonly StoreOpVariable[]): E.Either<ParseError, readonly Operation[]> {
     // generate store operations for each indexed CTO
     // the store ops are generated from each CTO's index + store ops, with each variable except the last
     // getting a duplicate copy of the initialization value (generated elsewhere)
@@ -31,11 +36,11 @@ export function generateStoreOps(variables: readonly CompileTimeObjectWithIndex[
                     init,
                     ROA.map(item => pipe(
                         makeStoreOps(item),
-                        E.map(ROA.append<Operation>({ kind: "duplicate", location: item.cto.node })),
+                        E.map(ROA.append<Operation>({ kind: "duplicate", location: item.node })),
                     )),
                     ROA.append(pipe(
                         makeStoreOps(last),
-                        E.map(updateLocation(last.cto.node))
+                        E.map(updateLocation(last.node))
                     )),
                     ROA.sequence(E.Applicative),
                     E.map(ROA.flatten)
@@ -45,9 +50,9 @@ export function generateStoreOps(variables: readonly CompileTimeObjectWithIndex[
     )
 
     // map the index array to pickitem operations and concat with the CTO's store operations
-    function makeStoreOps({ cto, index }: CompileTimeObjectWithIndex): E.Either<ParseError, readonly Operation[]> {
-        if (!cto.storeOps) {
-            return E.left(makeParseError(cto.node)(`variable does not have store ops`));
+    function makeStoreOps({ node, index, storeOps }: StoreOpVariable): E.Either<ParseError, readonly Operation[]> {
+        if (!storeOps) {
+            return E.left(makeParseError(node)(`variable does not have store ops`));
         }
 
         return pipe(
@@ -56,7 +61,7 @@ export function generateStoreOps(variables: readonly CompileTimeObjectWithIndex[
                 const indexStoreOp = typeof index === 'number' ? pushInt(index) : pushString(index);
                 return ROA.fromArray<Operation>([indexStoreOp, { kind: 'pickitem' }]);
             }),
-            ROA.concat(cto.storeOps),
+            ROA.concat(storeOps),
             E.of
         )
     }
@@ -67,7 +72,7 @@ export function updateDeclarationScope(
     variables: readonly ParsedVariable[],
     scope: Scope,
     ctoFactory: (node: tsm.Identifier, symbol: tsm.Symbol, index: number) => CompileTimeObject
-): { scope: Scope; variables: readonly NamedCompileTimeObjectWithIndex[]; } {
+) {
     // create CTOs for all the ParsedConstants and add them to the scope
     scope = pipe(
         variables,
