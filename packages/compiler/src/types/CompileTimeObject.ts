@@ -9,7 +9,6 @@ import * as STR from 'fp-ts/string';
 
 import { Operation } from "./Operation";
 import { CompileError, ParseError, isArray } from "../utils";
-import { UpdateBundleProject } from "@ts-morph/common/lib/typescript";
 
 export type GetOpsFunc = () => E.Either<ParseError, readonly Operation[]>;
 export type GetValueFunc = () => E.Either<ParseError, CompileTimeObject>;

@@ -8,10 +8,9 @@ import * as ROA from 'fp-ts/ReadonlyArray';
 import * as ROR from 'fp-ts/ReadonlyRecord';
 import * as STR from 'fp-ts/string';
 
-import { CallInvokeResolver, CompileTimeObject, CompileTimeType, GetOpsFunc, GetValueFunc, InvokeResolver, PropertyResolver } from "../types/CompileTimeObject";
+import { CallInvokeResolver, CompileTimeObject, CompileTimeType, PropertyResolver } from "../types/CompileTimeObject";
 import { LibraryDeclaration } from "../types/LibraryDeclaration";
-import { ParseError, createDiagnostic, makeReadOnlyMap, single } from "../utils";
-import { Operation } from "../types/Operation";
+import { createDiagnostic, makeReadOnlyMap, single } from "../utils";
 
 export interface GlobalScopeContext {
     readonly decls: readonly LibraryDeclaration[]
