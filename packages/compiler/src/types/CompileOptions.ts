@@ -33,7 +33,7 @@ export interface CompiledProjectArtifacts {
 }
 
 export interface CompileArtifacts {
-    readonly diagnostics: ReadonlyArray<tsm.ts.Diagnostic>;
+    readonly diagnostics: readonly tsm.ts.Diagnostic[];
     readonly compiledProject?: CompiledProject;
     readonly nef?: sc.NEF;
     readonly manifest?: sc.ContractManifest;

@@ -13,7 +13,7 @@ function asSlotVarString(v: ContractVariable): string {
     return `${v.name},${sc.ContractParamType[type]},${v.index}`
 }
 
-function asSeqPointString(docs: ReadonlyArray<tsm.SourceFile>) {
+function asSeqPointString(docs: readonly tsm.SourceFile[]) {
     return (sp: SequencePoint): string => {
         const index = docs.indexOf(asSourceFile(sp));
         if (index < 0)

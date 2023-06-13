@@ -5,10 +5,9 @@ import * as E from "fp-ts/Either";
 import * as O from "fp-ts/Option";
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as ROM from 'fp-ts/ReadonlyMap';
-import * as STR from 'fp-ts/string';
 
 import { Operation } from "./Operation";
-import { CompileError, ParseError, isArray } from "../utils";
+import { ParseError, isArray } from "../utils";
 
 export type GetOpsFunc = () => E.Either<ParseError, readonly Operation[]>;
 export type PropertyResolver = ($this: GetOpsFunc) => E.Either<ParseError, CompileTimeObject>;
@@ -20,8 +19,9 @@ export interface CompileTimeObject {
     readonly node: tsm.Node;
     readonly symbol?: tsm.Symbol;
 
-    readonly loadOps: ReadonlyArray<Operation>;
-    readonly storeOps?: ReadonlyArray<Operation>;
+    readonly loadOps: readonly Operation[];
+    // Note, storeOps assumes the value to store is on the top of the stack
+    readonly storeOps?: readonly Operation[];
     readonly properties?: ReadonlyMap<string, PropertyResolver>;
     readonly call?: CallInvokeResolver;
     readonly callNew?: NewInvokeResolver;

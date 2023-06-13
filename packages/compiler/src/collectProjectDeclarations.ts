@@ -79,7 +79,7 @@ const collectDeclarations =
 
 const collectSourceFileDeclarations =
     (resolver: SourceFileResolver) =>
-        (src: tsm.SourceFile): S.State<readonly LibraryDeclaration[], ReadonlyArray<E.Either<string, tsm.SourceFile>>> =>
+        (src: tsm.SourceFile): S.State<readonly LibraryDeclaration[], readonly E.Either<string, tsm.SourceFile>[]> =>
             declarations => {
 
                 const getFileReferenceName = (file: tsm.FileReference) => file.getFileName()
@@ -141,7 +141,7 @@ interface SourceFileResolver {
 }
 
 function resolveSourceFiles(resolver: SourceFileResolver) {
-    return (libs: ReadonlyArray<string>, types: ReadonlyArray<string>) => {
+    return (libs: readonly string[], types: readonly string[]) => {
         const resolvedLibs = pipe(libs, ROA.map(resolver.resolveLib));
         const resolvedTypes = pipe(types, ROA.map(resolver.resolveTypes));
         return ROA.concat(resolvedLibs)(resolvedTypes);

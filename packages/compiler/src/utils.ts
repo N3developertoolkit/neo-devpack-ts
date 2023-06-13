@@ -46,7 +46,7 @@ export const updateContextErrors =
 export const E_fromSeparated = <E, A>(s: SEP.Separated<readonly E[], A>): E.Either<readonly E[], A> =>
     ROA.isNonEmpty(s.left) ? E.left(s.left) : E.of(s.right)
 
-export function single<T>(array: ReadonlyArray<T>): O.Option<T> {
+export function single<T>(array: readonly T[]): O.Option<T> {
     return array.length === 1 ? O.some(array[0] as T) : O.none;
 }
 

@@ -11,7 +11,7 @@ import { asContractParamType, asReturnType, convertBigInteger, createDiagnostic,
 import { CompiledProject, CompiledProjectArtifacts, ContractEvent, ContractMethod } from "./types/CompileOptions";
 import { makeDebugInfo } from "./types/DebugInfo";
 
-function collectMethodTokens(methods: ReadonlyArray<ContractMethod>): ReadonlyArray<sc.MethodToken> {
+function collectMethodTokens(methods: readonly ContractMethod[]): readonly sc.MethodToken[] {
     return pipe(
         methods,
         ROA.map(m => m.operations),
@@ -23,7 +23,7 @@ function collectMethodTokens(methods: ReadonlyArray<ContractMethod>): ReadonlyAr
 }
 
 function* genOperationAddresses(
-    methods: ReadonlyArray<ContractMethod>
+    methods: readonly ContractMethod[]
 ): Generator<{ address: number; op: Operation; }> {
     let address = 0;
     for (const method of methods) {
@@ -35,7 +35,7 @@ function* genOperationAddresses(
 }
 
 function* genMethodAddresses(
-    methods: ReadonlyArray<ContractMethod>
+    methods: readonly ContractMethod[]
 ): Generator<[tsm.Symbol, number]> {
     let address = 0;
     for (const method of methods) {
@@ -97,7 +97,7 @@ function convertJump(
     index: number,
     address: number,
     op: JumpOffsetOperation,
-    contractOps: ReadonlyArray<{ address: number; op: Operation; }>
+    contractOps: readonly { address: number; op: Operation; }[]
 ): Instruction {
     const targetIndex = index + op.offset;
     const targetAddress = contractOps[targetIndex].address;
@@ -110,7 +110,7 @@ function convertJump(
 
 function convertCallToken(
     { token }: CallTokenOperation,
-    tokens: ReadonlyArray<sc.MethodToken>
+    tokens: readonly sc.MethodToken[]
 ): E.Either<string, Instruction> {
     const index = tokens.findIndex(t => t.hash === token.hash && t.method === token.method);
     if (index < 0) return E.left(`convertCallToken: ${token.hash} ${token.method}`);
@@ -143,8 +143,8 @@ function convertCall(
 }
 
 function convertOperations(
-    contractOps: ReadonlyArray<{ address: number; op: Operation; }>,
-    tokens: ReadonlyArray<sc.MethodToken>,
+    contractOps: readonly { address: number; op: Operation; }[],
+    tokens: readonly sc.MethodToken[],
     methodAddressMap: ReadonlyMap<tsm.Symbol, number>
 ): E.Either<readonly string[], readonly Instruction[]> {
     function createIns(opCode: sc.OpCode, operand?: Uint8Array | number[]) {
@@ -182,7 +182,7 @@ function convertOperations(
 }
 
 function collectManifestMethods(
-    methods: ReadonlyArray<ContractMethod>,
+    methods: readonly ContractMethod[],
     methodAddressMap: ReadonlyMap<tsm.Symbol, number>
 ): E.Either<readonly string[], readonly sc.ContractMethodDefinition[]> {
     return pipe(
@@ -223,7 +223,7 @@ function collectManifestMethods(
 }
 
 function collectManifestEvents(
-    events: ReadonlyArray<ContractEvent>
+    events: readonly ContractEvent[]
 ): readonly sc.ContractEventDefiniton[] {
     return pipe(
         events,

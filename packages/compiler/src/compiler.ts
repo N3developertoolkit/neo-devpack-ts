@@ -19,7 +19,7 @@ export const DEFAULT_ADDRESS_VALUE = 53;
 export interface CompilerOptions {
     readonly baseName: string;
     readonly contractName?: string;
-    readonly standards?: ReadonlyArray<string>;
+    readonly standards?: readonly string[];
     // readonly addressVersion?: number;
     // readonly inline?: boolean;
     // readonly optimize?: boolean;

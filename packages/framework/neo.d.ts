@@ -115,7 +115,7 @@ declare global {
         /** @syscall System.Runtime.GetRandom */
         readonly random: bigint;
         /** @syscall System.Runtime.GetNotifications */
-        readonly notifications: ReadonlyArray<Notification>;
+        readonly notifications: readonly Notification[];
         /** @syscall System.Runtime.GasLeft */
         readonly remainingGas: bigint;
     }
@@ -127,9 +127,9 @@ declare global {
     /** @syscall System.Runtime.Log */
     export function log(message: string): void;
     /** @syscall System.Runtime.Notify*/
-    export function notify(eventName: string, state: ReadonlyArray<any>): void;
+    export function notify(eventName: string, state: readonly any[]): void;
     /** @syscall System.Runtime.LoadScript*/
-    export function loadScript(script: ByteString, callFlags: CallFlags, args: ReadonlyArray<any>): void;
+    export function loadScript(script: ByteString, callFlags: CallFlags, args: readonly any[]): void;
     /** @syscall System.Contract.CreateStandardAccount */
     export function createStandardAccount(pubKey: ByteString /*ecpoint*/): ByteString; // hash160
     /** @syscall System.Contract.CreateMultisigAccount */
@@ -370,7 +370,7 @@ declare global {
     export interface Notification {
         readonly hash: ByteString;
         readonly eventName: string;
-        readonly state: ReadonlyArray<any>;
+        readonly state: readonly any[];
     }
 
     /** @stackitem */

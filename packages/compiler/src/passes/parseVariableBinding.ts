@@ -20,7 +20,7 @@ function isPushOp(op: Operation) {
 export interface StoreOpVariable {
     readonly node: tsm.Node;
     readonly index: readonly (string | number)[];
-    readonly storeOps?: ReadonlyArray<Operation>;
+    readonly storeOps?: readonly Operation[];
 }
 
 export function generateStoreOps(variables: readonly StoreOpVariable[]): E.Either<ParseError, readonly Operation[]> {

@@ -122,7 +122,7 @@ async function main(args: readonly string[], options: CompilerOptionValues): Pro
     }
 }
 
-function printDiagnostics(diags: ReadonlyArray<ts.Diagnostic>) {
+function printDiagnostics(diags: readonly ts.Diagnostic[]) {
     const formatHost: ts.FormatDiagnosticsHost = {
         getCurrentDirectory: () => ts.sys.getCurrentDirectory(),
         getNewLine: () => ts.sys.newLine,
