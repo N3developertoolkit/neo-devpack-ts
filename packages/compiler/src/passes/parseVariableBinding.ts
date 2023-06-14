@@ -36,7 +36,7 @@ export function generateStoreOps(variables: readonly StoreOpVariable[]): E.Eithe
                     init,
                     ROA.map(item => pipe(
                         makeStoreOps(item),
-                        E.map(ROA.append<Operation>({ kind: "duplicate", location: item.node })),
+                        E.map(ROA.prepend<Operation>({ kind: "duplicate", location: item.node })),
                     )),
                     ROA.append(pipe(
                         makeStoreOps(last),

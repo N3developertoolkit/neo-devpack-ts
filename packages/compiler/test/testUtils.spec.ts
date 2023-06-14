@@ -169,10 +169,10 @@ export function expectEither<T>(value: E.Either<ParseError | readonly ParseError
 }
 
 export function expectResults(ops: readonly Operation[], ...args: any[]) {
-    expect(ops).length(args.length);
     for (const i in ops) {
-        expect(ops[i]).deep.equals(args[i]);
+        expect(ops[i]).deep.equals(args[i], `operation ${i} not equal`);
     }
+    expect(ops).length(args.length);
 }
 
 

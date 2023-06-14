@@ -8,6 +8,7 @@ import * as TS from "../TS";
 import { getBooleanConvertOps, getIntegerConvertOps, getStringConvertOps, Operation, pushInt, pushString, isJumpTargetOp, makeConditionalExpression } from "../types/Operation";
 import { CompileTimeObject, GetOpsFunc, resolve, resolveName, resolveType, Scope } from "../types/CompileTimeObject";
 import { ParseError, isIntegerLike, isStringLike, isVoidLike, makeParseError } from "../utils";
+import { StoreOpVariable, generateStoreOps } from "./parseVariableBinding";
 
 interface ExpressionHeadContext {
     readonly scope: Scope,
@@ -20,7 +21,8 @@ interface ExpressionContext extends ExpressionHeadContext {
     readonly cto?: CompileTimeObject;
 
     readonly getOps: () => E.Either<ParseError, readonly Operation[]>;
-    readonly getStoreOps: (valueOps: readonly Operation[]) => E.Either<ParseError, readonly Operation[]>;
+    // like CTO, getStoreOps assumes the value to store is on the top of the stack
+    readonly getStoreOps: () => E.Either<ParseError, readonly Operation[]>;
 }
 
 function reduceBigIntLiteral(context: ExpressionHeadContext, node: tsm.BigIntLiteral): E.Either<ParseError, ExpressionContext> {
@@ -64,23 +66,47 @@ function reduceStringLiteral(context: ExpressionHeadContext, node: tsm.StringLit
 
 function reduceArrayLiteral(context: ExpressionHeadContext, node: tsm.ArrayLiteralExpression): E.Either<ParseError, ExpressionContext> {
     const elements = node.getElements();
-    return pipe(
+
+    const getOps = pipe(
         elements,
         ROA.map(resolveExpression(context.scope)),
         ROA.sequence(E.Applicative),
-        E.map(elements => {
-            const getOps = () => pipe(
-                elements,
-                ROA.map(ctx => ctx.getOps()),
-                ROA.sequence(E.Applicative),
-                E.map(ROA.flatten),
-                E.map(ROA.append<Operation>(pushInt(elements.length))),
-                E.map(ROA.append<Operation>({ kind: 'packarray' }))
+        E.chain(elements => pipe(
+            elements,
+            ROA.map(ctx => ctx.getOps()),
+            ROA.sequence(E.Applicative),
+            E.map(ROA.flatten),
+            E.map(ROA.append<Operation>(pushInt(elements.length))),
+            E.map(ROA.append<Operation>({ kind: 'packarray' }))
+        ))
+    )
+
+    const getStoreOps = pipe(
+        elements,
+        ROA.mapWithIndex((index, element) => ({element, index})),
+        ROA.filter(({element}) => !tsm.Node.isOmittedExpression(element)),
+        ROA.map(({element, index}) => {
+            return pipe(
+                element,
+                resolveExpression(context.scope),
+                E.map(ctx => ({ctx, index}))
+            ) 
+        }),
+        ROA.map(E.chain(({ctx, index}) => {
+            return pipe(
+                ctx.getStoreOps(),
+                E.map(storeOps => <StoreOpVariable>{
+                    index: ROA.of(index),
+                    node: ctx.node,
+                    storeOps
+                }),
             )
-            const getStoreOps = () => E.left(makeParseError(node)(`store array literal not implemented`));
-            return { ...context, node, type: node.getType(), getOps, getStoreOps };
-        })
-    );
+        })),
+        ROA.sequence(E.Applicative),
+        E.chain(generateStoreOps)
+    )
+
+    return E.of(<ExpressionContext>{...context, node, type: node.getType(), getOps: () => getOps, getStoreOps: () => getStoreOps})
 }
 
 function reduceObjectLiteral(context: ExpressionHeadContext, node: tsm.ObjectLiteralExpression): E.Either<ParseError, ExpressionContext> {
@@ -174,9 +200,9 @@ function reduceIdentifier(context: ExpressionHeadContext, node: tsm.Identifier):
         }),
     E.map(cto => {
             const getOps = () => E.of(cto.loadOps);
-            const getStoreOps = (valueOps: readonly Operation[]) => {
+            const getStoreOps = () => {
                 return cto.storeOps
-                    ? pipe(valueOps, ROA.concat(cto.storeOps), E.of)
+                    ? E.of(cto.storeOps) 
                     : E.left(makeParseError(node)(`symbol ${cto.symbol?.getName()} has no storeOps`));
             };
             return { ...context, node, type: node.getType(), cto, getOps, getStoreOps };
@@ -244,10 +270,9 @@ function reduceBinaryExpression(context: ExpressionHeadContext, node: tsm.Binary
     function makeAssignment(left: ExpressionContext, right: E.Either<ParseError, readonly Operation[]>): E.Either<ParseError, readonly Operation[]> {
         return pipe(
             right,
-            E.map(ROA.append<Operation>({ kind: 'duplicate' })),
-            E.chain(right => {
-                return left.getStoreOps(right);
-            })
+            E.bindTo('valueOps'),
+            E.bind('storeOps', () => left.getStoreOps()),
+            E.map(({ valueOps, storeOps }) => pipe(valueOps, ROA.append<Operation>({ kind: 'duplicate' }), ROA.concat(storeOps)))
         )
     }
 
@@ -408,11 +433,18 @@ function reducePostfixUnaryExpression(context: ExpressionHeadContext, node: tsm.
         resolveExpression(context.scope),
         E.map(context => {
             const getStoreOps = () => E.left(makeParseError(node)(`store unary expression not supported`));
-            const getOps = () => pipe(
-                context.getOps(),
-                E.map(ROA.concat<Operation>([{ kind: "duplicate" }, { kind }])),
-                E.chain(valueOps => context.getStoreOps(valueOps)),
-            )
+            const getOps = () => {
+                return pipe(
+                    E.Do,
+                    E.bind('valueOps', () => context.getOps()),
+                    E.bind('storeOps', () => context.getStoreOps()),
+                    E.map(({ valueOps, storeOps }) => pipe(
+                        valueOps,
+                        ROA.concat<Operation>([{ kind: "duplicate" }, { kind }]),
+                        ROA.concat(storeOps)
+                    ))
+                );
+            }
             return { ...context, node, type: node.getType(), getOps, getStoreOps };
         })
     )
@@ -435,9 +467,14 @@ function reducePrefixUnaryExpression(context: ExpressionHeadContext, node: tsm.P
                 E.map(context => {
                     const getStoreOps = () => E.left(makeParseError(node)(`store unary expression not supported`));
                     const getOps = () => pipe(
-                        context.getOps(),
-                        E.map(ROA.concat<Operation>([{ kind }, { kind: "duplicate" }])),
-                        E.chain(valueOps => context.getStoreOps(valueOps)),
+                        E.Do,
+                        E.bind('valueOps', () => context.getOps()),
+                        E.bind('storeOps', () => context.getStoreOps()),
+                        E.map(({ valueOps, storeOps }) => pipe(
+                            valueOps,
+                            ROA.concat<Operation>([{ kind }, { kind: "duplicate" }]),
+                            ROA.concat(storeOps)
+                        ))
                     )
                     return { ...context, node, type: node.getType(), getOps, getStoreOps };
                 })
@@ -626,9 +663,9 @@ function reducePropertyAccessExpression(context: ExpressionContext, node: tsm.Pr
         }),
         E.map(cto => {
             const getOps = () => E.of(cto.loadOps);
-            const getStoreOps = (valueOps: readonly Operation[]) => {
+            const getStoreOps = () => {
                 return cto.storeOps
-                    ? pipe(valueOps, ROA.concat(cto.storeOps), E.of)
+                    ? E.of(cto.storeOps)
                     : E.left(makeParseError(node)(`symbol ${cto.symbol?.getName()} has no storeOps`));
             };
             return { ...context, node, type: node.getType(), cto, getOps, getStoreOps };
@@ -661,9 +698,9 @@ function reduceElementAccessExpression(context: ExpressionContext, node: tsm.Ele
                         ROA.concat(chainOps),
                         E.of
                     );
-                    const getStoreOps = (valueOps: readonly Operation[]) => pipe(
+                    const getStoreOps = () => pipe(
                         ops,
-                        ROA.concat<Operation>(valueOps),
+                        ROA.append<Operation>({ kind: "rotate" }),
                         ROA.append<Operation>({ kind: "setitem" }),
                         E.of
                     )

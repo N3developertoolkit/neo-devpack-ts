@@ -4,8 +4,8 @@ import * as tsm from "ts-morph";
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as O from 'fp-ts/Option';
 import { createTestProject, expectEither, createVarDeclCTO, expectPushInt } from './testUtils.spec';
-import { pushInt } from '../src/types/Operation';
-import { ParsedConstant, isParsedConstant, parseVariableBinding } from '../src/passes/parseVariableBinding';
+import { Operation, pushInt } from '../src/types/Operation';
+import { ParsedConstant, ParsedVariable, isParsedConstant, isVariableBinding, parseVariableBinding } from '../src/passes/parseVariableBinding';
 
 describe("parse variable declarations", () => {
     describe("identifier binding", () => {
@@ -19,11 +19,7 @@ describe("parse variable declarations", () => {
             const result = expectEither(parseVariableBinding(test, tsm.VariableDeclarationKind.Const, O.of(pushInt(42))))
 
             expect(result).length(1);
-            expect(isParsedConstant(result[0])).true;
-            const r1 = result[0] as ParsedConstant;
-            expect(r1.node).equals(test.getNameNode());
-            expect(r1.symbol).equals(test.getSymbolOrThrow());
-            expectPushInt(r1.constant!, 42);
+            expectParsedConstant(result[0], test.getNameNode(), pushInt(42));
         })
 
         it("const variable", () => {
@@ -36,10 +32,10 @@ describe("parse variable declarations", () => {
             const result = expectEither(parseVariableBinding(test, tsm.VariableDeclarationKind.Const, O.of(account.loadOp)))
 
             expect(result).length(1);
-            expect(isParsedConstant(result[0])).false;
-            expect(result[0].node).equals(test.getNameNode());
-            expect(result[0].symbol).equals(test.getSymbolOrThrow());
+            expectVarBinding(result[0], test.getNameNode(), []);
         })
+
+
 
         it("let int", () => {
             const contract = /*javascript*/ `let test = 42;`
@@ -50,8 +46,7 @@ describe("parse variable declarations", () => {
             const result = expectEither(parseVariableBinding(test,tsm.VariableDeclarationKind.Let, O.of(pushInt(42))))
 
             expect(result).length(1);
-            expect(result[0].node).equals(test.getNameNode());
-            expect(result[0].symbol).equals(test.getSymbolOrThrow());
+            expectVarBinding(result[0], test.getNameNode(), []);
         })
     })
 
@@ -75,13 +70,8 @@ describe("parse variable declarations", () => {
         const result = expectEither(parseVariableBinding(decl, tsm.VariableDeclarationKind.Const, O.none));
 
         expect(result).length(2);
-
-        // expect(result[0].index).equals(0);
-        // expect(result[0].node).equals(a);
-        // expect(result[0].constant).undefined;
-        // expect(result[1].index).equals(2);
-        // expect(result[1].node).equals(c);
-        // expect(result[1].constant).undefined;
+        expectVarBinding(result[0], a, [0]);
+        expectVarBinding(result[1], c, [2]);
     });
 
     it("object binding", () => {
@@ -91,16 +81,33 @@ describe("parse variable declarations", () => {
         const decl = sourceFile.getVariableStatements()[1].getDeclarations()[0];
         const binding = decl.getNameNode().asKindOrThrow(tsm.SyntaxKind.ObjectBindingPattern);
         const elems = binding.getElements()
-            .map(e => [e.getNameNode().asKindOrThrow(tsm.SyntaxKind.Identifier), e.getPropertyNameNode()] as const);
+            .map(e => e.getNameNode().asKindOrThrow(tsm.SyntaxKind.Identifier));
 
         const result = expectEither(parseVariableBinding(decl, tsm.VariableDeclarationKind.Const, O.none));
 
         expect(result).length(3);
-        result.forEach((r, i) => {
-            const [id, prop] = elems[i];
-            expect(r.node).equals(id);
-            // expect(r.constant).undefined;
-            // expect(r.index).equals(prop ? prop.getText() : id.getText());
-        });
+        expectVarBinding(result[0], elems[0], ["a"])
+        expectVarBinding(result[1], elems[1], ["c"])
+        expectVarBinding(result[2], elems[2], ["d"])
     });
+
+    function expectVarBinding(v: ParsedVariable, node: tsm.BindingName, index: readonly (string | number)[]) {
+        if (isVariableBinding(v)) {
+            expect(v.node).equals(node);
+            expect(v.symbol).equals(node.getSymbolOrThrow());
+            expect(v.index).deep.equals(index);
+        } else {
+            expect.fail("expected variable binding");
+        }
+    }
+
+    function expectParsedConstant(v: ParsedVariable, node: tsm.BindingName, operation: Operation) {
+        if (isParsedConstant(v)) {
+            expect(v.node).equals(node);
+            expect(v.symbol).equals(node.getSymbolOrThrow());
+            expect(v.constant).deep.equals(operation);
+        } else {
+            expect.fail("expected parsed constant");
+        }
+    }
 });
