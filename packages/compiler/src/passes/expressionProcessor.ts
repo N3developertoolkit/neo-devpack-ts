@@ -109,33 +109,49 @@ function reduceArrayLiteral(context: ExpressionHeadContext, node: tsm.ArrayLiter
     return E.of(<ExpressionContext>{...context, node, type: node.getType(), getOps: () => getOps, getStoreOps: () => getStoreOps})
 }
 
-function reduceObjectLiteral(context: ExpressionHeadContext, node: tsm.ObjectLiteralExpression): E.Either<ParseError, ExpressionContext> {
+export function reduceObjectLiteral(context: ExpressionHeadContext, node: tsm.ObjectLiteralExpression): E.Either<ParseError, ExpressionContext> {
     const props = node.getProperties();
-    return pipe(
+
+    const kvps = pipe(
         props,
         ROA.map(prop => pipe(
             E.Do,
             E.bind('key', () => TS.parseSymbol(prop)),
             E.bind('value', () => reduceObjectLiteralProperty(context, prop))
         )),
-        ROA.sequence(E.Applicative),
-        E.map(props => {
-            const getOps = () => pipe(
-                props,
-                ROA.map(({ key, value }) => pipe(
-                    value.getOps(),
-                    E.map(ROA.append<Operation>(pushString(key.getName())))
-                )),
-                ROA.sequence(E.Applicative),
-                E.map(ROA.flatten),
-                E.map(ROA.append<Operation>(pushInt(props.length))),
-                E.map(ROA.append<Operation>({ kind: 'packmap' }))
-            )
-            const getStoreOps = () => E.left(makeParseError(node)(`store object literal not supported`));
-            return { ...context, node, type: node.getType(), getOps, getStoreOps };
-        })
+    );
 
+    const getOps = pipe(
+        kvps,
+        ROA.map(E.chain(({ key, value }) => {
+            return pipe(
+                value.getOps(),
+                E.map(ROA.append<Operation>(pushString(key.getName()))),
+            )
+        })),
+        ROA.sequence(E.Applicative),
+        E.map(ROA.flatten),
+        E.map(ROA.append<Operation>(pushInt(props.length))),
+        E.map(ROA.append<Operation>({ kind: 'packmap' }))
     )
+
+    const getStoreOps = pipe(
+        kvps,
+        ROA.map(E.chain(({key, value}) => {
+            return pipe(
+                value.getStoreOps(),
+                E.map(storeOps => <StoreOpVariable>{
+                    index: ROA.of(key.getName()),
+                    node: value.node,
+                    storeOps
+                }),
+            )
+        })),
+        ROA.sequence(E.Applicative),
+        E.chain(generateStoreOps)
+    )
+
+    return E.of(<ExpressionContext>{...context, node, type: node.getType(), getOps: () => getOps, getStoreOps: () => getStoreOps})
 
     function reduceObjectLiteralProperty(context: ExpressionHeadContext, node: tsm.ObjectLiteralElementLike): E.Either<ParseError, ExpressionContext> {
         const makeError = makeParseError(node);
@@ -165,8 +181,10 @@ function reduceObjectLiteral(context: ExpressionHeadContext, node: tsm.ObjectLit
                 )),
                 E.map(cto => {
                     const getOps = () => E.of(cto.loadOps);
-                    const getStoreOps = () => E.left(makeError(`cannot store to shorthand property assignment`));
-                    return { ...context, node, type: node.getType(), cto, getOps, getStoreOps };
+                    const getStoreOps = () => pipe(
+                        cto.storeOps, 
+                        E.fromNullable(makeParseError(cto.node)(`cannot store to shorthand property assignment`)))
+                    return <ExpressionContext>{ ...context, node, type: node.getType(), cto, getOps, getStoreOps };
                 })
             )
         }
@@ -514,7 +532,7 @@ function reducePrefixUnaryExpression(context: ExpressionHeadContext, node: tsm.P
     }
 }
 
-function reduceExpressionHead(scope: Scope, node: tsm.Expression): E.Either<ParseError, ExpressionContext> {
+export function reduceExpressionHead(scope: Scope, node: tsm.Expression): E.Either<ParseError, ExpressionContext> {
     const context: ExpressionHeadContext = { scope, endTarget: { kind: "noop" } }
     switch (node.getKind()) {
         case tsm.SyntaxKind.BigIntLiteral:

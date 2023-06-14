@@ -4,7 +4,7 @@ import * as tsm from 'ts-morph';
 
 import { identity, pipe } from 'fp-ts/function';
 import * as E from 'fp-ts/Either';
-import { parseExpression } from '../src/passes/expressionProcessor';
+import { parseExpression, reduceExpressionHead } from '../src/passes/expressionProcessor';
 import { CompileTimeType, createEmptyScope } from '../src/types/CompileTimeObject';
 import { createPropResolver, createPropResolvers, createTestProject, createTestScope, createTestVariable, expectPushData, makeFunctionInvoker as createFunctionInvoker, testParseExpression, expectPushInt, expectResults, createTestGlobalScope, expectEither, createVarDeclCTO } from "./testUtils.spec";
 import { Operation, pushInt, pushString } from '../src/types/Operation';
@@ -218,6 +218,75 @@ describe("expression parser", () => {
                 d.storeOp,
             )
         })
+
+        it("object literal", () => {
+            // since curly braces deliniate blocks and objects, not sure TS supports directly assigning to an object literal
+            // however, it is absolutely possible to destructure via an object literal in a for loop initializer 
+            const contract = /*javascript*/`let value = {a:1, b:2, c:3, d:4}; let a,z,d; for ({ a, c:z, d} of [value]) {}; `;
+            const { sourceFile } = createTestProject(contract);
+
+            const a = createVarDeclCTO(sourceFile, 'a');
+            const z = createVarDeclCTO(sourceFile, 'z');
+            const d = createVarDeclCTO(sourceFile, 'd');
+            const value = createVarDeclCTO(sourceFile, 'value');
+            const scope = createTestScope(undefined, [a, z, d, value]);
+
+
+            const children = sourceFile.forEachChildAsArray();
+            const expr = children[2].asKindOrThrow(tsm.SyntaxKind.ForOfStatement).getInitializer().asKindOrThrow(tsm.SyntaxKind.ObjectLiteralExpression);
+            const result = pipe(reduceExpressionHead(scope, expr), E.chain(ctx => ctx.getStoreOps()), expectEither);
+            
+            // TODO: automate valiation of the result
+
+            // expect(result).length(3);
+            // expect(result[0].cto).equals(a);
+            // expect(result[0].index).deep.equals(['a']);
+            // expect(result[1].cto).equals(z);
+            // expect(result[1].index).deep.equals(['c']);
+            // expect(result[2].cto).equals(d);
+            // expect(result[2].index).deep.equals(['d']);
+        });
+
+        it("nested object literal", () => {
+            const contract = /*javascript*/ `let value = {a:1, b:2, c:3, d:4}; let a,z,d,q; [{a, c:z},q] = [value, 42] as const;`
+            const { sourceFile } = createTestProject(contract);
+
+            const a = createVarDeclCTO(sourceFile, 'a');
+            const d = createVarDeclCTO(sourceFile, 'd');
+            const z = createVarDeclCTO(sourceFile, 'q');
+            const q = createVarDeclCTO(sourceFile, 'z');
+            const value = createVarDeclCTO(sourceFile, 'value');
+            const scope = createTestScope(undefined, [a, z, q, d, value]);
+
+            const expr = sourceFile.forEachChildAsArray()[2]
+                .asKindOrThrow(tsm.SyntaxKind.ExpressionStatement)
+                .getExpressionIfKindOrThrow(tsm.SyntaxKind.BinaryExpression);
+            // const lhs = expr.getLeft().asKindOrThrow(tsm.SyntaxKind.ArrayLiteralExpression);
+            // const elements = lhs.getElements();
+            // const nestedElements = elements[0].asKindOrThrow(tsm.SyntaxKind.ArrayLiteralExpression).getElements();
+            const result = testParseExpression(expr, scope);
+
+            // TODO: automate valiation of the result
+            // expectResults(result,
+            //     value.loadOp,
+            //     { kind: 'duplicate' },
+            //     { kind: 'duplicate', location: elements[0] },
+            //     pushInt(0),
+            //     { kind: 'pickitem' },
+            //     { kind: 'duplicate', location: nestedElements[0] },
+            //     pushInt(0),
+            //     { kind: 'pickitem' },
+            //     a.storeOp,
+            //     pushInt(1, nestedElements[1]),
+            //     { kind: 'pickitem' },
+            //     b.storeOp,
+            //     pushInt(1, elements[1]),
+            //     { kind: 'pickitem' },
+            //     d.storeOp,
+            // )
+        })
+
+
     });
 
     describe("identifier", () => {
@@ -305,31 +374,6 @@ describe("expression parser", () => {
     });
 
 
-    //     it("object literal", () => {
-    //         // since curly braces deliniate blocks and objects, not sure TS supports directly assigning to an object literal
-    //         // however, it is absolutely possible to destructure via an object literal in a for loop initializer 
-    //         const contract = /*javascript*/`let foo = {a:1, b:2, c:3, d:4}; let a,z,d; for ({ a, c:z, d} of [foo]) {}; `;
-    //         const { sourceFile } = createTestProject(contract);
-
-    //         const a = createVarDeclCTO(sourceFile, 'a');
-    //         const z = createVarDeclCTO(sourceFile, 'z');
-    //         const d = createVarDeclCTO(sourceFile, 'd');
-    //         const scope = createTestScope(undefined, [a, z, d]);
-
-    //         const children = sourceFile.forEachChildAsArray();
-    //         const expr = children[2].asKindOrThrow(tsm.SyntaxKind.ForOfStatement).getInitializer();
-    //         expect(tsm.Node.isExpression(expr)).true;
-    //         const result = pipe(expr as tsm.Expression, readAssignmentExpression(scope), expectEither, flattenNestedAssignmentBinding);
-
-
-    //         expect(result).length(3);
-    //         expect(result[0].cto).equals(a);
-    //         expect(result[0].index).deep.equals(['a']);
-    //         expect(result[1].cto).equals(z);
-    //         expect(result[1].index).deep.equals(['c']);
-    //         expect(result[2].cto).equals(d);
-    //         expect(result[2].index).deep.equals(['d']);
-    //     });
 
     //     it("nested object literal", () => {
     //         // since curly braces deliniate blocks and objects, not sure TS supports directly assigning to an object literal
