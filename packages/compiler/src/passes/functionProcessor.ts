@@ -8,10 +8,65 @@ import * as TS from '../TS';
 
 import { CompileTimeObject, Scope, createEmptyScope, createScope, updateScope } from "../types/CompileTimeObject";
 import { Operation, getBooleanConvertOps, updateLocation } from "../types/Operation";
-import { CompileError, E_fromSeparated, ParseError, isVoidLike, makeParseError, updateContextErrors } from "../utils";
+import { CompileError, E_fromSeparated, ParseError, isArray, isVoidLike, makeParseError, updateContextErrors } from "../utils";
 import { ContractMethod, ContractVariable } from "../types/CompileOptions";
 import { parseExpression } from "./expressionProcessor";
-import { parseVariableDeclaration, generateStoreOps, updateDeclarationScope } from "./parseVariableBinding";
+import { parseVariableDeclaration, generateStoreOps, updateDeclarationScope, StoreOpVariable } from "./parseVariableBinding";
+
+function adaptOp(op: Operation): S.State<AdaptStatementContext, readonly Operation[]> {
+    return context => [ROA.of(op), context];
+}
+
+function updateContext(func: S.State<AdaptStatementContext, readonly Operation[]>) {
+    return (
+        [ops, context]: readonly [readonly Operation[], AdaptStatementContext]
+    ): [readonly Operation[], AdaptStatementContext] => {
+        const [$ops, $context] = func(context);
+        return [ROA.concat($ops)(ops), $context];
+    }
+}
+
+function updateOps(func: (ops: readonly Operation[]) => readonly Operation[]) {
+    return (
+        [ops, context]: readonly [readonly Operation[], AdaptStatementContext]
+    ): [readonly Operation[], AdaptStatementContext] => {
+        return [func(ops), context];
+    }
+}
+
+
+function updateContextScope(scope: Scope) {
+    return (
+        [ops, context]: readonly [readonly Operation[], AdaptStatementContext]
+    ): [readonly Operation[], AdaptStatementContext] => {
+        return [ops, { ...context, scope }];
+    }
+}
+
+function dropVoidOp(type: tsm.Type) {
+    return (ops: readonly Operation[]): readonly Operation[] => {
+        return isVoidLike(type) ? ops : pipe(ops, ROA.append<Operation>({ kind: 'drop' }));
+    }
+}
+
+function reduceAdaptations(context: AdaptStatementContext, ops: readonly Operation[] = ROA.empty) {
+    return (
+        adapts: readonly S.State<AdaptStatementContext, readonly Operation[]>[]
+    ): [readonly Operation[], AdaptStatementContext] => {
+        const [$ops, $context] = pipe(
+            adapts,
+            ROA.reduce([ops, context] as const, (state, func) => updateContext(func)(state))
+        )
+        return [$ops, $context];
+    }
+}
+
+function adaptAnonymousVariable(context: AdaptStatementContext): [number, AdaptStatementContext] {
+    const index = context.locals.length;
+    const locals = pipe(context.locals, ROA.append<LocalVariable>({ name: `#var${index}` }))
+    return [index, { ...context, locals }];
+}
+
 
 function adaptExpression(node: tsm.Expression, convertOps: readonly Operation[] = []): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
@@ -29,28 +84,26 @@ function adaptExpression(node: tsm.Expression, convertOps: readonly Operation[] 
 
 function adaptBlock(node: tsm.Block): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
-        // note, since hoisted declarations are not supported inside functions, we don't use hoistDeclarations here
-        let $context = { ...context, scope: createEmptyScope(context.scope) };
-        let ops: readonly Operation[] = ROA.empty;
+        // save the original scope so it can be swapped back in at the end of the block
+        let scope = context.scope;
+        // swap in a new empty scope for the block 
+        context = { ...context, scope: createEmptyScope(context.scope) };
 
-        for (const stmt of node.getStatements()) {
-            let $ops;
-            [$ops, $context] = adaptStatement(stmt)($context);
-            ops = ROA.concat($ops)(ops);
-        }
-
-        const open = node.getFirstChildByKind(tsm.SyntaxKind.OpenBraceToken);
-        if (open) {
-            ops = ROA.prepend({ kind: 'noop', location: open } as Operation)(ops);
-        }
-        const close = node.getLastChildByKind(tsm.SyntaxKind.CloseBraceToken);
-        if (close) {
-            ops = ROA.append({ kind: 'noop', location: close } as Operation)(ops);
-        }
-
-        //  keep the accumulated context except swap back in the original
-        //  context scope state on return
-        return [ops, { ...$context, scope: context.scope }];
+        return pipe(
+            node.getStatements(),
+            ROA.map(adaptStatement),
+            reduceAdaptations(context),
+            updateOps(ops => {
+                const open = node.getFirstChildByKind(tsm.SyntaxKind.OpenBraceToken);
+                return open ? ROA.prepend<Operation>({ kind: 'noop', location: open })(ops) : ops;
+            }),
+            updateOps(ops => {
+                const close = node.getLastChildByKind(tsm.SyntaxKind.CloseBraceToken);
+                return close ? ROA.append<Operation>({ kind: 'noop', location: close })(ops) : ops;
+            }),
+            // swap original scope back in
+            updateContextScope(scope)
+        )
     };
 }
 
@@ -60,79 +113,82 @@ function adaptEmptyStatement(node: tsm.EmptyStatement): S.State<AdaptStatementCo
 
 function adaptReturnStatement(node: tsm.ReturnStatement): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
-
-        const expr = node.getExpression();
-        let [ops, $context] = expr ? adaptExpression(expr)(context) : [ROA.empty, context];
-
-        ops = pipe(
-            ops,
-            ROA.append<Operation>({ kind: 'jump', target: context.returnTarget }),
-            updateLocation(node)
-        );
-
-        return [ops, $context];
+        return pipe(
+            node.getExpression(),
+            O.fromNullable,
+            O.map(expr => adaptExpression(expr)(context)),
+            O.getOrElse(() => [ROA.empty as readonly Operation[], context] as const),
+            updateOps(flow(
+                ROA.append<Operation>({ kind: 'jump', target: context.returnTarget }),
+                updateLocation(node)
+            ))
+        )
     };
 }
 
 function adaptThrowStatement(node: tsm.ThrowStatement): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
-        let [ops, $context] = adaptExpression(node.getExpression())(context);
-        ops = pipe(
-            ops,
-            ROA.append<Operation>({ kind: 'throw' }),
-            updateLocation(node)
-        );
-        return [ops, $context];
+        return pipe(
+            context,
+            adaptExpression(node.getExpression()),
+            updateOps(flow(
+                ROA.append<Operation>({ kind: 'throw' }),
+                updateLocation(node)
+            ))
+        )
     }
 }
 
 function adaptExpressionStatement(node: tsm.ExpressionStatement): S.State<AdaptStatementContext, readonly Operation[]> {
     const expr = node.getExpression();
     return context => {
-
-        const dropOps = isVoidLike(expr.getType()) ? ROA.empty : ROA.of<Operation>({ kind: 'drop' });
-        let [ops, $context] = adaptExpression(expr)(context);
-        ops = pipe(ops,
-            updateLocation(node),
-            ROA.concat(dropOps)
-        );
-        return [ops, $context];
+        return pipe(
+            context,
+            adaptExpression(expr),
+            updateOps(flow(
+                dropVoidOp(expr.getType()),
+                updateLocation(node),
+            ))
+        )
     }
 }
 
 function adaptIfStatement(node: tsm.IfStatement): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
         const elseTarget = { kind: 'noop' } as Operation;
-
         const expr = node.getExpression();
-        let [ops, $context] = adaptExpression(expr, getBooleanConvertOps(expr.getType()))(context);
-        const closeParen = node.getLastChildByKind(tsm.SyntaxKind.CloseParenToken);
-        ops = pipe(
-            ops,
-            ROA.append<Operation>({ kind: 'jumpifnot', target: elseTarget }),
-            updateLocation(closeParen ? { start: node, end: closeParen } : expr)
+        return pipe(
+            context,
+            adaptExpression(expr, getBooleanConvertOps(expr.getType())),
+            updateOps(ops => {
+                const closeParen = node.getLastChildByKind(tsm.SyntaxKind.CloseParenToken);
+                return pipe(
+                    ops,
+                    ROA.append<Operation>({ kind: 'jumpifnot', target: elseTarget }),
+                    updateLocation(closeParen ? { start: node, end: closeParen } : expr)
+                )
+            }),
+            updateContext(adaptStatement(node.getThenStatement())),
+            updateContext((context) => {
+                const $else = node.getElseStatement();
+                if ($else) {
+                    const endTarget = { kind: 'noop' } as Operation;
+                    return pipe(
+                        context,
+                        adaptStatement($else),
+                        updateOps(elseOps => pipe(
+                            <Operation>{ kind: 'jump', target: endTarget },
+                            ROA.of,
+                            ROA.append(elseTarget),
+                            ROA.concat(elseOps),
+                            ROA.append(endTarget)
+                        ))
+                    )
+                } else {
+                    return [ROA.of(elseTarget), context];
+                }
+            })
         )
-
-        let $thenOps: readonly Operation[];
-        [$thenOps, $context] = adaptStatement(node.getThenStatement())($context);
-        ops = ROA.concat($thenOps)(ops);
-
-        const $else = node.getElseStatement();
-        if ($else) {
-            const endTarget = { kind: 'noop' } as Operation;
-            let $elseOps: readonly Operation[];
-            [$elseOps, $context] = adaptStatement($else)($context);
-            ops = pipe(
-                ops,
-                ROA.append<Operation>({ kind: 'jump', target: endTarget }),
-                ROA.append(elseTarget),
-                ROA.concat($elseOps),
-                ROA.append(endTarget)
-            );
-        } else {
-            ops = ROA.append(elseTarget)(ops);
-        }
-        return [ops, $context];
     }
 }
 
@@ -152,10 +208,10 @@ function adaptVariableDeclaration(node: tsm.VariableDeclaration, kind: tsm.Varia
             E.match(
                 errors => [ROA.empty, updateContextErrors(context)(errors)],
                 ({ initOps, parsedVariables }) => {
-                    const { scope, variables } = updateDeclarationScope(parsedVariables, context.scope, ctoFactory);
+                    const { scope, variables } = updateDeclarationScope(parsedVariables, context.scope, localVariableFactory(context));
                     return pipe(
                         variables,
-                        ROA.map(c => ({ node: c.cto.node, getStoreOps: c.cto.storeOps, index: c.index })),
+                        ROA.map(c => <StoreOpVariable>{ node: c.cto.node, storeOps: c.cto.storeOps, index: c.index }),
                         generateStoreOps,
                         E.map(storeOps => ROA.concat(storeOps)(initOps)),
                         E.match(
@@ -172,29 +228,28 @@ function adaptVariableDeclaration(node: tsm.VariableDeclaration, kind: tsm.Varia
                             }
                         )
                     )
-
-                    function ctoFactory(node: tsm.Identifier, symbol: tsm.Symbol, index: number): CompileTimeObject {
-                        const slotIndex = index + context.locals.length;
-                        const loadOps = ROA.of(<Operation>{ kind: "loadlocal", index: slotIndex });
-                        const storeOps = ROA.of(<Operation>{ kind: "storelocal", index: slotIndex });
-                        return <CompileTimeObject>{ node, symbol, loadOps, storeOps };
-                    }
                 }
             )
         )
+    }
+
+    function localVariableFactory(context: AdaptStatementContext) {
+        return (node: tsm.Identifier, symbol: tsm.Symbol, index: number): CompileTimeObject => {
+            const slotIndex = index + context.locals.length;
+            const loadOps = ROA.of<Operation>({ kind: "loadlocal", index: slotIndex });
+            const storeOps = ROA.of<Operation>({ kind: "storelocal", index: slotIndex });
+            return <CompileTimeObject>{ node, symbol, loadOps, storeOps };
+        }
     }
 }
 
 function adaptVariableDeclarationList(node: tsm.VariableDeclarationList): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
-        const kind = node.getDeclarationKind();
-        let ops: readonly Operation[] = ROA.empty;
-        for (const decl of node.getDeclarations()) {
-            let declOps: readonly Operation[];
-            [declOps, context] = adaptVariableDeclaration(decl, kind)(context);
-            ops = ROA.concat(declOps)(ops);
-        }
-        return [ops, context];
+        return pipe(
+            node.getDeclarations(),
+            ROA.map(decl => adaptVariableDeclaration(decl, node.getDeclarationKind())),
+            reduceAdaptations(context),
+        )
     }
 }
 
@@ -234,134 +289,79 @@ function adaptContinueStatement(node: tsm.ContinueStatement): S.State<AdaptState
     }
 }
 
-function pushLoopTargets(context: AdaptStatementContext, breakTarget: Operation, continueTarget: Operation): AdaptStatementContext {
+function pushLoopTargets(breakTarget: Operation, continueTarget: Operation) {
+    return (context: AdaptStatementContext): AdaptStatementContext => {
+        const breakTargets = ROA.prepend(breakTarget)(context.breakTargets);
+        const continueTargets = ROA.prepend(continueTarget)(context.continueTargets);
+        return { ...context, breakTargets, continueTargets };
+    }
+}
+
+
+function popLoopTargets(originalContext: AdaptStatementContext) {
+    return (
+        [ops, context]: readonly [readonly Operation[], AdaptStatementContext]
+    ): [readonly Operation[], AdaptStatementContext] => {
+        return [ops, { ...context, breakTargets: originalContext.breakTargets, continueTargets: originalContext.continueTargets }];
+    }
+}
+
+function pushLoopTargetsOLD(context: AdaptStatementContext, breakTarget: Operation, continueTarget: Operation): AdaptStatementContext {
     const breakTargets = ROA.prepend(breakTarget)(context.breakTargets);
     const continueTargets = ROA.prepend(continueTarget)(context.continueTargets);
     return { ...context, breakTargets, continueTargets };
 }
 
-function popLoopTargets(context: AdaptStatementContext, originalContext: AdaptStatementContext) {
+function popLoopTargetsOLD(context: AdaptStatementContext, originalContext: AdaptStatementContext) {
     return { ...context, breakTargets: originalContext.breakTargets, continueTargets: originalContext.continueTargets };
 }
 
 function adaptDoStatement(node: tsm.DoStatement): S.State<AdaptStatementContext, readonly Operation[]> {
 
     return context => {
-        const breakTarget = { kind: 'noop' } as Operation;
-        const continueTarget = { kind: 'noop' } as Operation;
-        const startTarget = { kind: 'noop' } as Operation;
-        let $context = pushLoopTargets(context, breakTarget, continueTarget);
 
-        let stmtOps: readonly Operation[];
-        [stmtOps, $context] = adaptStatement(node.getStatement())($context);
-
+        const breakTarget = <Operation>{ kind: 'noop' };
+        const continueTarget = <Operation>{ kind: 'noop' };
+        const startTarget = <Operation>{ kind: 'noop' };
         const expr = node.getExpression();
-        let exprOps: readonly Operation[];
-        [exprOps, $context] = adaptExpression(expr, getBooleanConvertOps(expr.getType()))($context);
 
-        let ops = pipe(
-            stmtOps,
-            ROA.prepend(startTarget),
-            ROA.append(continueTarget),
-            ROA.concat(updateLocation(expr)(exprOps)),
-            ROA.append<Operation>({ kind: 'jumpifnot', target: breakTarget }),
-            ROA.append(breakTarget)
+        return pipe(
+            context,
+            pushLoopTargets(breakTarget, continueTarget),
+            adaptOp(startTarget),
+            updateContext(adaptStatement(node.getStatement())),
+            updateOps(ROA.append(continueTarget)),
+            updateContext(flow(
+                adaptExpression(expr, getBooleanConvertOps(expr.getType())),
+                updateOps(updateLocation(expr))
+            )),
+            updateOps(ROA.append<Operation>({ kind: 'jumpifnot', target: breakTarget })),
+            updateOps(ROA.append(breakTarget)),
+            popLoopTargets(context)
         );
-
-        $context = popLoopTargets($context, context);
-        return [ops, $context];
     }
 }
 
 function adaptWhileStatement(node: tsm.WhileStatement): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
+        const expr = node.getExpression();
         const breakTarget = { kind: 'noop' } as Operation;
         const continueTarget = { kind: 'noop' } as Operation;
-        let $context = pushLoopTargets(context, breakTarget, continueTarget);
 
-        const expr = node.getExpression();
-        let exprOps: readonly Operation[];
-        [exprOps, $context] = adaptExpression(expr, getBooleanConvertOps(expr.getType()))($context);
-
-        let stmtOps: readonly Operation[];
-        [stmtOps, $context] = adaptStatement(node.getStatement())($context);
-
-        const ops = pipe(
-            exprOps,
-            updateLocation(expr),
-            ROA.prepend(continueTarget),
-            ROA.append<Operation>({ kind: 'jumpifnot', target: breakTarget }),
-            ROA.concat(stmtOps),
-            ROA.append<Operation>({ kind: 'jump', target: continueTarget }),
-            ROA.append(breakTarget)
-        );
-
-        $context = popLoopTargets($context, context);
-        return [ops, $context];
-    }
-}
-
-function adaptCatchClause(node: tsm.CatchClause): S.State<AdaptStatementContext, readonly Operation[]> {
-    return context => {
-
-        let $context = adaptCatchVariableDeclaration()(context);
-        if ($context.locals.length !== context.locals.length + 1) {
-            throw new CompileError("expected adaptCatchVariableDeclaration to declare a local variable", node)
-        }
-
-        let blockOps;
-        [blockOps, $context] = adaptBlock(node.getBlock())($context);
-
-        let operations = pipe(
-            blockOps,
-            // add an operation to store the error object in the catch variable
-            ROA.prepend<Operation>({
-                kind: 'storelocal',
-                index: context.locals.length,
-                location: node.getFirstChildByKind(tsm.SyntaxKind.CatchKeyword)
-            }),
+        return pipe(
+            context,
+            pushLoopTargets(breakTarget, continueTarget),
+            adaptExpression(expr, getBooleanConvertOps(expr.getType())),
+            updateOps(updateLocation(expr)),
+            updateOps(ROA.prepend(continueTarget)),
+            updateOps(ROA.append<Operation>({ kind: 'jumpifnot', target: breakTarget })),
+            updateContext(adaptStatement(node.getStatement())),
+            updateOps(ROA.append<Operation>({ kind: 'jump', target: continueTarget })),
+            updateOps(ROA.append(breakTarget)),
         )
-
-        // swap back in the scope from the original context
-        return [operations, { ...$context, scope: context.scope }];
-    }
-
-    function adaptCatchVariableDeclaration() {
-        return (context: AdaptStatementContext): AdaptStatementContext => {
-            const decl = node.getVariableDeclaration();
-            if (decl) {
-                if (decl.getInitializer()) {
-                    return updateContextErrors(context)(makeParseError(node)("catch variable must not have an initializer"));
-                }
-                const name = decl.getNameNode();
-                if (tsm.Node.isIdentifier(name)) {
-                    return pipe(
-                        name,
-                        TS.parseSymbol,
-                        E.match(
-                            updateContextErrors(context),
-                            symbol => {
-                                const slotIndex = context.locals.length;
-                                const loadOps = ROA.of(<Operation>{ kind: "loadlocal", index: slotIndex });
-                                const storeOps = ROA.of(<Operation>{ kind: "storelocal", index: slotIndex });
-                                const cto = <CompileTimeObject>{ node: name, symbol: symbol, loadOps, storeOps };
-                                const scope = updateScope(context.scope)(cto);
-                                const locals = ROA.append<LocalVariable>({ name: symbol.getName(), type: name.getType() })(context.locals);
-                                return { ...context, scope, locals };
-                            }
-                        )
-                    )
-                } else {
-                    return updateContextErrors(context)(makeParseError(node)("catch variable must be a simple identifier"));
-                }
-            }
-
-            // if there is no declaration, create an anonymous variable to hold the error
-            const locals = pipe(context.locals, ROA.append<LocalVariable>({ name: `#var${context.locals.length}` }))
-            return { ...context, locals };
-        }
     }
 }
+
 
 function adaptTryStatement(node: tsm.TryStatement): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
@@ -369,122 +369,177 @@ function adaptTryStatement(node: tsm.TryStatement): S.State<AdaptStatementContex
         const finallyTarget = { kind: 'noop' } as Operation;
         const endTarget = { kind: 'noop' } as Operation;
 
-        let [tryOps, $context] = adaptBlock(node.getTryBlock())(context);
-        let operations: readonly Operation[] = pipe(
-            tryOps,
-            ROA.prepend<Operation>({ kind: 'try', catchTarget, finallyTarget }),
-            ROA.append<Operation>({ kind: 'endtry', target: endTarget }),
+        return pipe(
+            context,
+            adaptOp({ kind: 'try', catchTarget, finallyTarget }),
+            updateContext(adaptBlock(node.getTryBlock())),
+            updateOps(ROA.append<Operation>({ kind: 'endtry', target: endTarget })),
+            updateContext(adaptCatchClause(catchTarget, node.getCatchClause())),
+            updateContext(adaptFinallyBlock(finallyTarget, node.getFinallyBlock())),
+            updateOps(ROA.append(endTarget)),
         )
 
-        let catchOps: readonly Operation[] = ROA.empty;
-        const $catch = node.getCatchClause();
-        if ($catch) {
-            [catchOps, $context] = adaptCatchClause($catch)($context);
+        function adaptCatchClause(target: Operation, node?: tsm.CatchClause): S.State<AdaptStatementContext, readonly Operation[]> {
+            return context => {
+                if (!node) return [ROA.empty, context];
+
+                // save the original scope so it can be swapped back in at the end of the block
+                let scope = context.scope;
+                return pipe(
+                    context,
+                    adaptCatchVariableDeclaration(node),
+                    ([index, context]) => {
+                        return pipe(
+                            context,
+                            adaptBlock(node.getBlock()),
+                            updateOps(ROA.prepend<Operation>({
+                                kind: 'storelocal',
+                                index,
+                                location: node.getFirstChildByKind(tsm.SyntaxKind.CatchKeyword)
+                            })),
+                            // in NCCS, the catch target is the catch variable storelocal operation above
+                            // rather than replumb the code to know the storelocal operation when the 
+                            // try clause is emitted, prepend the noop catch target here instead.
+                            updateOps(ROA.prepend<Operation>(target))
+                        )
+                    },
+                    // swap original scope back in
+                    updateContextScope(scope)
+                )
+            }
+
+            function adaptCatchVariableDeclaration(node: tsm.CatchClause): S.State<AdaptStatementContext, number> {
+                return context => {
+                    const decl = node.getVariableDeclaration();
+
+                    // if there is no declaration, create an anonymous variable to hold the error
+                    if (!decl) return adaptAnonymousVariable(context);
+
+                    const slotIndex = context.locals.length;
+                    const makeErrorResult = (message: string): [number, AdaptStatementContext] => {
+                        context = updateContextErrors(context)(makeParseError(node)(message));
+                        return [slotIndex, context];
+                    }
+
+                    if (decl.getInitializer()) return makeErrorResult("catch variable must not have an initializer");
+                    const name = decl.getNameNode();
+                    if (!tsm.Node.isIdentifier(name)) return makeErrorResult("catch variable must be a simple identifier");
+
+                    context = pipe(
+                        name,
+                        TS.parseSymbol,
+                        E.match(
+                            updateContextErrors(context),
+                            symbol => {
+                                // create a compile time object for the catch variable
+                                const loadOps = ROA.of(<Operation>{ kind: "loadlocal", index: slotIndex });
+                                const storeOps = ROA.of(<Operation>{ kind: "storelocal", index: slotIndex });
+                                const cto = <CompileTimeObject>{ node: name, symbol: symbol, loadOps, storeOps };
+
+                                // update the context with the catch variable
+                                const locals = ROA.append<LocalVariable>({ name: symbol.getName(), type: name.getType() })(context.locals);
+
+                                // create a new scope to hold the catch variable
+                                const scope = createScope(context.scope)([cto]);
+
+                                return { ...context, scope, locals };
+                            }
+                        )
+                    );
+                    return [slotIndex, context];
+                }
+            }
         }
 
-        operations = pipe(
-            operations,
-            ROA.append(catchTarget),
-            ROA.concat(catchOps),
-            ROA.append<Operation>({ kind: 'endtry', target: endTarget })
-        )
-
-        let finallyOps: readonly Operation[] = ROA.empty;
-        const $finally = node.getFinallyBlock();
-        if ($finally) {
-            [finallyOps, $context] = adaptBlock($finally)($context);
+        function adaptFinallyBlock(target: Operation, node?: tsm.Block): S.State<AdaptStatementContext, readonly Operation[]> {
+            return context => {
+                return node
+                    ? pipe(
+                        context,
+                        adaptOp(target),
+                        updateContext(adaptBlock(node)),
+                        updateOps(ROA.append<Operation>({ kind: 'endfinally' }))
+                    )
+                    : [ROA.empty, context];
+            }
         }
-
-        operations = pipe(
-            operations,
-            ROA.append(finallyTarget),
-            ROA.concat(finallyOps),
-            ROA.append<Operation>({ kind: 'endfinally' }),
-            ROA.append(endTarget)
-        )
-
-        return [operations, $context];
     }
 }
 
 function adaptForStatement(node: tsm.ForStatement): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
 
-        let [ops, $context] = adaptInitializer()(context);
+        // save the original scope so it can be swapped back in at the end of the block
+        let scope = context.scope;
+
         const startTarget = { kind: 'noop' } as Operation;
         const conditionTarget = { kind: 'noop' } as Operation;
         const breakTarget = { kind: 'noop' } as Operation;
         const continueTarget = { kind: 'noop' } as Operation;
-        $context = pushLoopTargets(context, breakTarget, continueTarget);
 
-        let stmtOps: readonly Operation[] = ROA.empty;
-        [stmtOps, $context] = adaptStatement(node.getStatement())($context);
-        ops = pipe(
-            ops,
-            ROA.append<Operation>({ kind: "jump", target: conditionTarget }),
-            ROA.append(startTarget),
-            ROA.concat(stmtOps),
-            ROA.append(continueTarget)
-        );
-
-        let incrOps: readonly Operation[] = ROA.empty;
-        [incrOps, $context] = adaptIncrementor()($context);
-        ops = pipe(
-            ops,
-            ROA.concat(incrOps),
-            ROA.append(conditionTarget)
+        return pipe(
+            context,
+            pushLoopTargets(breakTarget, continueTarget),
+            adaptForInitializer(node),
+            updateOps(ROA.append<Operation>({ kind: "jump", target: conditionTarget })),
+            updateOps(ROA.append(startTarget)),
+            updateContext(adaptStatement(node.getStatement())),
+            updateOps(ROA.append(continueTarget)),
+            updateContext(adaptIncrementor()),
+            updateOps(ROA.append(conditionTarget)),
+            updateContext(adaptCondition(startTarget)),
+            updateOps(ROA.append(breakTarget)),
+            popLoopTargets(context),
+            // swap original scope back in
+            updateContextScope(scope)
         )
 
-        let condOps: readonly Operation[] = ROA.empty;
-        [condOps, $context] = adaptCondition(startTarget)($context);
-        ops = pipe(
-            ops,
-            ROA.concat(condOps),
-            ROA.append(breakTarget),
-        );
-
-        $context = popLoopTargets($context, context);
-        return [ops, $context];
-
-        function adaptInitializer(): S.State<AdaptStatementContext, readonly Operation[]> {
-            return context => {
-                const init = node.getInitializer();
-                const [ops, $context] = init === undefined
-                    ? [[], context]
-                    : tsm.Node.isVariableDeclarationList(init)
-                        ? adaptVariableDeclarationList(init)(context)
-                        : adaptExpression(init)(context);
-                return init ? [updateLocation(init)(ops), $context] : [ops, $context];
-            }
-        }
         function adaptIncrementor(): S.State<AdaptStatementContext, readonly Operation[]> {
             return context => {
                 const incr = node.getIncrementor();
-                if (incr === undefined) { return [[], context]; }
-
-                let [ops, $context] = adaptExpression(incr)(context);
-                ops = updateLocation(incr)(ops);
-                return [ops, $context];
+                return incr
+                    ? pipe(
+                        context,
+                        adaptExpression(incr),
+                        updateOps(updateLocation(incr))
+                    )
+                    : [ROA.empty, context];
             }
         }
+
         function adaptCondition(startTarget: Operation): S.State<AdaptStatementContext, readonly Operation[]> {
             return context => {
-                const cond = node.getCondition();
-                if (cond === undefined) {
-                    const ops = ROA.of<Operation>({ kind: 'jump', target: startTarget });
-                    return [ops, context];
-                }
-
-                let [ops, $context] = adaptExpression(cond)(context);
-                ops = pipe(
-                    ops,
-                    updateLocation(cond),
-                    ROA.append<Operation>({ kind: 'jumpif', target: startTarget })
-                );
-
-                return [ops, $context];
+                const condition = node.getCondition();
+                return condition 
+                    ? pipe(
+                        context,
+                        adaptExpression(condition),
+                        updateOps(updateLocation(condition)),
+                        updateOps(ROA.append<Operation>({ kind: 'jumpif', target: startTarget }))
+                    )
+                    : [ROA.of<Operation>({ kind: 'jump', target: startTarget }), context];
             }
         }
+    }
+}
+
+function adaptForInitializer(node: tsm.ForStatement | tsm.ForInStatement | tsm.ForOfStatement): S.State<AdaptStatementContext, readonly Operation[]> {
+    return context => {
+        const init = node.getInitializer();
+        const [ops, $context] = init === undefined
+            ? [ROA.empty, context]
+            : tsm.Node.isVariableDeclarationList(init)
+                ? pipe(
+                    context, 
+                    adaptVariableDeclarationList(init)
+                )
+                : pipe(
+                    context,
+                    adaptExpression(init),
+                    updateOps(dropVoidOp(init.getType())),
+                );
+
+        return init ? [updateLocation(init)(ops), $context] : [ops, $context];
     }
 }
 
@@ -498,7 +553,40 @@ function adaptForStatement(node: tsm.ForStatement): S.State<AdaptStatementContex
 
 function adaptForOfStatement(node: tsm.ForOfStatement): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
-        const error = makeParseError(node)(`adaptForOfStatement not implemented`);
+
+        // const expr = node.getExpression();
+        // if (!expr.getType().isArray()) {
+        //     return adaptError(`For Of expression must be an array`, node)(context);
+        // }
+
+        // const startTarget = { kind: 'noop' } as Operation;
+        // const conditionTarget = { kind: 'noop' } as Operation;
+        // const breakTarget = { kind: 'noop' } as Operation;
+        // const continueTarget = { kind: 'noop' } as Operation;
+        // let $context = pushLoopTargetsOLD(context, breakTarget, continueTarget);
+        // let storeOps;
+        // [storeOps, $context] = adaptForInitializer(node)(context);
+
+        // const q = pipe(
+        //     expr,
+        //     parseExpression(context.scope)
+        // )
+
+        // let arrayIndex: number, lengthIndex: number, iIndex: number, elementIndex: number;
+        // [arrayIndex, $context] = adaptAnonymousVariable($context);
+        // [lengthIndex, $context] = adaptAnonymousVariable($context);
+        // [iIndex, $context] = adaptAnonymousVariable($context);
+        // [elementIndex, $context] = adaptAnonymousVariable($context);
+
+        // if ($context.errors.length > 0) return [ROA.empty, $context];
+
+        return adaptError(`adaptForOfStatement not implemented`, node)(context);
+    }
+}
+
+function adaptError(message: string, node: tsm.Node): S.State<AdaptStatementContext, readonly Operation[]> {
+    return context => {
+        const error = makeParseError(node)(message);
         const errors = ROA.append(error)(context.errors);
         return [ROA.empty, { ...context, errors }];
     }
@@ -509,7 +597,7 @@ export interface LocalVariable {
     type?: tsm.Type;
 }
 
-interface AdaptStatementContext {
+export interface AdaptStatementContext {
     readonly errors: readonly ParseError[];
     readonly locals: readonly LocalVariable[];
     readonly scope: Scope;
@@ -518,7 +606,7 @@ interface AdaptStatementContext {
     readonly continueTargets: readonly Operation[];
 }
 
-function adaptStatement(node: tsm.Statement): S.State<AdaptStatementContext, readonly Operation[]> {
+export function adaptStatement(node: tsm.Statement): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
 
         switch (node.getKind()) {
@@ -604,7 +692,7 @@ function parseFunctionDeclaration(parentScope: Scope) {
             }),
             ROA.separate,
             E_fromSeparated,
-            // Note, not using hoistDeclarations here because none of the hoisted declarations 
+            // Note, not using hoistDeclarations here because none of the hoisted declarations
             // are supported inside functions at this time
             E.map(params => createScope(parentScope)(params)),
             E.bindTo('scope'),

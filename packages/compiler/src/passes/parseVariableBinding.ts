@@ -34,10 +34,12 @@ export function generateStoreOps(variables: readonly StoreOpVariable[]): E.Eithe
             (init, last) => {
                 return pipe(
                     init,
-                    ROA.map(item => pipe(
-                        makeStoreOps(item),
-                        E.map(ROA.prepend<Operation>({ kind: "duplicate", location: item.node })),
-                    )),
+                    ROA.map(item => {
+                        return pipe(
+                            makeStoreOps(item),
+                            E.map(ROA.prepend<Operation>({ kind: "duplicate", location: item.node }))
+                        );
+                    }),
                     ROA.append(pipe(
                         makeStoreOps(last),
                         E.map(updateLocation(last.node))
@@ -52,7 +54,7 @@ export function generateStoreOps(variables: readonly StoreOpVariable[]): E.Eithe
     // map the index array to pickitem operations and concat with the CTO's store operations
     function makeStoreOps({ node, index, storeOps }: StoreOpVariable): E.Either<ParseError, readonly Operation[]> {
         if (!storeOps) {
-            return E.left(makeParseError(node)(`variable does not have store ops`));
+            return E.left(makeParseError(node)(`${node.getSymbol()?.getName()} variable does not have store ops`));
         }
 
         return pipe(
