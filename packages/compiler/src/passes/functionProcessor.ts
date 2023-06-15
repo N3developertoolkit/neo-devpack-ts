@@ -308,8 +308,6 @@ function adaptContinueStatement(node: tsm.ContinueStatement): S.State<AdaptState
     }
 }
 
-
-
 function adaptDoStatement(node: tsm.DoStatement): S.State<AdaptStatementContext, readonly Operation[]> {
 
     return context => {
@@ -460,6 +458,26 @@ function adaptTryStatement(node: tsm.TryStatement): S.State<AdaptStatementContex
     }
 }
 
+function adaptForInitializer(node: tsm.ForStatement | tsm.ForInStatement | tsm.ForOfStatement): S.State<AdaptStatementContext, readonly Operation[]> {
+    return context => {
+        const init = node.getInitializer();
+        const [ops, $context] = init === undefined
+            ? [ROA.empty, context]
+            : tsm.Node.isVariableDeclarationList(init)
+                ? pipe(
+                    context, 
+                    adaptVariableDeclarationList(init)
+                )
+                : pipe(
+                    context,
+                    adaptExpression(init),
+                    updateOps(dropIfVoidOps(init.getType())),
+                );
+
+        return init ? [updateLocation(init)(ops), $context] : [ops, $context];
+    }
+}
+
 function adaptForStatement(node: tsm.ForStatement): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
 
@@ -517,46 +535,35 @@ function adaptForStatement(node: tsm.ForStatement): S.State<AdaptStatementContex
     }
 }
 
-function adaptForInitializer(node: tsm.ForStatement | tsm.ForInStatement | tsm.ForOfStatement): S.State<AdaptStatementContext, readonly Operation[]> {
-    return context => {
-        const init = node.getInitializer();
-        const [ops, $context] = init === undefined
-            ? [ROA.empty, context]
-            : tsm.Node.isVariableDeclarationList(init)
-                ? pipe(
-                    context, 
-                    adaptVariableDeclarationList(init)
-                )
-                : pipe(
-                    context,
-                    adaptExpression(init),
-                    updateOps(dropIfVoidOps(init.getType())),
-                );
-
-        return init ? [updateLocation(init)(ops), $context] : [ops, $context];
-    }
-}
-
-// function adaptForInStatement(node: tsm.ForInStatement): S.State<AdaptStatementContext, readonly Operation[]> {
-//     return context => {
-//         const error = makeParseError(node)(`adaptForInStatement not implemented`);
-//         const errors = ROA.append(error)(context.errors);
-//         return [ROA.empty, { ...context, errors }];
-//     }
-// }
-
 function adaptForOfStatement(node: tsm.ForOfStatement): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
+        // save the original scope so it can be swapped back in at the end of the block
+        let scope = context.scope;
 
-        // const expr = node.getExpression();
-        // if (!expr.getType().isArray()) {
-        //     return adaptError(`For Of expression must be an array`, node)(context);
-        // }
+        const expr = node.getExpression();
+        const exprType = expr.getType();
+        if (!exprType.isArray()) {
+            return adaptError(`unsupported for-of type ${exprType.getSymbol()?.getName()}`, node)(context);
+        }
 
-        // const startTarget = { kind: 'noop' } as Operation;
-        // const conditionTarget = { kind: 'noop' } as Operation;
-        // const breakTarget = { kind: 'noop' } as Operation;
-        // const continueTarget = { kind: 'noop' } as Operation;
+        const startTarget = { kind: 'noop' } as Operation;
+        const conditionTarget = { kind: 'noop' } as Operation;
+        const breakTarget = { kind: 'noop' } as Operation;
+        const continueTarget = { kind: 'noop' } as Operation;
+
+        let arrayIndex, lengthIndex, iIndex;
+        [arrayIndex, context] = adaptAnonymousVariable(context);
+        [lengthIndex, context] = adaptAnonymousVariable(context);
+        [iIndex, context] = adaptAnonymousVariable(context);
+
+
+        const q =  pipe(
+            context,
+            pushLoopTargets(breakTarget, continueTarget),
+            adaptForInitializer(node),
+
+        );
+
         // let $context = pushLoopTargetsOLD(context, breakTarget, continueTarget);
         // let storeOps;
         // [storeOps, $context] = adaptForInitializer(node)(context);
