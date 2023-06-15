@@ -6,9 +6,9 @@ import * as O from 'fp-ts/Option';
 import * as S from 'fp-ts/State';
 import * as TS from '../TS';
 
-import { CompileTimeObject, Scope, createEmptyScope, createScope, updateScope } from "../types/CompileTimeObject";
+import { CompileTimeObject, Scope, createEmptyScope, createScope } from "../types/CompileTimeObject";
 import { Operation, getBooleanConvertOps, updateLocation } from "../types/Operation";
-import { CompileError, E_fromSeparated, ParseError, isArray, isVoidLike, makeParseError, updateContextErrors } from "../utils";
+import { E_fromSeparated, ParseError, isVoidLike, makeParseError, updateContextErrors } from "../utils";
 import { ContractMethod, ContractVariable } from "../types/CompileOptions";
 import { parseExpression } from "./expressionProcessor";
 import { parseVariableDeclaration, generateStoreOps, updateDeclarationScope, StoreOpVariable } from "./parseVariableBinding";
@@ -43,9 +43,25 @@ function updateContextScope(scope: Scope) {
     }
 }
 
-function dropVoidOp(type: tsm.Type) {
+function dropIfVoidOps(type: tsm.Type) {
     return (ops: readonly Operation[]): readonly Operation[] => {
         return isVoidLike(type) ? ops : pipe(ops, ROA.append<Operation>({ kind: 'drop' }));
+    }
+}
+
+function pushLoopTargets(breakTarget: Operation, continueTarget: Operation) {
+    return (context: AdaptStatementContext): AdaptStatementContext => {
+        const breakTargets = ROA.prepend(breakTarget)(context.breakTargets);
+        const continueTargets = ROA.prepend(continueTarget)(context.continueTargets);
+        return { ...context, breakTargets, continueTargets };
+    }
+}
+
+function popLoopTargets(originalContext: AdaptStatementContext) {
+    return (
+        [ops, context]: readonly [readonly Operation[], AdaptStatementContext]
+    ): [readonly Operation[], AdaptStatementContext] => {
+        return [ops, { ...context, breakTargets: originalContext.breakTargets, continueTargets: originalContext.continueTargets }];
     }
 }
 
@@ -66,7 +82,6 @@ function adaptAnonymousVariable(context: AdaptStatementContext): [number, AdaptS
     const locals = pipe(context.locals, ROA.append<LocalVariable>({ name: `#var${index}` }))
     return [index, { ...context, locals }];
 }
-
 
 function adaptExpression(node: tsm.Expression, convertOps: readonly Operation[] = []): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
@@ -146,7 +161,7 @@ function adaptExpressionStatement(node: tsm.ExpressionStatement): S.State<AdaptS
             context,
             adaptExpression(expr),
             updateOps(flow(
-                dropVoidOp(expr.getType()),
+                dropIfVoidOps(expr.getType()),
                 updateLocation(node),
             ))
         )
@@ -213,7 +228,10 @@ function adaptVariableDeclaration(node: tsm.VariableDeclaration, kind: tsm.Varia
                         variables,
                         ROA.map(c => <StoreOpVariable>{ node: c.cto.node, storeOps: c.cto.storeOps, index: c.index }),
                         generateStoreOps,
-                        E.map(storeOps => ROA.concat(storeOps)(initOps)),
+                        E.map(storeOps => {
+                            // if updateDeclarationScope returns no variables, don't return any init or store ops
+                            return ROA.isEmpty(variables) ? ROA.empty : ROA.concat(storeOps)(initOps);
+                        }),
                         E.match(
                             error => [ROA.empty, updateContextErrors(context)(error)],
                             ops => {
@@ -245,9 +263,10 @@ function adaptVariableDeclaration(node: tsm.VariableDeclaration, kind: tsm.Varia
 
 function adaptVariableDeclarationList(node: tsm.VariableDeclarationList): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
+        const kind = node.getDeclarationKind();
         return pipe(
             node.getDeclarations(),
-            ROA.map(decl => adaptVariableDeclaration(decl, node.getDeclarationKind())),
+            ROA.map(decl => adaptVariableDeclaration(decl, kind)),
             reduceAdaptations(context),
         )
     }
@@ -289,32 +308,7 @@ function adaptContinueStatement(node: tsm.ContinueStatement): S.State<AdaptState
     }
 }
 
-function pushLoopTargets(breakTarget: Operation, continueTarget: Operation) {
-    return (context: AdaptStatementContext): AdaptStatementContext => {
-        const breakTargets = ROA.prepend(breakTarget)(context.breakTargets);
-        const continueTargets = ROA.prepend(continueTarget)(context.continueTargets);
-        return { ...context, breakTargets, continueTargets };
-    }
-}
 
-
-function popLoopTargets(originalContext: AdaptStatementContext) {
-    return (
-        [ops, context]: readonly [readonly Operation[], AdaptStatementContext]
-    ): [readonly Operation[], AdaptStatementContext] => {
-        return [ops, { ...context, breakTargets: originalContext.breakTargets, continueTargets: originalContext.continueTargets }];
-    }
-}
-
-function pushLoopTargetsOLD(context: AdaptStatementContext, breakTarget: Operation, continueTarget: Operation): AdaptStatementContext {
-    const breakTargets = ROA.prepend(breakTarget)(context.breakTargets);
-    const continueTargets = ROA.prepend(continueTarget)(context.continueTargets);
-    return { ...context, breakTargets, continueTargets };
-}
-
-function popLoopTargetsOLD(context: AdaptStatementContext, originalContext: AdaptStatementContext) {
-    return { ...context, breakTargets: originalContext.breakTargets, continueTargets: originalContext.continueTargets };
-}
 
 function adaptDoStatement(node: tsm.DoStatement): S.State<AdaptStatementContext, readonly Operation[]> {
 
@@ -536,7 +530,7 @@ function adaptForInitializer(node: tsm.ForStatement | tsm.ForInStatement | tsm.F
                 : pipe(
                     context,
                     adaptExpression(init),
-                    updateOps(dropVoidOp(init.getType())),
+                    updateOps(dropIfVoidOps(init.getType())),
                 );
 
         return init ? [updateLocation(init)(ops), $context] : [ops, $context];
