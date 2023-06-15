@@ -46,17 +46,15 @@ export function reduceVariableDeclaration(
     node: tsm.VariableDeclaration,
     kind: tsm.VariableDeclarationKind
 ): ParseSourceContext {
+
     return pipe(
-        node,
-        parseVariableDeclaration(context.scope, kind),
-        E.bindTo('parsedVariables'),
-        E.bind('initOps', () => pipe(
-            node.getInitializer(),
-            O.fromNullable,
-            O.map(parseExpression(context.scope)),
-            O.getOrElse(() => E.of(ROA.empty as readonly Operation[])),
-            E.mapLeft(ROA.of)
-        )),
+        node.getInitializer(),
+        O.fromNullable,
+        O.map(parseExpression(context.scope)),
+        O.getOrElse(() => E.of(ROA.empty as readonly Operation[])),
+        E.mapLeft(ROA.of),
+        E.bindTo('initOps'),
+        E.bind('parsedVariables', ({ initOps }) => parseVariableDeclaration(node, kind)(initOps)),
         E.match(
             errors => updateContextErrors(context)(errors),
             ({ initOps, parsedVariables }) => {

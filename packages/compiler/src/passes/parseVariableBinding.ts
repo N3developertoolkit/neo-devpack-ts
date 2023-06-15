@@ -151,16 +151,13 @@ export function parseVariableBinding(
 }
 
 // parse the variable declaration, returning an array of parsed constants and variables 
-export function parseVariableDeclaration(scope: Scope, kind: tsm.VariableDeclarationKind) {
-    return (node: tsm.VariableDeclaration): E.Either<readonly ParseError[], readonly ParsedVariable[]> => {
+export function parseVariableDeclaration(node: tsm.VariableDeclaration, kind: tsm.VariableDeclarationKind) {
+    return (initOps: readonly Operation[]): E.Either<readonly ParseError[], readonly ParsedVariable[]> => {
         return pipe(
-            node.getInitializer(),
-            O.fromNullable,
-            O.map(parseExpression(scope)),
-            O.match(() => E.of(O.none), E.map(O.some)),
-            E.map(O.chain(single)),
-            E.mapLeft(ROA.of),
-            E.chain(initOp => parseVariableBinding(node, kind, initOp))
+            initOps,
+            ROA.filter(op => op.kind !== 'noop'),
+            single,
+            op => parseVariableBinding(node, kind, op)
         )
     }
 }

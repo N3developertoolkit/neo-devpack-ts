@@ -7,11 +7,11 @@ import * as S from 'fp-ts/State';
 import * as TS from '../TS';
 
 import { CompileTimeObject, Scope, createEmptyScope, createScope } from "../types/CompileTimeObject";
-import { Operation, getBooleanConvertOps, updateLocation } from "../types/Operation";
+import { Operation, getBooleanConvertOps, pushInt, updateLocation } from "../types/Operation";
 import { E_fromSeparated, ParseError, isVoidLike, makeParseError, updateContextErrors } from "../utils";
 import { ContractMethod, ContractVariable } from "../types/CompileOptions";
 import { parseExpression } from "./expressionProcessor";
-import { parseVariableDeclaration, generateStoreOps, updateDeclarationScope, StoreOpVariable } from "./parseVariableBinding";
+import { generateStoreOps, updateDeclarationScope, StoreOpVariable, parseVariableDeclaration } from "./parseVariableBinding";
 
 function adaptOp(op: Operation): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => [ROA.of(op), context];
@@ -209,17 +209,15 @@ function adaptIfStatement(node: tsm.IfStatement): S.State<AdaptStatementContext,
 
 function adaptVariableDeclaration(node: tsm.VariableDeclaration, kind: tsm.VariableDeclarationKind): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
+
         return pipe(
-            node,
-            parseVariableDeclaration(context.scope, kind),
-            E.bindTo('parsedVariables'),
-            E.bind('initOps', () => pipe(
-                node.getInitializer(),
-                O.fromNullable,
-                O.map(parseExpression(context.scope)),
-                O.getOrElse(() => E.of(ROA.empty as readonly Operation[])),
-                E.mapLeft(ROA.of)
-            )),
+            node.getInitializer(),
+            O.fromNullable,
+            O.map(parseExpression(context.scope)),
+            O.getOrElse(() => E.of(ROA.empty as readonly Operation[])),
+            E.mapLeft(ROA.of),
+            E.bindTo('initOps'),
+            E.bind('parsedVariables', ({ initOps }) => parseVariableDeclaration(node, kind)(initOps)),
             E.match(
                 errors => [ROA.empty, updateContextErrors(context)(errors)],
                 ({ initOps, parsedVariables }) => {
@@ -458,26 +456,6 @@ function adaptTryStatement(node: tsm.TryStatement): S.State<AdaptStatementContex
     }
 }
 
-function adaptForInitializer(node: tsm.ForStatement | tsm.ForInStatement | tsm.ForOfStatement): S.State<AdaptStatementContext, readonly Operation[]> {
-    return context => {
-        const init = node.getInitializer();
-        const [ops, $context] = init === undefined
-            ? [ROA.empty, context]
-            : tsm.Node.isVariableDeclarationList(init)
-                ? pipe(
-                    context, 
-                    adaptVariableDeclarationList(init)
-                )
-                : pipe(
-                    context,
-                    adaptExpression(init),
-                    updateOps(dropIfVoidOps(init.getType())),
-                );
-
-        return init ? [updateLocation(init)(ops), $context] : [ops, $context];
-    }
-}
-
 function adaptForStatement(node: tsm.ForStatement): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
 
@@ -492,7 +470,7 @@ function adaptForStatement(node: tsm.ForStatement): S.State<AdaptStatementContex
         return pipe(
             context,
             pushLoopTargets(breakTarget, continueTarget),
-            adaptForInitializer(node),
+            adaptInitializer(),
             updateOps(ROA.append<Operation>({ kind: "jump", target: conditionTarget })),
             updateOps(ROA.append(startTarget)),
             updateContext(adaptStatement(node.getStatement())),
@@ -505,6 +483,26 @@ function adaptForStatement(node: tsm.ForStatement): S.State<AdaptStatementContex
             // swap original scope back in
             updateContextScope(scope)
         )
+
+        function adaptInitializer(): S.State<AdaptStatementContext, readonly Operation[]> {
+            return context => {
+                const init = node.getInitializer();
+                const [ops, $context] = init === undefined
+                    ? [ROA.empty, context]
+                    : tsm.Node.isVariableDeclarationList(init)
+                        ? pipe(
+                            context,
+                            adaptVariableDeclarationList(init)
+                        )
+                        : pipe(
+                            context,
+                            adaptExpression(init),
+                            updateOps(dropIfVoidOps(init.getType())),
+                        );
+
+                return init ? [updateLocation(init)(ops), $context] : [ops, $context];
+            }
+        }
 
         function adaptIncrementor(): S.State<AdaptStatementContext, readonly Operation[]> {
             return context => {
@@ -522,7 +520,7 @@ function adaptForStatement(node: tsm.ForStatement): S.State<AdaptStatementContex
         function adaptCondition(startTarget: Operation): S.State<AdaptStatementContext, readonly Operation[]> {
             return context => {
                 const condition = node.getCondition();
-                return condition 
+                return condition
                     ? pipe(
                         context,
                         adaptExpression(condition),
@@ -551,38 +549,95 @@ function adaptForOfStatement(node: tsm.ForOfStatement): S.State<AdaptStatementCo
         const breakTarget = { kind: 'noop' } as Operation;
         const continueTarget = { kind: 'noop' } as Operation;
 
-        let arrayIndex, lengthIndex, iIndex;
-        [arrayIndex, context] = adaptAnonymousVariable(context);
-        [lengthIndex, context] = adaptAnonymousVariable(context);
-        [iIndex, context] = adaptAnonymousVariable(context);
+        let arrayVar, lengthVar, indexVar, elementVar;
+        [arrayVar, context] = adaptAnonymousVariable(context);
+        [lengthVar, context] = adaptAnonymousVariable(context);
+        [indexVar, context] = adaptAnonymousVariable(context);
+        [elementVar, context] = adaptAnonymousVariable(context);
 
-
-        const q =  pipe(
+        const q = pipe(
             context,
             pushLoopTargets(breakTarget, continueTarget),
-            adaptForInitializer(node),
+            adaptInitializer(),
+            updateOps(
+                ROA.concat<Operation>([
+                    { kind: 'duplicate' },
+                    { kind: "storelocal", index: arrayVar },
+                    { kind: "size" },
+                    { kind: "storelocal", index: lengthVar },
+                    pushInt(0),
+                    { kind: "storelocal", index: indexVar },
+                    { kind: "jump", target: conditionTarget },
+                ]),
+            ),
+            updateOps(flow(
+                ROA.concat<Operation>([
+                    startTarget,
+                    { kind: "loadlocal", index: arrayVar },
+                    { kind: "loadlocal", index: indexVar },
+                    { kind: "pickitem" },
+                ]),
+                updateLocation(node.getExpression())
+            )),
 
+            // TODO: assign to variable
+            /*
+            ConvertArrayForEachVariableStatement:
+                unpack
+                drop (size)
+                for each declared symbol, either drop or store
+            ConvertArrayForEachStatement
+                store to variable
+            */
+            updateContext(adaptStatement(node.getStatement())),
+            updateOps(flow(
+                ROA.concat<Operation>([
+                    continueTarget,
+                    { kind: "loadlocal", index: indexVar },
+                    { kind: "increment" },
+                    { kind: "storelocal", index: indexVar },
+                    conditionTarget,
+                    { kind: "loadlocal", index: indexVar },
+                    { kind: "loadlocal", index: lengthVar },
+                    { kind: "jumplt", target: startTarget },
+                ]),
+                updateLocation(node.getExpression())
+            )),
+            updateOps(ROA.append(breakTarget)),
+            popLoopTargets(context),
+            // swap original scope back in
+            updateContextScope(scope)
         );
 
-        // let $context = pushLoopTargetsOLD(context, breakTarget, continueTarget);
-        // let storeOps;
-        // [storeOps, $context] = adaptForInitializer(node)(context);
-
-        // const q = pipe(
-        //     expr,
-        //     parseExpression(context.scope)
-        // )
-
-        // let arrayIndex: number, lengthIndex: number, iIndex: number, elementIndex: number;
-        // [arrayIndex, $context] = adaptAnonymousVariable($context);
-        // [lengthIndex, $context] = adaptAnonymousVariable($context);
-        // [iIndex, $context] = adaptAnonymousVariable($context);
-        // [elementIndex, $context] = adaptAnonymousVariable($context);
-
-        // if ($context.errors.length > 0) return [ROA.empty, $context];
-
         return adaptError(`adaptForOfStatement not implemented`, node)(context);
+
+
+        function adaptInitializer(): S.State<AdaptStatementContext, readonly Operation[]> {
+            return context => {
+                const init = node.getInitializer();
+                if (tsm.Node.isVariableDeclarationList(init)) {
+                        // typescript ensures there is only a single declaration
+                        const decl = init.getDeclarations()[0];
+                        const kind = init.getDeclarationKind();
+                    const qqq = pipe(
+                        context,
+                        adaptVariableDeclaration(decl, kind)
+                    )
+                }
+
+
+                // if it's a variable declaration list:
+                //  * ensure it's only one declaration
+                //  * create a new scope for the declaration
+                //   
+
+                throw new Error();
+
+            }
+        }
     }
+
+
 }
 
 function adaptError(message: string, node: tsm.Node): S.State<AdaptStatementContext, readonly Operation[]> {
