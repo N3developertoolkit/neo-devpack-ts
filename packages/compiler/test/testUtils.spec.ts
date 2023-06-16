@@ -86,13 +86,13 @@ export function createTestVariable(node: tsm.Node, options?: CreateTestVariableO
     const storeOps = options?.storeOps ?? (options?.call || options?.callNew ? undefined : [storeOp]);
     const call = options?.call ? () => options.call! : undefined;
     const callNew = options?.callNew ? () => options.callNew! : undefined;
-    return { 
-        node, 
-        symbol, 
-        loadOp, 
-        storeOp, 
-        loadOps, 
-        storeOps, 
+    return {
+        node,
+        symbol,
+        loadOp,
+        storeOp,
+        loadOps,
+        storeOps,
         properties: options?.properties,
         call,
         callNew,
@@ -133,7 +133,7 @@ export function createPropResolvers(properties: CompileTimeObject | readonly Com
     )
 }
 
-export function makeFunctionInvoker(node: tsm.Node, ops: Operation | readonly Operation[], implicitThis: boolean = false) : InvokeResolver {
+export function makeFunctionInvoker(node: tsm.Node, ops: Operation | readonly Operation[], implicitThis: boolean = false): InvokeResolver {
     return ($this, args) => {
         const $args = implicitThis ? ROA.prepend($this)(args) : args;
         return pipe(
@@ -170,12 +170,26 @@ export function expectEither<T>(value: E.Either<ParseError | readonly ParseError
 
 export function expectResults(ops: readonly Operation[], ...args: any[]) {
     for (const i in args) {
-        if (args[i].skip)  continue
+        if (args[i].skip) continue
         expect(ops[i]).deep.equals(args[i], `operation ${i} not equal`);
     }
     expect(ops).length(args.length);
 }
 
+export function expectResultsNoLengthCheck(ops: readonly Operation[], ...args: any[]) {
+    for (const i in args) {
+        if (args[i].skip) continue
+        expect(ops[i]).deep.equals(args[i], `operation ${i} not equal`);
+    }
+}
+
+export function makeTarget(debug?: string) {
+    return { kind: 'noop', debug } as Operation;
+}
+
+export function findDebug(ops: readonly Operation[], debug: string) {
+    return ops.find(op => (op as any).debug === debug);
+}
 
 export function createVarDeclCTO(src: tsm.SourceFile, name: string): CompileTimeObject & { loadOp: Operation, storeOp: Operation } {
     const variable = src.getVariableDeclarationOrThrow(name);

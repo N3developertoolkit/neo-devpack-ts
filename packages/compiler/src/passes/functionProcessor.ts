@@ -235,7 +235,6 @@ function adaptIfStatement(node: tsm.IfStatement): S.State<AdaptStatementContext,
     }
 }
 
-
 function adaptStoreOps(
     node: tsm.VariableDeclaration,
     kind: tsm.VariableDeclarationKind,
@@ -353,9 +352,9 @@ function adaptDoStatement(node: tsm.DoStatement): S.State<AdaptStatementContext,
 
     return context => {
 
-        const breakTarget = <Operation>{ kind: 'noop' };
-        const continueTarget = <Operation>{ kind: 'noop' };
-        const startTarget = <Operation>{ kind: 'noop' };
+        const breakTarget = { kind: 'noop', debug: 'breakTarget'} as Operation;
+        const continueTarget = { kind: 'noop', debug: 'continueTarget'} as Operation;
+        const startTarget = { kind: 'noop', debug: 'startTarget'} as Operation;
         const expr = node.getExpression();
 
         return pipe(
@@ -378,8 +377,8 @@ function adaptDoStatement(node: tsm.DoStatement): S.State<AdaptStatementContext,
 function adaptWhileStatement(node: tsm.WhileStatement): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
         const expr = node.getExpression();
-        const breakTarget = { kind: 'noop' } as Operation;
-        const continueTarget = { kind: 'noop' } as Operation;
+        const breakTarget = { kind: 'noop', debug: 'breakTarget'} as Operation;
+        const continueTarget = { kind: 'noop', debug: 'continueTarget'} as Operation;
 
         return pipe(
             context,
@@ -398,9 +397,9 @@ function adaptWhileStatement(node: tsm.WhileStatement): S.State<AdaptStatementCo
 
 function adaptTryStatement(node: tsm.TryStatement): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
-        const catchTarget = { kind: 'noop' } as Operation;
-        const finallyTarget = { kind: 'noop' } as Operation;
-        const endTarget = { kind: 'noop' } as Operation;
+        const catchTarget = { kind: 'noop', debug: 'catchTarget' } as Operation;
+        const finallyTarget = { kind: 'noop', debug: 'finallyTarget' } as Operation;
+        const endTarget = { kind: 'noop', debug: 'endTarget' } as Operation;
 
         return pipe(
             context,
@@ -505,10 +504,10 @@ function adaptForStatement(node: tsm.ForStatement): S.State<AdaptStatementContex
         // save the original scope so it can be swapped back in at the end of the block
         let scope = context.scope;
 
-        const startTarget = { kind: 'noop' } as Operation;
-        const conditionTarget = { kind: 'noop' } as Operation;
-        const breakTarget = { kind: 'noop' } as Operation;
-        const continueTarget = { kind: 'noop' } as Operation;
+        const startTarget = { kind: 'noop', debug: 'startTarget' } as Operation;
+        const conditionTarget = { kind: 'noop', debug: 'conditionTarget' } as Operation;
+        const breakTarget = { kind: 'noop', debug: 'breakTarget'} as Operation;
+        const continueTarget = { kind: 'noop', debug: 'continueTarget' } as Operation;
 
         return pipe(
             context,
@@ -587,10 +586,9 @@ function adaptForEach(node: tsm.ForInStatement | tsm.ForOfStatement, options: Fo
         // save the original scope so it can be swapped back in at the end of the block
         let scope = context.scope;
 
-        const startTarget = { kind: 'noop' } as Operation;
-        // const conditionTarget = { kind: 'noop' } as Operation; // no condition target for iterator flavors
-        const breakTarget = { kind: 'noop' } as Operation;
-        const continueTarget = { kind: 'noop' } as Operation;
+        const startTarget = { kind: 'noop', debug: 'startTarget' } as Operation;
+        const breakTarget = { kind: 'noop', debug: 'breakTarget'} as Operation;
+        const continueTarget = { kind: 'noop', debug: 'continueTarget' } as Operation;
 
         return pipe(
             context,
@@ -624,7 +622,7 @@ function adaptForEach(node: tsm.ForInStatement | tsm.ForOfStatement, options: Fo
                     const kind = init.getDeclarationKind();
                     return pipe(
                         context,
-                        adaptVariableDeclaration(decl, kind),
+                        adaptStoreOps(decl, kind),
                         updateOps(updateLocation(decl)),
                     )
                 }
@@ -680,7 +678,7 @@ function adaptForEachArray(node: tsm.ForInStatement | tsm.ForOfStatement): S.Sta
         [lengthVar, context] = adaptAnonymousVariable(context);
         [indexVar, context] = adaptAnonymousVariable(context);
 
-        const conditionTarget = { kind: 'noop' } as Operation;
+        const conditionTarget = { kind: 'noop', debug: "conditionTarget" } as Operation;
 
         // on initialization, store the array, it's length and the current index in anonymous vars
         const initOps = (_continueTarget: Operation) => ROA.fromArray<Operation>([

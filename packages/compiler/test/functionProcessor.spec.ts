@@ -2,28 +2,56 @@ import 'mocha';
 import { expect } from 'chai';
 import * as tsm from 'ts-morph';
 
-import { identity, pipe } from 'fp-ts/function';
-import * as E from 'fp-ts/Either';
-import { parseExpression, reduceExpressionHead } from '../src/passes/expressionProcessor';
-import { CompileTimeType, Scope, createEmptyScope } from '../src/types/CompileTimeObject';
-import { createPropResolver, createPropResolvers, createTestProject, createTestScope, createTestVariable, expectPushData, makeFunctionInvoker as createFunctionInvoker, testParseExpression, expectPushInt, expectResults, createTestGlobalScope, expectEither, createVarDeclCTO } from "./testUtils.spec";
-import { Operation, pushInt, pushString } from '../src/types/Operation';
-import { sc } from '@cityofzion/neon-core';
-import { adaptStatement, AdaptStatementContext } from '../src/passes/functionProcessor';
+import { Scope } from '../src/types/CompileTimeObject';
+import { createTestProject, createTestScope, expectResults, createVarDeclCTO,  findDebug, makeTarget } from "./testUtils.spec";
+import { Operation, pushInt } from '../src/types/Operation';
+import { adaptStatement } from '../src/passes/functionProcessor';
 
 describe('function processor', () => {
     describe('for of loop', () => {
         it("should work", () => {
-            const contract = /*javascript*/ `for (const v of [1,2,3,4]) { ; };`
+            const contract = /*javascript*/ `const items = [1,2,3,4]; for (const v of items) { ; };`
             const { sourceFile } = createTestProject(contract);
-            const scope = createTestScope();
+            const items = createVarDeclCTO(sourceFile, 'items');
 
-            const stmt = sourceFile.forEachChildAsArray()[0].asKindOrThrow(tsm.SyntaxKind.ForOfStatement);
-            const childs = stmt.getChildren();
+            const scope = createTestScope(undefined, items);
+
+            const stmt = sourceFile.forEachChildAsArray()[1].asKindOrThrow(tsm.SyntaxKind.ForOfStatement);
+            const decl = stmt
+                .getInitializer().asKindOrThrow(tsm.SyntaxKind.VariableDeclarationList)
+                .getDeclarations()[0];
+
+
             const { ops, context } = testAdaptStatement(scope, stmt);
 
-
-
+            expectResults(ops,
+                { ...items.loadOp, location: stmt.getExpression() },
+                { kind: 'duplicate' },
+                { kind: "storelocal", index: 0 },
+                { kind: "size" },
+                { kind: "storelocal", index: 1 },
+                pushInt(0),
+                { kind: "storelocal", index: 2 },
+                { kind: "jump", target: findDebug(ops, "conditionTarget") },
+                { kind: "noop", debug: "startTarget" },
+                { kind: "loadlocal", index: 0 },
+                { kind: "loadlocal", index: 2 },
+                { kind: "pickitem" },
+                { kind: "storelocal", index: 3, location: decl },
+                // skip block validation
+                { skip: true },
+                { skip: true },
+                { skip: true },
+                { kind: "noop", debug: "continueTarget", location: stmt.getInitializer() },
+                { kind: "loadlocal", index: 2 },
+                { kind: "increment" },
+                { kind: "storelocal", index: 2 },
+                { kind: "noop", debug: "conditionTarget" },
+                { kind: "loadlocal", index: 2 },
+                { kind: "loadlocal", index: 1 },
+                { kind: "jumplt", target: findDebug(ops, "startTarget") },
+                { kind: "noop", debug: "breakTarget" },
+            )
         });
     })
 
@@ -96,33 +124,29 @@ describe('function processor', () => {
                 { kind: 'storelocal', index: 0, location: initLoc },
                 // jump to condition
                 { kind: 'jump', target: ops[12] },
-                // start target
-                { kind: 'noop' },
+                makeTarget("startTarget"),
                 // skip validating block 
                 { skip: true },
                 { skip: true },
                 { skip: true },
-                // continue target
-                { kind: 'noop' },
+                makeTarget("continueTarget"),
                 // incrementor
                 { kind: 'loadlocal', index: 0, location: stmt.getIncrementorOrThrow() },
                 { kind: 'duplicate' },
                 { kind: 'increment' },
                 { kind: 'storelocal', index: 0 },
-                // condition target
-                { kind: 'noop' },
+                makeTarget("conditionTarget"),
                 // condition
                 { kind: 'loadlocal', index: 0, location: stmt.getConditionOrThrow() },
                 pushInt(10),
                 { kind: 'lessthan' },
                 // jump to start target
                 { kind: 'jumpif', target: ops[3] },
-                // break target
-                { kind: 'noop' },
+                makeTarget("breakTarget"),
             );
         });
 
-        
+
         it("null condition", () => {
             const contract = /*javascript*/ `for (var i = 0; ; i++) { ; }`
             const { sourceFile } = createTestProject(contract);
@@ -146,26 +170,22 @@ describe('function processor', () => {
                 { kind: 'storelocal', index: 0, location: initLoc },
                 // jump to condition
                 { kind: 'jump', target: ops[12] },
-                // start target
-                { kind: 'noop' },
+                makeTarget("startTarget"),
                 // skip validating block 
                 { skip: true },
                 { skip: true },
                 { skip: true },
-                // continue target
-                { kind: 'noop' },
+                makeTarget("continueTarget"),
                 // incrementor
                 { kind: 'loadlocal', index: 0, location: stmt.getIncrementorOrThrow() },
                 { kind: 'duplicate' },
                 { kind: 'increment' },
                 { kind: 'storelocal', index: 0 },
-                // condition target
-                { kind: 'noop' },
+                makeTarget("conditionTarget"),
                 // no condition
                 // jump to start target
                 { kind: 'jump', target: ops[3] },
-                // break target
-                { kind: 'noop' },
+                makeTarget("breakTarget"),
             );
         });
 
@@ -192,25 +212,21 @@ describe('function processor', () => {
                 { kind: 'storelocal', index: 0, location: initLoc },
                 // jump to condition
                 { kind: 'jump', target: ops[8] },
-                // start target
-                { kind: 'noop' },
+                makeTarget("startTarget"),
                 // skip validating block 
                 { skip: true },
                 { skip: true },
                 { skip: true },
-                // continue target
-                { kind: 'noop' },
+                makeTarget("continueTarget"),
                 // no incrementor
-                // condition target
-                { kind: 'noop' },
+                makeTarget("conditionTarget"),
                 // condition
                 { kind: 'loadlocal', index: 0, location: stmt.getConditionOrThrow() },
                 pushInt(10),
                 { kind: 'lessthan' },
                 // jump to start target
                 { kind: 'jumpif', target: ops[3] },
-                // break target
-                { kind: 'noop' },
+                makeTarget("breakTarget"),
             );
         });
 
@@ -241,29 +257,25 @@ describe('function processor', () => {
                 { kind: 'storelocal', index: 0, location: initLoc },
                 // jump to condition
                 { kind: 'jump', target: ops[12] },
-                // start target
-                { kind: 'noop' },
+                makeTarget("startTarget"),
                 // skip validating block 
                 { skip: true },
                 { kind: 'jump', target: ops[17], location: $break },
                 { skip: true },
-                // continue target
-                { kind: 'noop' },
+                makeTarget("continueTarget"),
                 // incrementor
                 { kind: 'loadlocal', index: 0, location: stmt.getIncrementorOrThrow() },
                 { kind: 'duplicate' },
                 { kind: 'increment' },
                 { kind: 'storelocal', index: 0 },
-                // condition target
-                { kind: 'noop' },
+                makeTarget("conditionTarget"),
                 // condition
                 { kind: 'loadlocal', index: 0, location: stmt.getConditionOrThrow() },
                 pushInt(10),
                 { kind: 'lessthan' },
                 // jump to start target
                 { kind: 'jumpif', target: ops[3] },
-                // break target
-                { kind: 'noop' },
+                makeTarget("breakTarget"),
             );
         });
 
@@ -294,29 +306,25 @@ describe('function processor', () => {
                 { kind: 'storelocal', index: 0, location: initLoc },
                 // jump to condition
                 { kind: 'jump', target: ops[12] },
-                // start target
-                { kind: 'noop' },
+                makeTarget("startTarget"),
                 // skip validating block 
                 { skip: true },
                 { kind: 'jump', target: ops[7], location: $break },
                 { skip: true },
-                // continue target
-                { kind: 'noop' },
+                makeTarget("continueTarget"),
                 // incrementor
                 { kind: 'loadlocal', index: 0, location: stmt.getIncrementorOrThrow() },
                 { kind: 'duplicate' },
                 { kind: 'increment' },
                 { kind: 'storelocal', index: 0 },
-                // condition target
-                { kind: 'noop' },
+                makeTarget("conditionTarget"),
                 // condition
                 { kind: 'loadlocal', index: 0, location: stmt.getConditionOrThrow() },
                 pushInt(10),
                 { kind: 'lessthan' },
                 // jump to start target
                 { kind: 'jumpif', target: ops[3] },
-                // break target
-                { kind: 'noop' },
+                makeTarget("breakTarget"),
             );
         });
 
@@ -345,29 +353,25 @@ describe('function processor', () => {
                 { kind: 'drop' },
                 // jump to condition target
                 { kind: 'jump', target: ops[14] },
-                // start target
-                { kind: 'noop' },
+                makeTarget("startTarget"),
                 // skip validating block 
                 { skip: true },
                 { skip: true },
                 { skip: true },
-                // continue target
-                { kind: 'noop' },
+                makeTarget("continueTarget"),
                 // incrementor
                 { ...i.loadOp, location: stmt.getIncrementorOrThrow() },
                 { kind: 'duplicate' },
                 { kind: 'increment' },
                 i.storeOp,
-                // condition target
-                { kind: 'noop' },
+                makeTarget("conditionTarget"),
                 // condition
                 { ...i.loadOp, location: stmt.getConditionOrThrow() },
                 pushInt(10),
                 { kind: 'lessthan' },
                 // jump to start target
                 { kind: 'jumpif', target: ops[5] },
-                // break target
-                { kind: 'noop' },
+                makeTarget("breakTarget"),
             );
         });
 
@@ -389,29 +393,25 @@ describe('function processor', () => {
                 // no initializer
                 // jump to condition target
                 { kind: 'jump', target: ops[10] },
-                // start target
-                { kind: 'noop' },
+                makeTarget("startTarget"),
                 // skip validating block 
                 { skip: true },
                 { skip: true },
                 { skip: true },
-                // continue target
-                { kind: 'noop' },
+                makeTarget("continueTarget"),
                 // incrementor
                 { ...i.loadOp, location: stmt.getIncrementorOrThrow() },
                 { kind: 'duplicate' },
                 { kind: 'increment' },
                 i.storeOp,
-                // condition target
-                { kind: 'noop' },
+                makeTarget("conditionTarget"),
                 // condition
                 { ...i.loadOp, location: stmt.getConditionOrThrow() },
                 pushInt(10),
                 { kind: 'lessthan' },
                 // jump to start target
                 { kind: 'jumpif', target: ops[1] },
-                // break target
-                { kind: 'noop' },
+                makeTarget("breakTarget"),
             );
         });
     })
