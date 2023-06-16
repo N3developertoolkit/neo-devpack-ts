@@ -578,9 +578,32 @@ function adaptForStatement(node: tsm.ForStatement): S.State<AdaptStatementContex
 
 interface ForEachOptions {
     readonly initOps: readonly Operation[];
+
+
+    readonly continueOps: readonly Operation[];
     readonly conditionOps: readonly Operation[];
     readonly startOps: readonly Operation[];
 }
+
+/*
+initOps
+    ConvertIteratorForEachVariableStatement: STLOC iteratorIndex
+    ConvertIteratorForEachStatement: STLOC iteratorIndex
+    ConvertArrayForEachVariableStatement: DUP, STLOC arrayIndex, SIZE, STLOC lengthIndex, 0, STLOC iIndex
+    ConvertArrayForEachStatement: DUP, STLOC arrayIndex, SIZE, STLOC lengthIndex, 0, STLOC iIndex
+startOps
+    ConvertIteratorForEachStatement: LDLOC iteratorIndex, CALL iterator.value
+    ConvertIteratorForEachVariableStatement: LDLOC iteratorIndex, CALL iterator.value
+    ConvertArrayForEachStatement: LDLOC arrayIndex, LDLOC iIndex, PICKITEM
+    ConvertArrayForEachVariableStatement: LDLOC arrayIndex, LDLOC iIndex, PICKITEM
+continueOps
+
+    ConvertArrayForEachVariableStatement: LDLOC iIndex, INC, STLOC iIndex
+
+conditionOps:
+    ConvertArrayForEachVariableStatement: LDLOC index, LDLOC lengthIndex, JMP LT startTarget
+
+*/
 
 function adaptForEach(node: tsm.ForInStatement | tsm.ForOfStatement, options: ForEachOptions): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
@@ -588,7 +611,7 @@ function adaptForEach(node: tsm.ForInStatement | tsm.ForOfStatement, options: Fo
         let scope = context.scope;
 
         const startTarget = { kind: 'noop' } as Operation;
-        const conditionTarget = { kind: 'noop' } as Operation;
+        const conditionTarget = { kind: 'noop' } as Operation; // no condition target for iterator flavors
         const breakTarget = { kind: 'noop' } as Operation;
         const continueTarget = { kind: 'noop' } as Operation;
 
@@ -596,18 +619,18 @@ function adaptForEach(node: tsm.ForInStatement | tsm.ForOfStatement, options: Fo
             context,
             pushLoopTargets(breakTarget, continueTarget),
             adaptExpression(node.getExpression()),
-            updateOps(updateLocation(node.getExpression())),
+            // InsertSequencePoint(syntax.ForEachKeyword)
             updateOps(ROA.concat(options.initOps)),
-            updateOps(ROA.append<Operation>({ kind: "jump", target: conditionTarget })),
-            updateOps(ROA.concat(
-                pipe(
-                    options.startOps,
-                    ROA.prepend(startTarget),
-                    updateLocation(node.getExpression()),
-                )
-            )),
+            updateOps(ROA.append<Operation>({ kind: "jump", target: conditionTarget })), // conditionTarget for array, continueTarget for iterator
+            // InsertSequencePoint(syntax.Identifier / syntax.Variable)
+            updateOps(ROA.append(startTarget)),
+            updateOps(ROA.concat(options.startOps)),
             updateContext(adaptInitializer()),
             updateContext(adaptStatement(node.getStatement())),
+            // InsertSequencePoint(syntax.Expression
+            updateOps(ROA.append(continueTarget)),
+
+
             updateOps(ROA.concat(
                 pipe(
                     continueTarget,
