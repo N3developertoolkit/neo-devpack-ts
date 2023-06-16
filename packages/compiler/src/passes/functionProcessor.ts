@@ -12,7 +12,6 @@ import { CompileError, E_fromSeparated, ParseError, isVoidLike, makeParseError, 
 import { ContractMethod, ContractVariable } from "../types/CompileOptions";
 import { parseExpression, resolveExpression } from "./expressionProcessor";
 import { generateStoreOps, updateDeclarationScope, StoreOpVariable, parseVariableDeclaration, ParsedVariable, BoundVariable } from "./parseVariableBinding";
-import { start } from "repl";
 
 function adaptOp(op: Operation): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => [ROA.of(op), context];
@@ -597,16 +596,9 @@ function adaptForEach(node: tsm.ForInStatement | tsm.ForOfStatement, options: Fo
             context,
             pushLoopTargets(breakTarget, continueTarget),
             adaptExpression(node.getExpression()),
-            // InsertSequencePoint(syntax.ForEachKeyword)
+            updateOps(updateLocation(node.getExpression())),
             updateOps(ROA.concat(options.initOps(continueTarget))),
-            // InsertSequencePoint(syntax.Identifier / syntax.Variable)
-            updateOps(ROA.concat(
-                pipe(
-                    options.startOps,
-                    ROA.prepend(startTarget),
-                    updateLocation(node.getExpression()),
-                )
-            )),
+            updateOps(ROA.append(startTarget)),
             updateOps(ROA.concat(options.startOps)),
             updateContext(adaptInitializer()),
             updateContext(adaptStatement(node.getStatement())),
@@ -630,12 +622,17 @@ function adaptForEach(node: tsm.ForInStatement | tsm.ForOfStatement, options: Fo
                     // TS AST ensures there is exactly one declaration
                     const decl = init.getDeclarations()[0];
                     const kind = init.getDeclarationKind();
-                    return adaptStoreOps(decl, kind)(context);
+                    return pipe(
+                        context,
+                        adaptVariableDeclaration(decl, kind),
+                        updateOps(updateLocation(decl)),
+                    )
                 }
                 return pipe(
                     init,
                     resolveExpression(context.scope),
                     E.chain(ctx => ctx.getStoreOps()),
+                    E.map(updateLocation(init)),
                     E.match(
                         matchError(context),
                         storeOps => [storeOps, context]

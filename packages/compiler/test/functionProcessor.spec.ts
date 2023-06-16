@@ -12,13 +12,14 @@ import { sc } from '@cityofzion/neon-core';
 import { adaptStatement, AdaptStatementContext } from '../src/passes/functionProcessor';
 
 describe('function processor', () => {
-    describe.skip('for of loop', () => {
+    describe('for of loop', () => {
         it("should work", () => {
             const contract = /*javascript*/ `for (const v of [1,2,3,4]) { ; };`
             const { sourceFile } = createTestProject(contract);
             const scope = createTestScope();
 
             const stmt = sourceFile.forEachChildAsArray()[0].asKindOrThrow(tsm.SyntaxKind.ForOfStatement);
+            const childs = stmt.getChildren();
             const { ops, context } = testAdaptStatement(scope, stmt);
 
 
