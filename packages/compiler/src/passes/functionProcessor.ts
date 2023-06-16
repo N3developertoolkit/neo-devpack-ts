@@ -722,7 +722,7 @@ function adaptForInStatement(node: tsm.ForInStatement): S.State<AdaptStatementCo
 
         if (exprType.isArray()) return adaptForEachArray(node)(context);
 
-        return adaptError(`adaptForInStatement not implemented for ${exprType.getSymbol()?.getName ?? exprType.getText()}`, node)(context);
+        return adaptError(`adaptForInStatement not implemented for ${exprType.getSymbol()?.getName() ?? exprType.getText()}`, node)(context);
     }
 }
 
@@ -732,12 +732,8 @@ function adaptForOfStatement(node: tsm.ForOfStatement): S.State<AdaptStatementCo
         const exprType = expr.getType();
 
         if (exprType.isArray()) return adaptForEachArray(node)(context);
-
-        // TODO detect if expr implements Iterator
-        const isIterator = false;
-        if (isIterator) return adaptForEachIterator(node)(context);
-
-        return adaptError(`adaptForOfStatement not implemented for ${exprType.getSymbol()?.getName ?? exprType.getText()}`, node)(context);
+        if (TS.isIterableType(exprType)) return adaptForEachIterator(node)(context);
+        return adaptError(`adaptForOfStatement not implemented for ${exprType.getSymbol()?.getName() ?? exprType.getText()}`, node)(context);
     }
 }
 
@@ -819,6 +815,9 @@ function parseBody({ scope, body }: { scope: Scope, body: tsm.Node }): E.Either<
 
 function parseFunctionDeclaration(parentScope: Scope) {
     return (node: tsm.FunctionDeclaration): E.Either<readonly ParseError[], ParseBodyResult> => {
+        if (node.isAsync()) return E.left(ROA.of(makeParseError(node)("async functions not supported")));
+        if (node.isGenerator()) return E.left(ROA.of(makeParseError(node)("generator functions not implemented")));
+
         return pipe(
             node.getParameters(),
             ROA.mapWithIndex((index, node) => {

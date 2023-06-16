@@ -11,6 +11,7 @@ import { parseExpression } from '../src/passes/expressionProcessor';
 import { CompileTimeObject, CompileTimeType, InvokeResolver, PropertyResolver, Scope, createEmptyScope, updateScope } from '../src/types/CompileTimeObject';
 import { Operation, pushInt, pushString } from '../src/types/Operation';
 import { makeGlobalScope } from '../src/builtin'
+import { adaptStatement } from '../src/passes/functionProcessor';
 
 // import { CompileTimeObject, createEmptyScope, makeCompileTimeObject, updateScope } from '../src/types/CompileTimeObject';
 // import { Operation } from '../src/types/Operation';
@@ -210,4 +211,27 @@ export function createLiteralCTO(arg: tsm.Node, value?: string | number | bigint
         loadOp,
         loadOps: [loadOp]
     };
+}
+
+export function testAdaptStatement(scope: Scope, node: tsm.Statement) {
+    const returnTarget: Operation = { kind: 'noop' };
+
+    const [ops, context] = adaptStatement(node)({
+        scope,
+        returnTarget,
+        breakTargets: [],
+        continueTargets: [],
+        errors: [],
+        locals: [],
+    });
+    if (context.errors.length > 0) {
+        if (context.errors.length === 1) {
+            expect.fail(context.errors[0].message);
+        } else {
+            const msg = context.errors.map(e => e.message).join('\n');
+            expect.fail(msg);
+        }
+    }
+    return { ops, context }
+
 }

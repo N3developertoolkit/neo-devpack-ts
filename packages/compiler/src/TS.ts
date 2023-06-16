@@ -19,6 +19,22 @@ export function getSymbolDeclarations(symbol: tsm.Symbol) {
 
 export function getTypeSymbol(type: tsm.Type) { return O.fromNullable(type.getSymbol()) }
 
+export function isIterableType(type: tsm.Type): boolean {
+    const props = type.getProperties();
+    return pipe(
+        props, 
+        ROA.map(s => s.getValueDeclaration()),
+        ROA.filterMap(O.fromPredicate(tsm.Node.isMethodDeclaration)),
+        ROA.map(d => d.getNameNode()),
+        ROA.filterMap(O.fromPredicate(tsm.Node.isComputedPropertyName)),
+        ROA.map(n => n.getExpression()),
+        ROA.filterMap(O.fromPredicate(tsm.Node.isPropertyAccessExpression)),
+        ROA.map(pa => [pa.getExpression().getSymbol()?.getName(), pa.getName()] as const),
+        ROA.findFirst(([exprName, name]) => exprName === "Symbol" && name === "iterator"),
+        O.isSome,
+    );
+}
+
 export const getTypeProperty =
     (type: tsm.Type) =>
         (name: string) =>

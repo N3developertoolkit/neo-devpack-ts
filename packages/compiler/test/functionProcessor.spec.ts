@@ -2,14 +2,71 @@ import 'mocha';
 import { expect } from 'chai';
 import * as tsm from 'ts-morph';
 
-import { Scope } from '../src/types/CompileTimeObject';
-import { createTestProject, createTestScope, expectResults, createVarDeclCTO,  findDebug, makeTarget } from "./testUtils.spec";
-import { Operation, pushInt } from '../src/types/Operation';
-import { adaptStatement } from '../src/passes/functionProcessor';
+import * as E from 'fp-ts/lib/Either';
+import { createTestProject, createTestScope, expectResults, createVarDeclCTO, findDebug, makeTarget, testAdaptStatement } from "./testUtils.spec";
+import { pushInt } from '../src/types/Operation';
+import { parseContractMethod } from '../src/passes/functionProcessor';
+import { pipe } from 'fp-ts/lib/function';
 
 describe('function processor', () => {
+    describe("not supported", () => {
+        it('async function ', () => {
+            const contract = `async function foo() {}`;
+            const { sourceFile } = createTestProject(contract);
+            const scope = createTestScope(undefined);
+
+            const decl = sourceFile.forEachChildAsArray()[0].asKindOrThrow(tsm.SyntaxKind.FunctionDeclaration);
+            const result = pipe(decl, parseContractMethod(scope));
+
+            expect(E.isLeft(result)).to.be.true;
+        })
+
+        it('async generator function ', () => {
+            const contract = `async function *foo() {}`;
+            const { sourceFile } = createTestProject(contract);
+            const scope = createTestScope(undefined);
+
+            const decl = sourceFile.forEachChildAsArray()[0].asKindOrThrow(tsm.SyntaxKind.FunctionDeclaration);
+            const result = pipe(decl, parseContractMethod(scope));
+
+            expect(E.isLeft(result)).to.be.true;
+        })
+
+        it('generator function ', () => {
+            const contract = `function *foo() {}`;
+            const { sourceFile } = createTestProject(contract);
+            const scope = createTestScope(undefined);
+
+            const decl = sourceFile.forEachChildAsArray()[0].asKindOrThrow(tsm.SyntaxKind.FunctionDeclaration);
+            const result = pipe(decl, parseContractMethod(scope));
+
+            expect(E.isLeft(result)).to.be.true;
+        })
+    })
+
     describe('for of loop', () => {
-        it("should work", () => {
+        it("var decl init, iterator expr", () => {
+            const contract = `class Items implements IterableIterator<number> {
+                [Symbol.iterator](): IterableIterator<number> {
+                    throw new Error('Method not implemented.');
+                }
+                next(...args: [] | [undefined]): IteratorResult<number, any> {
+                    throw new Error('Method not implemented.');
+                }
+            }
+            const items: Items = null!;
+            for (const v of items) { ; }`;
+            const { sourceFile } = createTestProject(contract);
+            const items = createVarDeclCTO(sourceFile, 'items');
+            const scope = createTestScope(undefined, items);
+
+            const stmt = sourceFile.forEachChildAsArray()[2].asKindOrThrow(tsm.SyntaxKind.ForOfStatement);
+            const { ops, context } = testAdaptStatement(scope, stmt);
+
+            // TODO: validate results
+        });
+
+        it("var decl init, array expr", () => {
             const contract = /*javascript*/ `const items = [1,2,3,4]; for (const v of items) { ; };`
             const { sourceFile } = createTestProject(contract);
             const items = createVarDeclCTO(sourceFile, 'items');
@@ -101,6 +158,7 @@ describe('function processor', () => {
     })
 
     describe("for loop", () => {
+
         it("var decl init", () => {
             const contract = /*javascript*/ `for (var i = 0; i < 10; i++) { ; }`
             const { sourceFile } = createTestProject(contract);
@@ -483,25 +541,3 @@ describe('function processor', () => {
     });
 })
 
-function testAdaptStatement(scope: Scope, node: tsm.Statement) {
-    const returnTarget: Operation = { kind: 'noop' };
-
-    const [ops, context] = adaptStatement(node)({
-        scope,
-        returnTarget,
-        breakTargets: [],
-        continueTargets: [],
-        errors: [],
-        locals: [],
-    });
-    if (context.errors.length > 0) {
-        if (context.errors.length === 1) {
-            expect.fail(context.errors[0].message);
-        } else {
-            const msg = context.errors.map(e => e.message).join('\n');
-            expect.fail(msg);
-        }
-    }
-    return { ops, context }
-
-}

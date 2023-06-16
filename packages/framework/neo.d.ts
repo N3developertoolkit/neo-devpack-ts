@@ -59,17 +59,17 @@ declare global {
 
     export interface ReadonlyStorageContext {
         get(key: StorageType): ByteString | undefined;
-        find(prefix: ByteString, options: FindOptions): Iterator<unknown>;
+        find(prefix: ByteString, options: FindOptions): IterableIterator<unknown>;
 
         // the following three methods map to StorageContext.Find, with what I would argue are the most common
         // combinations of Flag Options:
 
         // with and without RemovePrefix. Default to removing the prefix
-        entries(prefix?: ByteString, keepPrefix?: boolean): Iterator<[ByteString, ByteString]>;
+        entries(prefix?: ByteString, keepPrefix?: boolean): IterableIterator<[ByteString, ByteString]>;
         // KeysOnly with and without RemovePrefix, Default to removing the prefix
-        keys(prefix?: ByteString, keepPrefix?: boolean): Iterator<ByteString>;
+        keys(prefix?: ByteString, keepPrefix?: boolean): IterableIterator<ByteString>;
         // ValuesOnly
-        values(prefix?: ByteString): Iterator<ByteString>;
+        values(prefix?: ByteString): IterableIterator<ByteString>;
 
         // this interface will need a mechanism for surfacing the DeserializeValues option.
         // for now, author can simply call StdLib.deserialize, but that's a pricy call to execute
@@ -155,7 +155,7 @@ declare global {
         hasMethod(hash: ByteString, method: string, pcount: number): boolean;
         getContractById(id: number): Contract;
         /** @nativeContract getContractHashes */
-        readonly contractHashes: Iterator<ByteString>; // not sure this is correct
+        readonly contractHashes: IterableIterator<ByteString>; // not sure this is correct
         deploy(nefFile: ByteString, manifest: string, data?: any): Contract;
         update(nefFile: ByteString, manifest: string, data?: any): void;
         destroy(): void;
@@ -239,7 +239,7 @@ declare global {
         /** @nativeContract getCandidates */
         readonly candidates: [ByteString, bigint][];
         /** @nativeContract getAllCandidates */
-        readonly allCandidates: Iterator<[ByteString, bigint]>;
+        readonly allCandidates: IterableIterator<[ByteString, bigint]>;
 
         getCandidateVote(pubKey: ByteString): bigint;
         /** @nativeContract getCommittee */
