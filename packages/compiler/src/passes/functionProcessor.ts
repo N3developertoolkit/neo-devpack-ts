@@ -12,6 +12,7 @@ import { CompileError, E_fromSeparated, ParseError, isVoidLike, makeParseError, 
 import { ContractMethod, ContractVariable } from "../types/CompileOptions";
 import { parseExpression, resolveExpression } from "./expressionProcessor";
 import { generateStoreOps, updateDeclarationScope, StoreOpVariable, parseVariableDeclaration, ParsedVariable, BoundVariable } from "./parseVariableBinding";
+import { start } from "repl";
 
 function adaptOp(op: Operation): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => [ROA.of(op), context];
@@ -577,33 +578,10 @@ function adaptForStatement(node: tsm.ForStatement): S.State<AdaptStatementContex
 }
 
 interface ForEachOptions {
-    readonly initOps: readonly Operation[];
-
-
-    readonly continueOps: readonly Operation[];
-    readonly conditionOps: readonly Operation[];
+    readonly initOps: (continueTarget: Operation) => readonly Operation[];
     readonly startOps: readonly Operation[];
+    readonly continueOps: (startTarget: Operation) => readonly Operation[];
 }
-
-/*
-initOps
-    ConvertIteratorForEachVariableStatement: STLOC iteratorIndex
-    ConvertIteratorForEachStatement: STLOC iteratorIndex
-    ConvertArrayForEachVariableStatement: DUP, STLOC arrayIndex, SIZE, STLOC lengthIndex, 0, STLOC iIndex
-    ConvertArrayForEachStatement: DUP, STLOC arrayIndex, SIZE, STLOC lengthIndex, 0, STLOC iIndex
-startOps
-    ConvertIteratorForEachStatement: LDLOC iteratorIndex, CALL iterator.value
-    ConvertIteratorForEachVariableStatement: LDLOC iteratorIndex, CALL iterator.value
-    ConvertArrayForEachStatement: LDLOC arrayIndex, LDLOC iIndex, PICKITEM
-    ConvertArrayForEachVariableStatement: LDLOC arrayIndex, LDLOC iIndex, PICKITEM
-continueOps
-
-    ConvertArrayForEachVariableStatement: LDLOC iIndex, INC, STLOC iIndex
-
-conditionOps:
-    ConvertArrayForEachVariableStatement: LDLOC index, LDLOC lengthIndex, JMP LT startTarget
-
-*/
 
 function adaptForEach(node: tsm.ForInStatement | tsm.ForOfStatement, options: ForEachOptions): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
@@ -611,7 +589,7 @@ function adaptForEach(node: tsm.ForInStatement | tsm.ForOfStatement, options: Fo
         let scope = context.scope;
 
         const startTarget = { kind: 'noop' } as Operation;
-        const conditionTarget = { kind: 'noop' } as Operation; // no condition target for iterator flavors
+        // const conditionTarget = { kind: 'noop' } as Operation; // no condition target for iterator flavors
         const breakTarget = { kind: 'noop' } as Operation;
         const continueTarget = { kind: 'noop' } as Operation;
 
@@ -620,26 +598,25 @@ function adaptForEach(node: tsm.ForInStatement | tsm.ForOfStatement, options: Fo
             pushLoopTargets(breakTarget, continueTarget),
             adaptExpression(node.getExpression()),
             // InsertSequencePoint(syntax.ForEachKeyword)
-            updateOps(ROA.concat(options.initOps)),
-            updateOps(ROA.append<Operation>({ kind: "jump", target: conditionTarget })), // conditionTarget for array, continueTarget for iterator
+            updateOps(ROA.concat(options.initOps(continueTarget))),
             // InsertSequencePoint(syntax.Identifier / syntax.Variable)
-            updateOps(ROA.append(startTarget)),
+            updateOps(ROA.concat(
+                pipe(
+                    options.startOps,
+                    ROA.prepend(startTarget),
+                    updateLocation(node.getExpression()),
+                )
+            )),
             updateOps(ROA.concat(options.startOps)),
             updateContext(adaptInitializer()),
             updateContext(adaptStatement(node.getStatement())),
-            // InsertSequencePoint(syntax.Expression
-            updateOps(ROA.append(continueTarget)),
-
-
             updateOps(ROA.concat(
                 pipe(
-                    continueTarget,
-                    ROA.of,
-                    updateLocation(node.getExpression())
+                    options.continueOps(startTarget),
+                    ROA.prepend(continueTarget),
+                    updateLocation(node.getInitializer()),
                 )
             )),
-            updateOps(ROA.concat(options.conditionOps)),
-            updateOps(ROA.append<Operation>({ kind: 'jumpif', target: startTarget })),
             updateOps(ROA.append(breakTarget)),
             popLoopTargets(context),
             // swap original scope back in
@@ -648,161 +625,125 @@ function adaptForEach(node: tsm.ForInStatement | tsm.ForOfStatement, options: Fo
 
         function adaptInitializer(): S.State<AdaptStatementContext, readonly Operation[]> {
             return context => {
-
-                return [ROA.empty, context];
-                // const init = node.getInitializer();
-                // if (tsm.Node.isVariableDeclarationList(init)) {
-                //     // TS AST ensures there is exactly one declaration
-                //     const decl = init.getDeclarations()[0];
-                //     const kind = init.getDeclarationKind();
-                //     return adaptStoreOps(decl, kind)(context);
-                // }
-
-                // return pipe(
-                //     init,
-                //     resolveExpression(context.scope),
-                //     E.chain(ctx => ctx.getStoreOps()),
-                //     E.match(
-                //         error => [ROA.empty, updateContextErrors(context)(error)],
-                //         storeOps => [storeOps, context]
-                //     )
-
-                // );
+                const init = node.getInitializer();
+                if (tsm.Node.isVariableDeclarationList(init)) {
+                    // TS AST ensures there is exactly one declaration
+                    const decl = init.getDeclarations()[0];
+                    const kind = init.getDeclarationKind();
+                    return adaptStoreOps(decl, kind)(context);
+                }
+                return pipe(
+                    init,
+                    resolveExpression(context.scope),
+                    E.chain(ctx => ctx.getStoreOps()),
+                    E.match(
+                        matchError(context),
+                        storeOps => [storeOps, context]
+                    )
+                );
             }
 
         }
     }
 }
 
-function adaptForOfStatement(node: tsm.ForOfStatement): S.State<AdaptStatementContext, readonly Operation[]> {
+function adaptForEachIterator(node: tsm.ForOfStatement): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
-        // save the original scope so it can be swapped back in at the end of the block
-        let scope = context.scope;
+        let iteratorVar: number;
+        [iteratorVar, context] = adaptAnonymousVariable(context);
 
-        const expr = node.getExpression();
-        const exprType = expr.getType();
-        if (!exprType.isArray()) {
-            return adaptError(`unsupported for-of type ${exprType.getSymbol()?.getName()}`, node)(context);
-        }
+        // on initialization, store the iterator in an anonymous variable
+        const initOps = (continueTarget: Operation) => ROA.fromArray<Operation>([
+            { kind: "storelocal", index: iteratorVar },
+            { kind: "jump", target: continueTarget },
+        ]);
 
-        const startTarget = { kind: 'noop' } as Operation;
-        const conditionTarget = { kind: 'noop' } as Operation;
-        const breakTarget = { kind: 'noop' } as Operation;
-        const continueTarget = { kind: 'noop' } as Operation;
+        // on start, load the iterator and call iterator.value
+        const startOps = ROA.fromArray<Operation>([
+            { kind: "loadlocal", index: iteratorVar },
+            { kind: "syscall", name: "System.Iterator.Value" }
+        ]);
 
-        let arrayVar, lengthVar, indexVar, elementVar;
+        // on continue, load the iterator, call iterator.next, and jump if the result is true
+        const continueOps = (startTarget: Operation) => ROA.fromArray<Operation>([
+            { kind: "loadlocal", index: iteratorVar },
+            { kind: "syscall", name: "System.Iterator.Next" },
+            { kind: "jumpif", target: startTarget },
+        ]);
+
+        const options = { initOps, startOps, continueOps };
+        return adaptForEach(node, options)(context);
+    }
+}
+
+function adaptForEachArray(node: tsm.ForInStatement | tsm.ForOfStatement): S.State<AdaptStatementContext, readonly Operation[]> {
+    return context => {
+        let arrayVar: number, lengthVar: number, indexVar: number;
         [arrayVar, context] = adaptAnonymousVariable(context);
         [lengthVar, context] = adaptAnonymousVariable(context);
         [indexVar, context] = adaptAnonymousVariable(context);
-        [elementVar, context] = adaptAnonymousVariable(context);
 
-        const q = pipe(
-            context,
-            pushLoopTargets(breakTarget, continueTarget),
-            // initializer is the lhs of the 'of'
-            // expression is the rhs of the 'of'
+        const conditionTarget = { kind: 'noop' } as Operation;
 
-            // I need to adapt the *expression* here, not initializer
-            /*
-            ConvertArrayForEachVariableStatement
-                create jump targets and anon vars
-                push break/continue targets
-                adapt expression
-                store array, lenth, index temp vars
-                jump to condition
-                load array + index
-                pickitem 
-                // WRITE TO STORE OPS
-                adapt statement
-                increment index
-                load index and length
-                jump to start if lt
- 
- 
-                
-            */
-            adaptExpression(node.getExpression()),
-            updateOps(
-                ROA.concat<Operation>([
-                    { kind: 'duplicate' },
-                    { kind: "storelocal", index: arrayVar },
-                    { kind: "size" },
-                    { kind: "storelocal", index: lengthVar },
-                    pushInt(0),
-                    { kind: "storelocal", index: indexVar },
-                    { kind: "jump", target: conditionTarget },
-                ]),
-            ),
-            updateOps(flow(
-                ROA.concat<Operation>([
-                    startTarget,
-                    { kind: "loadlocal", index: arrayVar },
-                    { kind: "loadlocal", index: indexVar },
-                    { kind: "pickitem" },
-                ]),
-                updateLocation(node.getInitializer())
-            )),
-            updateContext(adaptStoreOps),
+        // on initialization, store the array, it's length and the current index in anonymous vars
+        const initOps = (_continueTarget: Operation) => ROA.fromArray<Operation>([
+            { kind: 'duplicate' },
+            { kind: "storelocal", index: arrayVar },
+            { kind: "size" },
+            { kind: "storelocal", index: lengthVar },
+            pushInt(0),
+            { kind: "storelocal", index: indexVar },
+            { kind: "jump", target: conditionTarget },
+        ]);
 
-            // TODO: assign to variable
-            // I *THINK* I can just adaptStoreOps in adaptInitializer
-            /*
-            ConvertArrayForEachVariableStatement:
-                unpack
-                drop (size)
-                for each declared symbol, either drop or store
-            ConvertArrayForEachStatement
-                store to variable
-            */
-            updateContext(adaptStatement(node.getStatement())),
-            updateOps(flow(
-                ROA.concat<Operation>([
-                    continueTarget,
-                    { kind: "loadlocal", index: indexVar },
-                    { kind: "increment" },
-                    { kind: "storelocal", index: indexVar },
-                    conditionTarget,
-                    { kind: "loadlocal", index: indexVar },
-                    { kind: "loadlocal", index: lengthVar },
-                    { kind: "jumplt", target: startTarget },
-                ]),
-                updateLocation(node.getExpression())
-            )),
-            updateOps(ROA.append(breakTarget)),
-            popLoopTargets(context),
-            // swap original scope back in
-            updateContextScope(scope)
-        );
+        // on start, load the current item (if for-of) or current index (if for-in)
+        const startOps = tsm.Node.isForOfStatement(node)
+            ? ROA.fromArray<Operation>([
+                { kind: "loadlocal", index: arrayVar },
+                { kind: "loadlocal", index: indexVar },
+                { kind: "pickitem" },
+            ])
+            : ROA.of<Operation>({ kind: "loadlocal", index: indexVar });
 
-        return adaptError(`adaptForOfStatement not implemented`, node)(context);
+        // on continue, increment the index then jump to start if index is less than length
+        const continueOps = (startTarget: Operation) => ROA.fromArray<Operation>([
+            { kind: "loadlocal", index: indexVar },
+            { kind: "increment" },
+            { kind: "storelocal", index: indexVar },
+            conditionTarget,
+            { kind: "loadlocal", index: indexVar },
+            { kind: "loadlocal", index: lengthVar },
+            { kind: "jumplt", target: startTarget },
+        ]);
 
-        function adaptInitializer(): S.State<AdaptStatementContext, readonly Operation[]> {
-            return context => {
-
-                return [ROA.empty, context];
-                // const init = node.getInitializer();
-                // if (tsm.Node.isVariableDeclarationList(init)) {
-                //     // TS AST ensures there is exactly one declaration
-                //     const decl = init.getDeclarations()[0];
-                //     const kind = init.getDeclarationKind();
-                //     return adaptStoreOps(decl, kind)(context);
-                // }
-
-                // return pipe(
-                //     init,
-                //     resolveExpression(context.scope),
-                //     E.chain(ctx => ctx.getStoreOps()),
-                //     E.match(
-                //         error => [ROA.empty, updateContextErrors(context)(error)],
-                //         storeOps => [storeOps, context]
-                //     )
-
-                // );
-            }
-        }
+        const options = { initOps, startOps, continueOps };
+        return adaptForEach(node, options)(context);
     }
+}
+function adaptForInStatement(node: tsm.ForInStatement): S.State<AdaptStatementContext, readonly Operation[]> {
+    return context => {
+        const expr = node.getExpression();
+        const exprType = expr.getType();
 
+        if (exprType.isArray()) return adaptForEachArray(node)(context);
 
+        return adaptError(`adaptForInStatement not implemented for ${exprType.getSymbol()?.getName ?? exprType.getText()}`, node)(context);
+    }
+}
+
+function adaptForOfStatement(node: tsm.ForOfStatement): S.State<AdaptStatementContext, readonly Operation[]> {
+    return context => {
+        const expr = node.getExpression();
+        const exprType = expr.getType();
+
+        if (exprType.isArray()) return adaptForEachArray(node)(context);
+
+        // TODO detect if expr implements Iterator
+        const isIterator = false;
+        if (isIterator) return adaptForEachIterator(node)(context);
+
+        return adaptError(`adaptForOfStatement not implemented for ${exprType.getSymbol()?.getName ?? exprType.getText()}`, node)(context);
+    }
 }
 
 export interface LocalVariable {
@@ -829,6 +770,7 @@ export function adaptStatement(node: tsm.Statement): S.State<AdaptStatementConte
             case tsm.SyntaxKind.DoStatement: return adaptDoStatement(node as tsm.DoStatement)(context);
             case tsm.SyntaxKind.EmptyStatement: return adaptEmptyStatement(node as tsm.EmptyStatement)(context);
             case tsm.SyntaxKind.ExpressionStatement: return adaptExpressionStatement(node as tsm.ExpressionStatement)(context);
+            case tsm.SyntaxKind.ForInStatement: return adaptForInStatement(node as tsm.ForInStatement)(context);
             case tsm.SyntaxKind.ForOfStatement: return adaptForOfStatement(node as tsm.ForOfStatement)(context);
             case tsm.SyntaxKind.ForStatement: return adaptForStatement(node as tsm.ForStatement)(context);
             case tsm.SyntaxKind.IfStatement: return adaptIfStatement(node as tsm.IfStatement)(context);
@@ -837,7 +779,6 @@ export function adaptStatement(node: tsm.Statement): S.State<AdaptStatementConte
             case tsm.SyntaxKind.TryStatement: return adaptTryStatement(node as tsm.TryStatement)(context);
             case tsm.SyntaxKind.VariableStatement: return adaptVariableDeclarationList((node as tsm.VariableStatement).getDeclarationList())(context);
             case tsm.SyntaxKind.WhileStatement: return adaptWhileStatement(node as tsm.WhileStatement)(context);
-            case tsm.SyntaxKind.ForInStatement:
             case tsm.SyntaxKind.SwitchStatement:
                 return adaptError(`adaptStatement ${node.getKindName()} support coming in future release`, node)(context);
             default:
