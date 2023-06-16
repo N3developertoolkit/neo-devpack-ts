@@ -69,12 +69,19 @@ export function generateStoreOps(variables: readonly StoreOpVariable[]): E.Eithe
     }
 }
 
+
+export type BoundVariable = {
+    cto: CompileTimeObject;
+    name: string;
+    index: readonly (string | number)[];
+};
+
 // update the scope with the declared variables and return an array of all the generated CTOs with their index info
 export function updateDeclarationScope(
     variables: readonly ParsedVariable[],
     scope: Scope,
     ctoFactory: (node: tsm.Identifier, symbol: tsm.Symbol, index: number) => CompileTimeObject
-) {
+): readonly [Scope, readonly BoundVariable[]] {
     // create CTOs for all the ParsedConstants and add them to the scope
     scope = pipe(
         variables,
@@ -102,7 +109,7 @@ export function updateDeclarationScope(
         updateScope(scope)
     )
 
-    return { scope, variables: $variables }
+    return [scope, $variables]
 }
 
 export interface ParsedConstant {

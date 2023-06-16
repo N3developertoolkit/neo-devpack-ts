@@ -58,7 +58,7 @@ export function reduceVariableDeclaration(
         E.match(
             errors => updateContextErrors(context)(errors),
             ({ initOps, parsedVariables }) => {
-                const { scope, variables } = updateDeclarationScope(parsedVariables, context.scope, ctoFactory);
+                const [ scope, variables ] = updateDeclarationScope(parsedVariables, context.scope, ctoFactory);
                 return pipe(
                     variables,
                     ROA.map(c => ({ node: c.cto.node, getStoreOps: c.cto.storeOps, index: c.index })),

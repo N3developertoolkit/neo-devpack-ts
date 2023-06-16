@@ -750,7 +750,7 @@ function reduceExpressionTail(node: tsm.Expression) {
     };
 }
 
-function resolveExpression(scope: Scope) {
+export function resolveExpression(scope: Scope) {
     return (node: tsm.Expression): E.Either<ParseError, ExpressionContext> => {
         const chain = makeExpressionChain(node);
         const context = reduceExpressionHead(scope, RNEA.head(chain));
