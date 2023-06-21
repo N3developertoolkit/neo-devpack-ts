@@ -526,6 +526,27 @@ describe('function processor', () => {
                 { kind: 'noop', location: stmt.getLastChildByKind(tsm.SyntaxKind.CloseBraceToken) },
             )
         });
+
+        it("labeled block", () => {
+            const contract = /*javascript*/ ` foo: { break foo; };`
+            const { sourceFile } = createTestProject(contract);
+            const scope = createTestScope();
+
+            const stmt = sourceFile.forEachChildAsArray()[0].asKindOrThrow(tsm.SyntaxKind.LabeledStatement);
+            const $break = stmt.getStatement().asKindOrThrow(tsm.SyntaxKind.Block).getStatements()[0];
+            const { ops, context } = testAdaptStatement(scope, stmt);
+
+            expect(context.scope).eq(scope);
+            expect(context.environStack).empty;
+            expect(context.locals).empty;
+
+            expectResults(ops,
+                { skip: true },
+                { kind: 'jump', target: ops[3], location: $break },
+                { skip: true },
+                { kind: 'noop', debug: 'breakTarget foo'},
+            )
+        });
     });
 })
 

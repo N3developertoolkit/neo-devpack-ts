@@ -42,20 +42,20 @@ type StatementEnviron =
 interface LabelEnviron {
     readonly kind: 'label';
     readonly breakTarget: Operation;
-    readonly label: tsm.Symbol;
+    readonly label: string;
 }
 
 interface LoopEnviron {
     readonly kind: 'loop';
     readonly breakTarget: Operation;
     readonly continueTarget: Operation;
-    readonly label?: tsm.Symbol;
+    readonly label?: string;
 }
 
 // interface SwitchEnviron {
 //     readonly kind: 'switch';
 //     readonly breakTarget: Operation;
-//     readonly label?: tsm.Symbol;
+//     readonly label?: string;
 // }
 
 interface TryCatchEnviron {
@@ -101,7 +101,7 @@ type LoopNode = tsm.DoStatement | tsm.WhileStatement | tsm.ForInStatement | tsm.
 
 function pushLoopEnviron(breakTarget: Operation, continueTarget: Operation, node: LoopNode) {
     return (context: AdaptStatementContext): AdaptStatementContext => {
-        const label = node.getParentIfKind(tsm.SyntaxKind.LabeledStatement)?.getSymbol();
+        const label = node.getParentIfKind(tsm.SyntaxKind.LabeledStatement)?.getText();
         const environ: LoopEnviron = {
             kind: 'loop',
             breakTarget,
@@ -115,22 +115,10 @@ function pushLoopEnviron(breakTarget: Operation, continueTarget: Operation, node
 
 function pushLabelEnviron(breakTarget: Operation, node: tsm.LabeledStatement) {
     return (context: AdaptStatementContext): AdaptStatementContext => {
-        return pipe(
-            node.getLabel(),
-            TS.parseSymbol,
-            E.match(
-                updateContextErrors(context),
-                symbol => {
-                    const environ: LabelEnviron = {
-                        kind: 'label',
-                        breakTarget,
-                        label: symbol
-                    }
-                    const environs = ROA.prepend<StatementEnviron>(environ)(context.environStack);
-                    return { ...context, environStack: environs };
-                }
-            )
-        )
+        const label = node.getLabel().getText();
+        const environ: LabelEnviron = { kind: 'label', breakTarget, label }
+        const environs = ROA.prepend<StatementEnviron>(environ)(context.environStack);
+        return { ...context, environStack: environs };
     }
 }
 
@@ -396,13 +384,14 @@ function adaptLabeledStatement(node: tsm.LabeledStatement): S.State<AdaptStateme
         const stmt = node.getStatement();
         if (isLoopStatement(stmt) ) { return [ROA.empty, context]; }
 
-        const label = node.getLabel().getSymbol()?.getName();
+        const label = node.getLabel().getText();
         const breakTarget = { kind: 'noop', debug: `breakTarget ${label}` } as Operation;
 
         return pipe(
             context,
             pushLabelEnviron(breakTarget, node),
             adaptStatement(node.getStatement()),
+            updateOps(ROA.append(breakTarget)),
             popEnviron(context)
         )
     }
@@ -483,7 +472,7 @@ function adaptBreakStatement(node: tsm.BreakStatement): S.State<AdaptStatementCo
     }
 
     function asBreakTarget([i, env]: readonly [number, StatementEnviron]): O.Option<readonly [number, Operation]> {
-        const label = pipe(node.getLabel(), O.fromNullable, O.chain(TS.getSymbol), O.toUndefined);
+        const label = node.getLabel()?.getText();
         if (env.kind === 'loop' && (!label || (env.label === label))) return O.some([i, env.breakTarget]);
         if (env.kind === 'label' && (!label || (env.label === label))) return O.some([i, env.breakTarget]);
         // if (env.kind === 'switch' && (!label || (env.label === label))) return O.some([i, env.breakTarget]);
@@ -517,7 +506,7 @@ function adaptContinueStatement(node: tsm.ContinueStatement): S.State<AdaptState
     }
 
     function asContinueTarget([i, env]: readonly [number, StatementEnviron]): O.Option<readonly [number, Operation]> {
-        const label = pipe(node.getLabel(), O.fromNullable, O.chain(TS.getSymbol), O.toUndefined);
+        const label = node.getLabel()?.getText();
         if (env.kind === 'loop' && (!label || (env.label === label))) return O.some([i, env.continueTarget]);
         return O.none;
     }
