@@ -11,7 +11,7 @@ import { Operation, getBooleanConvertOps, pushInt, updateLocation } from "../typ
 import { CompileError, E_fromSeparated, ParseError, isVoidLike, makeParseError, updateContextErrors } from "../utils";
 import { ContractMethod, ContractVariable } from "../types/CompileOptions";
 import { parseExpression, resolveExpression } from "./expressionProcessor";
-import { generateStoreOps, updateDeclarationScope, StoreOpVariable, parseVariableDeclaration, ParsedVariable, BoundVariable } from "./parseVariableBinding";
+import { generateStoreOps, updateDeclarationScope, StoreOpVariable, parseVariableDeclaration } from "./parseVariableBinding";
 
 export interface LocalVariable {
     readonly name: string;
@@ -23,8 +23,43 @@ export interface AdaptStatementContext {
     readonly locals: readonly LocalVariable[];
     readonly scope: Scope;
     readonly returnTarget: Operation;
-    readonly breakTargets: readonly Operation[];
-    readonly continueTargets: readonly Operation[];
+    readonly environStack: readonly StatementEnviron[];
+}
+
+// some statements affect the code generation of other statements. Examples:
+//  - break/continue statements inside loops
+//  - break statements inside switch statements
+//  - return statement instide try or catch blocks
+//  - break statement inside an arbitrary block
+// in the devpack-TS codebase, these are called "environs" (didn't want to use "context" again)
+
+type StatementEnviron =
+    LabelEnviron |
+    LoopEnviron |
+    // SwitchEnviron |
+    TryCatchEnviron;
+
+interface LabelEnviron {
+    readonly kind: 'label';
+    readonly breakTarget: Operation;
+    readonly label: tsm.Symbol;
+}
+
+interface LoopEnviron {
+    readonly kind: 'loop';
+    readonly breakTarget: Operation;
+    readonly continueTarget: Operation;
+    readonly label?: tsm.Symbol;
+}
+
+// interface SwitchEnviron {
+//     readonly kind: 'switch';
+//     readonly breakTarget: Operation;
+//     readonly label?: tsm.Symbol;
+// }
+
+interface TryCatchEnviron {
+    readonly kind: 'try-catch';
 }
 
 function adaptOp(op: Operation): S.State<AdaptStatementContext, readonly Operation[]> {
@@ -62,19 +97,56 @@ function dropIfVoidOps(type: tsm.Type) {
     }
 }
 
-function pushLoopTargets(breakTarget: Operation, continueTarget: Operation) {
+type LoopNode = tsm.DoStatement | tsm.WhileStatement | tsm.ForInStatement | tsm.ForOfStatement | tsm.ForStatement;
+
+function pushLoopEnviron(breakTarget: Operation, continueTarget: Operation, node: LoopNode) {
     return (context: AdaptStatementContext): AdaptStatementContext => {
-        const breakTargets = ROA.prepend(breakTarget)(context.breakTargets);
-        const continueTargets = ROA.prepend(continueTarget)(context.continueTargets);
-        return { ...context, breakTargets, continueTargets };
+        const label = node.getParentIfKind(tsm.SyntaxKind.LabeledStatement)?.getSymbol();
+        const environ: LoopEnviron = {
+            kind: 'loop',
+            breakTarget,
+            continueTarget,
+            label
+        }
+        const environs = ROA.prepend<StatementEnviron>(environ)(context.environStack);
+        return { ...context, environStack: environs };
     }
 }
 
-function popLoopTargets(originalContext: AdaptStatementContext) {
+function pushLabelEnviron(breakTarget: Operation, node: tsm.LabeledStatement) {
+    return (context: AdaptStatementContext): AdaptStatementContext => {
+        return pipe(
+            node.getLabel(),
+            TS.parseSymbol,
+            E.match(
+                updateContextErrors(context),
+                symbol => {
+                    const environ: LabelEnviron = {
+                        kind: 'label',
+                        breakTarget,
+                        label: symbol
+                    }
+                    const environs = ROA.prepend<StatementEnviron>(environ)(context.environStack);
+                    return { ...context, environStack: environs };
+                }
+            )
+        )
+    }
+}
+
+function pushTryCatchEnviron(context: AdaptStatementContext): AdaptStatementContext {
+    const environ: TryCatchEnviron = {
+        kind: 'try-catch'
+    }
+    const environs = ROA.prepend<StatementEnviron>(environ)(context.environStack);
+    return { ...context, environStack: environs };
+}
+
+function popEnviron(originalContext: AdaptStatementContext) {
     return (
         [ops, context]: readonly [readonly Operation[], AdaptStatementContext]
     ): [readonly Operation[], AdaptStatementContext] => {
-        return [ops, { ...context, breakTargets: originalContext.breakTargets, continueTargets: originalContext.continueTargets }];
+        return [ops, { ...context, environStack: originalContext.environStack }];
     }
 }
 
@@ -151,25 +223,6 @@ function adaptBlock(node: tsm.Block): S.State<AdaptStatementContext, readonly Op
             }),
             // swap original scope back in
             updateContextScope(scope)
-        )
-    };
-}
-
-function adaptEmptyStatement(node: tsm.EmptyStatement): S.State<AdaptStatementContext, readonly Operation[]> {
-    return context => [ROA.of({ kind: 'noop', location: node }), context];
-}
-
-function adaptReturnStatement(node: tsm.ReturnStatement): S.State<AdaptStatementContext, readonly Operation[]> {
-    return context => {
-        return pipe(
-            node.getExpression(),
-            O.fromNullable,
-            O.map(expr => adaptExpression(expr)(context)),
-            O.getOrElse(() => [ROA.empty as readonly Operation[], context] as const),
-            updateOps(flow(
-                ROA.append<Operation>({ kind: 'jump', target: context.returnTarget }),
-                updateLocation(node)
-            ))
         )
     };
 }
@@ -312,6 +365,7 @@ function localVariableFactory(context: AdaptStatementContext) {
         return <CompileTimeObject>{ node, symbol, loadOps, storeOps };
     }
 }
+
 function adaptVariableDeclarationList(node: tsm.VariableDeclarationList): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
         const kind = node.getDeclarationKind();
@@ -323,48 +377,176 @@ function adaptVariableDeclarationList(node: tsm.VariableDeclarationList): S.Stat
     }
 }
 
+function isLoopStatement(node: tsm.Statement) {
+    switch (node.getKind()) {
+        case tsm.SyntaxKind.ForStatement:
+        case tsm.SyntaxKind.ForInStatement:
+        case tsm.SyntaxKind.ForOfStatement:
+        case tsm.SyntaxKind.WhileStatement:
+        case tsm.SyntaxKind.DoStatement:
+            return true;
+        default:
+            return false;
+    }
+}
+
+function adaptLabeledStatement(node: tsm.LabeledStatement): S.State<AdaptStatementContext, readonly Operation[]> {
+    return context => {
+        // labels on loop statements are handled by pushLoopEnviron, so ignore them here
+        const stmt = node.getStatement();
+        if (isLoopStatement(stmt) ) { return [ROA.empty, context]; }
+
+        const label = node.getLabel().getSymbol()?.getName();
+        const breakTarget = { kind: 'noop', debug: `breakTarget ${label}` } as Operation;
+
+        return pipe(
+            context,
+            pushLabelEnviron(breakTarget, node),
+            adaptStatement(node.getStatement()),
+            popEnviron(context)
+        )
+    }
+}
+
+function adaptEmptyStatement(node: tsm.EmptyStatement): S.State<AdaptStatementContext, readonly Operation[]> {
+    return context => [ROA.of({ kind: 'noop', location: node }), context];
+}
+
+// break/continue/return jump ops are created differs based on the try/catch block(s) the statement is nested inside
+function makeTryCatchJumpOps(target: Operation) {
+    return (environs: readonly StatementEnviron[]) => {
+        return pipe(
+            environs,
+            // filter down to just the try-catch environs
+            ROA.filter(env => env.kind === 'try-catch'),
+            ROA.matchRight(
+                // if the statement is not nested inside any try/catch blocks, emit a jump to the return target
+                () => ROA.of<Operation>({ kind: 'jump', target }),
+                (init, _last) => {
+                    return pipe(
+                        init,
+                        // for each nested trycatch block except the last, emit an endtry targeting the next operation
+                        ROA.chain(_environ => ROA.of<Operation>({ kind: 'endtry', offset: 1 })),
+                        // for the last nested trycatch block, emit an endtry to the return target
+                        ROA.append<Operation>({ kind: 'endtry', target }),
+                    )
+                },
+            )
+        )
+    }
+}
+
+function adaptReturnStatement(node: tsm.ReturnStatement): S.State<AdaptStatementContext, readonly Operation[]> {
+    return context => {
+        const returnTargetOps = pipe(
+            context.environStack,
+            makeTryCatchJumpOps(context.returnTarget)
+        );
+
+        return pipe(
+            node.getExpression(),
+            O.fromNullable,
+            O.map(expr => adaptExpression(expr)(context)),
+            O.getOrElse(() => [ROA.empty as readonly Operation[], context] as const),
+            updateOps(flow(
+                ROA.concat(returnTargetOps),
+                updateLocation(node)
+            ))
+        )
+    };
+}
+
 function adaptBreakStatement(node: tsm.BreakStatement): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
         return pipe(
-            context.breakTargets,
-            ROA.head,
-            // NCCS uses endtry instead of jump if in try/catch block.
-            O.map(target => ({ kind: 'jump', location: node, target } as Operation)),
+            context.environStack,
+            // add index to each environ so we can find any try/catch blocks that need to be ended
+            ROA.mapWithIndex((i, env) => [i, env] as const),
+            // find the first loop, label or switch 
+            ROA.findFirstMap(asBreakTarget),
             O.match(
-                () => adaptError('break statement not within a loop', node)(context),
-                op => [ROA.of(op), context]
+                () => {
+                    const error = makeParseError(node)(`break statement not within a loop, switch or label statement`);
+                    return [ROA.empty, updateContextErrors(context)(error)];
+                },
+                ([i, target]) => {
+                    return pipe(
+                        context.environStack,
+                        ROA.takeLeft(i),
+                        makeTryCatchJumpOps(target),
+                        updateLocation(node),
+                        (ops) => [ops, context]
+                    );
+                }
             )
-        )
+        );
+    }
+
+    function asBreakTarget([i, env]: readonly [number, StatementEnviron]): O.Option<readonly [number, Operation]> {
+        const label = pipe(node.getLabel(), O.fromNullable, O.chain(TS.getSymbol), O.toUndefined);
+        if (env.kind === 'loop' && (!label || (env.label === label))) return O.some([i, env.breakTarget]);
+        if (env.kind === 'label' && (!label || (env.label === label))) return O.some([i, env.breakTarget]);
+        // if (env.kind === 'switch' && (!label || (env.label === label))) return O.some([i, env.breakTarget]);
+        return O.none;
     }
 }
 
 function adaptContinueStatement(node: tsm.ContinueStatement): S.State<AdaptStatementContext, readonly Operation[]> {
+
     return context => {
         return pipe(
-            context.continueTargets,
-            ROA.head,
-            // NCCS uses endtry instead of jump if in try/catch block.
-            O.map(target => ({ kind: 'jump', location: node, target } as Operation)),
+            context.environStack,
+            ROA.mapWithIndex((i, env) => [i, env] as const),
+            ROA.findFirstMap(asContinueTarget),
             O.match(
-                () => adaptError('continue statement not within a loop', node)(context),
-                op => [ROA.of(op), context]
+                () => {
+                    const error = makeParseError(node)(`continue statement not within a loop`);
+                    return [ROA.empty, updateContextErrors(context)(error)];
+                },
+                ([i, target]) => {
+                    return pipe(
+                        context.environStack,
+                        ROA.takeLeft(i),
+                        makeTryCatchJumpOps(target),
+                        updateLocation(node),
+                        (ops) => [ops, context]
+                    );
+                }
             )
-        )
+        );
+    }
+
+    function asContinueTarget([i, env]: readonly [number, StatementEnviron]): O.Option<readonly [number, Operation]> {
+        const label = pipe(node.getLabel(), O.fromNullable, O.chain(TS.getSymbol), O.toUndefined);
+        if (env.kind === 'loop' && (!label || (env.label === label))) return O.some([i, env.continueTarget]);
+        return O.none;
     }
 }
+// function asBreakTarget(label?: tsm.Symbol) {
+//     return (env: StatementEnviron): O.Option<Operation> => {
+//         if (env.kind === 'label' && env.label === label) return O.some(env.breakTarget);
+//         if (env.kind === 'loop' && (!label || label === env.label)) return O.some(env.breakTarget);
+//         return O.none;
+//     }
+// }
+// function asContinueTarget(label?: tsm.Symbol){
+//     return (env: StatementEnviron): O.Option<Operation> => {
+//         if (env.kind === 'loop' && (!label || label === env.label)) return O.some(env.breakTarget);
+//         return O.none;
+//     }
+// }
+
 
 function adaptDoStatement(node: tsm.DoStatement): S.State<AdaptStatementContext, readonly Operation[]> {
-
     return context => {
-
-        const breakTarget = { kind: 'noop', debug: 'breakTarget'} as Operation;
-        const continueTarget = { kind: 'noop', debug: 'continueTarget'} as Operation;
-        const startTarget = { kind: 'noop', debug: 'startTarget'} as Operation;
+        const breakTarget = { kind: 'noop', debug: 'breakTarget' } as Operation;
+        const continueTarget = { kind: 'noop', debug: 'continueTarget' } as Operation;
+        const startTarget = { kind: 'noop', debug: 'startTarget' } as Operation;
         const expr = node.getExpression();
 
         return pipe(
             context,
-            pushLoopTargets(breakTarget, continueTarget),
+            pushLoopEnviron(breakTarget, continueTarget, node),
             adaptOp(startTarget),
             updateContext(adaptStatement(node.getStatement())),
             updateOps(ROA.append(continueTarget)),
@@ -374,20 +556,20 @@ function adaptDoStatement(node: tsm.DoStatement): S.State<AdaptStatementContext,
             )),
             updateOps(ROA.append<Operation>({ kind: 'jumpifnot', target: breakTarget })),
             updateOps(ROA.append(breakTarget)),
-            popLoopTargets(context)
+            popEnviron(context)
         );
     }
 }
 
 function adaptWhileStatement(node: tsm.WhileStatement): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
+        const breakTarget = { kind: 'noop', debug: 'breakTarget' } as Operation;
+        const continueTarget = { kind: 'noop', debug: 'continueTarget' } as Operation;
         const expr = node.getExpression();
-        const breakTarget = { kind: 'noop', debug: 'breakTarget'} as Operation;
-        const continueTarget = { kind: 'noop', debug: 'continueTarget'} as Operation;
 
         return pipe(
             context,
-            pushLoopTargets(breakTarget, continueTarget),
+            pushLoopEnviron(breakTarget, continueTarget, node),
             adaptExpression(expr, getBooleanConvertOps(expr.getType())),
             updateOps(updateLocation(expr)),
             updateOps(ROA.prepend(continueTarget)),
@@ -395,10 +577,10 @@ function adaptWhileStatement(node: tsm.WhileStatement): S.State<AdaptStatementCo
             updateContext(adaptStatement(node.getStatement())),
             updateOps(ROA.append<Operation>({ kind: 'jump', target: continueTarget })),
             updateOps(ROA.append(breakTarget)),
+            popEnviron(context)
         )
     }
 }
-
 
 function adaptTryStatement(node: tsm.TryStatement): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
@@ -408,10 +590,12 @@ function adaptTryStatement(node: tsm.TryStatement): S.State<AdaptStatementContex
 
         return pipe(
             context,
+            pushTryCatchEnviron,
             adaptOp({ kind: 'try', catchTarget, finallyTarget }),
             updateContext(adaptBlock(node.getTryBlock())),
             updateOps(ROA.append<Operation>({ kind: 'endtry', target: endTarget })),
             updateContext(adaptCatchClause(catchTarget, node.getCatchClause())),
+            popEnviron(context),
             updateContext(adaptFinallyBlock(finallyTarget, node.getFinallyBlock())),
             updateOps(ROA.append(endTarget)),
         )
@@ -511,12 +695,12 @@ function adaptForStatement(node: tsm.ForStatement): S.State<AdaptStatementContex
 
         const startTarget = { kind: 'noop', debug: 'startTarget' } as Operation;
         const conditionTarget = { kind: 'noop', debug: 'conditionTarget' } as Operation;
-        const breakTarget = { kind: 'noop', debug: 'breakTarget'} as Operation;
+        const breakTarget = { kind: 'noop', debug: 'breakTarget' } as Operation;
         const continueTarget = { kind: 'noop', debug: 'continueTarget' } as Operation;
 
         return pipe(
             context,
-            pushLoopTargets(breakTarget, continueTarget),
+            pushLoopEnviron(breakTarget, continueTarget, node),
             adaptInitializer(),
             updateOps(ROA.append<Operation>({ kind: "jump", target: conditionTarget })),
             updateOps(ROA.append(startTarget)),
@@ -526,7 +710,7 @@ function adaptForStatement(node: tsm.ForStatement): S.State<AdaptStatementContex
             updateOps(ROA.append(conditionTarget)),
             updateContext(adaptCondition(startTarget)),
             updateOps(ROA.append(breakTarget)),
-            popLoopTargets(context),
+            popEnviron(context),
             // swap original scope back in
             updateContextScope(scope)
         )
@@ -592,12 +776,12 @@ function adaptForEach(node: tsm.ForInStatement | tsm.ForOfStatement, options: Fo
         let scope = context.scope;
 
         const startTarget = { kind: 'noop', debug: 'startTarget' } as Operation;
-        const breakTarget = { kind: 'noop', debug: 'breakTarget'} as Operation;
+        const breakTarget = { kind: 'noop', debug: 'breakTarget' } as Operation;
         const continueTarget = { kind: 'noop', debug: 'continueTarget' } as Operation;
 
         return pipe(
             context,
-            pushLoopTargets(breakTarget, continueTarget),
+            pushLoopEnviron(breakTarget, continueTarget, node),
             adaptExpression(node.getExpression()),
             updateOps(updateLocation(node.getExpression())),
             updateOps(ROA.concat(options.initOps(continueTarget))),
@@ -613,7 +797,7 @@ function adaptForEach(node: tsm.ForInStatement | tsm.ForOfStatement, options: Fo
                 )
             )),
             updateOps(ROA.append(breakTarget)),
-            popLoopTargets(context),
+            popEnviron(context),
             // swap original scope back in
             updateContextScope(scope)
         );
@@ -756,6 +940,7 @@ export function adaptStatement(node: tsm.Statement): S.State<AdaptStatementConte
             case tsm.SyntaxKind.ForOfStatement: return adaptForOfStatement(node as tsm.ForOfStatement)(context);
             case tsm.SyntaxKind.ForStatement: return adaptForStatement(node as tsm.ForStatement)(context);
             case tsm.SyntaxKind.IfStatement: return adaptIfStatement(node as tsm.IfStatement)(context);
+            case tsm.SyntaxKind.LabeledStatement: return adaptLabeledStatement(node as tsm.LabeledStatement)(context);
             case tsm.SyntaxKind.ReturnStatement: return adaptReturnStatement(node as tsm.ReturnStatement)(context);
             case tsm.SyntaxKind.ThrowStatement: return adaptThrowStatement(node as tsm.ThrowStatement)(context);
             case tsm.SyntaxKind.TryStatement: return adaptTryStatement(node as tsm.TryStatement)(context);
@@ -780,8 +965,7 @@ function parseBody({ scope, body }: { scope: Scope, body: tsm.Node }): E.Either<
         errors: [],
         locals: [],
         returnTarget: { kind: 'return' },
-        breakTargets: [],
-        continueTargets: [],
+        environStack: [],
     };
 
     const [operations, { errors, locals }] = adaptBody(context);

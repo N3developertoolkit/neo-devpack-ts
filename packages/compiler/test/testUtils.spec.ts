@@ -219,8 +219,7 @@ export function testAdaptStatement(scope: Scope, node: tsm.Statement) {
     const [ops, context] = adaptStatement(node)({
         scope,
         returnTarget,
-        breakTargets: [],
-        continueTargets: [],
+        environStack: [],
         errors: [],
         locals: [],
     });

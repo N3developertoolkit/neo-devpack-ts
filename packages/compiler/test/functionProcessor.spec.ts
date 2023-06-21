@@ -126,8 +126,7 @@ describe('function processor', () => {
             const { ops, context } = testAdaptStatement(scope, stmt);
 
             expect(context.scope).eq(scope);
-            expect(context.breakTargets).empty;
-            expect(context.continueTargets).empty;
+            expect(context.environStack).empty;
             expect(context.locals).empty;
             expectResults(ops,
                 pushInt(42, stmt),
@@ -148,8 +147,7 @@ describe('function processor', () => {
             const { ops, context } = testAdaptStatement(scope, stmt);
 
             expect(context.scope).eq(scope);
-            expect(context.breakTargets).empty;
-            expect(context.continueTargets).empty;
+            expect(context.environStack).empty;
             expect(context.locals).empty;
             expectResults(ops,
                 { kind: 'jump', target: context.returnTarget, location: stmt }
@@ -170,8 +168,7 @@ describe('function processor', () => {
             const { ops, context } = testAdaptStatement(scope, stmt);
 
             expect(context.scope).eq(scope);
-            expect(context.breakTargets).empty;
-            expect(context.continueTargets).empty;
+            expect(context.environStack).empty;
             expect(context.locals).length(1);
             expect(context.locals[0]).property("name", "i");
             expect(context.locals[0].type?.isNumber()).true;
@@ -216,8 +213,7 @@ describe('function processor', () => {
             const { ops, context } = testAdaptStatement(scope, stmt);
 
             expect(context.scope).eq(scope);
-            expect(context.breakTargets).empty;
-            expect(context.continueTargets).empty;
+            expect(context.environStack).empty;
             expect(context.locals).length(1);
             expect(context.locals[0]).property("name", "i");
             expect(context.locals[0].type?.isNumber()).true;
@@ -258,8 +254,7 @@ describe('function processor', () => {
             const { ops, context } = testAdaptStatement(scope, stmt);
 
             expect(context.scope).eq(scope);
-            expect(context.breakTargets).empty;
-            expect(context.continueTargets).empty;
+            expect(context.environStack).empty;
             expect(context.locals).length(1);
             expect(context.locals[0]).property("name", "i");
             expect(context.locals[0].type?.isNumber()).true;
@@ -303,8 +298,7 @@ describe('function processor', () => {
             const { ops, context } = testAdaptStatement(scope, stmt);
 
             expect(context.scope).eq(scope);
-            expect(context.breakTargets).empty;
-            expect(context.continueTargets).empty;
+            expect(context.environStack).empty;
             expect(context.locals).length(1);
             expect(context.locals[0]).property("name", "i");
             expect(context.locals[0].type?.isNumber()).true;
@@ -352,8 +346,7 @@ describe('function processor', () => {
             const { ops, context } = testAdaptStatement(scope, stmt);
 
             expect(context.scope).eq(scope);
-            expect(context.breakTargets).empty;
-            expect(context.continueTargets).empty;
+            expect(context.environStack).empty;
             expect(context.locals).length(1);
             expect(context.locals[0]).property("name", "i");
             expect(context.locals[0].type?.isNumber()).true;
@@ -399,8 +392,7 @@ describe('function processor', () => {
             const { ops, context } = testAdaptStatement(scope, stmt);
 
             expect(context.scope).eq(scope);
-            expect(context.breakTargets).empty;
-            expect(context.continueTargets).empty;
+            expect(context.environStack).empty;
             expect(context.locals).empty;
 
             expectResults(ops,
@@ -443,8 +435,7 @@ describe('function processor', () => {
             const { ops, context } = testAdaptStatement(scope, stmt);
 
             expect(context.scope).eq(scope);
-            expect(context.breakTargets).empty;
-            expect(context.continueTargets).empty;
+            expect(context.environStack).empty;
             expect(context.locals).empty;
 
             expectResults(ops,
@@ -484,8 +475,7 @@ describe('function processor', () => {
             const { ops, context } = testAdaptStatement(scope, stmt);
 
             expect(context.scope).eq(scope);
-            expect(context.breakTargets).empty;
-            expect(context.continueTargets).empty;
+            expect(context.environStack).empty;
             expect(context.locals).empty;
             expectResults(ops,
                 { kind: 'noop', location: stmt.getFirstChildByKind(tsm.SyntaxKind.OpenBraceToken) },
@@ -506,8 +496,7 @@ describe('function processor', () => {
             const { ops, context } = testAdaptStatement(scope, stmt);
 
             expect(context.scope).eq(scope);
-            expect(context.breakTargets).empty;
-            expect(context.continueTargets).empty;
+            expect(context.environStack).empty;
             expect(context.locals).length(1);
             expect(context.locals[0]).property("name", "q");
             expect(context.locals[0]).property("type", decl.getType());
@@ -529,8 +518,7 @@ describe('function processor', () => {
             const { ops, context } = testAdaptStatement(scope, stmt);
 
             expect(context.scope).eq(scope);
-            expect(context.breakTargets).empty;
-            expect(context.continueTargets).empty;
+            expect(context.environStack).empty;
             expect(context.locals).empty;
 
             expectResults(ops,
