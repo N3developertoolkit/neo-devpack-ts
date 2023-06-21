@@ -13,6 +13,20 @@ import { ContractMethod, ContractVariable } from "../types/CompileOptions";
 import { parseExpression, resolveExpression } from "./expressionProcessor";
 import { generateStoreOps, updateDeclarationScope, StoreOpVariable, parseVariableDeclaration, ParsedVariable, BoundVariable } from "./parseVariableBinding";
 
+export interface LocalVariable {
+    readonly name: string;
+    readonly type?: tsm.Type;
+}
+
+export interface AdaptStatementContext {
+    readonly errors: readonly ParseError[];
+    readonly locals: readonly LocalVariable[];
+    readonly scope: Scope;
+    readonly returnTarget: Operation;
+    readonly breakTargets: readonly Operation[];
+    readonly continueTargets: readonly Operation[];
+}
+
 function adaptOp(op: Operation): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => [ROA.of(op), context];
 }
@@ -33,15 +47,6 @@ function updateOps(func: (ops: readonly Operation[]) => readonly Operation[]) {
         return [func(ops), context];
     }
 }
-
-// type UpdateFunction = ([ops, context]: readonly [readonly Operation[], AdaptStatementContext]) => [readonly Operation[], AdaptStatementContext];
-// function updateErrors(error: ParseError): UpdateFunction;
-// function updateErrors(errors: readonly ParseError[]): UpdateFunction;
-// function updateErrors(message: string, node?: tsm.Node): UpdateFunction;
-// function updateErrors(args1: string | ParseError | readonly ParseError[], node?: tsm.Node): UpdateFunction {
-//     const errors = typeof args1 === 'string' ? makeParseError(node)(args1) : args1;
-//     return ([ops, context]) => [ops, updateContextErrors(context)(errors)];
-// }
 
 function updateContextScope(scope: Scope) {
     return (
@@ -735,20 +740,6 @@ function adaptForOfStatement(node: tsm.ForOfStatement): S.State<AdaptStatementCo
         if (TS.isIterableType(exprType)) return adaptForEachIterator(node)(context);
         return adaptError(`adaptForOfStatement not implemented for ${exprType.getSymbol()?.getName() ?? exprType.getText()}`, node)(context);
     }
-}
-
-export interface LocalVariable {
-    name: string;
-    type?: tsm.Type;
-}
-
-export interface AdaptStatementContext {
-    readonly errors: readonly ParseError[];
-    readonly locals: readonly LocalVariable[];
-    readonly scope: Scope;
-    readonly returnTarget: Operation;
-    readonly breakTargets: readonly Operation[];
-    readonly continueTargets: readonly Operation[];
 }
 
 export function adaptStatement(node: tsm.Statement): S.State<AdaptStatementContext, readonly Operation[]> {
