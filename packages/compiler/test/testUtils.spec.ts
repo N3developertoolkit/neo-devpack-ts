@@ -214,7 +214,7 @@ export function createLiteralCTO(arg: tsm.Node, value?: string | number | bigint
 }
 
 export function testAdaptStatement(scope: Scope, node: tsm.Statement) {
-    const returnTarget: Operation = { kind: 'noop' };
+    const returnTarget = { kind: 'noop', debug: 'returnTarget' } as Operation;
 
     const [ops, context] = adaptStatement(node)({
         scope,

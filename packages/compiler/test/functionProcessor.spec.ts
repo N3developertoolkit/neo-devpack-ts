@@ -44,6 +44,12 @@ describe('function processor', () => {
         })
     })
 
+    describe.skip("try/catch", () => {
+        // TODO: add tests
+    });
+
+
+
     describe('for of loop', () => {
         it("var decl init, iterator expr", () => {
             const contract = `class Items implements IterableIterator<number> {
@@ -152,6 +158,40 @@ describe('function processor', () => {
             expectResults(ops,
                 { kind: 'jump', target: context.returnTarget, location: stmt }
             )
+        });
+
+        it("return inside try catch", () => {
+            const contract = /*javascript*/ `function foo(){ try { return; } finally { ; } };`
+            const { sourceFile } = createTestProject(contract);
+            const scope = createTestScope();
+            const func = sourceFile
+                .forEachChildAsArray()[0].asKindOrThrow(tsm.SyntaxKind.FunctionDeclaration);
+            const trystmt = func
+                .getBodyOrThrow().asKindOrThrow(tsm.SyntaxKind.Block)
+                .getStatements()[0].asKindOrThrow(tsm.SyntaxKind.TryStatement);
+            const retstmt = trystmt.getTryBlock()
+                .getStatements()[0].asKindOrThrow(tsm.SyntaxKind.ReturnStatement);
+
+            const { ops, context } = testAdaptStatement(scope, trystmt);
+
+
+        });
+
+        it("return inside nested try catch", () => {
+            const contract = /*javascript*/ `function foo(){ 
+                try { try { return; } catch { ; } } 
+                finally { ; } };`
+            const { sourceFile } = createTestProject(contract);
+            const scope = createTestScope();
+            const func = sourceFile
+                .forEachChildAsArray()[0].asKindOrThrow(tsm.SyntaxKind.FunctionDeclaration);
+            const trystmt = func
+                .getBodyOrThrow().asKindOrThrow(tsm.SyntaxKind.Block)
+                .getStatements()[0].asKindOrThrow(tsm.SyntaxKind.TryStatement);
+
+            const { ops, context } = testAdaptStatement(scope, trystmt);
+
+
         });
     })
 
