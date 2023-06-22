@@ -36,7 +36,7 @@ export interface AdaptStatementContext {
 type StatementEnviron =
     LabelEnviron |
     LoopEnviron |
-    // SwitchEnviron |
+    SwitchEnviron |
     TryCatchEnviron;
 
 interface LabelEnviron {
@@ -52,11 +52,11 @@ interface LoopEnviron {
     readonly label?: string;
 }
 
-// interface SwitchEnviron {
-//     readonly kind: 'switch';
-//     readonly breakTarget: Operation;
-//     readonly label?: string;
-// }
+interface SwitchEnviron {
+    readonly kind: 'switch';
+    readonly breakTarget: Operation;
+    readonly label?: string;
+}
 
 interface TryCatchEnviron {
     readonly kind: 'try-catch';
@@ -117,6 +117,15 @@ function pushLabelEnviron(breakTarget: Operation, node: tsm.LabeledStatement) {
     return (context: AdaptStatementContext): AdaptStatementContext => {
         const label = node.getLabel().getText();
         const environ: LabelEnviron = { kind: 'label', breakTarget, label }
+        const environs = ROA.prepend<StatementEnviron>(environ)(context.environStack);
+        return { ...context, environStack: environs };
+    }
+}
+
+function pushSwitchEnviron(breakTarget: Operation, node: tsm.SwitchStatement) {
+    return (context: AdaptStatementContext): AdaptStatementContext => {
+        const label = node.getParentIfKind(tsm.SyntaxKind.LabeledStatement)?.getText();
+        const environ: SwitchEnviron = { kind: 'switch', breakTarget, label }
         const environs = ROA.prepend<StatementEnviron>(environ)(context.environStack);
         return { ...context, environStack: environs };
     }
@@ -382,7 +391,7 @@ function adaptLabeledStatement(node: tsm.LabeledStatement): S.State<AdaptStateme
     return context => {
         // labels on loop statements are handled by pushLoopEnviron, so ignore them here
         const stmt = node.getStatement();
-        if (isLoopStatement(stmt) ) { return [ROA.empty, context]; }
+        if (isLoopStatement(stmt)) { return [ROA.empty, context]; }
 
         const label = node.getLabel().getText();
         const breakTarget = { kind: 'noop', debug: `breakTarget ${label}` } as Operation;
@@ -475,7 +484,7 @@ function adaptBreakStatement(node: tsm.BreakStatement): S.State<AdaptStatementCo
         const label = node.getLabel()?.getText();
         if (env.kind === 'loop' && (!label || (env.label === label))) return O.some([i, env.breakTarget]);
         if (env.kind === 'label' && (!label || (env.label === label))) return O.some([i, env.breakTarget]);
-        // if (env.kind === 'switch' && (!label || (env.label === label))) return O.some([i, env.breakTarget]);
+        if (env.kind === 'switch' && (!label || (env.label === label))) return O.some([i, env.breakTarget]);
         return O.none;
     }
 }
@@ -511,20 +520,6 @@ function adaptContinueStatement(node: tsm.ContinueStatement): S.State<AdaptState
         return O.none;
     }
 }
-// function asBreakTarget(label?: tsm.Symbol) {
-//     return (env: StatementEnviron): O.Option<Operation> => {
-//         if (env.kind === 'label' && env.label === label) return O.some(env.breakTarget);
-//         if (env.kind === 'loop' && (!label || label === env.label)) return O.some(env.breakTarget);
-//         return O.none;
-//     }
-// }
-// function asContinueTarget(label?: tsm.Symbol){
-//     return (env: StatementEnviron): O.Option<Operation> => {
-//         if (env.kind === 'loop' && (!label || label === env.label)) return O.some(env.breakTarget);
-//         return O.none;
-//     }
-// }
-
 
 function adaptDoStatement(node: tsm.DoStatement): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
@@ -575,8 +570,8 @@ function adaptTryStatement(node: tsm.TryStatement): S.State<AdaptStatementContex
     return context => {
         const catchClause = node.getCatchClause();
         const finallyBlock = node.getFinallyBlock();
-        const $catch = catchClause 
-            ? { node: catchClause, target: { kind: 'noop', debug: 'catchTarget' } as Operation } 
+        const $catch = catchClause
+            ? { node: catchClause, target: { kind: 'noop', debug: 'catchTarget' } as Operation }
             : undefined;
         const $finally = finallyBlock
             ? { node: finallyBlock, target: { kind: 'noop', debug: 'finallyTarget' } as Operation }
@@ -825,7 +820,6 @@ function adaptForEach(node: tsm.ForInStatement | tsm.ForOfStatement, options: Fo
                     )
                 );
             }
-
         }
     }
 }
@@ -903,6 +897,7 @@ function adaptForEachArray(node: tsm.ForInStatement | tsm.ForOfStatement): S.Sta
         return adaptForEach(node, options)(context);
     }
 }
+
 function adaptForInStatement(node: tsm.ForInStatement): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
         const expr = node.getExpression();
@@ -925,6 +920,88 @@ function adaptForOfStatement(node: tsm.ForOfStatement): S.State<AdaptStatementCo
     }
 }
 
+function adaptSwitchStatement(node: tsm.SwitchStatement): S.State<AdaptStatementContext, readonly Operation[]> {
+    return context => {
+
+        const breakTarget = <Operation>{ kind: 'noop', debug: 'breakTarget' };
+        let exprVar: number;
+        [exprVar, context] = adaptAnonymousVariable(context);
+
+        type Clause = { clauseTarget: Operation, ops: readonly Operation[], statements: readonly tsm.Statement[] }
+
+        const { left: errors, right: clauses } = pipe(
+            node.getClauses(),
+            ROA.map(clause => {
+                const clauseTarget = <Operation>{ kind: 'noop', debug: 'clauseTarget' };
+                if (tsm.Node.isCaseClause(clause)) {
+                    // if the clause is a case clause, parse the expression and compare it to the switch expression variable
+                    // jump to the clause target if they are equal
+                    const expr = clause.getExpression();
+                    return pipe(
+                        expr,
+                        parseExpression(context.scope),
+                        E.map(ROA.concat<Operation>([
+                            { kind: 'loadlocal', index: exprVar },
+                            { kind: 'equal' },
+                            { kind: 'jumpif', target: clauseTarget }
+                        ])),
+                        E.map(updateLocation(expr)),
+                        E.map(ops => ({ clauseTarget, ops, statements: clause.getStatements() })),
+                    );
+                } else {
+                    // if the clause is a default clause, just jump to the clause target
+                    const $default = clause.getFirstChildByKind(tsm.SyntaxKind.DefaultKeyword);
+                    const ops = ROA.of<Operation>({ kind: 'jump', target: clauseTarget, location: $default })
+                    return E.of({ clauseTarget, ops, statements: clause.getStatements() });
+                }
+            }),
+            ROA.separate
+        )
+
+        if (errors.length > 0) return [ROA.empty, updateContextErrors(context)(errors)];
+
+        return pipe(
+            context,
+            pushSwitchEnviron(breakTarget, node),
+            // execute the switch expression and save it to the temporary variable
+            adaptExpression(node.getExpression()),
+            updateOps(ROA.append<Operation>({ kind: "storelocal", index: exprVar })),
+            updateOps(updateLocation(node.getExpression())),
+            // append the expression ops for each clause
+            updateOps(ROA.concat(pipe(clauses, ROA.chain(({ ops }) => ops)))),
+            // append a jump to the break target in case none of the clauses match
+            updateOps(ROA.append<Operation>({ kind: 'jump', target: breakTarget})),
+            // adapt each clause
+            updateContext(adaptClauses(clauses)),
+            // append the break target
+            updateOps(ROA.append(breakTarget)),
+            popEnviron(context),
+        )
+
+        function adaptClauses(clauses: readonly Clause[]): S.State<AdaptStatementContext, readonly Operation[]> {
+            return context => {
+                return pipe(
+                    clauses,
+                    ROA.map(adaptClause),
+                    reduceAdaptations(context),
+                )
+            }
+        }
+
+        function adaptClause(clause: Clause): S.State<AdaptStatementContext, readonly Operation[]> {
+            return context => {
+                // for each clause, adapt the statements in the clause and prepend the clause target
+                return pipe(
+                    clause.statements,
+                    ROA.map(adaptStatement),
+                    reduceAdaptations(context),
+                    updateOps(ROA.prepend(clause.clauseTarget)),
+                )
+            }
+        }
+    }
+}
+
 export function adaptStatement(node: tsm.Statement): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
 
@@ -941,12 +1018,11 @@ export function adaptStatement(node: tsm.Statement): S.State<AdaptStatementConte
             case tsm.SyntaxKind.IfStatement: return adaptIfStatement(node as tsm.IfStatement)(context);
             case tsm.SyntaxKind.LabeledStatement: return adaptLabeledStatement(node as tsm.LabeledStatement)(context);
             case tsm.SyntaxKind.ReturnStatement: return adaptReturnStatement(node as tsm.ReturnStatement)(context);
+            case tsm.SyntaxKind.SwitchStatement: return adaptSwitchStatement(node as tsm.SwitchStatement)(context);
             case tsm.SyntaxKind.ThrowStatement: return adaptThrowStatement(node as tsm.ThrowStatement)(context);
             case tsm.SyntaxKind.TryStatement: return adaptTryStatement(node as tsm.TryStatement)(context);
             case tsm.SyntaxKind.VariableStatement: return adaptVariableDeclarationList((node as tsm.VariableStatement).getDeclarationList())(context);
             case tsm.SyntaxKind.WhileStatement: return adaptWhileStatement(node as tsm.WhileStatement)(context);
-            case tsm.SyntaxKind.SwitchStatement:
-                return adaptError(`adaptStatement ${node.getKindName()} support coming in future release`, node)(context);
             default:
                 return adaptError(`adaptStatement ${node.getKindName()} not supported`, node)(context);
         }

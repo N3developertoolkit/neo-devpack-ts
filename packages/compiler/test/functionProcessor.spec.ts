@@ -44,6 +44,59 @@ describe('function processor', () => {
         })
     })
 
+    describe("switch", () => {
+        it("should work", () => {
+            const contract = /*javascript*/ `
+                let n: number = null!;
+                function foo(){
+                    switch (n) {
+                        case 1: 
+                            break;
+                        case 2: 
+                            break;
+                        default: 
+                            break;
+                    }
+                }`
+            const { sourceFile } = createTestProject(contract);
+            const n = createVarDeclCTO(sourceFile, 'n');
+            const scope = createTestScope(undefined, n);
+
+            const func = sourceFile.forEachChildAsArray()[1].asKindOrThrow(tsm.SyntaxKind.FunctionDeclaration);
+            const $switch = func.getBodyOrThrow().asKindOrThrow(tsm.SyntaxKind.Block)
+                .forEachChildAsArray()[0].asKindOrThrow(tsm.SyntaxKind.SwitchStatement);
+
+            const clauses = $switch.getClauses() 
+            const expr1 = (clauses[0] as tsm.CaseClause).getExpression();
+            const expr2 = (clauses[1] as tsm.CaseClause).getExpression();
+            const $default = ($switch.getClauses()[2] as tsm.DefaultClause);
+            const childs = $default.getChildren();
+            const { ops, context } = testAdaptStatement(scope, $switch);
+
+            expectResults(ops,
+                { ... n.loadOp, location: $switch.getExpression() },
+                { kind: 'storelocal', index: 0 },
+                pushInt(1, expr1),
+                { kind: 'loadlocal', index: 0 },
+                { kind: 'equal'},
+                { kind: 'jumpif', target: ops[12] },
+                pushInt(2, expr2),
+                { kind: 'loadlocal', index: 0 },
+                { kind: 'equal'},
+                { kind: 'jumpif', target: ops[14] },
+                { kind: 'jump', target: ops[16], location: $default.getChildren()[0]  },
+                { kind: 'jump', target: ops[18] },
+                { kind: 'noop', debug: 'clauseTarget' },
+                { kind: 'jump', target: ops[18], location: clauses[0].getStatements()[0] },
+                { kind: 'noop', debug: 'clauseTarget' },
+                { kind: 'jump', target: ops[18], location: clauses[1].getStatements()[0] },
+                { kind: 'noop', debug: 'clauseTarget' },
+                { kind: 'jump', target: ops[18], location: clauses[2].getStatements()[0] },
+                { kind: 'noop', debug: 'breakTarget' },
+            )
+        })
+    })
+
     describe("try/catch", () => {
         it("return inside try finally", () => {
             const contract = /*javascript*/ `function foo(){ try { return; } finally { } };`
@@ -95,7 +148,7 @@ describe('function processor', () => {
                 { kind: 'try', catchTarget: undefined, finallyTarget: ops[15] },
                 { $kind: 'noop' }, // inner try block start
                 { kind: 'endtry', offset: 1, location: retstmt },
-                { kind: 'endtry', target: context.returnTarget},
+                { kind: 'endtry', target: context.returnTarget },
                 { $kind: 'noop' }, // inner try block end
                 { kind: 'endtry', target: ops[12] },
                 { kind: 'noop', debug: 'finallyTarget' },
@@ -104,7 +157,7 @@ describe('function processor', () => {
                 { kind: 'endfinally' },
                 { kind: 'noop', debug: 'endTarget' },
                 { $kind: 'noop' }, // outer try block end
-                { kind: 'endtry', target: ops[19]},
+                { kind: 'endtry', target: ops[19] },
                 { kind: 'noop', debug: 'finallyTarget' },
                 { $kind: 'noop' }, // outer finally block start
                 { $kind: 'noop' }, // outer finally block end
