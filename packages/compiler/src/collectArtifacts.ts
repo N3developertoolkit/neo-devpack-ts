@@ -6,7 +6,7 @@ import * as ROA from 'fp-ts/ReadonlyArray'
 import * as E from 'fp-ts/Either'
 import * as S from 'fp-ts/State'
 import * as ROR from 'fp-ts/ReadonlyRecord'
-import { CallOperation, CallTokenOperation, convertJumpOperationKind, convertJumpTargetOps, convertLoadStoreKind, convertSimpleOperationKind, getOperationSize, isCallOp, isCallTokenOp, isConvertOp, isInitSlotOp, isInitStaticOperation, isJumpOffsetOp, isJumpTargetOp, isLoadStoreOp, isPushBoolOp, isPushDataOp, isPushIntOp, isSimpleOp, isSysCallOp, JumpOffsetOperation, LoadStoreOperation, Operation, PushDataOperation, PushIntOperation, SysCallOperation } from "./types/Operation";
+import { CallOperation, CallTokenOperation, convertJumpOperationKind, convertTargetOps, convertLoadStoreKind, convertSimpleOperationKind, EndTryOffsetOperation, getOperationSize, isCallOp, isCallTokenOp, isConvertOp, isEndTryOffsetOp, isEndTryTargetOp, isInitSlotOp, isInitStaticOperation, isJumpOffsetOp, isJumpTargetOp, isLoadStoreOp, isPushBoolOp, isPushDataOp, isPushIntOp, isSimpleOp, isSysCallOp, isTryOffsetOp, isTryTargetOp, JumpOffsetOperation, LoadStoreOperation, Operation, PushDataOperation, PushIntOperation, SysCallOperation, TryOffsetOperation } from "./types/Operation";
 import { asContractParamType, asReturnType, convertBigInteger, createDiagnostic, E_fromSeparated } from "./utils";
 import { CompiledProject, CompiledProjectArtifacts, ContractEvent, ContractMethod } from "./types/CompileOptions";
 import { makeDebugInfo } from "./types/DebugInfo";
@@ -93,19 +93,58 @@ function convertPushData(
     return E.left(`pushData length ${value.length} too long`);
 }
 
+function convertAddressOffset(
+    index: number,
+    address: number,
+    offset: number | undefined,
+    contractOps: readonly { address: number; op: Operation; }[]
+) {
+    if (!offset) return 0;
+    const targetIndex = index + offset;
+    const targetAddress = contractOps[targetIndex].address;
+    const addressOffset = targetAddress - address;
+    return addressOffset;
+}
+
 function convertJump(
     index: number,
     address: number,
-    op: JumpOffsetOperation,
+    { kind, offset}: JumpOffsetOperation,
     contractOps: readonly { address: number; op: Operation; }[]
 ): Instruction {
-    const targetIndex = index + op.offset;
-    const targetAddress = contractOps[targetIndex].address;
-    const addressOffset = targetAddress - address;
-    const opCode = convertJumpOperationKind(op.kind);
+    const addressOffset = convertAddressOffset(index, address, offset, contractOps);
+    const opCode = convertJumpOperationKind(kind);
     const buffer = new ArrayBuffer(4);
     new DataView(buffer).setInt32(0, addressOffset, true);
     return { opCode, operand: new Uint8Array(buffer) };
+}
+
+function convertTry(
+    index: number,
+    address: number,
+    { catchOffset, finallyOffset }: TryOffsetOperation,
+    contractOps: readonly { address: number; op: Operation; }[]
+): Instruction {
+    const catchAddressOffset = convertAddressOffset(index, address, catchOffset, contractOps);
+    const finallyAddressOffset = convertAddressOffset(index, address, finallyOffset, contractOps);
+    const buffer = new ArrayBuffer(8);
+    const view = new DataView(buffer);
+    view.setInt32(0, catchAddressOffset, true);
+    view.setInt32(4, finallyAddressOffset, true);
+    return { opCode: sc.OpCode.TRY_L, operand: new Uint8Array(buffer) };
+}
+
+
+function convertEndTry(
+    index: number,
+    address: number,
+    { offset }: EndTryOffsetOperation,
+    contractOps: readonly { address: number; op: Operation; }[]
+): Instruction {
+    const addressOffset = convertAddressOffset(index, address, offset, contractOps);
+    const buffer = new ArrayBuffer(4);
+    new DataView(buffer).setInt32(0, addressOffset, true);
+    return { opCode: sc.OpCode.ENDTRY_L, operand: new Uint8Array(buffer) };
 }
 
 function convertCallToken(
@@ -142,6 +181,8 @@ function convertCall(
     return E.of({ opCode: sc.OpCode.CALL_L, operand: new Uint8Array(buffer) });
 }
 
+
+
 function convertOperations(
     contractOps: readonly { address: number; op: Operation; }[],
     tokens: readonly sc.MethodToken[],
@@ -169,7 +210,11 @@ function convertOperations(
         else if (isPushIntOp(op)) return E.of(convertPushInt(op));
         else if (isSimpleOp(op)) return E.of(createIns(convertSimpleOperationKind(op.kind)));
         else if (isSysCallOp(op)) return E.of(convertSysCall(op));
+        else if (isTryOffsetOp(op)) return E.of(convertTry(index, address, op, contractOps));
+        else if (isEndTryOffsetOp(op)) return E.of(convertEndTry(index, address, op, contractOps));
         else if (isJumpTargetOp(op)) return E.left('JumpTargetOperation not supported');
+        else if (isTryTargetOp(op)) return E.left('TryTargetOperation not supported');
+        else if (isEndTryTargetOp(op)) return E.left('EndTryTargetOperation not supported');
         return E.left(`Unknown operation "${(op as Operation).kind}"`);
     }
 
@@ -285,7 +330,7 @@ export const collectArtifacts =
                     compiledProject.methods,
                     ROA.map(method => pipe(
                         method.operations,
-                        convertJumpTargetOps,
+                        convertTargetOps,
                         E.map(operations => ({ ...method, operations } as ContractMethod))
                     )),
                     ROA.separate

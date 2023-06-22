@@ -1,11 +1,10 @@
 import { join, basename, isAbsolute } from "path";
-import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { Node, ts } from "ts-morph";
 import { sc } from "@cityofzion/neon-core";
 import { createContractProject, hasErrors, toDiagnostic } from "./utils";
-import { CompilerOptions, DEFAULT_ADDRESS_VALUE, compile } from "./compiler";
+import { CompilerOptions, compile } from "./compiler";
 import { ContractMethod } from "./types/CompileOptions";
-import { JumpOffsetOperation, Location, Operation, convertJumpTargetOps } from "./types/Operation";
+import { JumpOffsetOperation, Location, Operation, convertTargetOps } from "./types/Operation";
 import * as E from 'fp-ts/lib/Either';
 import { pipe } from "fp-ts/lib/function";
 import { Command, InvalidArgumentError, OptionValues } from 'commander';
@@ -241,7 +240,7 @@ function dumpContractMethod(method: ContractMethod) {
 
     pipe(
         method.operations,
-        convertJumpTargetOps,
+        convertTargetOps,
         E.match(
             msg => { throw new Error(msg); },
             operations => {

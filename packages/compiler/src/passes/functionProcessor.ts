@@ -573,25 +573,32 @@ function adaptWhileStatement(node: tsm.WhileStatement): S.State<AdaptStatementCo
 
 function adaptTryStatement(node: tsm.TryStatement): S.State<AdaptStatementContext, readonly Operation[]> {
     return context => {
-        const catchTarget = { kind: 'noop', debug: 'catchTarget' } as Operation;
-        const finallyTarget = { kind: 'noop', debug: 'finallyTarget' } as Operation;
+        const catchClause = node.getCatchClause();
+        const finallyBlock = node.getFinallyBlock();
+        const $catch = catchClause 
+            ? { node: catchClause, target: { kind: 'noop', debug: 'catchTarget' } as Operation } 
+            : undefined;
+        const $finally = finallyBlock
+            ? { node: finallyBlock, target: { kind: 'noop', debug: 'finallyTarget' } as Operation }
+            : undefined;
         const endTarget = { kind: 'noop', debug: 'endTarget' } as Operation;
 
         return pipe(
             context,
             pushTryCatchEnviron,
-            adaptOp({ kind: 'try', catchTarget, finallyTarget }),
+            adaptOp({ kind: 'try', catchTarget: $catch?.target, finallyTarget: $finally?.target }),
             updateContext(adaptBlock(node.getTryBlock())),
             updateOps(ROA.append<Operation>({ kind: 'endtry', target: endTarget })),
-            updateContext(adaptCatchClause(catchTarget, node.getCatchClause())),
+            updateContext(adaptCatchClause($catch)),
             popEnviron(context),
-            updateContext(adaptFinallyBlock(finallyTarget, node.getFinallyBlock())),
+            updateContext(adaptFinallyBlock($finally)),
             updateOps(ROA.append(endTarget)),
         )
 
-        function adaptCatchClause(target: Operation, node?: tsm.CatchClause): S.State<AdaptStatementContext, readonly Operation[]> {
+        function adaptCatchClause($catch?: { node: tsm.CatchClause, target: Operation }): S.State<AdaptStatementContext, readonly Operation[]> {
             return context => {
-                if (!node) return [ROA.empty, context];
+                if (!$catch) return [ROA.empty, context];
+                const { node, target } = $catch;
 
                 // save the original scope so it can be swapped back in at the end of the block
                 let scope = context.scope;
@@ -661,8 +668,11 @@ function adaptTryStatement(node: tsm.TryStatement): S.State<AdaptStatementContex
             }
         }
 
-        function adaptFinallyBlock(target: Operation, node?: tsm.Block): S.State<AdaptStatementContext, readonly Operation[]> {
+        function adaptFinallyBlock($finally?: { node: tsm.Block, target: Operation }): S.State<AdaptStatementContext, readonly Operation[]> {
             return context => {
+                if (!$finally) return [ROA.empty, context];
+                const { node, target } = $finally;
+
                 return node
                     ? pipe(
                         context,

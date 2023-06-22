@@ -89,6 +89,7 @@ export function convertSimpleOperationKind(kind: SimpleOperationKind) {
         case "clearitems": return sc.OpCode.CLEARITEMS;
         case "drop": return sc.OpCode.DROP;
         case "duplicate": return sc.OpCode.DUP;
+        case 'endfinally': return sc.OpCode.ENDFINALLY;
         case "equal": return sc.OpCode.EQUAL;
         case "greaterthan": return sc.OpCode.GT;
         case "greaterthanorequal": return sc.OpCode.GE;
@@ -313,32 +314,28 @@ export function isJumpTargetOp(op: Operation): op is JumpTargetOperation {
 
 export interface TryOffsetOperation {
     readonly kind: 'try';
-    readonly catchOffset: number;
-    readonly finallyOffset: number;
+    readonly catchOffset: number | undefined;
+    readonly finallyOffset: number | undefined;
     readonly location?: Location;
 }
 
 export interface TryTargetOperation {
     readonly kind: 'try';
-    readonly catchTarget: Operation;
-    readonly finallyTarget: Operation;
+    readonly catchTarget: Operation | undefined;
+    readonly finallyTarget: Operation | undefined;
     readonly location?: Location;
 }
 
 export function isTryOffsetOp(op: Operation): op is TryOffsetOperation {
     return op.kind === 'try'
         && 'catchOffset' in op
-        && typeof op.catchOffset === 'number'
-        && 'finallyOffset' in op
-        && typeof op.finallyOffset === 'number';
+        && 'finallyOffset' in op;
 }
 
 export function isTryTargetOp(op: Operation): op is TryTargetOperation {
     return op.kind === 'try'
         && 'catchTarget' in op
-        && typeof op.catchTarget === 'object'
-        && 'finallyTarget' in op
-        && typeof op.finallyTarget === 'object';
+        && 'finallyTarget' in op;
 }
 
 export interface EndTryOffsetOperation {
@@ -440,6 +437,10 @@ export function getOperationSize(op: Operation) {
         case "jumple":
         case 'syscall':
             return 5;
+        case 'try':
+            return 9;
+        case 'endtry':
+            return 5;
         case 'loadarg':
         case 'loadlocal':
         case 'loadstatic':
@@ -484,25 +485,41 @@ function pushIntOpSize(value: number | bigint) {
     return 1 + buffer.length;
 }
 
-export const convertJumpTargetOps =
+export const convertTargetOps =
     (ops: readonly Operation[]) => {
+
+        function convertTarget(target: Operation) {
+            return pipe(ops, ROA.findIndex(o => target === o), E.fromOption(() => "failed to locate target index"))
+        }
         return pipe(
             ops,
             ROA.mapWithIndex((index, op) => {
                 return pipe(
                     op,
                     op => {
-                        if (isJumpTargetOp(op)) {
+                        if (isJumpTargetOp(op) || isEndTryTargetOp(op)) {
                             return pipe(
-                                ops,
-                                ROA.findIndex(o => op.target === o),
-                                E.fromOption(() => "failed to locate target index"),
+                                convertTarget(op.target),
                                 E.map(targetIndex => {
-                                    return {
+                                    return <Operation>{
                                         kind: op.kind,
                                         offset: targetIndex - index,
                                         location: op.location
-                                    } as Operation
+                                    }                 
+                                })
+                            )
+                        } else if (isTryTargetOp(op)) {
+                            return pipe(
+                                E.Do,
+                                E.bind("catchOffset", () => op.catchTarget ? convertTarget(op.catchTarget) : E.of(undefined)),
+                                E.bind("finallyOffset", () => op.finallyTarget ? convertTarget(op.finallyTarget) : E.of(undefined)),
+                                E.map(({ catchOffset, finallyOffset }) => {
+                                    return <Operation>{
+                                        kind: op.kind,
+                                        catchOffset,
+                                        finallyOffset, 
+                                        location: op.location
+                                    }
                                 })
                             )
                         } else {
@@ -515,25 +532,40 @@ export const convertJumpTargetOps =
         )
     }
 
-export const convertJumpOffsetOps =
+export const convertOffsetOps =
     (ops: readonly Operation[]) => {
+        function convertOffset(index: number, offset: number) {
+            return pipe(ops, ROA.lookup(index + offset), E.fromOption(() => "failed to locate target offset"))
+        }
         return pipe(
             ops,
             ROA.mapWithIndex((index, op) => {
                 return pipe(
                     op,
                     op => {
-                        if (isJumpOffsetOp(op)) {
+                        if (isJumpOffsetOp(op) || isEndTryOffsetOp(op)) {
                             return pipe(
-                                ops,
-                                ROA.lookup(index + op.offset),
-                                E.fromOption(() => "failed to locate target offset"),
+                                convertOffset(index, op.offset),
                                 E.map(target => {
-                                    return {
+                                    return <Operation>{
                                         kind: op.kind,
                                         target,
                                         location: op.location
-                                    } as Operation
+                                    }
+                                })
+                            )
+                        } else if (isTryOffsetOp(op)) {
+                            return pipe(
+                                E.Do,
+                                E.bind("catchTarget", () => op.catchOffset ? convertOffset(index, op.catchOffset) : E.of(undefined)),
+                                E.bind("finallyTarget", () => op.finallyOffset ? convertOffset(index, op.finallyOffset) : E.of(undefined)),
+                                E.map(({ catchTarget, finallyTarget }) => {
+                                    return <Operation>{
+                                        kind: op.kind,
+                                        catchTarget,
+                                        finallyTarget,
+                                        location: op.location
+                                    }
                                 })
                             )
                         } else {

@@ -44,8 +44,74 @@ describe('function processor', () => {
         })
     })
 
-    describe.skip("try/catch", () => {
-        // TODO: add tests
+    describe("try/catch", () => {
+        it("return inside try finally", () => {
+            const contract = /*javascript*/ `function foo(){ try { return; } finally { } };`
+            const { sourceFile } = createTestProject(contract);
+            const scope = createTestScope();
+            const func = sourceFile
+                .forEachChildAsArray()[0].asKindOrThrow(tsm.SyntaxKind.FunctionDeclaration);
+            const trystmt = func
+                .getBodyOrThrow().asKindOrThrow(tsm.SyntaxKind.Block)
+                .getStatements()[0].asKindOrThrow(tsm.SyntaxKind.TryStatement);
+            const retStmt = trystmt.getTryBlock().getStatements()[0].asKindOrThrow(tsm.SyntaxKind.ReturnStatement);
+            const { ops, context } = testAdaptStatement(scope, trystmt);
+
+            expectResults(ops,
+                { kind: 'try', catchTarget: undefined, finallyTarget: ops[5] },
+                { $kind: 'noop' }, // try block start
+                { kind: 'endtry', target: context.returnTarget, location: retStmt },
+                { $kind: 'noop' }, // try block end
+                { kind: 'endtry', target: ops[9] },
+                { kind: 'noop', debug: 'finallyTarget' },
+                { $kind: 'noop' }, // finally block start
+                { $kind: 'noop' }, // finally block end
+                { kind: 'endfinally' },
+                { kind: 'noop', debug: 'endTarget' },
+            );
+        });
+
+        it("return inside nested try finally", () => {
+            const contract = /*javascript*/ `function foo(){ 
+                try {
+                    try { return; } 
+                    finally { } 
+                } finally { } };`
+            const { sourceFile } = createTestProject(contract);
+            const scope = createTestScope();
+            const func = sourceFile
+                .forEachChildAsArray()[0].asKindOrThrow(tsm.SyntaxKind.FunctionDeclaration);
+            const trystmt = func
+                .getBodyOrThrow().asKindOrThrow(tsm.SyntaxKind.Block)
+                .getStatements()[0].asKindOrThrow(tsm.SyntaxKind.TryStatement);
+            const innerTry = trystmt.getTryBlock().getStatements()[0].asKindOrThrow(tsm.SyntaxKind.TryStatement);
+            const retstmt = innerTry.getTryBlock().getStatements()[0].asKindOrThrow(tsm.SyntaxKind.ReturnStatement);
+
+            const { ops, context } = testAdaptStatement(scope, trystmt);
+
+            expectResults(ops,
+                { kind: 'try', catchTarget: undefined, finallyTarget: ops[15] },
+                { $kind: 'noop' }, // outer try block start
+                { kind: 'try', catchTarget: undefined, finallyTarget: ops[15] },
+                { $kind: 'noop' }, // inner try block start
+                { kind: 'endtry', offset: 1, location: retstmt },
+                { kind: 'endtry', target: context.returnTarget},
+                { $kind: 'noop' }, // inner try block end
+                { kind: 'endtry', target: ops[12] },
+                { kind: 'noop', debug: 'finallyTarget' },
+                { $kind: 'noop' }, // inner finally block start
+                { $kind: 'noop' }, // inner finally block end
+                { kind: 'endfinally' },
+                { kind: 'noop', debug: 'endTarget' },
+                { $kind: 'noop' }, // outer try block end
+                { kind: 'endtry', target: ops[19]},
+                { kind: 'noop', debug: 'finallyTarget' },
+                { $kind: 'noop' }, // outer finally block start
+                { $kind: 'noop' }, // outer finally block end
+                { kind: 'endfinally' },
+                { kind: 'noop', debug: 'endTarget' },
+            )
+        });
     });
 
 
@@ -158,40 +224,6 @@ describe('function processor', () => {
             expectResults(ops,
                 { kind: 'jump', target: context.returnTarget, location: stmt }
             )
-        });
-
-        it("return inside try catch", () => {
-            const contract = /*javascript*/ `function foo(){ try { return; } finally { ; } };`
-            const { sourceFile } = createTestProject(contract);
-            const scope = createTestScope();
-            const func = sourceFile
-                .forEachChildAsArray()[0].asKindOrThrow(tsm.SyntaxKind.FunctionDeclaration);
-            const trystmt = func
-                .getBodyOrThrow().asKindOrThrow(tsm.SyntaxKind.Block)
-                .getStatements()[0].asKindOrThrow(tsm.SyntaxKind.TryStatement);
-            const retstmt = trystmt.getTryBlock()
-                .getStatements()[0].asKindOrThrow(tsm.SyntaxKind.ReturnStatement);
-
-            const { ops, context } = testAdaptStatement(scope, trystmt);
-
-
-        });
-
-        it("return inside nested try catch", () => {
-            const contract = /*javascript*/ `function foo(){ 
-                try { try { return; } catch { ; } } 
-                finally { ; } };`
-            const { sourceFile } = createTestProject(contract);
-            const scope = createTestScope();
-            const func = sourceFile
-                .forEachChildAsArray()[0].asKindOrThrow(tsm.SyntaxKind.FunctionDeclaration);
-            const trystmt = func
-                .getBodyOrThrow().asKindOrThrow(tsm.SyntaxKind.Block)
-                .getStatements()[0].asKindOrThrow(tsm.SyntaxKind.TryStatement);
-
-            const { ops, context } = testAdaptStatement(scope, trystmt);
-
-
         });
     })
 
@@ -584,7 +616,7 @@ describe('function processor', () => {
                 { skip: true },
                 { kind: 'jump', target: ops[3], location: $break },
                 { skip: true },
-                { kind: 'noop', debug: 'breakTarget foo'},
+                { kind: 'noop', debug: 'breakTarget foo' },
             )
         });
     });

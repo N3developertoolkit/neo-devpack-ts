@@ -316,8 +316,8 @@ export function asContractParamType(type: tsm.Type): sc.ContractParamType {
     if (isBooleanLike(type))
         return sc.ContractParamType.Boolean;
 
-    const typeSymbol = type.getAliasSymbol() ?? type.getSymbolOrThrow();
-    const typeFQN = typeSymbol.getFullyQualifiedName();
+    const typeSymbol = type.getAliasSymbol() ?? type.getSymbol();
+    const typeFQN = typeSymbol?.getFullyQualifiedName();
     if (typeFQN === "global.ByteString") {
         return sc.ContractParamType.ByteArray;
     }
