@@ -6,6 +6,9 @@ declare global {
     export interface ByteString { 
         readonly length: number; 
         asInteger(): bigint;
+        asHash160(): Hash160;
+        asHash256(): Hash256;
+        asECPoint(): ECPoint;
     }
 
     export interface ByteStringConstructor {
@@ -16,14 +19,31 @@ declare global {
 
     export const ByteString: ByteStringConstructor;
 
-    // export interface Hash160 { }
-    // export interface Hash160Constructor {
-    // }
-    // export const Hash160: Hash160Constructor;
-    // export interface Hash256 { }
-    // export interface Hash256Constructor {
-    // }
-    // export const Hash256: Hash256Constructor;
+    export interface Hash160 {
+        isZero: boolean;
+        valid: boolean;
+        // asAddress(version?: number): string;
+        asByteString(): ByteString;
+    }
+    export interface Hash160Constructor {
+        readonly zero: Hash160;
+    }
+    export const Hash160: Hash160Constructor;
+
+    export interface Hash256 { 
+        isZero: boolean;
+        valid: boolean;
+        asByteString(): ByteString;
+    }
+    export interface Hash256Constructor {
+        readonly zero: Hash256;
+    }
+    export const Hash256: Hash256Constructor;
+
+    export interface ECPoint {
+        valid: boolean;
+        asByteString(): ByteString;
+    }
 
     export function concat(value1: StorageType, value2: StorageType): ByteString;
 
@@ -55,21 +75,21 @@ declare global {
         readonly readonlyContext: ReadonlyStorageContext;
     }
 
-    export type StorageType = ByteString | string //| Hash160 | Hash256;
+    export type StorageType = ByteString | string | Hash160 | Hash256;
 
     export interface ReadonlyStorageContext {
         get(key: StorageType): ByteString | undefined;
-        find(prefix: ByteString, options: FindOptions): IterableIterator<unknown>;
+        find(prefix: StorageType, options: FindOptions): IterableIterator<unknown>;
 
         // the following three methods map to StorageContext.Find, with what I would argue are the most common
         // combinations of Flag Options:
 
         // with and without RemovePrefix. Default to removing the prefix
-        entries(prefix?: ByteString, keepPrefix?: boolean): IterableIterator<[ByteString, ByteString]>;
+        entries(prefix?: StorageType, keepPrefix?: boolean): IterableIterator<[ByteString, ByteString]>;
         // KeysOnly with and without RemovePrefix, Default to removing the prefix
-        keys(prefix?: ByteString, keepPrefix?: boolean): IterableIterator<ByteString>;
+        keys(prefix?: StorageType, keepPrefix?: boolean): IterableIterator<ByteString>;
         // ValuesOnly
-        values(prefix?: ByteString): IterableIterator<ByteString>;
+        values(prefix?: StorageType): IterableIterator<ByteString>;
 
         // this interface will need a mechanism for surfacing the DeserializeValues option.
         // for now, author can simply call StdLib.deserialize, but that's a pricy call to execute
@@ -105,11 +125,11 @@ declare global {
         /** @syscall System.Runtime.GetScriptContainer */
         readonly scriptContainer: any;
         /** @syscall System.Runtime.GetExecutingScriptHash */
-        readonly executingScriptHash: ByteString;
+        readonly executingScriptHash: Hash160;
         /** @syscall System.Runtime.GetCallingScriptHash */
-        readonly callingScriptHash: ByteString;
+        readonly callingScriptHash: Hash160;
         /** @syscall System.Runtime.GetEntryScriptHash */
-        readonly entryScriptHash: ByteString;
+        readonly entryScriptHash: Hash160;
         /** @syscall System.Runtime.GetInvocationCounter */
         readonly invocationCounter: number;
         /** @syscall System.Runtime.GetRandom */
@@ -121,7 +141,7 @@ declare global {
     }
 
     /** @syscall System.Runtime.CheckWitness */
-    export function checkWitness(account: ByteString): boolean;
+    export function checkWitness(account: Hash160 | ByteString /*ecpoint*/): boolean;
     /** @syscall System.Runtime.BurnGas */
     export function burnGas(amount: bigint): void;
     /** @syscall System.Runtime.Log */
@@ -131,17 +151,17 @@ declare global {
     /** @syscall System.Runtime.LoadScript*/
     export function loadScript(script: ByteString, callFlags: CallFlags, args: readonly any[]): void;
     /** @syscall System.Contract.CreateStandardAccount */
-    export function createStandardAccount(pubKey: ByteString /*ecpoint*/): ByteString; // hash160
+    export function createStandardAccount(pubKey: ByteString /*ecpoint*/): ByteString; 
     /** @syscall System.Contract.CreateMultisigAccount */
-    export function createMultisigAccount(count: number, pubKeys: ByteString[] /*ecpoint*/): ByteString; // hash160
+    export function createMultisigAccount(count: number, pubKeys: ByteString[] /*ecpoint*/): ByteString; 
     /** @syscall System.Crypto.CheckSig */
-    export function checkSignature(pubKey: ByteString, signature: ByteString): boolean;
+    export function checkSignature(pubKey: ByteString /*ecpoint*/, signature: ByteString): boolean;
     /** @syscall System.Crypto.CheckMultisig */
-    export function checkMultiSignature(pubKey: ByteString[], signature: ByteString[]): boolean;
+    export function checkMultiSignature(pubKey: ByteString[] /*ecpoint*/, signature: ByteString[]): boolean;
 
     // callContract has special argument handling, so it doesn't use the same built-in infrastructure 
     // as other @syscall functions 
-    export function callContract(scriptHash: ByteString, method: string, callFlags: CallFlags, ...args: any[]): any;
+    export function callContract(scriptHash: Hash160, method: string, callFlags: CallFlags, ...args: any[]): any;
 
 
     /** @nativeContract {0xfffdc93764dbaddd97c48f252a53ea4643faa3fd} */
@@ -151,11 +171,11 @@ declare global {
     export interface ContractManagementConstructor {
         /** @nativeContract getMinimumDeploymentFee */
         readonly minimumDeploymentFee: bigint;
-        getContract(hash: ByteString): Contract | undefined;
-        hasMethod(hash: ByteString, method: string, pcount: number): boolean;
-        getContractById(id: number): Contract;
+        getContract(hash: Hash160): Contract | undefined;
+        hasMethod(hash: Hash160, method: string, pcount: number): boolean;
+        // getContractById(id: number): Contract;
         /** @nativeContract getContractHashes */
-        readonly contractHashes: IterableIterator<ByteString>; // not sure this is correct
+        // readonly contractHashes: IterableIterator<ByteString>; // not sure this is correct
         deploy(nefFile: ByteString, manifest: string, data?: any): Contract;
         update(nefFile: ByteString, manifest: string, data?: any): void;
         destroy(): void;
@@ -208,14 +228,14 @@ declare global {
     }
 
     export interface LedgerConstructor {
-        readonly currentHash: ByteString;
+        readonly currentHash: Hash256;
         readonly currentIndex: number;
-        getBlock(indexOrHash: number | ByteString): Block;
-        getTransaction(hash: ByteString): Transaction;
-        getTransactionFromBlock(blockIndexOrHash: number | ByteString, txIndex: number): Transaction;
-        getTransactionHeight(hash: ByteString): number;
-        getTransactionSigners(hash: ByteString): Signer[];
-        getTransactionVMState(hash: ByteString): VMState;
+        getBlock(indexOrHash: number | Hash256): Block;
+        getTransaction(hash: Hash256): Transaction;
+        getTransactionFromBlock(blockIndexOrHash: number | Hash256, txIndex: number): Transaction;
+        getTransactionHeight(hash: Hash256): number;
+        getTransactionSigners(hash: Hash256): Signer[];
+        getTransactionVMState(hash: Hash256): VMState;
     }
 
     export interface FungibleTokenConstructor {
@@ -223,7 +243,7 @@ declare global {
         readonly symbol: string;
         readonly totalSupply: bigint;
         balanceOf(account: ByteString): bigint;
-        transfer(from: ByteString, to: ByteString, amount: bigint, data?: any): boolean;
+        transfer(from: Hash160, to: Hash160, amount: bigint, data?: any): boolean;
     }
 
     export interface NeoTokenConstructor extends FungibleTokenConstructor {
@@ -231,23 +251,23 @@ declare global {
         readonly gasPerBlock: bigint;
         /** @nativeContract getRegisterPrice */
         readonly registerPrice: bigint;
-        unclaimedGas(account: ByteString, end: number): bigint;
+        unclaimedGas(account: Hash160, end: number): bigint;
         registerCandidate(pubkey: ByteString): boolean;
         unregisterCandidate(pubkey: ByteString): boolean;
-        vote(account: ByteString, voteTo: ByteString): boolean;
+        vote(account: Hash160, voteTo: Hash160): boolean;
 
         /** @nativeContract getCandidates */
-        readonly candidates: [ByteString, bigint][];
+        readonly candidates: [Hash160, bigint][];
         /** @nativeContract getAllCandidates */
-        readonly allCandidates: IterableIterator<[ByteString, bigint]>;
+        readonly allCandidates: IterableIterator<[Hash160, bigint]>;
 
         getCandidateVote(pubKey: ByteString): bigint;
         /** @nativeContract getCommittee */
-        readonly committee: ByteString[];
+        readonly committee: readonly Hash160[];
         /** @nativeContract getNextBlockValidators */
-        readonly nextBlockValidators: ByteString[];
+        readonly nextBlockValidators: readonly Hash160[];
 
-        getAccountState(account: ByteString): NeoAccountState[];
+        getAccountState(account: Hash160): NeoAccountState[];
     }
 
     /** @nativeContract {0xef4073a0f2b305a38ec4050e4d3d28bc40ea63f5} */
@@ -266,7 +286,7 @@ declare global {
         readonly execFeeFactor: number;
         /** @nativeContract getStoragePrice */
         readonly storagePrice: number;
-        isBlocked(account: ByteString): boolean;
+        isBlocked(account: Hash160): boolean;
     }
 
     /** @nativeContract {0x49cf4e5378ffcd4dec034fd98a174c5491e395e2} */
@@ -293,10 +313,10 @@ declare global {
 
     /** @stackitem */
     export interface Transaction {
-        readonly hash: ByteString,
+        readonly hash: Hash256,
         readonly version: number,
         readonly nonce: number,
-        readonly sender: ByteString,
+        readonly sender: Hash160,
         readonly systemFee: bigint,
         readonly networkFee: bigint,
         readonly validUntilBlock: number,
@@ -305,15 +325,15 @@ declare global {
 
     /** @stackitem */
     export interface Block {
-        readonly hash: ByteString,
+        readonly hash: Hash256,
         readonly version: number,
-        readonly previousHash: ByteString,
-        readonly merkleRoot: ByteString,
+        readonly previousHash: Hash256,
+        readonly merkleRoot: Hash256,
         readonly timestamp: bigint,
         readonly nonce: bigint,
         readonly index: number,
         readonly primaryIndex: number,
-        readonly nextConsensus: ByteString,
+        readonly nextConsensus: Hash160,
         readonly transactionsCount: number
     }
 
@@ -321,7 +341,7 @@ declare global {
     export interface Contract {
         readonly id: number;
         readonly updateCounter: number;
-        readonly hash: ByteString;
+        readonly hash: Hash256;
         readonly nef: ByteString;
         readonly manifest: ContractManifest;
     }
@@ -368,17 +388,17 @@ declare global {
 
     /** @stackitem */
     export interface Notification {
-        readonly hash: ByteString;
+        readonly hash: Hash160;
         readonly eventName: string;
         readonly state: readonly any[];
     }
 
     /** @stackitem */
     export interface Signer {
-        readonly account: ByteString;
+        readonly account: Hash160;
         readonly scopes: number;
-        readonly allowedContracts: ByteString[];
-        readonly alowedGroups: ByteString[];
+        readonly allowedContracts: Hash160[];
+        readonly alowedGroups: ECPoint[];
         // readonly rules: any[];
     }
 
@@ -386,9 +406,8 @@ declare global {
     export interface NeoAccountState {
         readonly balance: bigint,
         readonly height: number,
-        readonly voteTo: ByteString
+        readonly voteTo: ECPoint
     }
-
 }
 
 export { }

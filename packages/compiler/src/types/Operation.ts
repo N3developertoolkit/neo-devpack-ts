@@ -55,6 +55,7 @@ export const simpleOperationKinds = [
     'shiftleft',
     'shiftright',
     'not',
+    'numequal',
     'lessthan',
     'lessthanorequal',
     'greaterthan',
@@ -103,6 +104,7 @@ export function convertSimpleOperationKind(kind: SimpleOperationKind) {
         case "noop": return sc.OpCode.NOP;
         case "not": return sc.OpCode.NOT;
         case "notequal": return sc.OpCode.NOTEQUAL;
+        case "numequal": return sc.OpCode.NUMEQUAL;
         case "or": return sc.OpCode.OR;
         case "packarray": return sc.OpCode.PACK;
         case "packmap": return sc.OpCode.PACKMAP;

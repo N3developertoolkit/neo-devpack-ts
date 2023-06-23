@@ -3,12 +3,11 @@ import { flow, pipe } from "fp-ts/lib/function";
 import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option'
 import * as ROA from 'fp-ts/ReadonlyArray'
-import * as TS from "../TS";
 
-import { GlobalScopeContext, getVarDeclAndSymbol, makeInterface, makeMethod, makeProperties } from "./common";
-import { CallInvokeResolver, CompileTimeObject, GetOpsFunc, PropertyResolver } from "../types/CompileTimeObject";
-import { createDiagnostic, makeParseError, single } from "../utils";
-import { Operation, isPushDataOp, isPushIntOp } from "../types/Operation";
+import { GlobalScopeContext, makeInterface, makeMethod, makeObject, makeProperty, makeStaticMethod } from "./common";
+import { CallInvokeResolver, CompileTimeObject, GetOpsFunc } from "../types/CompileTimeObject";
+import { makeParseError, single } from "../utils";
+import { Operation, isPushDataOp, isPushIntOp, pushInt } from "../types/Operation";
 import { sc, u } from "@cityofzion/neon-core";
 
 function getCompileTimeString(ops: readonly Operation[]): O.Option<string> {
@@ -93,65 +92,95 @@ const fromString: CallInvokeResolver = (node) => (_$this, args) => {
 }
 
 function makeByteStringObject(ctx: GlobalScopeContext) {
-    const members = { fromHex, fromInteger, fromString }
-
-    pipe(
-        "ByteString",
-        getVarDeclAndSymbol(ctx),
-        E.bind('properties', ({ node }) => makeProperties(node, members, makeProperty)),
-        E.map(({ node, symbol, properties }) => <CompileTimeObject>{ node, symbol, loadOps: [], properties }),
-        E.match(
-            error => { ctx.addError(createDiagnostic(error)) },
-            ctx.addObject
-        )
-    )
-
-    function makeProperty(call: CallInvokeResolver) {
-        return (symbol: tsm.Symbol): E.Either<string, CompileTimeObject> => {
-            return pipe(
-                symbol.getValueDeclaration(),
-                O.fromNullable,
-                O.chain(O.fromPredicate(tsm.Node.isMethodSignature)),
-                E.fromOption(() => `could not find method signature for ${symbol.getName()}`),
-                E.map(node => <CompileTimeObject>{ node, symbol, loadOps: [], call })
-            )
-        }
+    const members = {
+        fromHex: makeStaticMethod(fromHex),
+        fromInteger: makeStaticMethod(fromInteger),
+        fromString: makeStaticMethod(fromString),
     }
-}
-
-function makeLength(symbol: tsm.Symbol): E.Either<string, PropertyResolver> {
-    return pipe(
-        symbol,
-        TS.getPropSig,
-        O.map(node => {
-            const resolver: PropertyResolver = ($this) => pipe(
-                $this(),
-                E.map(ROA.append<Operation>({ kind: "size" })),
-                E.map(loadOps => <CompileTimeObject>{ node: node, loadOps })
-            );
-            return resolver;
-        }),
-        E.fromOption(() => `could not find ${symbol.getName()} member`)
-    )
+    makeObject(ctx, "ByteString", members);
 }
 
 const callAsInteger: CallInvokeResolver = (node) => ($this) => {
     return pipe(
         $this(),
-        E.map(ROA.append<Operation>({ kind: "convert", type: sc.StackItemType.Integer })),
+        E.map(ROA.concat<Operation>([
+            { kind: 'duplicate'},
+            { kind: 'isnull'},
+            { kind: 'jumpifnot', offset: 4 },
+            { kind: 'drop' },
+            pushInt(0),
+            { kind: 'jump', offset: 2 },
+            { kind: "convert", type: sc.StackItemType.Integer }
+        ])),
         E.map(loadOps => <CompileTimeObject>{ node, loadOps })
     )
 };
 
+const callAsHash160: CallInvokeResolver = (node) => ($this) => {
+    return pipe(
+        $this(),
+        E.map(ROA.concat<Operation>([
+            { kind: 'duplicate'},
+            { kind: 'isnull'},
+            { kind: 'jumpif', offset: 5 }, // if null, jump to throw
+            { kind: 'duplicate'},
+            { kind: 'size'},
+            pushInt(20),
+            { kind: 'jumpeq', offset: 2 },
+            { kind: 'throw' }
+        ])),
+        E.map(loadOps => <CompileTimeObject>{ node, loadOps })
+    )
+}
+
+const callAsHash256: CallInvokeResolver = (node) => ($this) => {
+    return pipe(
+        $this(),
+        E.map(ROA.concat<Operation>([
+            { kind: 'duplicate'},
+            { kind: 'isnull'},
+            { kind: 'jumpif', offset: 5 }, // if null, jump to throw
+            { kind: 'duplicate'},
+            { kind: 'size'},
+            pushInt(32),
+            { kind: 'jumpeq', offset: 2 },
+            { kind: 'throw' }
+        ])),
+        E.map(loadOps => <CompileTimeObject>{ node, loadOps })
+    )
+}
+
+const callAsECPoint: CallInvokeResolver = (node) => ($this) => {
+    return pipe(
+        $this(),
+        E.map(ROA.concat<Operation>([
+            { kind: 'duplicate'},
+            { kind: 'isnull'},
+            { kind: 'jumpif', offset: 5 }, // if null, jump to throw
+            { kind: 'duplicate'},
+            { kind: 'size'},
+            pushInt(33),
+            { kind: 'jumpeq', offset: 2 },
+            { kind: 'throw' }
+        ])),
+        E.map(loadOps => <CompileTimeObject>{ node, loadOps })
+    )
+}
+
 function makeByteStringInterface(ctx: GlobalScopeContext) {
     const members = {
-        length: makeLength,
+        length: makeProperty([{ kind: "size" }]),
         asInteger: makeMethod(callAsInteger),
+        asHash160: makeMethod(callAsHash160),
+        asHash256: makeMethod(callAsHash256),
+        asECPoint: makeMethod(callAsECPoint)
     }
-    makeInterface("ByteString", members, ctx);
+    makeInterface(ctx, "ByteString", members);
 }
 
 export function makeByteString(ctx: GlobalScopeContext) {
     makeByteStringObject(ctx);
     makeByteStringInterface(ctx);
 }
+
+

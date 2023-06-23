@@ -412,7 +412,7 @@ describe("builts-ins", () => {
 
     it("callContract", () => {
         const contract = /*javascript*/`
-            const hash: ByteString = null!; 
+            const hash: Hash160 = null!; 
             callContract(hash, "method", CallFlags.All, 42, "hello");`;
         const { project, sourceFile } = createTestProject(contract);
         const globalScope = createTestGlobalScope(project);
@@ -644,9 +644,10 @@ describe("builts-ins", () => {
 
             const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
             const result = testParseExpression(init, scope);
-            expect(result).to.have.lengthOf(2);
-            expect(result[0]).to.equal(helloCTO.loadOp);
-            expect(result[1]).to.deep.equal({ kind: 'size' });
+
+            expectResults(result,
+                helloCTO.loadOp,
+                { kind: 'size' })
         });
 
         it("asInteger", () => {
@@ -661,9 +662,17 @@ describe("builts-ins", () => {
 
             const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
             const result = testParseExpression(init, scope);
-            expect(result).to.have.lengthOf(2);
-            expect(result[0]).to.equal(helloCTO.loadOp);
-            expect(result[1]).to.deep.equal({ kind: 'convert', type: sc.StackItemType.Integer });
+
+            expectResults(result,
+                helloCTO.loadOp,
+                { kind: 'duplicate'},
+                { kind: 'isnull'},
+                { kind: 'jumpifnot', offset: 4 },
+                { kind: 'drop' },
+                pushInt(0),
+                { kind: 'jump', offset: 2 },
+                { kind: "convert", type: sc.StackItemType.Integer }
+            )
         })
     });
 

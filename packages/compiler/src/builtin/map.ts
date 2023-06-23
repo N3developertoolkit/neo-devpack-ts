@@ -1,13 +1,11 @@
 import * as tsm from "ts-morph";
 import { pipe } from "fp-ts/lib/function";
 import * as E from "fp-ts/Either";
-import * as O from 'fp-ts/Option'
 import * as ROA from 'fp-ts/ReadonlyArray'
-import * as TS from "../TS";
 
-import { GlobalScopeContext, getVarDecl, makeInterface, makeMethod } from "./common";
-import { CallInvokeResolver, CompileTimeObject, GetOpsFunc, NewInvokeResolver, PropertyResolver } from "../types/CompileTimeObject";
-import { ParseError, createDiagnostic, makeParseError } from "../utils";
+import { GlobalScopeContext, makeCallableObject, makeInterface, makeMethod, makeProperty } from "./common";
+import { CallInvokeResolver, CompileTimeObject, GetOpsFunc } from "../types/CompileTimeObject";
+import { ParseError, makeParseError } from "../utils";
 import { Operation } from "../types/Operation";
 
 export function makeMap(ctx: GlobalScopeContext) {
@@ -21,24 +19,7 @@ function invokeMapCtor(node: tsm.NewExpression, args: readonly GetOpsFunc[]): E.
 }
 
 function makeMapObject(ctx: GlobalScopeContext) {
-    pipe(
-        "Map",
-        getVarDecl(ctx),
-        E.chain(node => {
-            return pipe(
-                node.getSymbol(),
-                E.fromNullable("could not get Map type symbol"),
-                E.map(symbol => {
-                    const callNew: NewInvokeResolver = (node) => ($this, args) => invokeMapCtor(node, args)
-                    return <CompileTimeObject>{ node, symbol, loadOps: [], callNew };
-                }),
-            );
-        }),
-        E.match(
-            () => ctx.addError(createDiagnostic("could not find Error declaration")),
-            ctx.addObject
-        )
-    );
+    makeCallableObject(ctx, "Map", (node) => (_$this, args) => invokeMapCtor(node, args));
 }
 
 const callClear: CallInvokeResolver = (node) => ($this) => {
@@ -131,30 +112,14 @@ const callSet: CallInvokeResolver = (node) => ($this, args) => {
     );
 }
 
-function makeSize(symbol: tsm.Symbol): E.Either<string, PropertyResolver> {
-    return pipe(
-        symbol,
-        TS.getPropSig,
-        O.map(node => {
-            const resolver: PropertyResolver = ($this) => pipe(
-                $this(),
-                E.map(ROA.append<Operation>({ kind: "size" })),
-                E.map(loadOps => <CompileTimeObject>{ node: node, loadOps })
-            );
-            return resolver;
-        }),
-        E.fromOption(() => `could not find ${symbol.getName()} member`)
-    )
-}
-
 function makeMapInterface(ctx: GlobalScopeContext) {
     const members = {
-        size: makeSize,
+        size: makeProperty([{ kind: "size" }]),
         clear: makeMethod(callClear),
         delete: makeMethod(callDelete),
         get: makeMethod(callGet),
         has: makeMethod(callHas),
         set: makeMethod(callSet),
     }
-    makeInterface("Map", members, ctx);
+    makeInterface(ctx, "Map", members);
 }
