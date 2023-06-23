@@ -183,3 +183,18 @@ export function makeCallableObject(ctx: GlobalScopeContext, name: string, callNe
         )
     )
 }
+
+export function getIsValidOps(count: number) {
+    return ROA.fromArray<Operation>([
+        { kind: 'duplicate' },
+        { kind: 'isnull' },
+        { kind: 'jumpif', offset: 5 }, // if null, jump to throw
+        { kind: 'duplicate' },
+        { kind: 'size' },
+        pushInt(count),
+        { kind: 'jumpeq', offset: 2 },
+        { kind: 'throw' }
+    ]);
+}
+
+export const callNoOp: CallInvokeResolver = (node) => ($this) =>  pipe($this(), E.map(loadOps => <CompileTimeObject>{ node, loadOps }));

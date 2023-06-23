@@ -176,6 +176,7 @@ export function expectResults(ops: readonly Operation[], ...args: any[]) {
             expect(ops[i]).has.property('kind', args[i].$kind);
             continue;
         }
+        if (ops[i] === args[i]) continue;
         expect(ops[i]).deep.equals(args[i], `operation ${i} not equal`);
     }
     expect(ops).length(args.length);

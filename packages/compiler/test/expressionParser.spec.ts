@@ -472,7 +472,13 @@ describe("expression parser", () => {
                 { kind: 'pickitem' },
                 { kind: "duplicate" },
                 { kind: "isnull" },
-                { kind: "jumpif", target: result[7] },
+                { kind: "jumpif", target: result[13] },
+                { kind: 'duplicate'},
+                { kind: 'isnull'},
+                { kind: 'jumpifnot', offset: 4 },
+                { kind: 'drop' },
+                pushInt(0),
+                { kind: 'jump', offset: 2 },
                 { kind: 'convert', type: sc.StackItemType.Integer },
                 { kind: 'noop' }
             );

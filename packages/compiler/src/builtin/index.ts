@@ -18,6 +18,7 @@ import { sc, u } from "@cityofzion/neon-core";
 import { makeByteString } from "./bytestring";
 import { makeError } from "./error";
 import { makeMap } from "./map";
+import { makeHashTypes } from "./hashTypes";
 
 module REGEX {
     export const match = (regex: RegExp) => (value: string) => O.fromNullable(value.match(regex));
@@ -199,6 +200,7 @@ const makerFunctions = [
     makeEnums,
     makeError,
     makeFunctions,
+    makeHashTypes,
     makeMap,
     makeNativeContracts,
     makeRuntime,

@@ -22,7 +22,7 @@ declare global {
     export interface Hash160 {
         isZero: boolean;
         valid: boolean;
-        // asAddress(version?: number): string;
+        asAddress(version?: number): string;
         asByteString(): ByteString;
     }
     export interface Hash160Constructor {

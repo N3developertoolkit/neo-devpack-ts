@@ -631,6 +631,118 @@ describe("builts-ins", () => {
         });
     });
 
+    describe("Hash160", () => {
+        it("zero", () => {
+            const contract = /*javascript*/`const $hello = Hash160.zero;`;
+            const { project, sourceFile } = createTestProject(contract);
+            const globalScope = createTestGlobalScope(project);
+            const init = sourceFile.getVariableDeclarationOrThrow('$hello').getInitializerOrThrow();
+            const result = testParseExpression(init, globalScope);
+            expectResults(result,
+                { kind: 'pushdata', value: Buffer.alloc(20) }
+            );
+        });
+
+        it("is zero", () => {
+            const contract = /*javascript*/`const $hello = Hash160.zero; const $VAR = $hello.isZero;`;
+            const { project, sourceFile } = createTestProject(contract);
+            const globalScope = createTestGlobalScope(project);
+            const hello = sourceFile.getVariableDeclarationOrThrow('$hello');
+            const helloCTO = createTestVariable(hello);
+            const scope = createTestScope(globalScope, helloCTO)
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+            expectResults(result,
+                helloCTO.loadOp,
+                pushInt(0),
+                { kind: 'numequal' }
+            );
+        });
+
+        it("valid", () => {
+            const contract = /*javascript*/`const $hello = Hash160.zero; const $VAR = $hello.valid;`;
+            const { project, sourceFile } = createTestProject(contract);
+            const globalScope = createTestGlobalScope(project);
+            const hello = sourceFile.getVariableDeclarationOrThrow('$hello');
+            const helloCTO = createTestVariable(hello);
+            const scope = createTestScope(globalScope, helloCTO)
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+            expectResults(result,
+                helloCTO.loadOp,
+                { kind: 'duplicate' },
+                { kind: 'isnull' },
+                { kind: 'jumpif', offset: 5 },
+                { kind: 'duplicate' },
+                { kind: 'size' },
+                pushInt(20),
+                { kind: 'jumpeq', offset: 2 },
+                { kind: 'throw' }
+            );
+        });
+
+        it("asAddress", () => {
+            const contract = /*javascript*/`const $hello = Hash160.zero; const $VAR = $hello.asAddress();`;
+            const { project, sourceFile } = createTestProject(contract);
+            const globalScope = createTestGlobalScope(project);
+            const hello = sourceFile.getVariableDeclarationOrThrow('$hello');
+            const helloCTO = createTestVariable(hello);
+            const scope = createTestScope(globalScope, helloCTO)
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+            expectResults(result,
+                { kind: 'syscall', name: 'System.Runtime.GetAddressVersion' },
+                helloCTO.loadOp,
+                { kind: 'concat' },
+                { $kind: 'calltoken' }
+            );
+            const callTokenOp = result[3] as CallTokenOperation;
+            expect(callTokenOp.token.method).equals('base58CheckEncode');
+            expect(callTokenOp.token.hash).equals("c0ef39cee0e4e925c6c2a06a79e1440dd86fceac");
+        });
+
+        
+        it("asAddress arg", () => {
+            const contract = /*javascript*/`const $hello = Hash160.zero; const $VAR = $hello.asAddress(42);`;
+            const { project, sourceFile } = createTestProject(contract);
+            const globalScope = createTestGlobalScope(project);
+            const hello = sourceFile.getVariableDeclarationOrThrow('$hello');
+            const helloCTO = createTestVariable(hello);
+            const scope = createTestScope(globalScope, helloCTO)
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+            expectResults(result,
+                pushInt(42),
+                helloCTO.loadOp,
+                { kind: 'concat' },
+                { $kind: 'calltoken' }
+            );
+            const callTokenOp = result[3] as CallTokenOperation;
+            expect(callTokenOp.token.method).equals('base58CheckEncode');
+            expect(callTokenOp.token.hash).equals("c0ef39cee0e4e925c6c2a06a79e1440dd86fceac");
+        });
+
+        
+        it("asByteString", () => {
+            const contract = /*javascript*/`const $hello = Hash160.zero; const $VAR = $hello.asByteString();`;
+            const { project, sourceFile } = createTestProject(contract);
+            const globalScope = createTestGlobalScope(project);
+            const hello = sourceFile.getVariableDeclarationOrThrow('$hello');
+            const helloCTO = createTestVariable(hello);
+            const scope = createTestScope(globalScope, helloCTO)
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+            expectResults(result,
+                helloCTO.loadOp,
+            );
+        });
+    });
+
     describe("ByteString", () => {
         it("length", () => {
             const contract = /*javascript*/`const $hello = ByteString.fromString("hello"); const $VAR = $hello.length;`;
@@ -672,6 +784,32 @@ describe("builts-ins", () => {
                 pushInt(0),
                 { kind: 'jump', offset: 2 },
                 { kind: "convert", type: sc.StackItemType.Integer }
+            )
+        })
+
+        it("asHash160", () => {
+            const contract = /*javascript*/`const $hello = ByteString.fromString("hello"); const $VAR = $hello.asHash160();`;
+
+            const { project, sourceFile } = createTestProject(contract);
+            const globalScope = createTestGlobalScope(project);
+
+            const hello = sourceFile.getVariableDeclarationOrThrow('$hello');
+            const helloCTO = createTestVariable(hello);
+            const scope = createTestScope(globalScope, helloCTO)
+
+            const init = sourceFile.getVariableDeclarationOrThrow('$VAR').getInitializerOrThrow();
+            const result = testParseExpression(init, scope);
+
+            expectResults(result,
+                helloCTO.loadOp,
+                { kind: 'duplicate'},
+                { kind: 'isnull'},
+                { kind: 'jumpif', offset: 5 },
+                { kind: 'duplicate'},
+                { kind: "size"},
+                pushInt(20),
+                { kind: 'jumpeq', offset: 2 },
+                { kind: 'throw' },
             )
         })
     });
