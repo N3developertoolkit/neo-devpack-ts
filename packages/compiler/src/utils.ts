@@ -318,19 +318,16 @@ export function asContractParamType(type: tsm.Type): sc.ContractParamType {
 
     const typeSymbol = type.getAliasSymbol() ?? type.getSymbol();
     const typeFQN = typeSymbol?.getFullyQualifiedName();
-    if (typeFQN === "global.ByteString") {
-        return sc.ContractParamType.ByteArray;
-    }
 
-    if (typeFQN === "Iterator") {
-        return sc.ContractParamType.InteropInterface;
+    switch (typeFQN) {
+        case "global.ByteString": return sc.ContractParamType.ByteArray;
+        case "global.Hash160": return sc.ContractParamType.Hash160;
+        case "global.Hash256": return sc.ContractParamType.Hash256;
+        case "global.ECPoint": return sc.ContractParamType.PublicKey;
+        case "Iterator": return sc.ContractParamType.InteropInterface;
+        case "Map": return sc.ContractParamType.Map;
+        default: return sc.ContractParamType.Any;
     }
-    
-    if (typeFQN === "Map") {
-        return sc.ContractParamType.Map;
-    }
-
-    return sc.ContractParamType.Any;
 }
 
 export function asReturnType(type: tsm.Type) {
