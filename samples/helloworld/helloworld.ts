@@ -28,7 +28,7 @@ export function _deploy(_data: any, update: boolean): void {
 }
 
 export function update(nefFile: ByteString, manifest: string) {
-    const owner = Storage.context.get(OWNER_KEY);
+    const owner = Storage.context.get(OWNER_KEY)!.asHash160();
     if (owner && checkWitness(owner)) {
         ContractManagement.update(nefFile, manifest);
     } else {
