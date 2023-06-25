@@ -141,7 +141,7 @@ declare global {
     }
 
     /** @syscall System.Runtime.CheckWitness */
-    export function checkWitness(account: Hash160 | ByteString /*ecpoint*/): boolean;
+    export function checkWitness(account: Hash160 | ECPoint): boolean;
     /** @syscall System.Runtime.BurnGas */
     export function burnGas(amount: bigint): void;
     /** @syscall System.Runtime.Log */
@@ -151,13 +151,13 @@ declare global {
     /** @syscall System.Runtime.LoadScript*/
     export function loadScript(script: ByteString, callFlags: CallFlags, args: readonly any[]): void;
     /** @syscall System.Contract.CreateStandardAccount */
-    export function createStandardAccount(pubKey: ByteString /*ecpoint*/): ByteString; 
+    export function createStandardAccount(pubKey: ECPoint): Hash160; 
     /** @syscall System.Contract.CreateMultisigAccount */
-    export function createMultisigAccount(count: number, pubKeys: ByteString[] /*ecpoint*/): ByteString; 
+    export function createMultisigAccount(count: number, pubKeys: ECPoint[] ): Hash160; 
     /** @syscall System.Crypto.CheckSig */
-    export function checkSignature(pubKey: ByteString /*ecpoint*/, signature: ByteString): boolean;
+    export function checkSignature(pubKey: ECPoint, signature: ByteString): boolean;
     /** @syscall System.Crypto.CheckMultisig */
-    export function checkMultiSignature(pubKey: ByteString[] /*ecpoint*/, signature: ByteString[]): boolean;
+    export function checkMultiSignature(pubKey: ECPoint[] , signature: ByteString[]): boolean;
 
     // callContract has special argument handling, so it doesn't use the same built-in infrastructure 
     // as other @syscall functions 
@@ -214,7 +214,7 @@ declare global {
         murmur32(data: ByteString, seed: number): ByteString;
         ripemd160(data: ByteString): ByteString;
         sha256(data: ByteString): ByteString;
-        verifyWithECDsa(message: ByteString, pubkey: ByteString, signature: ByteString, curve: ECDsaCurve): boolean;
+        verifyWithECDsa(message: ByteString, pubkey: ECPoint, signature: ByteString, curve: ECDsaCurve): boolean;
     }
 
     /** @nativeContract {0xda65b600f7124ce6c79950c1772a36403104f2be} */

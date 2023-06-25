@@ -27,14 +27,14 @@ export function totalSupply(): bigint {
 
 /** @safe */
 export function balanceOf(account: Hash160): bigint {
-    if (!account.isValid()) throw new Error("The argument \"account\" is invalid.");
+    if (!account.valid) throw new Error("The argument \"account\" is invalid.");
     const key = concat(BALANCE_PREFIX, account);
     return Storage.context.get(key)?.asInteger() ?? 0n;
 }
 
 export function transfer(from: Hash160, to: Hash160, amount: bigint, data: any) {
-    if (!from.isValid()) throw new Error("The argument \"from\" is invalid.");
-    if (!to.isValid()) throw new Error("The argument \"to\" is invalid.");
+    if (!from.valid) throw new Error("The argument \"from\" is invalid.");
+    if (!to.valid) throw new Error("The argument \"to\" is invalid.");
     if (amount < 0n) throw new Error("The amount must be a positive number");
     if (!checkWitness(from)) return false;
     if (amount != 0n) {
@@ -46,14 +46,14 @@ export function transfer(from: Hash160, to: Hash160, amount: bigint, data: any) 
 }
 
 export function mint(account: Hash160, amount: bigint): boolean {
-    if (!account.isValid()) throw new Error("The argument \"account\" is invalid.");
+    if (!account.valid) throw new Error("The argument \"account\" is invalid.");
     if (!checkOwner()) throw new Error("Only the contract owner can mint tokens");
     createTokens(account, amount);
     return true;
 }
 
 export function burn(account: Hash160, amount: bigint): boolean {
-    if (!account.isValid()) throw new Error("The argument \"account\" is invalid.");
+    if (!account.valid) throw new Error("The argument \"account\" is invalid.");
     if (amount < 0n) throw new Error("amount must be greater than zero");
     if (!checkOwner()) throw new Error("Only the contract owner can burn tokens");
     if (amount != 0n) {
@@ -80,7 +80,7 @@ export function update(nefFile: ByteString, manifest: string) {
 }
 
 function checkOwner() {
-    return checkWitness(Storage.context.get(OWNER_KEY)!);
+    return checkWitness(Storage.context.get(OWNER_KEY)!.asHash160());
 }
 
 function createTokens(account: Hash160, amount: bigint) {
