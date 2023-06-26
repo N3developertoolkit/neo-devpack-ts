@@ -4,7 +4,7 @@ import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option'
 import * as ROA from 'fp-ts/ReadonlyArray'
 
-import { GlobalScopeContext, makeCallableObject } from "./common";
+import { GlobalScopeContext, makeObject } from "./common";
 import { CompileTimeObject, GetOpsFunc } from "../types/CompileTimeObject";
 import { ParseError } from "../utils";
 import { Operation, pushString } from "../types/Operation";
@@ -22,5 +22,8 @@ function invokeError(node: tsm.CallExpression | tsm.NewExpression, args: readonl
 }
 
 export function makeError(ctx: GlobalScopeContext) {
-    makeCallableObject(ctx, "Error", (node) => (_$this, args) => invokeError(node, args), (node) => (_$this, args) => invokeError(node, args));
+    makeObject(ctx, "Error", {
+        call: (node) => (_$this, args) => invokeError(node, args),
+        callNew: (node) => (_$this, args) => invokeError(node, args)
+    });
 }

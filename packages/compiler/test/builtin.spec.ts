@@ -233,7 +233,7 @@ describe("builts-ins", () => {
 
         it("checkWitness", () => {
             const contract = /*javascript*/`
-                const account: ByteString = null!; 
+                const account: Hash160 = null!; 
                 checkWitness(account);`;
             const { project, sourceFile } = createTestProject(contract);
             const globalScope = createTestGlobalScope(project);

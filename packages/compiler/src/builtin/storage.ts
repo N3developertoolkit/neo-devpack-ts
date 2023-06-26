@@ -32,7 +32,7 @@ function makeStorageObject(ctx: GlobalScopeContext) {
         readonlyContext: makeStaticProperty([{ kind: 'syscall', name: "System.Storage.GetReadOnlyContext"}]),
     }
 
-    makeObject(ctx, "Storage", members);
+    makeObject(ctx, "Storage", { members });
 }
 
 function makeStorageCall(syscall: string): CallInvokeResolver {

@@ -14,7 +14,7 @@ export function makeMap(ctx: GlobalScopeContext) {
 }
 
 function invokeMapCtor(node: tsm.NewExpression, args: readonly GetOpsFunc[]): E.Either<ParseError, CompileTimeObject> {
-    if (ROA.isEmpty(args)) E.of(<CompileTimeObject>{ node, loadOps: [{ kind: 'newemptymap' }] })
+    if (ROA.isEmpty(args)) return E.of(<CompileTimeObject>{ node, loadOps: [{ kind: 'newemptymap' }] })
     return E.left(makeParseError(node)("Map constructor not implemented"))
 }
 
