@@ -53,6 +53,7 @@ export function makeArray(ctx: GlobalScopeContext) {
 function makeArrayInterface(ctx: GlobalScopeContext) {
     const members = {
         length: makeProperty([{ kind: "size" }]),
+        at: makeMethod(callAt),
         pop: makeMethod(callPop),
         push: makeMethod(callPush),
     }
@@ -93,4 +94,58 @@ const callPush: CallInvokeResolver = (node) => ($this, args) => {
             return <CompileTimeObject>{ node, loadOps }
         })
     )
+}
+
+const callAt: CallInvokeResolver = (node) => ($this, args) => {
+    return pipe(
+        E.Do,
+        E.bind("$this", () => $this()),
+        E.bind("arg", () => {
+            return pipe(
+                args,
+                ROA.lookup(0),
+                E.fromOption(() => makeParseError(node)("Expected one argument")),
+                E.chain(arg => arg()),
+            )
+        }),
+        E.map(({ $this, arg }) => {
+            const loadOps = pipe(
+                $this, 
+                ROA.concat(arg),
+                ROA.concat<Operation>([
+                    // check to see if index arg is positive or negative
+                    { kind: 'duplicate' },
+                    pushInt(0), 
+                    { kind: 'jumpge', offset: 4 }, 
+                    // if negative, add array length to arg to get the index
+                    { kind: 'over' }, // copy $this to top of stack
+                    { kind: 'size' }, // get size of array
+                    { kind: 'add' }, // add size to arg
+                    // Stack at this point is [this, index]
+                    // push null on the stack if index is less than zero
+                    { kind: 'duplicate' }, 
+                    pushInt(0), 
+                    { kind: 'jumpge', offset: 5 },
+                    { kind: 'drop' }, // drop size from stack
+                    { kind: 'drop' }, // drop $this from stack
+                    { kind: 'pushnull' }, 
+                    { kind: 'jump', offset: 10 }, 
+                    // Stack at this point is [this, index]
+                    // push null on the stack if index is greater than or equal to array length
+                    { kind: 'over' }, // copy $this to top of stack 
+                    { kind: 'size' }, // get size of array 
+                    { kind: 'over' }, // copy index to top of stack
+                    { kind: 'jumpge', offset: 5 },
+                    { kind: 'drop' }, // drop size from stack
+                    { kind: 'drop' }, // drop $this from stack 
+                    { kind: 'pushnull' },
+                    { kind: 'jump', offset: 2 },
+                    // otherwise, index is valid, so get the value at that index
+                    { kind: "pickitem"}, 
+                    { kind: "noop"} // jump target for index < 0 or index >= size
+                ])
+            );
+            return <CompileTimeObject>{ node, loadOps }
+        })
+    );
 }

@@ -29,6 +29,10 @@ export const simpleOperationKinds = [
     // Stack Management
     'drop',
     'duplicate',
+    'over', // copy the item one item back on the stack to the front (w/o remo)
+    'pick',
+    'tuck',
+    'swap',
     'rotate',
 
     // splice
@@ -109,9 +113,11 @@ export function convertSimpleOperationKind(kind: SimpleOperationKind) {
         case "notequal": return sc.OpCode.NOTEQUAL;
         case "numequal": return sc.OpCode.NUMEQUAL;
         case "or": return sc.OpCode.OR;
+        case "over": return sc.OpCode.OVER;
         case "packarray": return sc.OpCode.PACK;
         case "packmap": return sc.OpCode.PACKMAP;
         case "packstruct": return sc.OpCode.PACKSTRUCT;
+        case "pick": return sc.OpCode.PICK;
         case "pickitem": return sc.OpCode.PICKITEM;
         case "popitem": return sc.OpCode.POPITEM;
         case "power": return sc.OpCode.POW;
@@ -123,6 +129,8 @@ export function convertSimpleOperationKind(kind: SimpleOperationKind) {
         case 'size': return sc.OpCode.SIZE;
         case "subtract": return sc.OpCode.SUB;
         case "throw": return sc.OpCode.THROW;
+        case 'tuck': return sc.OpCode.TUCK;
+        case 'swap': return sc.OpCode.SWAP;
     }
 
     throw new Error(`${kind} operation not implemented`)
