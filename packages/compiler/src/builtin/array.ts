@@ -2,10 +2,11 @@ import * as tsm from "ts-morph";
 import { pipe } from "fp-ts/lib/function";
 import * as E from "fp-ts/Either";
 import * as ROA from 'fp-ts/ReadonlyArray'
+import * as TS from '../TS'
 
 import { GlobalScopeContext, makeCallableObject, makeInterface, makeMethod, makeProperty } from "./common";
 import { CallInvokeResolver, CompileTimeObject, GetOpsFunc } from "../types/CompileTimeObject";
-import { ParseError, makeParseError } from "../utils";
+import { CompileError, ParseError, makeParseError } from "../utils";
 import { Operation, pushInt } from "../types/Operation";
 
 function invokeArray(node: tsm.NewExpression | tsm.CallExpression, args: readonly GetOpsFunc[]): E.Either<ParseError, CompileTimeObject> {
@@ -15,6 +16,18 @@ function invokeArray(node: tsm.NewExpression | tsm.CallExpression, args: readonl
 
     // if there is only one argument and it is a number, create an array of that size empty slots
     // TODO: need a way to check the type of the args
+    if (args.length === 1) {
+        const nodeArgs = TS.getArguments(node);
+        if (nodeArgs.length !== args.length) throw new CompileError("Mismatched arg count", node);
+        const type = nodeArgs[0].getType();
+        if (type.isNumber()) {
+            return pipe(
+                args[0](),
+                E.map(ROA.concat<Operation>([{ kind: 'newarray' }])),
+                E.map(loadOps => <CompileTimeObject>{ node, loadOps })
+            )
+        }
+    }
 
     // otherwise, create an array from the args via packarray
     return pipe(

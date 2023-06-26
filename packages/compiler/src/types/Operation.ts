@@ -66,6 +66,7 @@ export const simpleOperationKinds = [
     'packstruct',
     'packarray',
     'newemptyarray',
+    'newarray',
     'newemptymap',
     'size',
     'haskey',
@@ -100,6 +101,7 @@ export function convertSimpleOperationKind(kind: SimpleOperationKind) {
         case "lessthanorequal": return sc.OpCode.LE;
         case "multiply": return sc.OpCode.MUL;
         case "negate": return sc.OpCode.NEGATE;
+        case "newarray": return sc.OpCode.NEWARRAY;
         case "newemptyarray": return sc.OpCode.NEWARRAY0;
         case "newemptymap": return sc.OpCode.NEWMAP;
         case "noop": return sc.OpCode.NOP;
