@@ -12,8 +12,8 @@
   },
   "dependencies": {
     "@cityofzion/neon-core": "^5.4.0",
-    "commander": "^10.0.1",
+    "commander": "^11.0.0",
     "fp-ts": "^2.16.0",
-    "ts-morph": "^18.0.0"
+    "ts-morph": "^19.0.0"
   }
 }
