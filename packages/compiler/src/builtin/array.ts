@@ -56,6 +56,8 @@ function makeArrayInterface(ctx: GlobalScopeContext) {
         at: makeMethod(callAt),
         pop: makeMethod(callPop),
         push: makeMethod(callPush),
+        reverse: makeMethod(callReverse),
+        shift: makeMethod(callShift),
     }
     makeInterface(ctx, "Array", members);
 }
@@ -143,6 +145,45 @@ const callAt: CallInvokeResolver = (node) => ($this, args) => {
                     // otherwise, index is valid, so get the value at that index
                     { kind: "pickitem"}, 
                     { kind: "noop"} // jump target for index < 0 or index >= size
+                ])
+            );
+            return <CompileTimeObject>{ node, loadOps }
+        })
+    );
+}
+
+const callShift: CallInvokeResolver = (node) => ($this, args) => {
+    return pipe(
+        E.Do,
+        E.bind("$this", () => $this()),
+        E.map(({ $this }) => {
+            const loadOps = pipe(
+                $this, 
+                ROA.concat<Operation>([
+                    // pick the first item of the array
+                    { kind: 'duplicate' },
+                    pushInt(0),
+                    { kind: 'pickitem' },
+                    // drop the first item of the array
+                    { kind: 'swap' }, // stack was [this item], now [item this]
+                    pushInt(0),
+                    { kind: 'removeitem'}
+                ])
+            );
+            return <CompileTimeObject>{ node, loadOps }
+        })
+    );
+}
+
+const callReverse: CallInvokeResolver = (node) => ($this, args) => {
+    return pipe(
+        E.Do,
+        E.bind("$this", () => $this()),
+        E.map(({ $this }) => {
+            const loadOps = pipe(
+                $this, 
+                ROA.concat<Operation>([
+                    { kind: 'reverseitems' },
                 ])
             );
             return <CompileTimeObject>{ node, loadOps }

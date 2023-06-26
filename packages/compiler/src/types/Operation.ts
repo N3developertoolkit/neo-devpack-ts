@@ -77,6 +77,7 @@ export const simpleOperationKinds = [
     'pickitem',
     'append',
     'setitem',
+    'reverseitems',
     'removeitem',
     'clearitems',
     'popitem',
@@ -124,6 +125,7 @@ export function convertSimpleOperationKind(kind: SimpleOperationKind) {
         case "pushnull": return sc.OpCode.PUSHNULL;
         case "return": return sc.OpCode.RET;
         case "removeitem": return sc.OpCode.REMOVE;
+        case "reverseitems": return sc.OpCode.REVERSEITEMS;
         case "rotate": return sc.OpCode.ROT;
         case "setitem": return sc.OpCode.SETITEM;
         case 'size': return sc.OpCode.SIZE;
