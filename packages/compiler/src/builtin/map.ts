@@ -9,17 +9,13 @@ import { ParseError, makeParseError } from "../utils";
 import { Operation } from "../types/Operation";
 
 export function makeMap(ctx: GlobalScopeContext) {
-    makeMapObject(ctx);
+    makeCallableObject(ctx, "Map", (node) => (_$this, args) => invokeMapCtor(node, args));
     makeMapInterface(ctx);
 }
 
 function invokeMapCtor(node: tsm.NewExpression, args: readonly GetOpsFunc[]): E.Either<ParseError, CompileTimeObject> {
-    if (ROA.isNonEmpty(args)) return E.left(makeParseError(node)("Map constructor with arguments not implemented"))
-    return E.of(<CompileTimeObject>{ node, loadOps: [{ kind: 'newemptymap' }] })
-}
-
-function makeMapObject(ctx: GlobalScopeContext) {
-    makeCallableObject(ctx, "Map", (node) => (_$this, args) => invokeMapCtor(node, args));
+    if (ROA.isEmpty(args)) E.of(<CompileTimeObject>{ node, loadOps: [{ kind: 'newemptymap' }] })
+    return E.left(makeParseError(node)("Map constructor not implemented"))
 }
 
 const callClear: CallInvokeResolver = (node) => ($this) => {

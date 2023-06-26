@@ -74,6 +74,7 @@ export const simpleOperationKinds = [
     'setitem',
     'removeitem',
     'clearitems',
+    'popitem',
 
     // types
     'isnull',
@@ -110,6 +111,7 @@ export function convertSimpleOperationKind(kind: SimpleOperationKind) {
         case "packmap": return sc.OpCode.PACKMAP;
         case "packstruct": return sc.OpCode.PACKSTRUCT;
         case "pickitem": return sc.OpCode.PICKITEM;
+        case "popitem": return sc.OpCode.POPITEM;
         case "power": return sc.OpCode.POW;
         case "pushnull": return sc.OpCode.PUSHNULL;
         case "return": return sc.OpCode.RET;
