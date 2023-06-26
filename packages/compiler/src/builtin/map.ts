@@ -3,13 +3,13 @@ import { pipe } from "fp-ts/lib/function";
 import * as E from "fp-ts/Either";
 import * as ROA from 'fp-ts/ReadonlyArray'
 
-import { GlobalScopeContext, makeCallableObject, makeInterface, makeMethod, makeProperty } from "./common";
+import { GlobalScopeContext, makeInterface, makeMethod, makeObject, makeProperty } from "./common";
 import { CallInvokeResolver, CompileTimeObject, GetOpsFunc } from "../types/CompileTimeObject";
 import { ParseError, makeParseError } from "../utils";
 import { Operation } from "../types/Operation";
 
 export function makeMap(ctx: GlobalScopeContext) {
-    makeCallableObject(ctx, "Map", (node) => (_$this, args) => invokeMapCtor(node, args));
+    makeObject(ctx, "Map", { callNew: (node) => (_$this, args) => invokeMapCtor(node, args) });
     makeMapInterface(ctx);
 }
 

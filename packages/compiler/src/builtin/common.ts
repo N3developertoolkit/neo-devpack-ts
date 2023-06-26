@@ -82,22 +82,32 @@ export function makeInterface(ctx: GlobalScopeContext, name: string, members: RO
     );
 }
 
-export function makeObject(ctx: GlobalScopeContext, name: string, members: ROR.ReadonlyRecord<string, PropResolverFactory>) {
+interface MakeObjectOptions {
+    readonly members?: ROR.ReadonlyRecord<string, PropResolverFactory>;
+    readonly callNew?: NewInvokeResolver;
+    readonly call?: CallInvokeResolver;
+}
+
+export function makeObject(
+    ctx: GlobalScopeContext,
+    name: string,
+    { members, call, callNew }: MakeObjectOptions
+) {
+    if (!members && !call && !callNew) throw new Error(`must provide at least one of members, call or callNew for ${name}`);
     pipe(
         name,
         getVarDeclAndSymbol(ctx),
         E.mapLeft(ROA.of),
-        E.bind('properties', ({ node }) => makePropertyMap(node.getType(), members)),
+        E.bind('properties', ({ node }) => makePropertyMap(node.getType(), members ?? {})),
         E.match(
             errors => errors.forEach(error => ctx.addError(error)),
             ({ node, symbol, properties }) => {
                 const map = new Map([...properties].map(([k, v]) => [k.getName(), v]));
-                return ctx.addObject({ node, symbol, loadOps: [], properties: map });
+                return ctx.addObject({ node, symbol, loadOps: [], properties: map, call, callNew });
             }
         )
     );
 }
-
 
 export function makeMethod(call: CallInvokeResolver): PropResolverFactory {
     return symbol => {
@@ -169,32 +179,3 @@ export function makeStaticProperty(ops: readonly Operation[]): PropResolverFacto
     }
 }
 
-export function makeCallableObject(ctx: GlobalScopeContext, name: string, callNew?: NewInvokeResolver, call?: CallInvokeResolver) {
-    if (!call && !callNew) throw new Error("must provide either call or callNew");
-    pipe(
-        name,
-        getVarDeclAndSymbol(ctx),
-        E.map(({ node, symbol }) => {
-            return <CompileTimeObject>{ node, symbol, loadOps: [], call, callNew };
-        }),
-        E.match(
-            () => ctx.addError(createDiagnostic("could not find Error declaration")),
-            ctx.addObject
-        )
-    )
-}
-
-export function getIsValidOps(count: number) {
-    return ROA.fromArray<Operation>([
-        { kind: 'duplicate' },
-        { kind: 'isnull' },
-        { kind: 'jumpif', offset: 5 }, // if null, jump to throw
-        { kind: 'duplicate' },
-        { kind: 'size' },
-        pushInt(count),
-        { kind: 'jumpeq', offset: 2 },
-        { kind: 'throw' }
-    ]);
-}
-
-export const callNoOp: CallInvokeResolver = (node) => ($this) =>  pipe($this(), E.map(loadOps => <CompileTimeObject>{ node, loadOps }));

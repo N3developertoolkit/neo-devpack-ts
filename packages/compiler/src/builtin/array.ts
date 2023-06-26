@@ -4,7 +4,7 @@ import * as E from "fp-ts/Either";
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as TS from '../TS'
 
-import { GlobalScopeContext, makeCallableObject, makeInterface, makeMethod, makeProperty } from "./common";
+import { GlobalScopeContext, makeInterface, makeMethod, makeObject, makeProperty } from "./common";
 import { CallInvokeResolver, CompileTimeObject, GetOpsFunc } from "../types/CompileTimeObject";
 import { CompileError, ParseError, makeParseError } from "../utils";
 import { Operation, pushInt } from "../types/Operation";
@@ -44,10 +44,33 @@ function invokeArray(node: tsm.NewExpression | tsm.CallExpression, args: readonl
 }
 
 export function makeArray(ctx: GlobalScopeContext) {
-    makeCallableObject(ctx, "Array",
-        (node) => (_$this, args) => invokeArray(node, args),
-        (node) => (_$this, args) => invokeArray(node, args));
+    makeArrayObject(ctx);
     makeArrayInterface(ctx);
+}
+
+function makeArrayObject(ctx: GlobalScopeContext) {
+    const members = {
+        of: makeMethod(callOf),
+    }
+    
+    makeObject(ctx, "Array", {
+        call: (node) => (_$this, args) => invokeArray(node, args),
+        callNew: (node) => (_$this, args) => invokeArray(node, args),
+    });
+}
+
+const callOf: CallInvokeResolver = (node) => ($this, args) => {
+    return pipe(
+        args,
+        ROA.map(arg => arg()),
+        ROA.sequence(E.Applicative),
+        E.map(ROA.flatten),
+        E.map(ROA.concat<Operation>([
+            pushInt(args.length),
+            { kind: 'packarray' }
+        ])),
+        E.map(loadOps => <CompileTimeObject>{ node, loadOps })
+    )
 }
 
 function makeArrayInterface(ctx: GlobalScopeContext) {
@@ -58,6 +81,7 @@ function makeArrayInterface(ctx: GlobalScopeContext) {
         push: makeMethod(callPush),
         reverse: makeMethod(callReverse),
         shift: makeMethod(callShift),
+        unshift: makeMethod(callUnshift),
     }
     makeInterface(ctx, "Array", members);
 }
@@ -112,26 +136,26 @@ const callAt: CallInvokeResolver = (node) => ($this, args) => {
         }),
         E.map(({ $this, arg }) => {
             const loadOps = pipe(
-                $this, 
+                $this,
                 ROA.concat(arg),
                 ROA.concat<Operation>([
                     // check to see if index arg is positive or negative
                     { kind: 'duplicate' },
-                    pushInt(0), 
-                    { kind: 'jumpge', offset: 4 }, 
+                    pushInt(0),
+                    { kind: 'jumpge', offset: 4 },
                     // if negative, add array length to arg to get the index
                     { kind: 'over' }, // copy $this to top of stack
                     { kind: 'size' }, // get size of array
                     { kind: 'add' }, // add size to arg
                     // Stack at this point is [this, index]
                     // push null on the stack if index is less than zero
-                    { kind: 'duplicate' }, 
-                    pushInt(0), 
+                    { kind: 'duplicate' },
+                    pushInt(0),
                     { kind: 'jumpge', offset: 5 },
                     { kind: 'drop' }, // drop size from stack
                     { kind: 'drop' }, // drop $this from stack
-                    { kind: 'pushnull' }, 
-                    { kind: 'jump', offset: 10 }, 
+                    { kind: 'pushnull' },
+                    { kind: 'jump', offset: 10 },
                     // Stack at this point is [this, index]
                     // push null on the stack if index is greater than or equal to array length
                     { kind: 'over' }, // copy $this to top of stack 
@@ -143,8 +167,8 @@ const callAt: CallInvokeResolver = (node) => ($this, args) => {
                     { kind: 'pushnull' },
                     { kind: 'jump', offset: 2 },
                     // otherwise, index is valid, so get the value at that index
-                    { kind: "pickitem"}, 
-                    { kind: "noop"} // jump target for index < 0 or index >= size
+                    { kind: "pickitem" },
+                    { kind: "noop" } // jump target for index < 0 or index >= size
                 ])
             );
             return <CompileTimeObject>{ node, loadOps }
@@ -158,7 +182,7 @@ const callShift: CallInvokeResolver = (node) => ($this, args) => {
         E.bind("$this", () => $this()),
         E.map(({ $this }) => {
             const loadOps = pipe(
-                $this, 
+                $this,
                 ROA.concat<Operation>([
                     // pick the first item of the array
                     { kind: 'duplicate' },
@@ -167,7 +191,7 @@ const callShift: CallInvokeResolver = (node) => ($this, args) => {
                     // drop the first item of the array
                     { kind: 'swap' }, // stack was [this item], now [item this]
                     pushInt(0),
-                    { kind: 'removeitem'}
+                    { kind: 'removeitem' }
                 ])
             );
             return <CompileTimeObject>{ node, loadOps }
@@ -181,7 +205,7 @@ const callReverse: CallInvokeResolver = (node) => ($this, args) => {
         E.bind("$this", () => $this()),
         E.map(({ $this }) => {
             const loadOps = pipe(
-                $this, 
+                $this,
                 ROA.concat<Operation>([
                     { kind: 'reverseitems' },
                 ])
@@ -189,4 +213,34 @@ const callReverse: CallInvokeResolver = (node) => ($this, args) => {
             return <CompileTimeObject>{ node, loadOps }
         })
     );
+}
+
+const callUnshift: CallInvokeResolver = (node) => ($this, args) => {
+    return pipe(
+        E.Do,
+        E.bind("$this", () => $this()),
+        E.bind("args", () => {
+            // first, create an array from the args 
+            return pipe(
+                args,
+                ROA.map(arg => arg()),
+                ROA.sequence(E.Applicative),
+                E.map(ROA.flatten),
+                E.map(ROA.concat<Operation>([
+                    pushInt(args.length),
+                    { kind: 'packarray' }
+                ]))
+            )
+        }),
+        E.map(({ $this, args }) => {
+            // push the args array and this on the stack and concat them
+            const loadOps = pipe(
+                args,
+                ROA.concat($this),
+                ROA.append<Operation>({ kind: 'concat' })
+            );
+            return <CompileTimeObject>{ node, loadOps }
+        })
+    );
+
 }

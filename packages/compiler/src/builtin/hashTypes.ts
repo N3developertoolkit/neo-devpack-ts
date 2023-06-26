@@ -5,11 +5,26 @@ import * as O from 'fp-ts/Option'
 import * as ROA from 'fp-ts/ReadonlyArray'
 import * as TS from "../TS";
 
-import { GlobalScopeContext, callNoOp, getIsValidOps, makeInterface, makeMethod, makeObject, makeProperty, makeStaticProperty, } from "./common";
+import { GlobalScopeContext, makeInterface, makeMethod, makeObject, makeProperty, makeStaticProperty, } from "./common";
 import { CallInvokeResolver, CompileTimeObject, GetOpsFunc, PropertyResolver } from "../types/CompileTimeObject";
 import { createDiagnostic, makeParseError, single } from "../utils";
 import { Operation, isPushDataOp, isPushIntOp, pushInt, pushString } from "../types/Operation";
 import { sc, u } from "@cityofzion/neon-core";
+
+function getIsValidOps(count: number) {
+    return ROA.fromArray<Operation>([
+        { kind: 'duplicate' },
+        { kind: 'isnull' },
+        { kind: 'jumpif', offset: 5 }, // if null, jump to throw
+        { kind: 'duplicate' },
+        { kind: 'size' },
+        pushInt(count),
+        { kind: 'jumpeq', offset: 2 },
+        { kind: 'throw' }
+    ]);
+}
+
+const callNoOp: CallInvokeResolver = (node) => ($this) =>  pipe($this(), E.map(loadOps => <CompileTimeObject>{ node, loadOps }));
 
 function makeMembers(size: number) {
     const $static = {
@@ -56,15 +71,15 @@ const callAsAddress: CallInvokeResolver = (node) => ($this, args) => {
 
 function makeHash160(ctx: GlobalScopeContext) {
     const name = "Hash160";
-    const { instance, $static } = makeMembers(20);
-    makeObject(ctx, name, $static);
+    const { instance, $static: members } = makeMembers(20);
+    makeObject(ctx, name, { members });
     makeInterface(ctx, name, { ...instance, asAddress: makeMethod(callAsAddress) });
 }
 
 function makeHash256(ctx: GlobalScopeContext) {
     const name = "Hash256";
-    const { instance, $static } = makeMembers(32);
-    makeObject(ctx, name, $static);
+    const { instance, $static: members } = makeMembers(32);
+    makeObject(ctx, name, { members });
     makeInterface(ctx, name, instance);
 }
 

@@ -97,7 +97,7 @@ function makeByteStringObject(ctx: GlobalScopeContext) {
         fromInteger: makeStaticMethod(fromInteger),
         fromString: makeStaticMethod(fromString),
     }
-    makeObject(ctx, "ByteString", members);
+    makeObject(ctx, "ByteString", { members });
 }
 
 const callAsInteger: CallInvokeResolver = (node) => ($this) => {
