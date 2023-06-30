@@ -246,12 +246,12 @@ export function getLocalFunctions(node: FunctionLikeNode) {
     return ROA.fromArray(decls);
 }
 
-export function getLocalIdentifiers(node: FunctionLikeNode) {
+// collect all the descendant identifiers, even though they be in nested local functions
+// it doesn't matter how deep down the hierarchy a closure reference is, just that it's inside
+// a local function
+export function getDescendantIdentifiers(node: FunctionLikeNode) {
     const decls = new Array<tsm.Identifier>();
-    node.forEachDescendant((node, traversal) => {
-        if (isFunctionLike(node)) {
-            traversal.skip();
-        }
+    node.forEachDescendant(node => {
         if (tsm.Node.isIdentifier(node)) {
             decls.push(node);
         }

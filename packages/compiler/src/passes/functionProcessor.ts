@@ -1,7 +1,9 @@
 import * as tsm from "ts-morph";
 import { flow, identity, pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
+import * as ROM from 'fp-ts/ReadonlyMap';
 import * as E from "fp-ts/Either";
+import * as EQ from 'fp-ts/Eq';
 import * as O from 'fp-ts/Option';
 import * as S from 'fp-ts/State';
 import * as TS from '../TS';
@@ -970,7 +972,7 @@ function adaptSwitchStatement(node: tsm.SwitchStatement): S.State<AdaptStatement
             // append the expression ops for each clause
             updateOps(ROA.concat(pipe(clauses, ROA.chain(({ ops }) => ops)))),
             // append a jump to the break target in case none of the clauses match
-            updateOps(ROA.append<Operation>({ kind: 'jump', target: breakTarget})),
+            updateOps(ROA.append<Operation>({ kind: 'jump', target: breakTarget })),
             // adapt each clause
             updateContext(adaptClauses(clauses)),
             // append the break target
@@ -1068,6 +1070,24 @@ function parseFunctionDeclaration(parentScope: Scope) {
         if (node.isAsync()) return E.left(ROA.of(makeParseError(node)("async functions not supported")));
         if (node.isGenerator()) return E.left(ROA.of(makeParseError(node)("generator functions not implemented")));
 
+        const { left: paramErrors, right: params } = pipe(
+            node.getParameters(),
+            ROA.mapWithIndex((index, node) => {
+                return pipe(
+                    node,
+                    TS.parseSymbol,
+                    E.map(symbol => {
+                        const loadOps = ROA.of(<Operation>{ kind: "loadarg", index: index });
+                        const storeOps = ROA.of(<Operation>{ kind: "storearg", index: index });
+                        return <CompileTimeObject>{ node, symbol, loadOps, storeOps };
+                    })
+                )
+            }),
+            ROA.separate,
+        );
+
+        const qq = TS.getLocalVariables(node);
+
         return pipe(
             node.getParameters(),
             ROA.mapWithIndex((index, node) => {
@@ -1137,4 +1157,214 @@ export function parseContractMethod(parentScope: Scope) {
             E.chain(makeContractMethod(node))
         );
     };
+}
+
+
+function parseBindingName(node: tsm.VariableDeclaration | tsm.BindingElement): readonly tsm.Identifier[] {
+    const name = node.getNameNode();
+    if (tsm.Node.isArrayBindingPattern(name)) {
+        return pipe(
+            name.getElements(),
+            ROA.filterMap(O.fromPredicate(tsm.Node.isBindingElement)),
+            ROA.chain(parseBindingName)
+        )
+    }
+    if (tsm.Node.isObjectBindingPattern(name)) {
+        return pipe(
+            name.getElements(),
+            ROA.chain(parseBindingName)
+        )
+
+    }
+    return ROA.of(name);
+}
+
+interface LocalParam {
+    readonly node: tsm.ParameterDeclaration,
+    readonly symbol: tsm.Symbol,
+    readonly index: number,
+}
+
+interface LocalVar {
+    readonly node: tsm.Identifier,
+    readonly symbol: tsm.Symbol,
+}
+
+function isLocalParam(v: LocalParam | LocalVar): v is LocalParam {
+    return tsm.Node.isParameterDeclaration(v.node);
+}
+
+function isLocalVar(v: LocalParam | LocalVar): v is LocalVar {
+    return tsm.Node.isIdentifier(v.node);
+}
+
+export function getLocalVariables(node: tsm.FunctionDeclaration): E.Either<readonly ParseError[], { ctos: readonly CompileTimeObject[]; initOps: readonly Operation[]; }> {
+
+    // get a list of all the params and their symbols and indexes
+    // we need to track parameter indexes even if a parameter is closed over 
+    // in order to generate operations to move the parameter into the closure record
+    const { left: paramErrors, right: params } = pipe(
+        node.getParameters(),
+        ROA.mapWithIndex((index, node) => {
+            return pipe(
+                node,
+                TS.parseSymbol,
+                E.map(symbol => {
+                    return <LocalParam>{ node, symbol, index };
+                })
+            )
+        }),
+        ROA.separate,
+    );
+
+    // get a list of all the local variables. 
+    // We don't track indexes here because those will be assigned 
+    // based on usage in closure 
+    const { left: localVarErrors, right: localVars } = pipe(
+        node,
+        TS.getLocalVariables,
+        ROA.chain(parseBindingName),
+        ROA.map(node => {
+            return pipe(
+                node,
+                TS.parseSymbol,
+                E.map(symbol => <LocalVar>{ node, symbol })
+            )
+        }),
+        ROA.separate,
+    );
+
+    // find all the descendant identitifiers in local functions that may reference local variables and parameters
+    const { left: descIDsErrors, right: descIDs } = pipe(
+        node,
+        TS.getLocalFunctions,
+        ROA.chain(TS.getDescendantIdentifiers),
+        ROA.uniq(EQ.fromEquals((a, b) => a === b)),
+        ROA.map(node => {
+            return pipe(
+                node,
+                TS.parseSymbol,
+                E.map(symbol => ({ node, symbol }))
+            )
+        }),
+        ROA.separate,
+    )
+
+    // create a map of all the local variables and parameters so we can quickly look them up
+    const allLocalsMap = new Map(pipe(
+        params,
+        ROA.concat<LocalParam | LocalVar>(localVars),
+        ROA.map(v => [v.symbol, v])
+    ));
+
+    const localEQ = EQ.fromEquals<LocalParam | LocalVar>((a, b) => a.symbol === b.symbol);
+
+    // find all the descendant identitifiers that are also local variables or parameters
+    const closureVars = pipe(
+        descIDs,
+        ROA.map(ref => pipe(allLocalsMap, ROM.lookup(EQ.eqStrict)(ref.symbol))),
+        ROA.filterMap(identity),
+        ROA.uniq(localEQ),
+    )
+
+    // pretty sure we will *always* make the closure record the first record (if needed)
+    // but let's create a variable just in case
+    const closureRecordIndex = 0;
+
+    // generate CTOs for all the closure variables. 
+    const closureCTOs = pipe(
+        closureVars,
+        ROA.mapWithIndex((index, v) => {
+            const loadOps = ROA.fromArray<Operation>([
+                { kind: "loadlocal", index: closureRecordIndex },
+                pushInt(index),
+                { kind: "pickitem" }
+            ]);
+            const storeOps = ROA.fromArray<Operation>([
+                { kind: "loadlocal", index: closureRecordIndex },
+                pushInt(index),
+                { kind: "rotate" }, // pull the value to set to the top of the stack
+                { kind: "setitem" }
+            ]);
+            return <CompileTimeObject>{ node: v.node, symbol: v.symbol, loadOps, storeOps };
+        })
+    )
+
+    // TODO: generate debug info for params and vars.
+    // Note, debugger info has no mechanism to map a parameter or local variable to a closure record slot
+
+    // generate CTOs for all the non-closed over parameters
+    const paramCTOs = pipe(
+        params,
+        ROA.difference(localEQ)(closureVars),
+        ROA.filterMap(O.fromPredicate(isLocalParam)),
+        ROA.map(v => {
+            const loadOps = ROA.of<Operation>({ kind: 'loadarg', index: v.index });
+            const storeOps = ROA.of<Operation>({ kind: 'storearg', index: v.index });
+            return <CompileTimeObject>{ node: v.node, symbol: v.symbol, loadOps, storeOps };
+        })
+    )
+
+    // generate CTOs for all the non-closed over local variables
+    const varCTOs = pipe(
+        localVars,
+        ROA.difference(localEQ)(closureVars),
+        ROA.filterMap(O.fromPredicate(isLocalVar)),
+        ROA.mapWithIndex((index, v) => {
+            // offset all local slots by one to make room for the closure record if it exists
+            const slotIndex = index + closureCTOs.length > 0 ? 1 : 0;
+            const loadOps = ROA.of<Operation>({ kind: 'loadlocal', index: slotIndex });
+            const storeOps = ROA.of<Operation>({ kind: 'storelocal', index: slotIndex });
+            return <CompileTimeObject>{ node: v.node, symbol: v.symbol, loadOps, storeOps };
+        })
+    )
+
+    // generate operations to initialize the closure record (if there are any closed over variables)
+    const initOps = closureCTOs.length > 0
+        ? pipe(
+            // the closure record is an array with a slot for each closed over variable
+            ROA.fromArray<Operation>([
+                pushInt(closureCTOs.length),
+                { kind: 'newarray' },
+                { kind: 'storelocal', index: 0 }
+            ]),
+            // append operations to copy closed over params into the closure record as needed
+            ROA.concat(pipe(
+                closureVars,
+                ROA.chainWithIndex((index, v) => {
+                    // this logic mirrors the store ops logic from closure CTOs above.
+                    // however, it's easier (and slightly more efficient) to generate the ops again
+                    // easier because we don't have to map closureCTOs back to LocalParams
+                    // more efficient because we don't need to use the rotate operation 
+                    return isLocalParam(v)
+                        ? ROA.fromArray<Operation>([
+                            { kind: "loadlocal", index: 0 },
+                            pushInt(index),
+                            { kind: "loadarg", index: v.index },
+                            { kind: "setitem" }
+                        ])
+                        : ROA.empty;
+                })
+            ))
+        )
+        : ROA.empty;
+
+
+        const errors = pipe(
+            paramErrors,
+            ROA.concat(localVarErrors),
+            ROA.concat(descIDsErrors),
+        )
+
+        if (errors.length > 0) {
+            return E.left(errors);
+        }
+
+        const ctos = pipe(
+            closureCTOs,
+            ROA.concat(paramCTOs),
+            ROA.concat(varCTOs),
+        )
+
+        return E.right({ ctos, initOps });
 }
