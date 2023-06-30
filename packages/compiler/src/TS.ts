@@ -206,3 +206,55 @@ export function getEnumValue(member: tsm.EnumMember): E.Either<string, number | 
     
     return E.of(value);
 }
+
+export type FunctionLikeNode = tsm.FunctionDeclaration | tsm.FunctionExpression | tsm.ArrowFunction;
+
+export function isFunctionLike(node: tsm.Node): node is FunctionLikeNode {
+    switch (node.getKind()) {
+        case tsm.SyntaxKind.FunctionDeclaration:
+        case tsm.SyntaxKind.FunctionExpression:
+        case tsm.SyntaxKind.ArrowFunction:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// get all the local variables in a function, including variables declared
+// in for loops and catch clauses but excluding variables declared in nested functions
+export function getLocalVariables(node: FunctionLikeNode) {
+    const decls = new Array<tsm.VariableDeclaration>();
+    node.forEachDescendant((node, traversal) => {
+        if (isFunctionLike(node)) {
+            traversal.skip();
+        }
+        if (tsm.Node.isVariableDeclaration(node)) {
+            decls.push(node);
+        }
+    });
+    return ROA.fromArray(decls);
+}
+
+export function getLocalFunctions(node: FunctionLikeNode) {
+    const decls = new Array<FunctionLikeNode>();
+    node.forEachDescendant((node, traversal) => {
+        if (isFunctionLike(node)) {
+            decls.push(node);
+            traversal.skip();
+        }
+    });
+    return ROA.fromArray(decls);
+}
+
+export function getLocalIdentifiers(node: FunctionLikeNode) {
+    const decls = new Array<tsm.Identifier>();
+    node.forEachDescendant((node, traversal) => {
+        if (isFunctionLike(node)) {
+            traversal.skip();
+        }
+        if (tsm.Node.isIdentifier(node)) {
+            decls.push(node);
+        }
+    });
+    return ROA.fromArray(decls);
+}
