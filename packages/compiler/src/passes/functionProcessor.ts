@@ -2,6 +2,8 @@ import * as tsm from "ts-morph";
 import { flow, identity, pipe } from 'fp-ts/function';
 import * as ROA from 'fp-ts/ReadonlyArray';
 import * as ROM from 'fp-ts/ReadonlyMap';
+import * as ROS from 'fp-ts/ReadonlySet';
+import * as SEP from 'fp-ts/Separated';
 import * as E from "fp-ts/Either";
 import * as EQ from 'fp-ts/Eq';
 import * as O from 'fp-ts/Option';
@@ -9,11 +11,13 @@ import * as S from 'fp-ts/State';
 import * as TS from '../TS';
 
 import { CompileTimeObject, Scope, createEmptyScope, createScope } from "../types/CompileTimeObject";
-import { Operation, getBooleanConvertOps, pushInt, updateLocation } from "../types/Operation";
+import { Operation, getBooleanConvertOps, pushInt, pushString, updateLocation } from "../types/Operation";
 import { CompileError, E_fromSeparated, ParseError, isVoidLike, makeParseError, updateContextErrors } from "../utils";
 import { ContractMethod, ContractVariable } from "../types/CompileOptions";
 import { parseExpression, resolveExpression } from "./expressionProcessor";
-import { generateStoreOps, updateDeclarationScope, StoreOpVariable, parseVariableDeclaration } from "./parseVariableBinding";
+import { generateStoreOps, updateDeclarationScope, StoreOpVariable, parseVariableDeclaration, readNestedVariableBinding, flattenNestedVaribleBinding, VariableBinding } from "./parseVariableBinding";
+import { debug } from "console";
+import { record } from "fp-ts";
 
 export interface LocalVariable {
     readonly name: string;
@@ -1054,7 +1058,7 @@ function parseBody({ scope, body }: { scope: Scope, body: tsm.Node }): E.Either<
                 locals,
                 ROA.mapWithIndex((index, local) => [index, local] as const),
                 ROA.filter(([, local]) => local.type !== undefined),
-                ROA.map(([index, local]) => ({ name: local.name, type: local.type!, index }))
+                ROA.map(([index, local]) => ({ name: local.name, type: local.type!, index: `${index}` }))
             )
         });
 
@@ -1086,7 +1090,7 @@ function parseFunctionDeclaration(parentScope: Scope) {
             ROA.separate,
         );
 
-        const qq = TS.getLocalVariables(node);
+        const qq = TS.getLocalVariableDeclarations(node);
 
         return pipe(
             node.getParameters(),
@@ -1160,7 +1164,7 @@ export function parseContractMethod(parentScope: Scope) {
 }
 
 
-function parseBindingName(node: tsm.VariableDeclaration | tsm.BindingElement): readonly tsm.Identifier[] {
+function parseBindingName(node: tsm.ParameterDeclaration | tsm.VariableDeclaration | tsm.BindingElement): readonly tsm.Identifier[] {
     const name = node.getNameNode();
     if (tsm.Node.isArrayBindingPattern(name)) {
         return pipe(
@@ -1198,173 +1202,190 @@ function isLocalVar(v: LocalParam | LocalVar): v is LocalVar {
     return tsm.Node.isIdentifier(v.node);
 }
 
-export function getLocalVariables(node: tsm.FunctionDeclaration): E.Either<readonly ParseError[], { ctos: readonly CompileTimeObject[]; initOps: readonly Operation[]; }> {
+// parameters with an empty index array and that are not closed over are normal parameters (loadarg/storearg)
+// parameters that are closed over are stored in the closure record, regardless of their index array
+//    index array is used to generate ops to copy param into closure record
+// parameters with a non-empty index array and that are not closed over are copied to local variables
+//    index array is used to generate ops to copy param into local variable
 
-    // get a list of all the params and their symbols and indexes
-    // we need to track parameter indexes even if a parameter is closed over 
-    // in order to generate operations to move the parameter into the closure record
-    const { left: paramErrors, right: params } = pipe(
-        node.getParameters(),
-        ROA.mapWithIndex((index, node) => {
-            return pipe(
-                node,
-                TS.parseSymbol,
-                E.map(symbol => {
-                    return <LocalParam>{ node, symbol, index };
-                })
-            )
-        }),
-        ROA.separate,
-    );
+// debug info needs to be updated in support reading values from the closure record
+// debug info SlotVariable is stored as a string of the form "name,type,index" (where index is optional)
+// index is parsed as an int, but this needs to be updated to support reading from closure record.
 
-    // get a list of all the local variables. 
-    // We don't track indexes here because those will be assigned 
-    // based on usage in closure 
-    const { left: localVarErrors, right: localVars } = pipe(
-        node,
-        TS.getLocalVariables,
-        ROA.chain(parseBindingName),
-        ROA.map(node => {
-            return pipe(
-                node,
-                TS.parseSymbol,
-                E.map(symbol => <LocalVar>{ node, symbol })
-            )
-        }),
-        ROA.separate,
-    );
+// debugger itself needs to be updated to handle closure record variables. It's been a while, but I'm pretty
+// sure the debugger doesn't differentiate presentation of args, statics and locals (i.e. they are all called 
+// "variables"). So it would make sense for closed over parameters as well as array/object bound parameters
+// would be stored in the "variables" property of the debug info rather than "params" property.
 
-    // find all the descendant identitifiers in local functions that may reference local variables and parameters
-    const { left: descIDsErrors, right: descIDs } = pipe(
+// technically, it should not be legal to use the "record.index" closure record syntax for params debug info
+// but not sure it's worth it to actually worth it to enforce that
+
+// supporting array/object binding means there can be param init ops even if there are no closed over params.
+// since we need to initialize the local param slots similarly to how we initialize array/object var decl slots
+
+export function getLocalVariables(node: tsm.FunctionDeclaration) { //}: E.Either<readonly ParseError[], { ctos: readonly CompileTimeObject[]; initOps: readonly Operation[]; }> {
+
+    // create a set of symbols for all the identitifiers used in local functions 
+    // This will allow us to determine if any local variables or parameters are closed over
+    const descSymbolSet = pipe(
         node,
         TS.getLocalFunctions,
         ROA.chain(TS.getDescendantIdentifiers),
         ROA.uniq(EQ.fromEquals((a, b) => a === b)),
-        ROA.map(node => {
-            return pipe(
-                node,
-                TS.parseSymbol,
-                E.map(symbol => ({ node, symbol }))
-            )
-        }),
-        ROA.separate,
+        ROA.map(id => id.getSymbol()),
+        ROA.filterMap(O.fromNullable),
+        ROS.fromReadonlyArray(EQ.fromEquals((a, b) => a === b))
     )
 
-    // create a map of all the local variables and parameters so we can quickly look them up
-    const allLocalsMap = new Map(pipe(
-        params,
-        ROA.concat<LocalParam | LocalVar>(localVars),
-        ROA.map(v => [v.symbol, v])
-    ));
+    // get all the parameter declaration bindings
+    const {
+        left: paramBindingErrors,
+        right: paramBindings
+    } = pipe(node.getParameters(), getDeclarationBindings);
 
-    const localEQ = EQ.fromEquals<LocalParam | LocalVar>((a, b) => a.symbol === b.symbol);
+    // get all the variable declaration bindings in the funciton (excluding ones in local functions)
+    const {
+        left: localBindingErrors,
+        right: localBindings
+    } = pipe(node, TS.getLocalVariableDeclarations, getDeclarationBindings);
 
-    // find all the descendant identitifiers that are also local variables or parameters
-    const closureVars = pipe(
-        descIDs,
-        ROA.map(ref => pipe(allLocalsMap, ROM.lookup(EQ.eqStrict)(ref.symbol))),
-        ROA.filterMap(identity),
-        ROA.uniq(localEQ),
-    )
+    // if we have any binding errors, exit early
+    const errors = pipe(paramBindingErrors, ROA.concat(localBindingErrors));
+    if (errors.length > 0) return E.left(errors);
 
-    // pretty sure we will *always* make the closure record the first record (if needed)
-    // but let's create a variable just in case
-    const closureRecordIndex = 0;
+    // need to know if there will be a closure record in order to correctly 
+    // calculate local variable slot indexes
+    const hasClosureRecord = pipe(
+        paramBindings,
+        ROA.concat(localBindings),
+        ROA.filter(binding => descSymbolSet.has(binding.symbol)),
+        ROA.isNonEmpty
+    );
 
-    // generate CTOs for all the closure variables. 
-    const closureCTOs = pipe(
-        closureVars,
-        ROA.mapWithIndex((index, v) => {
-            const loadOps = ROA.fromArray<Operation>([
-                { kind: "loadlocal", index: closureRecordIndex },
-                pushInt(index),
-                { kind: "pickitem" }
-            ]);
-            const storeOps = ROA.fromArray<Operation>([
-                { kind: "loadlocal", index: closureRecordIndex },
-                pushInt(index),
-                { kind: "rotate" }, // pull the value to set to the top of the stack
-                { kind: "setitem" }
-            ]);
-            return <CompileTimeObject>{ node: v.node, symbol: v.symbol, loadOps, storeOps };
-        })
-    )
+    // initialize the local variable
+    let ctos: readonly CompileTimeObject[] = ROA.empty;
+    let initOps: readonly Operation[] = ROA.empty;
+    let debugParams: readonly ContractVariable[] = ROA.empty;
+    // note, debug locals and closed over variables are tracked separately
+    // in order to calculate slot/record indexes while processing. 
+    // they are combined into debugVariables return value at the end
+    let debugLocals: readonly ContractVariable[] = ROA.empty;
+    let debugClosed: readonly ContractVariable[] = ROA.empty;
 
-    // TODO: generate debug info for params and vars.
-    // Note, debugger info has no mechanism to map a parameter or local variable to a closure record slot
+    // helper function to retrieve an binding name value
+    // used in param initOps generation. 
+    // Similar logic happens at var decl operation generation
+    function getBindingOps(bindingIndex: readonly (string | number)[]) {
+        return pipe(
+            bindingIndex,
+            ROA.chain(binding => {
+                return ROA.fromArray<Operation>([
+                    typeof binding === 'number' ? pushInt(binding) : pushString(binding), 
+                    { kind: 'pickitem' }
+                ]);
+            }),
+        );
+    }
 
-    // generate CTOs for all the non-closed over parameters
-    const paramCTOs = pipe(
-        params,
-        ROA.difference(localEQ)(closureVars),
-        ROA.filterMap(O.fromPredicate(isLocalParam)),
-        ROA.map(v => {
-            const loadOps = ROA.of<Operation>({ kind: 'loadarg', index: v.index });
-            const storeOps = ROA.of<Operation>({ kind: 'storearg', index: v.index });
-            return <CompileTimeObject>{ node: v.node, symbol: v.symbol, loadOps, storeOps };
-        })
-    )
+    // helper function to generate a closure CTO + debug info
+    function makeClosureCTO(node: tsm.Identifier, symbol: tsm.Symbol) {
+        const recordIndex = debugClosed.length;
+        const loadOps = ROA.fromArray<Operation>([
+            { kind: "loadlocal", index: 0 },
+            pushInt(recordIndex),
+            { kind: "pickitem" }
+        ]);
+        const storeOps = ROA.fromArray<Operation>([
+            { kind: "loadlocal", index: 0 },
+            pushInt(recordIndex),
+            { kind: "rotate" }, // pull the value to set to the top of the stack
+            { kind: "setitem" }
+        ]);
+        const cto = <CompileTimeObject>{ node, symbol, loadOps, storeOps };
+        const contractVar = <ContractVariable>{ name: symbol.getName(), type: node.getType(), index: `0.${recordIndex}` };
+        ctos = pipe(ctos, ROA.append(cto));
+        debugClosed = pipe(debugClosed, ROA.append(contractVar));
+        return cto;
+    }
 
-    // generate CTOs for all the non-closed over local variables
-    const varCTOs = pipe(
-        localVars,
-        ROA.difference(localEQ)(closureVars),
-        ROA.filterMap(O.fromPredicate(isLocalVar)),
-        ROA.mapWithIndex((index, v) => {
-            // offset all local slots by one to make room for the closure record if it exists
-            const slotIndex = index + closureCTOs.length > 0 ? 1 : 0;
-            const loadOps = ROA.of<Operation>({ kind: 'loadlocal', index: slotIndex });
-            const storeOps = ROA.of<Operation>({ kind: 'storelocal', index: slotIndex });
-            return <CompileTimeObject>{ node: v.node, symbol: v.symbol, loadOps, storeOps };
-        })
-    )
+    // helper function to generate a local CTO + debug info
+    function makeLocalCTO(node: tsm.Identifier, symbol: tsm.Symbol): CompileTimeObject {
+        const slotIndex = debugLocals.length + (hasClosureRecord ? 1 : 0);
+        const loadOps = ROA.of<Operation>({ kind: 'loadlocal', index: slotIndex });
+        const storeOps = ROA.of<Operation>({ kind: 'storelocal', index: slotIndex });
+        const cto = <CompileTimeObject>{ node, symbol, loadOps, storeOps };
+        const contractVar = <ContractVariable>{ name: symbol.getName(), type: node.getType(), index: `${slotIndex}` };
+        ctos = pipe(ctos, ROA.append(cto));
+        debugLocals = pipe(debugLocals, ROA.append(contractVar));
+        return cto;
+    }
 
-    // generate operations to initialize the closure record (if there are any closed over variables)
-    const initOps = closureCTOs.length > 0
-        ? pipe(
-            // the closure record is an array with a slot for each closed over variable
-            ROA.fromArray<Operation>([
-                pushInt(closureCTOs.length),
-                { kind: 'newarray' },
-                { kind: 'storelocal', index: 0 }
-            ]),
-            // append operations to copy closed over params into the closure record as needed
-            ROA.concat(pipe(
-                closureVars,
-                ROA.chainWithIndex((index, v) => {
-                    // this logic mirrors the store ops logic from closure CTOs above.
-                    // however, it's easier (and slightly more efficient) to generate the ops again
-                    // easier because we don't have to map closureCTOs back to LocalParams
-                    // more efficient because we don't need to use the rotate operation 
-                    return isLocalParam(v)
-                        ? ROA.fromArray<Operation>([
-                            { kind: "loadlocal", index: 0 },
-                            pushInt(index),
-                            { kind: "loadarg", index: v.index },
-                            { kind: "setitem" }
-                        ])
-                        : ROA.empty;
-                })
-            ))
-        )
-        : ROA.empty;
+    // no need for a make param cto helper function as it's only done in one place
 
-
-        const errors = pipe(
-            paramErrors,
-            ROA.concat(localVarErrors),
-            ROA.concat(descIDsErrors),
-        )
-
-        if (errors.length > 0) {
-            return E.left(errors);
+    // generate CTOs, debug info and init ops for each parameter
+    paramBindings.forEach(({ node, symbol, index: bindingIndex}, paramIndex) => {
+        if (descSymbolSet.has(symbol)) {
+            const cto = makeClosureCTO(node, symbol);
+            initOps = pipe(
+                initOps, 
+                ROA.concat(pipe(
+                    getBindingOps(bindingIndex),
+                    ROA.prepend<Operation>({ kind: 'loadarg', index: paramIndex }),
+                    ROA.concat(cto.storeOps!)
+                ))
+            );
+        } else if (ROA.isNonEmpty(bindingIndex)) {
+            const cto = makeLocalCTO(node, symbol);
+            initOps = pipe(
+                initOps, 
+                ROA.concat(pipe(
+                    getBindingOps(bindingIndex),
+                    ROA.prepend<Operation>({ kind: 'loadarg', index: paramIndex }),
+                    ROA.concat(cto.storeOps!)
+                ))
+            );
+        } else {
+            // non closed over parameter with identifier binding. generate a CTO that loads from/stores to a arg slot variable + no init ops
+            const loadOps = ROA.of<Operation>({ kind: 'loadarg', index: paramIndex });
+            const storeOps = ROA.of<Operation>({ kind: 'storearg', index: paramIndex });
+            ctos = pipe(
+                ctos, 
+                ROA.append<CompileTimeObject>({ node, symbol, loadOps, storeOps })
+            );
+            debugParams = pipe(
+                debugParams, 
+                ROA.append<ContractVariable>({ name: symbol.getName(), type: node.getType(), index: `${paramIndex}` })
+            );
+            // no init ops needed for non-closed over params with identifier binding
         }
+    })
 
-        const ctos = pipe(
-            closureCTOs,
-            ROA.concat(paramCTOs),
-            ROA.concat(varCTOs),
-        )
+    // generate CTOs and debug info for each local variable
+    // varaible initialiation is handled in the var decl operation generation
+    localBindings.forEach(({ node, symbol }) => {
+        if (descSymbolSet.has(symbol)) {
+            const _cto = makeClosureCTO(node, symbol);
+        } else {
+            const _cto = makeLocalCTO(node, symbol);
+        }
+    });
 
-        return E.right({ ctos, initOps });
+    // as per above, combine debugClosed and debugLocals into debugVariables
+    const debugVariables = pipe(debugClosed, ROA.concat(debugLocals));
+    return E.of({ ctos, initOps, debugParams, debugVariables });
+}
+
+// variable and parameter declarations are BindingNamedNodes
+function getDeclarationBindings(decls: readonly (tsm.BindingNamedNode)[]) {
+    return pipe(
+        decls,
+        ROA.map(decl => pipe(
+            decl.getNameNode(),
+            readNestedVariableBinding,
+            E.map(flattenNestedVaribleBinding),
+        )),
+        ROA.separate,
+        SEP.mapLeft(ROA.flatten),
+        SEP.map(ROA.flatten),
+    )
 }

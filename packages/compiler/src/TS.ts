@@ -222,7 +222,7 @@ export function isFunctionLike(node: tsm.Node): node is FunctionLikeNode {
 
 // get all the local variables in a function, including variables declared
 // in for loops and catch clauses but excluding variables declared in nested functions
-export function getLocalVariables(node: FunctionLikeNode) {
+export function getLocalVariableDeclarations(node: FunctionLikeNode) {
     const decls = new Array<tsm.VariableDeclaration>();
     node.forEachDescendant((node, traversal) => {
         if (isFunctionLike(node)) {
