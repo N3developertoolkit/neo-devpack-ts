@@ -5,17 +5,10 @@ import * as TS from '../TS';
 import * as E from "fp-ts/Either";
 import * as O from 'fp-ts/Option';
 import { pipe } from "fp-ts/function";
-import { Operation, pushInt, pushString, updateLocation } from "../types/Operation";
+import { Operation, isPushOp, pushInt, pushString, updateLocation } from "../types/Operation";
 import { makeParseError, ParseError, single } from "../utils";
 import { parseExpression } from "./expressionProcessor";
 import { CompileTimeObject, Scope, updateScope } from "../types/CompileTimeObject";
-
-function isPushOp(op: Operation) {
-    return op.kind === "pushbool"
-        || op.kind === "pushdata"
-        || op.kind === "pushint"
-        || op.kind === "pushnull";
-}
 
 export interface StoreOpVariable {
     readonly node: tsm.Node;

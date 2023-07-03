@@ -300,6 +300,13 @@ export interface PushBoolOperation {
 
 export const isPushBoolOp = (op: Operation): op is PushBoolOperation => op.kind === 'pushbool';
 
+export function isPushOp(op: Operation) {
+    return op.kind === "pushbool"
+        || op.kind === "pushdata"
+        || op.kind === "pushint"
+        || op.kind === "pushnull";
+}
+
 // during function parsing, it's typically easier to specify the jump target
 // via the target operation instead of via the index offset. However,
 // @operation functions require specifying the index offset. 

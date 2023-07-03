@@ -222,7 +222,7 @@ export function isFunctionLike(node: tsm.Node): node is FunctionLikeNode {
 
 // get all the local variables in a function, including variables declared
 // in for loops and catch clauses but excluding variables declared in nested functions
-export function getLocalVariableDeclarations(node: FunctionLikeNode) {
+export function getLocalVariableDeclarations(node: tsm.Node) {
     const decls = new Array<tsm.VariableDeclaration>();
     node.forEachDescendant((node, traversal) => {
         if (isFunctionLike(node)) {
@@ -235,7 +235,7 @@ export function getLocalVariableDeclarations(node: FunctionLikeNode) {
     return ROA.fromArray(decls);
 }
 
-export function getLocalFunctions(node: FunctionLikeNode) {
+export function getLocalFunctions(node: tsm.Node) {
     const decls = new Array<FunctionLikeNode>();
     node.forEachDescendant((node, traversal) => {
         if (isFunctionLike(node)) {
@@ -249,7 +249,7 @@ export function getLocalFunctions(node: FunctionLikeNode) {
 // collect all the descendant identifiers, even though they be in nested local functions
 // it doesn't matter how deep down the hierarchy a closure reference is, just that it's inside
 // a local function
-export function getDescendantIdentifiers(node: FunctionLikeNode) {
+export function getDescendantIdentifiers(node: tsm.Node) {
     const decls = new Array<tsm.Identifier>();
     node.forEachDescendant(node => {
         if (tsm.Node.isIdentifier(node)) {

@@ -1163,44 +1163,54 @@ export function parseContractMethod(parentScope: Scope) {
     };
 }
 
-
-function parseBindingName(node: tsm.ParameterDeclaration | tsm.VariableDeclaration | tsm.BindingElement): readonly tsm.Identifier[] {
-    const name = node.getNameNode();
-    if (tsm.Node.isArrayBindingPattern(name)) {
+export function parseContractMethods(parentScope: Scope) {
+    return (node: tsm.FunctionDeclaration): E.Either<readonly ParseError[], readonly ContractMethod[]> => {
         return pipe(
-            name.getElements(),
-            ROA.filterMap(O.fromPredicate(tsm.Node.isBindingElement)),
-            ROA.chain(parseBindingName)
-        )
-    }
-    if (tsm.Node.isObjectBindingPattern(name)) {
-        return pipe(
-            name.getElements(),
-            ROA.chain(parseBindingName)
-        )
-
-    }
-    return ROA.of(name);
+            node,
+            parseFunctionDeclaration(parentScope),
+            E.chain(makeContractMethod(node)),
+            E.map(ROA.of)
+        );
+    };
 }
 
-interface LocalParam {
-    readonly node: tsm.ParameterDeclaration,
-    readonly symbol: tsm.Symbol,
-    readonly index: number,
-}
+// function parseBindingName(node: tsm.ParameterDeclaration | tsm.VariableDeclaration | tsm.BindingElement): readonly tsm.Identifier[] {
+//     const name = node.getNameNode();
+//     if (tsm.Node.isArrayBindingPattern(name)) {
+//         return pipe(
+//             name.getElements(),
+//             ROA.filterMap(O.fromPredicate(tsm.Node.isBindingElement)),
+//             ROA.chain(parseBindingName)
+//         )
+//     }
+//     if (tsm.Node.isObjectBindingPattern(name)) {
+//         return pipe(
+//             name.getElements(),
+//             ROA.chain(parseBindingName)
+//         )
 
-interface LocalVar {
-    readonly node: tsm.Identifier,
-    readonly symbol: tsm.Symbol,
-}
+//     }
+//     return ROA.of(name);
+// }
 
-function isLocalParam(v: LocalParam | LocalVar): v is LocalParam {
-    return tsm.Node.isParameterDeclaration(v.node);
-}
+// interface LocalParam {
+//     readonly node: tsm.ParameterDeclaration,
+//     readonly symbol: tsm.Symbol,
+//     readonly index: number,
+// }
 
-function isLocalVar(v: LocalParam | LocalVar): v is LocalVar {
-    return tsm.Node.isIdentifier(v.node);
-}
+// interface LocalVar {
+//     readonly node: tsm.Identifier,
+//     readonly symbol: tsm.Symbol,
+// }
+
+// function isLocalParam(v: LocalParam | LocalVar): v is LocalParam {
+//     return tsm.Node.isParameterDeclaration(v.node);
+// }
+
+// function isLocalVar(v: LocalParam | LocalVar): v is LocalVar {
+//     return tsm.Node.isIdentifier(v.node);
+// }
 
 // parameters with an empty index array and that are not closed over are normal parameters (loadarg/storearg)
 // parameters that are closed over are stored in the closure record, regardless of their index array
