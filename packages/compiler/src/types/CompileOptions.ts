@@ -5,7 +5,7 @@ import { Location, Operation } from "./Operation";
 export interface ContractVariable {
     name: string;
     type: tsm.Type;
-    index: string;
+    index: number | string;
 }
 
 export interface ContractMethod {
